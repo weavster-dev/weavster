@@ -25,8 +25,9 @@ make check
 # Run pre-commit hooks manually
 uv run pre-commit run -a
 
-# Static type checking with ty
+# Static type checking with ty or pyright
 uv run ty check
+uv run pyright
 
 # Check for obsolete dependencies
 uv run deptry src
@@ -88,7 +89,7 @@ make build-and-publish
 ## Code Style and Standards
 
 - **Linting**: Uses ruff with extensive rule set including security (bandit), complexity, and style checks
-- **Type Checking**: Uses ty (configured for Python 3.9+)
+- **Type Checking**: Uses ty and pyright (both configured for Python 3.9+)
 - **Testing**: pytest with coverage reporting
 - **Line Length**: 120 characters
 - **Python Versions**: Supports 3.9-3.13

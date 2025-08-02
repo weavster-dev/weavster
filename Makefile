@@ -12,6 +12,8 @@ check: ## Run code quality tools.
 	@uv run pre-commit run -a
 	@echo "🚀 Static type checking: Running ty"
 	@uv run ty check
+	@echo "🚀 Static type checking: Running pyright"
+	@uv run pyright
 	@echo "🚀 Checking for obsolete dependencies: Running deptry"
 	@uv run deptry src
 
