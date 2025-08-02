@@ -1,15 +1,15 @@
 # weavster
 
-[![Release](https://img.shields.io/github/v/release/gregoryhunt/weavster)](https://img.shields.io/github/v/release/gregoryhunt/weavster)
-[![Build status](https://img.shields.io/github/actions/workflow/status/gregoryhunt/weavster/main.yml?branch=main)](https://github.com/gregoryhunt/weavster/actions/workflows/main.yml?query=branch%3Amain)
-[![codecov](https://codecov.io/gh/gregoryhunt/weavster/branch/main/graph/badge.svg)](https://codecov.io/gh/gregoryhunt/weavster)
-[![Commit activity](https://img.shields.io/github/commit-activity/m/gregoryhunt/weavster)](https://img.shields.io/github/commit-activity/m/gregoryhunt/weavster)
-[![License](https://img.shields.io/github/license/gregoryhunt/weavster)](https://img.shields.io/github/license/gregoryhunt/weavster)
+[![Release](https://img.shields.io/github/v/release/weavster-dev/weavster)](https://img.shields.io/github/v/release/weavster-dev/weavster)
+[![Build status](https://img.shields.io/github/actions/workflow/status/weavster-dev/weavster/main.yml?branch=main)](https://github.com/weavster-dev/weavster/actions/workflows/main.yml?query=branch%3Amain)
+[![codecov](https://codecov.io/gh/weavster-dev/weavster/branch/main/graph/badge.svg)](https://codecov.io/gh/weavster-dev/weavster)
+[![Commit activity](https://img.shields.io/github/commit-activity/m/weavster-dev/weavster)](https://img.shields.io/github/commit-activity/m/weavster-dev/weavster)
+[![License](https://img.shields.io/github/license/weavster-dev/weavster)](https://img.shields.io/github/license/weavster-dev/weavster)
 
 Weavster is a cloud-native integration platform that brings declarative simplicity to data pipelines of all sizes.
 
-- **Github repository**: <https://github.com/gregoryhunt/weavster/>
-- **Documentation** <https://gregoryhunt.github.io/weavster/>
+- **Github repository**: <https://github.com/weavster-dev/weavster/>
+- **Documentation** <https://weavster-dev.github.io/weavster/>
 
 ## Getting started with your project
 
@@ -21,7 +21,7 @@ First, create a repository on GitHub with the same name as this project, and the
 git init -b main
 git add .
 git commit -m "init commit"
-git remote add origin git@github.com:gregoryhunt/weavster.git
+git remote add origin git@github.com:weavster-dev/weavster.git
 git push -u origin main
 ```
 
@@ -63,8 +63,8 @@ To enable the code coverage reports, see [here](https://fpgmaas.github.io/cookie
 ## Releasing a new version
 
 - Create an API Token on [PyPI](https://pypi.org/).
-- Add the API Token to your projects secrets with the name `PYPI_TOKEN` by visiting [this page](https://github.com/gregoryhunt/weavster/settings/secrets/actions/new).
-- Create a [new release](https://github.com/gregoryhunt/weavster/releases/new) on Github.
+- Add the API Token to your projects secrets with the name `PYPI_TOKEN` by visiting [this page](https://github.com/weavster-dev/weavster/settings/secrets/actions/new).
+- Create a [new release](https://github.com/weavster-dev/weavster/releases/new) on Github.
 - Create a new tag in the form `*.*.*`.
 
 For more details, see [here](https://fpgmaas.github.io/cookiecutter-uv/features/cicd/#how-to-trigger-a-release).

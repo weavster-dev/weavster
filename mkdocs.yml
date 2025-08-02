@@ -1,11 +1,11 @@
 site_name: weavster
-repo_url: https://github.com/gregoryhunt/weavster
-site_url: https://gregoryhunt.github.io/weavster
+repo_url: https://github.com/weavster-dev/weavster
+site_url: https://weavster-dev.github.io/weavster
 site_description: Weavster is a cloud-native integration platform that brings declarative simplicity to data pipelines of all sizes.
 site_author: Gregory Hunt
 edit_uri: edit/main/docs/
-repo_name: gregoryhunt/weavster
-copyright: Maintained by <a href="https://gregoryhunt.com">gregoryhunt</a>.
+repo_name: weavster-dev/weavster
+copyright: Maintained by <a href="https://weavster.dev">weavster-dev</a>.
 
 nav:
   - Home: index.md
@@ -41,7 +41,7 @@ theme:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/gregoryhunt/weavster
+      link: https://github.com/weavster-dev/weavster
     - icon: fontawesome/brands/python
       link: https://pypi.org/project/weavster
 

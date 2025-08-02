@@ -19,9 +19,9 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://gregoryhunt.github.io/weavster/"
-Repository = "https://github.com/gregoryhunt/weavster"
-Documentation = "https://gregoryhunt.github.io/weavster/"
+Homepage = "https://weavster-dev.github.io/weavster/"
+Repository = "https://github.com/weavster-dev/weavster"
+Documentation = "https://weavster-dev.github.io/weavster/"
 
 [dependency-groups]
 dev = [
