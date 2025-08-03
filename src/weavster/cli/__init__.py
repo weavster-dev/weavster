@@ -1,0 +1,1 @@
+"""Weavster CLI module."""

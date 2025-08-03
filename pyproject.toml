@@ -1,11 +1,14 @@
 [project]
 name = "weavster"
-version = "0.0.1"
+dynamic = ["version"]
 description = "Weavster is a cloud-native integration platform that brings declarative simplicity to data pipelines of all sizes."
 authors = [{ name = "Gregory Hunt", email = "huntg1@gmail.com" }]
 readme = "README.md"
 keywords = ['python']
 requires-python = ">=3.9,<4.0"
+dependencies = [
+    "typer >= 0.12.0",
+]
 classifiers = [
     "Intended Audience :: Developers",
     "Programming Language :: Python",
@@ -23,6 +26,9 @@ Homepage = "https://weavster-dev.github.io/weavster/"
 Repository = "https://github.com/weavster-dev/weavster"
 Documentation = "https://weavster-dev.github.io/weavster/"
 
+[project.scripts]
+weavster = "weavster.cli.main:app"
+
 [dependency-groups]
 dev = [
     "pytest>=7.2.0",
@@ -39,8 +45,16 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+version_scheme = "guess-next-dev"
+local_scheme = "dirty-tag"
+fallback_version = "0.0.0"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/weavster"]
