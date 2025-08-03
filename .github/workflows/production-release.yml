@@ -1,0 +1,156 @@
+name: Production Release - Main Branch
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      release_branch:
+        description: 'Release branch to merge (e.g., release/v0.1.0)'
+        required: true
+        type: string
+
+jobs:
+  detect-merge-source:
+    runs-on: ubuntu-latest
+    outputs:
+      is_release_merge: ${{ steps.check.outputs.is_release_merge }}
+      version: ${{ steps.extract.outputs.version }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check if this is a release merge
+        id: check
+        run: |
+          # Check if the commit message indicates a release merge
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          if [[ "$COMMIT_MSG" =~ ^Merge\ branch\ \'release/ ]] || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "is_release_merge=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_release_merge=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Extract version
+        id: extract
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            BRANCH_NAME="${{ github.event.inputs.release_branch }}"
+            VERSION=${BRANCH_NAME#release/v}
+            VERSION=${VERSION#release/}
+            VERSION=${VERSION#v}
+          else
+            # Extract from commit message
+            COMMIT_MSG=$(git log -1 --pretty=%B)
+            VERSION=$(echo "$COMMIT_MSG" | grep -o "release/v[0-9.]*" | head -1 | sed 's/release\/v//')
+            if [ -z "$VERSION" ]; then
+              VERSION=$(echo "$COMMIT_MSG" | grep -o "release/[0-9.]*" | head -1 | sed 's/release\///')
+            fi
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+  production-release:
+    runs-on: ubuntu-latest
+    needs: detect-merge-source
+    if: needs.detect-merge-source.outputs.is_release_merge == 'true'
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create production tag
+        id: create_tag
+        run: |
+          VERSION="${{ needs.detect-merge-source.outputs.version }}"
+          TAG="v$VERSION"
+
+          # Check if tag already exists
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists"
+            echo "tag=$TAG" >> $GITHUB_OUTPUT
+            echo "tag_created=false" >> $GITHUB_OUTPUT
+          else
+            git tag "$TAG"
+            git push origin "$TAG"
+            echo "tag=$TAG" >> $GITHUB_OUTPUT
+            echo "tag_created=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run final tests
+        run: make test
+
+      - name: Run quality checks
+        run: make check
+
+      - name: Build package
+        run: uv build
+
+      - name: Get package version
+        id: package_version
+        run: |
+          VERSION=$(uv run python -c "from importlib.metadata import version; print(version('weavster'))")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Publish to PyPI
+        run: uv publish
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Create production GitHub release
+        if: steps.create_tag.outputs.tag_created == 'true'
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.create_tag.outputs.tag }}
+          release_name: Release ${{ steps.create_tag.outputs.tag }}
+          body: |
+            🚀 **Production Release ${{ steps.create_tag.outputs.tag }}** 🚀
+
+            **Package Version:** `${{ steps.package_version.outputs.version }}`
+            **PyPI:** https://pypi.org/project/weavster/${{ steps.package_version.outputs.version }}/
+            **Documentation:** https://weavster-dev.github.io/weavster/
+
+            ## Installation
+
+            ```bash
+            pip install weavster==${{ steps.package_version.outputs.version }}
+            ```
+
+            ## What's Changed
+
+            See the [changelog](https://github.com/${{ github.repository }}/compare/${{ steps.create_tag.outputs.tag }}...HEAD) for detailed changes.
+
+            ## Documentation
+
+            📚 [View Documentation](https://weavster-dev.github.io/weavster/)
+          draft: false
+          prerelease: false
+
+      - name: Merge back to develop
+        run: |
+          # Merge main back to develop to ensure develop has the latest changes
+          git checkout develop
+          git pull origin develop
+          git merge main --no-edit
+          git push origin develop
+
+      - name: Clean up release branch
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          RELEASE_BRANCH="${{ github.event.inputs.release_branch }}"
+          # Delete the release branch after successful merge
+          git push origin --delete "$RELEASE_BRANCH" || echo "Branch $RELEASE_BRANCH already deleted"
