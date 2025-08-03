@@ -1,5 +1,8 @@
 name: release-main
 
+permissions:
+  contents: write
+
 on:
   release:
     types: [published]
