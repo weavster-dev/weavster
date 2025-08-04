@@ -27,4 +27,9 @@ def version(
 
 @app.command()
 def init() -> None:
+    """Initialize a new Weavster project in the current directory.
+
+    This command sets up the basic structure and configuration files
+    needed to start building data pipelines with Weavster.
+    """
     print("Initializing Weavster...")

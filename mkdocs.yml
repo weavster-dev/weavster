@@ -9,6 +9,7 @@ copyright: Maintained by <a href="https://weavster.dev">weavster-dev</a>.
 
 nav:
   - Home: index.md
+  - CLI: cli.md
   - Modules: modules.md
 plugins:
   - search
