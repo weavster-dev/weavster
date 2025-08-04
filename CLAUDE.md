@@ -102,3 +102,30 @@ make build-and-publish
 - Coverage reports are generated in XML format for codecov integration
 - Tests automatically run with coverage and doctest modules
 - The project uses hatchling as the build backend
+
+## File Creation Guidelines for Claude Code
+
+**CRITICAL: All files must end with a newline character**
+
+When creating or editing files, always ensure:
+
+1. **End files with a newline** - The `fix-end-of-files` pre-commit hook requires this
+2. **Use proper line endings** - Files should end with `\n` (newline character)
+3. **Avoid "No newline at end of file" messages** - This causes pre-commit failures
+
+### Example of correct file ending:
+```
+# Last line of content
+# ← This blank line ensures proper newline ending
+```
+
+### Commands to fix newline issues:
+```bash
+# Fix all files automatically with pre-commit
+uv run pre-commit run fix-end-of-files --all-files
+
+# Or run all pre-commit hooks to fix formatting
+uv run pre-commit run --all-files
+```
+
+**Always run `make check` or `uv run pre-commit run --all-files` after creating/editing files to ensure compliance with all formatting rules.**
