@@ -22,6 +22,11 @@ test: ## Test the code with pytest
 	@echo "🚀 Testing code: Running pytest"
 	@uv run python -m pytest --cov --cov-config=pyproject.toml --cov-report=xml
 
+.PHONY: test-cov
+test-cov: ## Run tests and show coverage report in terminal
+	@echo "📊 Testing code: Running pytest with coverage"
+	@uv run python -m pytest --cov --cov-config=pyproject.toml --cov-report=term-missing --cov-report=xml
+
 .PHONY: build
 build: clean-build ## Build wheel file
 	@echo "🚀 Creating wheel file"
