@@ -1,0 +1,138 @@
+name: Release Candidate - Build and Publish RC
+
+on:
+  push:
+    branches:
+      - 'release/**'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.1.0)'
+        required: true
+        type: string
+
+jobs:
+  build-and-publish-rc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Extract version from branch name
+        id: extract_version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+            VERSION=${BRANCH_NAME#release/v}
+            VERSION=${VERSION#release/}
+            VERSION=${VERSION#v}
+          fi
+          echo "base_version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Get RC number
+        id: rc_number
+        run: |
+          BASE_VERSION="${{ steps.extract_version.outputs.base_version }}"
+          # Get existing RC tags for this version
+          RC_TAGS=$(git tag -l "v${BASE_VERSION}rc*" | sort -V)
+          if [ -z "$RC_TAGS" ]; then
+            RC_NUM=1
+          else
+            LAST_RC=$(echo "$RC_TAGS" | tail -1)
+            RC_NUM=$(echo "$LAST_RC" | grep -o 'rc[0-9]*' | grep -o '[0-9]*')
+            RC_NUM=$((RC_NUM + 1))
+          fi
+          RC_VERSION="${BASE_VERSION}rc${RC_NUM}"
+          echo "rc_version=$RC_VERSION" >> $GITHUB_OUTPUT
+          echo "rc_number=$RC_NUM" >> $GITHUB_OUTPUT
+
+      - name: Create RC tag
+        run: |
+          git tag "v${{ steps.rc_number.outputs.rc_version }}"
+          git push origin "v${{ steps.rc_number.outputs.rc_version }}"
+
+      - name: Run tests
+        run: make test
+
+      - name: Run quality checks
+        run: make check
+
+      - name: Build documentation
+        run: uv run mkdocs build -s
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish RC to TestPyPI
+        run: uv publish --publish-url https://test.pypi.org/legacy/
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
+
+      - name: Get actual package version
+        id: package_version
+        run: |
+          VERSION=$(uv run python -c "from importlib.metadata import version; print(version('weavster'))")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create RC GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ steps.rc_number.outputs.rc_version }}
+          release_name: Release Candidate ${{ steps.rc_number.outputs.rc_version }}
+          body: |
+            🧪 **Release Candidate ${{ steps.rc_number.outputs.rc_version }}** 🧪
+
+            This is release candidate #${{ steps.rc_number.outputs.rc_number }} for version ${{ steps.extract_version.outputs.base_version }}.
+
+            **Package Version:** `${{ steps.package_version.outputs.version }}`
+            **Target Release:** `v${{ steps.extract_version.outputs.base_version }}`
+            **Commit:** ${{ github.sha }}
+            **Branch:** ${{ github.ref_name }}
+
+            ## Testing Instructions
+
+            Install this release candidate for testing:
+            ```bash
+            pip install --index-url https://test.pypi.org/simple/ weavster==${{ steps.package_version.outputs.version }}
+            ```
+
+            ## What's Changed
+            - See commit history since last release
+
+            ⚠️ **Note:** This is a release candidate and should be thoroughly tested before the final release.
+          draft: false
+          prerelease: true
+
+      - name: Comment on PRs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { data: prs } = await github.rest.pulls.list({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              head: context.payload.repository.owner.login + ':' + context.ref.replace('refs/heads/', '')
+            });
+
+            for (const pr of prs) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body: `🧪 **Release Candidate Built!**\n\nRC version \`v${{ steps.rc_number.outputs.rc_version }}\` has been built and published to TestPyPI.\n\n**Test it:**\n\`\`\`bash\npip install --index-url https://test.pypi.org/simple/ weavster==${{ steps.package_version.outputs.version }}\n\`\`\``
+              });
+            }

@@ -1,0 +1,62 @@
+name: Manual Documentation Deploy
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag, or commit to deploy docs from'
+        required: false
+        default: 'main'
+        type: string
+      force_deploy:
+        description: 'Force deployment even if no changes detected'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  deploy-docs:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || 'main' }}
+          fetch-depth: 0
+
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+
+      - name: Show deployment info
+        run: |
+          echo "🚀 Deploying documentation from: ${{ inputs.ref || 'main' }}"
+          echo "📝 Latest commit: $(git rev-parse --short HEAD)"
+          echo "📅 Commit date: $(git log -1 --format=%cd)"
+          echo "✍️  Commit message: $(git log -1 --format=%s)"
+
+      - name: Build documentation
+        run: |
+          echo "📚 Building documentation..."
+          uv run mkdocs build --clean --strict
+          echo "✅ Documentation built successfully"
+
+      - name: Deploy with mkdocs gh-deploy
+        run: |
+          echo "🌐 Deploying to GitHub Pages..."
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          uv run mkdocs gh-deploy --force
+
+      - name: Summary
+        run: |
+          echo "🎉 Documentation deployment completed!"
+          echo "📖 Documentation URL: https://weavster-dev.github.io/weavster/"
+          echo "🔄 Deployed from: ${{ inputs.ref || 'main' }} ($(git rev-parse --short HEAD))"

@@ -1,1 +1,1 @@
-::: weavster.foo
+::: weavster.cli
