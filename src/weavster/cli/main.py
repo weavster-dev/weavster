@@ -28,7 +28,3 @@ def version(
 @app.command()
 def init() -> None:
     print("Initializing Weavster...")
-
-
-if __name__ == "__main__":
-    app()
