@@ -3,6 +3,9 @@ name: Manual Release (Legacy)
 permissions:
   contents: write
 
+permissions:
+  contents: write
+
 on:
   release:
     types: [published]
