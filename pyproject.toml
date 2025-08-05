@@ -47,6 +47,7 @@ dev = [
     "mkdocs-material>=8.5.10",
     "mkdocstrings[python]>=0.26.1",
     "httpx>=0.28.0",
+    "pytest-trio>=0.8.0",
 ]
 
 [build-system]
