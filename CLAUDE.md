@@ -80,7 +80,9 @@ make build-and-publish
 ## Project Structure
 
 - `src/weavster/` - Main source code package
-- `tests/` - Test files using pytest
+  - `cli/` - Command-line interface module
+  - `server/` - FastAPI server module
+- `src/weavster/*/tests/` - Test files organized by module
 - `docs/` - Documentation files for MkDocs
 - `pyproject.toml` - Main configuration file for dependencies, tools, and project metadata
 - `Makefile` - Development task automation
@@ -129,3 +131,119 @@ uv run pre-commit run --all-files
 ```
 
 **Always run `make check` or `uv run pre-commit run --all-files` after creating/editing files to ensure compliance with all formatting rules.**
+
+## Testing Guidelines for Claude Code
+
+### Test Organization Structure
+
+**MANDATORY: Always organize tests by type in unit/ and integration/ subfolders**
+
+Tests are organized by module with strict separation by test type:
+```
+src/weavster/{module}/tests/
+├── unit/           # Unit tests - test individual functions and components
+│   └── commands/   # (for CLI module) - unit tests for command functions
+└── integration/    # Integration tests - test command execution and workflows
+```
+
+**Current structure examples:**
+- `src/weavster/cli/tests/unit/commands/` - Unit tests for CLI command functions
+- `src/weavster/cli/tests/integration/` - Integration tests for CLI command execution
+- `src/weavster/server/tests/unit/` - Unit tests for server components
+
+**When creating new tests:**
+- **Unit tests** → Always place in `{module}/tests/unit/` subfolder
+- **Integration tests** → Always place in `{module}/tests/integration/` subfolder
+- **Never** place tests directly in `{module}/tests/` - always use the appropriate subfolder
+
+### Test Writing Standards
+
+**CRITICAL: Never write help text tests**
+- Do not create tests that validate `--help` output or help text content
+- Focus on functional behavior testing instead
+
+**Unit Test Patterns:**
+```python
+# Test individual functions with mocking
+from unittest.mock import Mock, patch, mock_open
+
+@patch("module.dependency")
+def test_function_behavior(mock_dependency):
+    """Test specific function behavior with mocked dependencies."""
+    mock_dependency.return_value = "expected_value"
+    result = function_under_test()
+    assert result == "expected_result"
+    mock_dependency.assert_called_once()
+```
+
+**Integration Test Patterns:**
+```python
+# Test CLI commands end-to-end
+from typer.testing import CliRunner
+from myapp.cli.main import app
+
+runner = CliRunner()
+
+def test_command_execution():
+    """Test command execution with actual CLI runner."""
+    result = runner.invoke(app, ["command", "--option", "value"])
+    assert result.exit_code == 0
+    assert "expected output" in result.output
+
+def test_server_start_with_host():
+    """Use 127.0.0.1 for localhost testing, not 0.0.0.0."""
+    result = runner.invoke(app, ["server", "start", "--host", "127.0.0.1", "--port", "3000"])
+    assert result.exit_code == 0
+```
+
+**FastAPI Test Patterns:**
+```python
+# Test API endpoints
+from fastapi.testclient import TestClient
+from myapp.server.app import app
+
+client = TestClient(app)
+
+def test_endpoint_response():
+    """Test API endpoint returns correct response."""
+    response = client.get("/endpoint")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["field"] == "expected_value"
+```
+
+### Test Coverage Requirements
+
+- Aim for high test coverage, especially for core functionality
+- **Unit tests** should test individual functions and error conditions → place in `unit/` subfolder
+- **Integration tests** should test user-facing command flows → place in `integration/` subfolder
+- Use `mock_open` for file operations in tests
+- Always mock external dependencies (subprocess, network calls, etc.)
+
+### Test Type Guidelines
+
+**Unit Tests (`unit/` subfolder):**
+- Test individual functions in isolation
+- Mock all external dependencies
+- Test error conditions and edge cases
+- Fast execution, no I/O operations
+
+**Integration Tests (`integration/` subfolder):**
+- Test command execution end-to-end
+- Test CLI workflows and user interactions
+- Test API endpoints with TestClient
+- May involve multiple components working together
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+
+# Run specific test directories
+uv run python -m pytest src/weavster/cli/tests/ -v
+uv run python -m pytest src/weavster/server/tests/ -v
+
+# Run with coverage for specific modules
+uv run python -m pytest src/weavster/cli/tests/ --cov=src/weavster/cli --cov-report=term-missing
+```

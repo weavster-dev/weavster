@@ -7,7 +7,11 @@ readme = "README.md"
 keywords = ['python']
 requires-python = ">=3.9,<4.0"
 dependencies = [
-    "typer >= 0.12.0",
+    "typer >= 0.16.0",
+    "fastapi >= 0.116.1",
+    "granian >= 2.5.0",
+    "trio >= 0.30.0",
+    "click != 8.2.2 "
 ]
 classifiers = [
     "Intended Audience :: Developers",
@@ -42,6 +46,7 @@ dev = [
     "mkdocs>=1.4.2",
     "mkdocs-material>=8.5.10",
     "mkdocstrings[python]>=0.26.1",
+    "httpx>=0.28.0",
 ]
 
 [build-system]
@@ -67,9 +72,6 @@ python-version = "3.9"
 pythonVersion = "3.9"
 venvPath = "."
 venv = ".venv"
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
 
 [tool.ruff]
 target-version = "py39"
@@ -122,9 +124,15 @@ ignore = [
 [tool.ruff.format]
 preview = true
 
+[tool.deptry.per_rule_ignores]
+DEP002 = ["granian", "click"]
+
 [tool.coverage.report]
 skip_empty = true
 
 [tool.coverage.run]
 branch = true
 source = ["src"]
+omit = [
+    "*/weavster/server/__init__.py",
+]

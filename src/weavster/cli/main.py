@@ -4,6 +4,7 @@ from typing import Annotated
 
 import typer
 
+from weavster.cli.commands.server import start_server, stop_server
 from weavster.cli.commands.version import get_version
 
 app = typer.Typer(
@@ -33,3 +34,23 @@ def init() -> None:
     needed to start building data pipelines with Weavster.
     """
     print("Initializing Weavster...")
+
+
+server_app = typer.Typer(name="server", help="Server management commands")
+app.add_typer(server_app, name="server")
+
+
+@server_app.command("start")
+def server_start(
+    detached: Annotated[bool, typer.Option("-d", "--detached", help="Run server in background")] = False,
+    host: Annotated[str, typer.Option("--host", help="Host to bind to")] = "127.0.0.1",
+    port: Annotated[int, typer.Option("--port", help="Port to bind to")] = 8000,
+) -> None:
+    """Start the Weavster server."""
+    start_server(detached=detached, host=host, port=port)
+
+
+@server_app.command("stop")
+def server_stop() -> None:
+    """Stop the Weavster server."""
+    stop_server()
