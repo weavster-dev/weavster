@@ -69,11 +69,10 @@ packages = ["src/weavster"]
 python = "./.venv"
 python-version = "3.9"
 
-[[tool.ty.overrides]]
-include = ["**/test_*.py"]
-
-[tool.ty.overrides.rules]
-possibly-unresolved-reference = "ignore"
+[tool.ty.src]
+exclude = [
+    "**/test_*.py"
+]
 
 [tool.pyright]
 pythonVersion = "3.9"
