@@ -1,9 +1,6 @@
 name: Release Candidate - Build and Publish RC
 
 on:
-  push:
-    branches:
-      - 'release/**'
   workflow_dispatch:
     inputs:
       version:
@@ -28,17 +25,10 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Extract version from branch name
+      - name: Set version from input
         id: extract_version
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            BRANCH_NAME=${GITHUB_REF#refs/heads/}
-            VERSION=${BRANCH_NAME#release/v}
-            VERSION=${VERSION#release/}
-            VERSION=${VERSION#v}
-          fi
+          VERSION="${{ github.event.inputs.version }}"
           echo "base_version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Get RC number
