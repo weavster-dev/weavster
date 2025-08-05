@@ -1,0 +1,64 @@
+name: Develop Branch - Publish Dev Package
+
+on:
+  push:
+    branches:
+      - develop
+
+jobs:
+  publish-dev:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up the environment
+        uses: ./.github/actions/setup-python-env
+
+      - name: Run tests
+        run: make test
+
+      - name: Run quality checks
+        run: make check
+
+      - name: Build package
+        run: uv build
+
+      - name: Get package version
+        id: version
+        run: |
+          VERSION=$(uv run python -c "from importlib.metadata import version; print(version('weavster'))")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Publish to TestPyPI
+        run: uv publish --publish-url https://test.pypi.org/legacy/
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.TEST_PYPI_TOKEN }}
+
+      - name: Create development release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: dev-${{ steps.version.outputs.version }}
+          release_name: Development Build ${{ steps.version.outputs.version }}
+          body: |
+            🚧 **Development Build** 🚧
+
+            This is an automated development build from the `develop` branch.
+
+            **Version:** `${{ steps.version.outputs.version }}`
+            **Commit:** ${{ github.sha }}
+            **Branch:** develop
+
+            ⚠️ **Note:** This is a development version and should not be used in production.
+
+            **Installation:**
+            ```bash
+            pip install --index-url https://test.pypi.org/simple/ weavster==${{ steps.version.outputs.version }}
+            ```
+          draft: false
+          prerelease: true
