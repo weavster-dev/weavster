@@ -69,6 +69,12 @@ packages = ["src/weavster"]
 python = "./.venv"
 python-version = "3.9"
 
+[[tool.ty.overrides]]
+include = ["**/test_*.py"]
+
+[tool.ty.overrides.rules]
+possibly-unresolved-reference = "ignore"
+
 [tool.pyright]
 pythonVersion = "3.9"
 venvPath = "."
@@ -120,13 +126,14 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"*/tests/**" = ["S101"]
+"**/test_*.py" = ["S101"]
 
 [tool.ruff.format]
 preview = true
 
 [tool.deptry.per_rule_ignores]
 DEP002 = ["granian", "click"]
+DEP004 = ["pytest"]
 
 [tool.coverage.report]
 skip_empty = true

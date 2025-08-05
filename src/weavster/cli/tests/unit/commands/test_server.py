@@ -232,7 +232,7 @@ def test_start_server_already_running(mock_is_running):
     with pytest.raises(typer.Exit) as exc_info:
         start_server()
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == 1  # type: ignore[attr-defined]
 
 
 @patch("weavster.cli.commands.server.is_server_running")
@@ -243,7 +243,7 @@ def test_stop_server_not_running(mock_is_running):
     with pytest.raises(typer.Exit) as exc_info:
         stop_server()
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == 1  # type: ignore[attr-defined]
 
 
 @patch("weavster.cli.commands.server.is_server_running")
@@ -305,5 +305,5 @@ def test_stop_server_error_handling(mock_remove_pid, mock_get_pid_file, mock_is_
     with pytest.raises(typer.Exit) as exc_info:
         stop_server()
 
-    assert exc_info.value.exit_code == 1
+    assert exc_info.value.exit_code == 1  # type: ignore[attr-defined]
     mock_remove_pid.assert_called_once()
