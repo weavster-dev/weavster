@@ -1,3 +1,5 @@
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from typer.testing import CliRunner
@@ -25,9 +27,14 @@ def test_version_short(mock_get_version):
 
 
 def test_initialize():
-    result = runner.invoke(app, ["init"])
-    assert result.exit_code == 0
-    assert "Initializing Weavster..." in result.output
+    """Test init command in empty directory."""
+    with (
+        tempfile.TemporaryDirectory() as temp_dir,
+        patch("weavster.cli.commands.init.Path.cwd", return_value=Path(temp_dir)),
+    ):
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0
+        assert "initialized successfully" in result.output
 
 
 @patch("weavster.cli.main.start_server")

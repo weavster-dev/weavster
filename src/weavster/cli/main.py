@@ -1,9 +1,10 @@
 """Weavster CLI main entry point."""
 
-from typing import Annotated
+from typing import Annotated, Optional
 
 import typer
 
+from weavster.cli.commands.init import init_project
 from weavster.cli.commands.server import start_server, stop_server
 from weavster.cli.commands.version import get_version
 
@@ -27,13 +28,20 @@ def version(
 
 
 @app.command()
-def init() -> None:
-    """Initialize a new Weavster project in the current directory.
+def init(
+    project: Annotated[
+        Optional[str],
+        typer.Option(
+            "--project", "-p", help="Create a new directory with the given name and initialize the project there"
+        ),
+    ] = None,
+) -> None:
+    """Initialize a new Weavster project.
 
-    This command sets up the basic structure and configuration files
-    needed to start building data pipelines with Weavster.
+    By default, initializes the project in the current directory (which must be empty).
+    Use --project to create a new directory and initialize the project there.
     """
-    print("Initializing Weavster...")
+    init_project(project_name=project)
 
 
 server_app = typer.Typer(name="server", help="Server management commands")
