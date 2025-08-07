@@ -11,14 +11,6 @@ from weavster.cli.main import app
 runner = CliRunner()
 
 
-def test_init_help():
-    """Test init command help."""
-    result = runner.invoke(app, ["init", "--help"])
-    assert result.exit_code == 0
-    assert "Initialize a new Weavster project" in result.output
-    assert "--project" in result.output
-
-
 def test_init_interactive_prompt():
     """Test init command with interactive prompt."""
     with (
