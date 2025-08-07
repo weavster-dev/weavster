@@ -1592,6 +1592,8 @@ dependencies = [
     { name = "click" },
     { name = "fastapi" },
     { name = "granian" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "trio" },
     { name = "typer" },
 ]
@@ -1618,6 +1620,8 @@ requires-dist = [
     { name = "click", specifier = "!=8.2.2" },
     { name = "fastapi", specifier = ">=0.116.1" },
     { name = "granian", specifier = ">=2.5.0" },
+    { name = "pydantic", specifier = ">=2.0.0" },
+    { name = "pyyaml", specifier = ">=6.0.0" },
     { name = "trio", specifier = ">=0.30.0" },
     { name = "typer", specifier = ">=0.16.0" },
 ]

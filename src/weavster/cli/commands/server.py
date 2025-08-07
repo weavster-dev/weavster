@@ -3,11 +3,20 @@
 import os
 import signal
 import sys
+import time
 from pathlib import Path
-from typing import Annotated
+from typing import Optional
 
 import trio
-import typer
+
+
+class ServerResult:
+    """Result of server operation."""
+
+    def __init__(self, success: bool, message: str, details: Optional[list[str]] = None):
+        self.success = success
+        self.message = message
+        self.details = details or []
 
 
 def get_pid_file() -> Path:
@@ -46,7 +55,7 @@ def remove_pid_file() -> None:
     get_pid_file().unlink(missing_ok=True)
 
 
-async def run_server_foreground(host: str, port: int) -> None:
+async def run_server_foreground(host: str, port: int) -> ServerResult:
     """Run server in foreground with trio subprocess management."""
     process = None
     cmd = [
@@ -62,25 +71,26 @@ async def run_server_foreground(host: str, port: int) -> None:
         "weavster.server.app:app",
     ]
     try:
-        typer.echo("🚀 Starting Weavster server...")
         process = await trio.lowlevel.open_process(cmd)
 
         # Write PID for potential cleanup
         write_pid_file(process.pid)
-        typer.echo(f"✅ Server started with PID {process.pid}")
-        typer.echo(f"🌐 Server running at http://{host}:{port}")
-        typer.echo("💡 Press Ctrl+C to stop")
 
         # Wait for process to complete
         result = await process.wait()
-        typer.echo(f"🛑 Server stopped with exit code {result}")
+        return ServerResult(
+            success=True,
+            message=f"Server stopped with exit code {result}",
+            details=[f"Server was running with PID {process.pid}", f"Server was at http://{host}:{port}"],
+        )
 
     except KeyboardInterrupt:
-        typer.echo("\n🛑 Stopping server...")
         if process:
             process.terminate()
             await process.wait()
-        typer.echo("✅ Server stopped")
+        return ServerResult(success=True, message="Server stopped by user", details=["Server terminated by Ctrl+C"])
+    except Exception as e:
+        return ServerResult(success=False, message=f"Failed to start server: {e!s}")
     finally:
         remove_pid_file()
 
@@ -104,61 +114,80 @@ async def run_server_detached(host: str, port: int) -> int:
     return process.pid
 
 
-def start_server(
-    detached: Annotated[bool, typer.Option("-d", "--detached", help="Run server in background")] = False,
-    host: Annotated[str, typer.Option("--host", help="Host to bind to")] = "127.0.0.1",
-    port: Annotated[int, typer.Option("--port", help="Port to bind to")] = 8000,
-) -> None:
-    """Start the Weavster server."""
+def start_server(detached: bool = False, host: str = "127.0.0.1", port: int = 8000) -> ServerResult:
+    """Start the Weavster server.
+
+    Args:
+        detached: Whether to run server in background
+        host: Host to bind to
+        port: Port to bind to
+
+    Returns:
+        ServerResult with operation status and details
+    """
     if is_server_running():
-        typer.echo("❌ Server is already running. Use 'weavster server stop' to stop it first.")
-        raise typer.Exit(1)
+        return ServerResult(
+            success=False, message="Server is already running. Use 'weavster server stop' to stop it first"
+        )
 
     if detached:
 
-        async def _start_detached() -> None:
-            pid = await run_server_detached(host, port)
-            write_pid_file(pid)
-            typer.echo(f"🚀 Server started in background with PID {pid}")
-            typer.echo(f"🌐 Server running at http://{host}:{port}")
-            typer.echo("💡 Use 'weavster server stop' to stop the server")
+        async def _start_detached() -> ServerResult:
+            try:
+                pid = await run_server_detached(host, port)
+                write_pid_file(pid)
+                return ServerResult(
+                    success=True,
+                    message=f"Server started in background with PID {pid}",
+                    details=[
+                        f"Server running at http://{host}:{port}",
+                        "Use 'weavster server stop' to stop the server",
+                    ],
+                )
+            except Exception as e:
+                return ServerResult(success=False, message=f"Failed to start detached server: {e!s}")
 
-        trio.run(_start_detached)
+        return trio.run(_start_detached)
     else:
-        trio.run(run_server_foreground, host, port)
+        return trio.run(run_server_foreground, host, port)
 
 
-def stop_server() -> None:
-    """Stop the Weavster server."""
+def stop_server() -> ServerResult:
+    """Stop the Weavster server.
+
+    Returns:
+        ServerResult with operation status and details
+    """
     if not is_server_running():
-        typer.echo("❌ No server is currently running.")
-        raise typer.Exit(1)
+        return ServerResult(success=False, message="No server is currently running")
 
     pid_file = get_pid_file()
     try:
         with pid_file.open() as f:
             pid = int(f.read().strip())
 
-        typer.echo(f"🛑 Stopping server (PID {pid})...")
         os.kill(pid, signal.SIGTERM)
 
         # Wait a moment for graceful shutdown
-        import time
-
         time.sleep(1)
 
         # Check if process is still running
+        forced_termination = False
         try:
             os.kill(pid, 0)
-            typer.echo("⚠️  Server didn't stop gracefully, forcing termination...")
             os.kill(pid, signal.SIGKILL)
+            forced_termination = True
         except ProcessLookupError:
             pass  # Process already stopped
 
         remove_pid_file()
-        typer.echo("✅ Server stopped")
+
+        details = [f"Server with PID {pid} was stopped"]
+        if forced_termination:
+            details.append("Server was force-terminated after graceful shutdown timeout")
+
+        return ServerResult(success=True, message="Server stopped successfully", details=details)
 
     except (ValueError, OSError) as e:
-        typer.echo(f"❌ Error stopping server: {e}")
         remove_pid_file()  # Clean up stale PID file
-        raise typer.Exit(1) from e
+        return ServerResult(success=False, message=f"Error stopping server: {e!s}")
