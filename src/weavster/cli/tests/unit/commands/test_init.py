@@ -2,145 +2,124 @@
 
 import tempfile
 from pathlib import Path
+from typing import cast
 from unittest.mock import patch
 
-import pytest
-import typer
-
-from weavster.cli.commands.init import create_weavster_config, init_project, is_directory_empty
+from weavster.cli.commands.init import InitResult, create_weavster_config, init_project, prepare_init
 
 
-class TestIsDirectoryEmpty:
-    """Test directory emptiness validation."""
+def test_create_weavster_config_creates_file():
+    """Test that config file is created with correct content."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir)
+        project_name = "test_project"
+        create_weavster_config(path, project_name)
 
-    def test_nonexistent_directory(self):
-        """Test that nonexistent directory is considered empty."""
-        path = Path("/nonexistent/path")
-        assert is_directory_empty(path) is True
+        config_file = path / "weavster.yml"
+        assert config_file.exists()
 
-    def test_empty_directory(self):
-        """Test that empty directory is considered empty."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir)
-            assert is_directory_empty(path) is True
-
-    def test_directory_with_regular_files(self):
-        """Test that directory with regular files is not empty."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir)
-            (path / "file.txt").write_text("content")
-            assert is_directory_empty(path) is False
-
-    def test_directory_with_hidden_files_ignored(self):
-        """Test that directory with only hidden files is considered empty when ignoring hidden files."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir)
-            (path / ".git").mkdir()
-            (path / ".gitignore").write_text("*.pyc")
-            assert is_directory_empty(path, ignore_hidden=True) is True
-
-    def test_directory_with_hidden_files_not_ignored(self):
-        """Test that directory with hidden files is not empty when not ignoring hidden files."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir)
-            (path / ".git").mkdir()
-            assert is_directory_empty(path, ignore_hidden=False) is False
-
-    def test_directory_with_mixed_files(self):
-        """Test directory with both hidden and regular files."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir)
-            (path / ".git").mkdir()
-            (path / "file.txt").write_text("content")
-            assert is_directory_empty(path, ignore_hidden=True) is False
+        content = config_file.read_text()
+        assert f"name: '{project_name}'" in content
+        assert f"profile: '{project_name}'" in content
+        assert "connector-paths:" in content
+        assert "route-paths:" in content
 
 
-class TestCreateWeavsterConfig:
-    """Test weavster.yml config file creation."""
+def test_init_project_creates_directory():
+    """Test initializing project creates new directory."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir)
 
-    def test_creates_config_file(self):
-        """Test that config file is created with correct content."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir)
-            create_weavster_config(path)
+        with patch("weavster.cli.commands.init.Path.cwd", return_value=path):
+            result = init_project("test_project")
 
-            config_file = path / "weavster.yml"
-            assert config_file.exists()
-
-            content = config_file.read_text()
-            assert "name: 'my_weavster_project'" in content
-            assert "profile: 'my_weavster_project'" in content
-            assert "connector-paths:" in content
-            assert "route-paths:" in content
-            assert "routes:" in content
-            assert "environments:" in content
-            assert "development:" in content
-            assert "production:" in content
+        assert result.success
+        project_path = path / "test_project"
+        assert project_path.exists()
+        config_file = project_path / "weavster.yml"
+        assert config_file.exists()
 
 
-class TestInitProject:
-    """Test project initialization."""
+def test_init_project_existing_directory_fails():
+    """Test that initializing with existing directory name fails."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir)
+        existing_dir = path / "existing_project"
+        existing_dir.mkdir()
 
-    def test_init_in_empty_directory(self):
-        """Test initializing project in empty directory."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir)
+        with patch("weavster.cli.commands.init.Path.cwd", return_value=path):
+            result = init_project("existing_project")
 
-            with patch("weavster.cli.commands.init.Path.cwd", return_value=path):
-                init_project()
+        assert not result.success
+        assert "already exists" in result.message
 
-            config_file = path / "weavster.yml"
-            assert config_file.exists()
 
-    def test_init_in_non_empty_directory_fails(self):
-        """Test that initializing in non-empty directory fails."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir)
-            (path / "existing_file.txt").write_text("content")
+def test_init_project_creates_config_with_project_name():
+    """Test that config file contains correct project name."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir)
+        project_name = "my_test_project"
 
-            with patch("weavster.cli.commands.init.Path.cwd", return_value=path):
-                with pytest.raises(typer.Exit) as exc_info:
-                    init_project()
+        with patch("weavster.cli.commands.init.Path.cwd", return_value=path):
+            result = init_project(project_name)
 
-                assert exc_info.value.exit_code == 1
+        assert result.success
+        project_path = path / project_name
+        config_file = project_path / "weavster.yml"
+        content = config_file.read_text()
+        assert f"name: '{project_name}'" in content
 
-    def test_init_in_directory_with_hidden_files_succeeds(self):
-        """Test that initializing in directory with only hidden files succeeds."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir)
-            (path / ".git").mkdir()
-            (path / ".gitignore").write_text("*.pyc")
 
-            with patch("weavster.cli.commands.init.Path.cwd", return_value=path):
-                init_project()
+def test_init_project_returns_suggestions():
+    """Test that successful initialization returns suggestions."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir)
+        project_name = "test_project"
 
-            config_file = path / "weavster.yml"
-            assert config_file.exists()
+        with patch("weavster.cli.commands.init.Path.cwd", return_value=path):
+            result = init_project(project_name)
 
-    def test_init_with_project_name_creates_directory(self):
-        """Test that using --project creates new directory."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            parent_path = Path(temp_dir)
+        assert result.success
+        assert result.suggestions
+        assert any("cd" in suggestion for suggestion in result.suggestions)
+        assert any("server" in suggestion for suggestion in result.suggestions)
 
-            with patch("weavster.cli.commands.init.Path.cwd", return_value=parent_path):
-                init_project(project_name="my-project")
 
-            project_path = parent_path / "my-project"
-            assert project_path.exists()
-            assert project_path.is_dir()
+def test_prepare_init_with_invalid_project_name():
+    """Test prepare_init returns InitResult with validation error for invalid project name."""
+    result = prepare_init("invalid-name")
 
-            config_file = project_path / "weavster.yml"
-            assert config_file.exists()
+    assert not cast(InitResult, result).success
+    assert "letters, numbers, and underscores" in result.message
 
-    def test_init_with_existing_project_name_fails(self):
-        """Test that using --project with existing directory name fails."""
-        with tempfile.TemporaryDirectory() as temp_dir:
-            parent_path = Path(temp_dir)
-            existing_dir = parent_path / "existing-project"
-            existing_dir.mkdir()
 
-            with patch("weavster.cli.commands.init.Path.cwd", return_value=parent_path):
-                with pytest.raises(typer.Exit) as exc_info:
-                    init_project(project_name="existing-project")
+def test_init_project_mkdir_exception():
+    """Test init_project handles mkdir exception."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir)
 
-                assert exc_info.value.exit_code == 1
+        with (
+            patch("weavster.cli.commands.init.Path.cwd", return_value=path),
+            patch("pathlib.Path.mkdir", side_effect=OSError("Permission denied")),
+        ):
+            result = init_project("test_project")
+
+        assert not result.success
+        assert "Failed to create project directory" in result.message
+        assert "Permission denied" in result.message
+
+
+def test_init_project_config_creation_exception():
+    """Test init_project handles config creation exception."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir)
+
+        with (
+            patch("weavster.cli.commands.init.Path.cwd", return_value=path),
+            patch("weavster.cli.commands.init.create_weavster_config", side_effect=OSError("Disk full")),
+        ):
+            result = init_project("test_project")
+
+        assert not result.success
+        assert "Failed to create configuration file" in result.message
+        assert "Disk full" in result.message

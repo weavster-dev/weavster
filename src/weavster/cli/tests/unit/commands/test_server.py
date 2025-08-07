@@ -3,7 +3,6 @@ from pathlib import Path
 from unittest.mock import Mock, mock_open, patch
 
 import pytest
-import typer
 
 from weavster.cli.commands.server import (
     get_pid_file,
@@ -202,26 +201,18 @@ def test_start_server_foreground_mode(mock_trio_run, mock_is_running):
 @patch("weavster.cli.commands.server.is_server_running")
 @patch("weavster.cli.commands.server.run_server_detached")
 @patch("weavster.cli.commands.server.write_pid_file")
-@patch("weavster.cli.commands.server.typer.echo")
-def test_start_server_detached_mode_with_output(mock_echo, mock_write_pid, mock_run_detached, mock_is_running):
-    """Test start_server in detached mode covers output statements."""
+def test_start_server_detached_mode_success(mock_write_pid, mock_run_detached, mock_is_running):
+    """Test start_server in detached mode returns success result."""
     mock_is_running.return_value = False
     mock_run_detached.return_value = 12345
 
-    # Let trio.run execute the actual inner async function
-    start_server(detached=True, host="127.0.0.1", port=8000)
+    result = start_server(detached=True, host="127.0.0.1", port=8000)
 
-    # Verify the echo statements were called (lines 120-124)
-    expected_calls = [
-        "🚀 Server started in background with PID 12345",
-        "🌐 Server running at http://127.0.0.1:8000",
-        "💡 Use 'weavster server stop' to stop the server",
-    ]
-
-    # Check that these specific echo calls were made
-    actual_calls = [call.args[0] for call in mock_echo.call_args_list]
-    for expected_call in expected_calls:
-        assert expected_call in actual_calls
+    assert result.success
+    assert "PID 12345" in result.message
+    assert len(result.details) == 2
+    assert "http://127.0.0.1:8000" in result.details[0]
+    assert "server stop" in result.details[1]
 
 
 @patch("weavster.cli.commands.server.is_server_running")
@@ -229,10 +220,10 @@ def test_start_server_already_running(mock_is_running):
     """Test start_server when server is already running."""
     mock_is_running.return_value = True
 
-    with pytest.raises(typer.Exit) as exc_info:
-        start_server()
+    result = start_server()
 
-    assert exc_info.value.exit_code == 1
+    assert not result.success
+    assert "already running" in result.message
 
 
 @patch("weavster.cli.commands.server.is_server_running")
@@ -240,10 +231,10 @@ def test_stop_server_not_running(mock_is_running):
     """Test stop_server when no server is running."""
     mock_is_running.return_value = False
 
-    with pytest.raises(typer.Exit) as exc_info:
-        stop_server()
+    result = stop_server()
 
-    assert exc_info.value.exit_code == 1
+    assert not result.success
+    assert "No server is currently running" in result.message
 
 
 @patch("weavster.cli.commands.server.is_server_running")
@@ -302,8 +293,39 @@ def test_stop_server_error_handling(mock_remove_pid, mock_get_pid_file, mock_is_
     mock_pid_file.open = mock_open(read_data="invalid_pid")
     mock_get_pid_file.return_value = mock_pid_file
 
-    with pytest.raises(typer.Exit) as exc_info:
-        stop_server()
+    result = stop_server()
 
-    assert exc_info.value.exit_code == 1
+    assert not result.success
+    assert "Error stopping server" in result.message
     mock_remove_pid.assert_called_once()
+
+
+@pytest.mark.trio
+@patch("weavster.cli.commands.server.trio.lowlevel.open_process")
+@patch("weavster.cli.commands.server.write_pid_file")
+@patch("weavster.cli.commands.server.remove_pid_file")
+async def test_run_server_foreground_exception(mock_remove_pid, mock_write_pid, mock_open_process):
+    """Test run_server_foreground handles general exceptions."""
+    mock_open_process.side_effect = Exception("Something went wrong")
+
+    result = await run_server_foreground("127.0.0.1", 8000)
+
+    assert not result.success
+    assert "Failed to start server" in result.message
+    assert "Something went wrong" in result.message
+    mock_remove_pid.assert_called_once()
+
+
+@patch("weavster.cli.commands.server.is_server_running")
+@patch("weavster.cli.commands.server.run_server_detached")
+@patch("weavster.cli.commands.server.write_pid_file")
+def test_start_server_detached_exception(mock_write_pid, mock_run_detached, mock_is_running):
+    """Test start_server handles exception in detached mode."""
+    mock_is_running.return_value = False
+    mock_run_detached.side_effect = Exception("Failed to detach")
+
+    result = start_server(detached=True, host="127.0.0.1", port=8000)
+
+    assert not result.success
+    assert "Failed to start detached server" in result.message
+    assert "Failed to detach" in result.message
