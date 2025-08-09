@@ -1,9 +1,0 @@
-connectors:
-  - name: "test_file_connector"
-    type: "file"
-    direction: "inbound"
-    connection_settings:
-      directory: "/tmp/test"
-      poll_frequency: 5000
-      glob_pattern: "*.txt"
-      encoding: "utf-8"

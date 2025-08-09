@@ -1,6 +1,0 @@
-# Test configuration for exception handling
-name: 'test_exceptions'
-version: '1.0.0'
-profile: 'test_exceptions'
-connector-paths: ["connectors"]
-route-paths: ["routes"]
