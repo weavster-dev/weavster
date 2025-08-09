@@ -8,7 +8,7 @@ class WeavsterConfig(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    name: str = Field(description="Project name using lowercase letters and underscores")
+    name: str = Field(description="Project name")
     version: str = Field(default="1.0.0", description="Project version")
     profile: str = Field(description="Profile name for connection settings")
 

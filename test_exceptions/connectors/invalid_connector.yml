@@ -1,0 +1,6 @@
+connectors:
+  - name: "test_unknown_connector"
+    type: "unknown_connector_type"
+    direction: "inbound"
+    connection_settings:
+      some_setting: "value"
