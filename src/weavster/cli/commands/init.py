@@ -106,6 +106,15 @@ def init_project(project_name: str) -> InitResult:
     except Exception as e:
         return InitResult(success=False, message=f"Failed to create configuration file: {e!s}")
 
+    # Create default connectors directory with .gitkeep
+    try:
+        connectors_path = target_path / "connectors"
+        connectors_path.mkdir(parents=True)
+        gitkeep_file = connectors_path / ".gitkeep"
+        gitkeep_file.write_text("")
+    except Exception as e:
+        return InitResult(success=False, message=f"Failed to create connectors directory: {e!s}")
+
     # Success
     return InitResult(
         success=True,
