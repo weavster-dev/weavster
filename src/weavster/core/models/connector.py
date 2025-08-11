@@ -1,5 +1,3 @@
-import os
-import re
 from enum import Enum
 from typing import Any, Generic, TypeVar
 
@@ -29,23 +27,4 @@ class ConnectorBaseConfig(BaseModel, Generic[TConnectionSettings]):
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "ConnectorBaseConfig":
         """Create connector from dictionary (loaded from YAML)."""
-        # Substitute environment variables
-        data = cls._substitute_env_vars(data)
         return cls.model_validate(data)
-
-    @staticmethod
-    def _substitute_env_vars(obj: Any) -> Any:
-        """Recursively substitute environment variables in the format ${VAR_NAME}."""
-        if isinstance(obj, dict):
-            return {key: ConnectorBaseConfig._substitute_env_vars(value) for key, value in obj.items()}
-        elif isinstance(obj, list):
-            return [ConnectorBaseConfig._substitute_env_vars(item) for item in obj]
-        elif isinstance(obj, str):
-            # Replace ${VAR_NAME} with environment variable value
-            def replace_env_var(match):
-                var_name = match.group(1)
-                return os.getenv(var_name, match.group(0))  # Return original if not found
-
-            return re.sub(r"\$\{([^}]+)\}", replace_env_var, obj)
-        else:
-            return obj

@@ -94,3 +94,46 @@ connectors:
         assert error.connector_type == "unknown_type"
     finally:
         temp_file.unlink()  # Clean up temp file
+
+
+def test_connector_registry_get_registered_types():
+    """Test ConnectorRegistry.get_registered_types returns registered connector types."""
+    # Clear registry and add test types
+    ConnectorRegistry._connectors = {
+        "file": ConnectorBaseConfig,
+        "database": ConnectorBaseConfig,
+        "api": ConnectorBaseConfig,
+    }
+
+    registered_types = ConnectorRegistry.get_registered_types()
+
+    assert set(registered_types) == {"file", "database", "api"}
+
+
+def test_connector_loader_load_from_yaml():
+    """Test ConnectorLoader.load_from_yaml loads connectors from file."""
+    # Register a connector type for this test
+    ConnectorRegistry.register("file", ConnectorBaseConfig)
+
+    yaml_content = """
+connectors:
+  - name: "test_connector"
+    type: "file"
+    direction: "inbound"
+    connection_settings:
+      directory: "/tmp/test"
+"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".yml", delete=False) as f:
+        f.write(yaml_content)
+        temp_file = Path(f.name)
+
+    try:
+        connectors = ConnectorLoader.load_from_yaml(temp_file)
+
+        assert len(connectors) == 1
+        assert connectors[0].name == "test_connector"
+        assert connectors[0].type == "file"
+        assert connectors[0].direction.value == "inbound"
+    finally:
+        temp_file.unlink()  # Clean up temp file

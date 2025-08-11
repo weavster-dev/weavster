@@ -50,7 +50,7 @@ profile: '{project_name}'
 
 # Directory structure for your integration components
 connector-paths: ["connectors"]
-route-paths: ["routes"]
+flow-paths: ["flows"]
 """
 
     config_file = path / "weavster.yml"

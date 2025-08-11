@@ -22,7 +22,7 @@ def test_create_weavster_config_creates_file():
         assert f"name: '{project_name}'" in content
         assert f"profile: '{project_name}'" in content
         assert "connector-paths:" in content
-        assert "route-paths:" in content
+        assert "flow-paths:" in content
 
 
 def test_init_project_creates_directory():

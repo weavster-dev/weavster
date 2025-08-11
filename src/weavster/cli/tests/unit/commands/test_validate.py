@@ -13,7 +13,7 @@ def test_validate_valid_config():
 version: '1.0.0'
 profile: 'test_project'
 connector-paths: ['connectors']
-route-paths: ['routes']
+flow-paths: ['flows']
 """
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -69,7 +69,7 @@ def test_validate_missing_required_fields():
     """Test validation fails when required fields are missing."""
     invalid_config = """name: 'test_project'
 version: '1.0.0'
-# Missing profile, connector-paths, route-paths
+# Missing profile, connector-paths, flow-paths
 """
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -89,7 +89,7 @@ def test_validate_default_path():
 version: '1.0.0'
 profile: 'test_project'
 connector-paths: ['connectors']
-route-paths: ['routes']
+flow-paths: ['flows']
 """
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -98,7 +98,7 @@ route-paths: ['routes']
 
         # Create required directories
         (Path(temp_dir) / "connectors").mkdir()
-        (Path(temp_dir) / "routes").mkdir()
+        (Path(temp_dir) / "flows").mkdir()
 
         with patch("weavster.cli.commands.validate.Path.cwd", return_value=Path(temp_dir)):
             result = validate_config()
@@ -111,7 +111,7 @@ def test_validate_allows_extra_fields():
 version: '1.0.0'
 profile: 'test_project'
 connector-paths: ['connectors']
-route-paths: ['routes']
+flow-paths: ['flows']
 extra_field: 'this should be allowed'
 custom_setting: 42
 """
@@ -122,7 +122,7 @@ custom_setting: 42
 
         # Create required directories
         (Path(temp_dir) / "connectors").mkdir()
-        (Path(temp_dir) / "routes").mkdir()
+        (Path(temp_dir) / "flows").mkdir()
 
         result = validate_config(config_path)
         assert result.success is True
@@ -300,7 +300,7 @@ def test_validate_config_with_connector_validation_errors():
 version: '1.0.0'
 profile: 'test_project'
 connector-paths: ['connectors']
-route-paths: ['routes']
+flow-paths: ['flows']
 """
 
     invalid_connector_config = """connectors:
@@ -333,7 +333,7 @@ def test_validate_config_with_valid_connectors():
 version: '1.0.0'
 profile: 'test_project'
 connector-paths: ['connectors']
-route-paths: ['routes']
+flow-paths: ['flows']
 """
 
     valid_connector_config = """connectors:
@@ -359,3 +359,71 @@ route-paths: ['routes']
 
         assert result.success is True
         assert "is valid!" in result.message
+
+
+def test_read_yaml_file_oserror():
+    """Test _read_yaml_file handles OSError when reading files."""
+    from weavster.cli.commands.validate import _read_yaml_file
+
+    # Create a file that will cause OSError
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yaml_file = Path(temp_dir) / "test.yml"
+        # Create file but make it unreadable by setting permissions
+        yaml_file.write_text("test: value")
+        yaml_file.chmod(0o000)
+
+        try:
+            content, errors = _read_yaml_file(yaml_file)
+            assert content is None
+            assert len(errors) == 1
+            assert "Error reading" in errors[0]
+        finally:
+            # Restore permissions so cleanup works
+            yaml_file.chmod(0o644)
+
+
+def test_load_connectors_generic_exception():
+    """Test _load_connectors_from_yaml handles generic exceptions."""
+    from unittest.mock import patch
+
+    from weavster.cli.commands.validate import _load_connectors_from_yaml
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yaml_file = Path(temp_dir) / "test.yml"
+        yaml_content = "connectors:\n  - name: test\n    type: file"
+
+        # Mock ConnectorLoader to raise a generic exception
+        with patch(
+            "weavster.cli.commands.validate.ConnectorLoader.load_from_yaml_string",
+            side_effect=RuntimeError("Generic error"),
+        ):
+            connectors, errors = _load_connectors_from_yaml(yaml_file, yaml_content)
+            assert connectors is None
+            assert len(errors) == 1
+            assert "Generic error" in errors[0]
+
+
+def test_validate_connector_fields_missing_name_and_type():
+    """Test _validate_connector_fields with missing name and type fields."""
+    from unittest.mock import Mock
+
+    from weavster.cli.commands.validate import _validate_connector_fields
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        yaml_file = Path(temp_dir) / "test.yml"
+
+        # Mock connector with missing name
+        connector1 = Mock()
+        connector1.name = ""
+        connector1.type = "file"
+
+        # Mock connector with missing type
+        connector2 = Mock()
+        connector2.name = "test"
+        connector2.type = ""
+
+        errors = _validate_connector_fields(yaml_file, [connector1, connector2])
+
+        assert len(errors) == 2
+        assert "missing required 'name' field" in errors[0]
+        assert "missing required 'type' field" in errors[1]

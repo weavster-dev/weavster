@@ -17,7 +17,7 @@ def test_validate_valid_config():
 version: '1.0.0'
 profile: 'test_project'
 connector-paths: ['connectors']
-route-paths: ['routes']
+flow-paths: ['flows']
 """
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -49,7 +49,7 @@ version: '1.0.0'
         assert "Configuration validation failed" in result.output
         assert "profile: Field required" in result.output
         assert "connector-paths: Field required" in result.output
-        assert "route-paths: Field required" in result.output
+        assert "flow-paths: Field required" in result.output
 
 
 def test_validate_nonexistent_file():
@@ -81,7 +81,7 @@ def test_validate_default_config_path():
 version: '1.0.0'
 profile: 'test_project'
 connector-paths: ['connectors']
-route-paths: ['routes']
+flow-paths: ['flows']
 """
 
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -105,7 +105,7 @@ def test_validate_with_valid_file_connector():
 version: '1.0.0'
 profile: 'test_project'
 connector-paths: ['connectors']
-route-paths: ['routes']
+flow-paths: ['flows']
 """
 
     valid_file_connector = """connectors:
@@ -141,7 +141,7 @@ def test_validate_with_invalid_connector_type():
 version: '1.0.0'
 profile: 'test_project'
 connector-paths: ['connectors']
-route-paths: ['routes']
+flow-paths: ['flows']
 """
 
     invalid_connector = """connectors:
@@ -175,7 +175,7 @@ def test_validate_with_missing_connector_directory():
 version: '1.0.0'
 profile: 'test_project'
 connector-paths: ['nonexistent_connectors']
-route-paths: ['routes']
+flow-paths: ['flows']
 """
 
     with tempfile.TemporaryDirectory() as temp_dir:

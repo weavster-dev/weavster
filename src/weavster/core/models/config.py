@@ -15,4 +15,4 @@ class WeavsterConfig(BaseModel):
     connector_paths: list[str] = Field(
         alias="connector-paths", description="Directories containing connector definitions"
     )
-    route_paths: list[str] = Field(alias="route-paths", description="Directories containing route definitions")
+    flow_paths: list[str] = Field(alias="flow-paths", description="Directories containing flow definitions")
