@@ -26,6 +26,13 @@ def test_init_interactive_prompt():
         config_file = project_dir / "weavster.yml"
         assert config_file.exists()
 
+        # Check that connectors directory and .gitkeep were created
+        connectors_dir = project_dir / "connectors"
+        assert connectors_dir.exists()
+        assert connectors_dir.is_dir()
+        gitkeep_file = connectors_dir / ".gitkeep"
+        assert gitkeep_file.exists()
+
 
 def test_init_with_project_option():
     """Test init command with --project option."""
@@ -45,6 +52,13 @@ def test_init_with_project_option():
         config_file = project_dir / "weavster.yml"
         assert config_file.exists()
 
+        # Check that connectors directory and .gitkeep were created
+        connectors_dir = project_dir / "connectors"
+        assert connectors_dir.exists()
+        assert connectors_dir.is_dir()
+        gitkeep_file = connectors_dir / ".gitkeep"
+        assert gitkeep_file.exists()
+
 
 def test_init_with_project_short_option():
     """Test init command with -p short option."""
@@ -59,6 +73,13 @@ def test_init_with_project_short_option():
 
         project_dir = Path(temp_dir) / "short_project"
         assert project_dir.exists()
+
+        # Check that connectors directory and .gitkeep were created
+        connectors_dir = project_dir / "connectors"
+        assert connectors_dir.exists()
+        assert connectors_dir.is_dir()
+        gitkeep_file = connectors_dir / ".gitkeep"
+        assert gitkeep_file.exists()
 
 
 def test_init_with_existing_project_name_fails():

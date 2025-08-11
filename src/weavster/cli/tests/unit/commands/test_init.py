@@ -22,7 +22,7 @@ def test_create_weavster_config_creates_file():
         assert f"name: '{project_name}'" in content
         assert f"profile: '{project_name}'" in content
         assert "connector-paths:" in content
-        assert "route-paths:" in content
+        assert "flow-paths:" in content
 
 
 def test_init_project_creates_directory():
@@ -38,6 +38,13 @@ def test_init_project_creates_directory():
         assert project_path.exists()
         config_file = project_path / "weavster.yml"
         assert config_file.exists()
+
+        # Check that connectors directory and .gitkeep were created
+        connectors_dir = project_path / "connectors"
+        assert connectors_dir.exists()
+        assert connectors_dir.is_dir()
+        gitkeep_file = connectors_dir / ".gitkeep"
+        assert gitkeep_file.exists()
 
 
 def test_init_project_existing_directory_fails():
@@ -123,3 +130,31 @@ def test_init_project_config_creation_exception():
         assert not result.success
         assert "Failed to create configuration file" in result.message
         assert "Disk full" in result.message
+
+
+def test_init_project_connectors_directory_exception():
+    """Test init_project handles connectors directory creation exception."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir)
+
+        original_mkdir = Path.mkdir
+        call_count = 0
+
+        def selective_mkdir(self, parents=False, exist_ok=False):
+            nonlocal call_count
+            call_count += 1
+            # Allow the first mkdir call (project directory) to succeed
+            if call_count == 1:
+                return original_mkdir(self, parents=parents, exist_ok=exist_ok)
+            # Fail the second mkdir call (connectors directory)
+            else:
+                raise OSError
+
+        with (
+            patch("weavster.cli.commands.init.Path.cwd", return_value=path),
+            patch.object(Path, "mkdir", selective_mkdir),
+        ):
+            result = init_project("test_project")
+
+        assert not result.success
+        assert "Failed to create connectors directory" in result.message

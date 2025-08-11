@@ -50,7 +50,7 @@ profile: '{project_name}'
 
 # Directory structure for your integration components
 connector-paths: ["connectors"]
-route-paths: ["routes"]
+flow-paths: ["flows"]
 """
 
     config_file = path / "weavster.yml"
@@ -105,6 +105,15 @@ def init_project(project_name: str) -> InitResult:
         create_weavster_config(target_path, project_name)
     except Exception as e:
         return InitResult(success=False, message=f"Failed to create configuration file: {e!s}")
+
+    # Create default connectors directory with .gitkeep
+    try:
+        connectors_path = target_path / "connectors"
+        connectors_path.mkdir(parents=True)
+        gitkeep_file = connectors_path / ".gitkeep"
+        gitkeep_file.write_text("")
+    except Exception as e:
+        return InitResult(success=False, message=f"Failed to create connectors directory: {e!s}")
 
     # Success
     return InitResult(
