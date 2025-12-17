@@ -132,11 +132,12 @@ mod tests {
 
     #[test]
     fn test_job_metadata_serialization() {
-        let mut metadata = JobMetadata::default();
-        metadata.source = Some("test_source".to_string());
-        metadata.key = Some("test_key".to_string());
-        metadata.timestamp = Some(1234567890);
-        metadata.retry_count = 3;
+        let metadata = JobMetadata {
+            source: Some("test_source".to_string()),
+            key: Some("test_key".to_string()),
+            timestamp: Some(1234567890),
+            retry_count: 3,
+        };
 
         let serialized = serde_json::to_string(&metadata).unwrap();
         let deserialized: JobMetadata = serde_json::from_str(&serialized).unwrap();

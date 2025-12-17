@@ -14,7 +14,7 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/weavster-dev/weavster"
 authors = ["Gregory Hunt <huntg1@gmail.com>"]
-rust-version = "1.91.0"
+rust-version = "1.92.0"
 
 [workspace.dependencies]
 # Async runtime
