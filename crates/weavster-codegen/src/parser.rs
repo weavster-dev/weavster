@@ -243,6 +243,12 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_parser_new() {
+        let parser = Parser::new("/some/path");
+        assert_eq!(parser.base_path.to_str().unwrap(), "/some/path");
+    }
+
+    #[test]
     fn test_parse_simple_flow() {
         let yaml = r#"
 name: test_flow
@@ -264,6 +270,25 @@ outputs:
     }
 
     #[test]
+    fn test_parse_flow_with_description() {
+        let yaml = r#"
+name: described_flow
+description: "This flow processes orders"
+input: kafka.orders
+outputs:
+  - postgres.orders
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        assert_eq!(ir.name, "described_flow");
+        assert_eq!(
+            ir.description,
+            Some("This flow processes orders".to_string())
+        );
+    }
+
+    #[test]
     fn test_parse_template_transform() {
         let yaml = r#"
 name: template_flow
@@ -281,8 +306,255 @@ outputs:
             TransformIR::Template(fields) => {
                 assert_eq!(fields.len(), 1);
                 assert_eq!(fields[0].target, "full_name");
+                assert!(fields[0].template.contains("first_name"));
             }
             _ => panic!("Expected template transform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_regex_transform() {
+        let yaml = r#"
+name: regex_flow
+input: kafka.logs
+transforms:
+  - regex:
+      field: message
+      pattern: '(\d{4}-\d{2}-\d{2}) (.+)'
+      captures:
+        date: "1"
+        content: "2"
+outputs:
+  - postgres.parsed_logs
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        match &ir.transforms[0] {
+            TransformIR::Regex(regex) => {
+                assert_eq!(regex.source_field, "message");
+                assert!(regex.pattern.contains(r"\d{4}"));
+                assert_eq!(regex.captures.len(), 2);
+                assert!(regex.captures.contains_key("date"));
+                assert!(regex.captures.contains_key("content"));
+            }
+            _ => panic!("Expected regex transform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_regex_transform_with_named_groups() {
+        let yaml = r#"
+name: named_regex_flow
+input: kafka.logs
+transforms:
+  - regex:
+      field: message
+      pattern: '(?P<timestamp>\d+) (?P<level>\w+)'
+      captures:
+        ts: timestamp
+        log_level: level
+outputs:
+  - postgres.logs
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        match &ir.transforms[0] {
+            TransformIR::Regex(regex) => {
+                // Named captures should be parsed as Named
+                let ts_capture = regex.captures.get("ts").unwrap();
+                match &ts_capture.group {
+                    CaptureGroup::Named(name) => assert_eq!(name, "timestamp"),
+                    _ => panic!("Expected named capture group"),
+                }
+            }
+            _ => panic!("Expected regex transform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_regex_transform_with_on_no_match() {
+        let yaml = r#"
+name: regex_flow_skip
+input: kafka.logs
+transforms:
+  - regex:
+      field: text
+      pattern: "test"
+      captures:
+        match: "0"
+      on_no_match: skip
+outputs:
+  - postgres.logs
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        match &ir.transforms[0] {
+            TransformIR::Regex(regex) => {
+                assert!(matches!(regex.on_no_match, NoMatchBehavior::Skip));
+            }
+            _ => panic!("Expected regex transform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_invalid_regex_pattern() {
+        let yaml = r#"
+name: bad_regex_flow
+input: kafka.logs
+transforms:
+  - regex:
+      field: message
+      pattern: "[invalid(regex"
+      captures:
+        match: "0"
+outputs:
+  - postgres.logs
+"#;
+        let parser = Parser::new(".");
+        let result = parser.parse_yaml(yaml);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_lookup_transform() {
+        let yaml = r#"
+name: lookup_flow
+input: kafka.orders
+transforms:
+  - lookup:
+      field: country_code
+      table: countries
+      output: country_name
+outputs:
+  - postgres.orders
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        match &ir.transforms[0] {
+            TransformIR::Lookup(lookup) => {
+                assert_eq!(lookup.key_field, "country_code");
+                assert_eq!(lookup.table, "countries");
+                assert_eq!(lookup.output_field, "country_name");
+                assert!(lookup.default.is_none());
+            }
+            _ => panic!("Expected lookup transform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_lookup_transform_with_default() {
+        let yaml = r#"
+name: lookup_flow_default
+input: kafka.orders
+transforms:
+  - lookup:
+      field: country_code
+      table: countries
+      output: country_name
+      default: "Unknown"
+outputs:
+  - postgres.orders
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        match &ir.transforms[0] {
+            TransformIR::Lookup(lookup) => {
+                assert_eq!(lookup.default, Some(serde_json::json!("Unknown")));
+            }
+            _ => panic!("Expected lookup transform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_filter_transform() {
+        let yaml = r#"
+name: filter_flow
+input: kafka.orders
+transforms:
+  - filter:
+      when: "status == 'active'"
+outputs:
+  - postgres.orders
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        match &ir.transforms[0] {
+            TransformIR::Filter(filter) => match &filter.condition {
+                FilterCondition::Expression(expr) => {
+                    assert_eq!(expr, "status == 'active'");
+                }
+                _ => panic!("Expected expression condition"),
+            },
+            _ => panic!("Expected filter transform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_drop_transform() {
+        let yaml = r#"
+name: drop_flow
+input: kafka.orders
+transforms:
+  - drop:
+      - internal_id
+      - secret_key
+      - temp_field
+outputs:
+  - postgres.orders
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        match &ir.transforms[0] {
+            TransformIR::Drop(fields) => {
+                assert_eq!(fields.len(), 3);
+                assert!(fields.contains(&"internal_id".to_string()));
+                assert!(fields.contains(&"secret_key".to_string()));
+                assert!(fields.contains(&"temp_field".to_string()));
+            }
+            _ => panic!("Expected drop transform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_coalesce_transform() {
+        let yaml = r#"
+name: coalesce_flow
+input: kafka.orders
+transforms:
+  - coalesce:
+      email:
+        - primary_email
+        - work_email
+        - personal_email
+      phone:
+        - mobile
+        - home_phone
+outputs:
+  - postgres.orders
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        match &ir.transforms[0] {
+            TransformIR::Coalesce(fields) => {
+                assert_eq!(fields.len(), 2);
+
+                let email_field = fields.iter().find(|f| f.target == "email").unwrap();
+                assert_eq!(email_field.sources.len(), 3);
+                assert_eq!(email_field.sources[0], "primary_email");
+
+                let phone_field = fields.iter().find(|f| f.target == "phone").unwrap();
+                assert_eq!(phone_field.sources.len(), 2);
+            }
+            _ => panic!("Expected coalesce transform"),
         }
     }
 
@@ -299,5 +571,142 @@ outputs:
         let ir = parser.parse_yaml(yaml).unwrap();
 
         assert!(ir.outputs[0].condition.is_some());
+        match &ir.outputs[0].condition {
+            Some(FilterCondition::Expression(expr)) => {
+                assert_eq!(expr, "total > 1000");
+            }
+            _ => panic!("Expected expression condition"),
+        }
+    }
+
+    #[test]
+    fn test_parse_multiple_outputs() {
+        let yaml = r#"
+name: multi_output_flow
+input: kafka.orders
+outputs:
+  - postgres.all_orders
+  - connector: kafka.high_value
+    when: "total > 1000"
+  - connector: kafka.low_value
+    when: "total <= 100"
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        assert_eq!(ir.outputs.len(), 3);
+        assert!(ir.outputs[0].condition.is_none());
+        assert!(ir.outputs[1].condition.is_some());
+        assert!(ir.outputs[2].condition.is_some());
+    }
+
+    #[test]
+    fn test_parse_multiple_transforms() {
+        let yaml = r#"
+name: multi_transform_flow
+input: kafka.orders
+transforms:
+  - map:
+      customer_id: cust_id
+  - drop:
+      - internal_field
+  - template:
+      greeting: "Hello {{ name }}"
+outputs:
+  - postgres.orders
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        assert_eq!(ir.transforms.len(), 3);
+        assert!(matches!(&ir.transforms[0], TransformIR::Map(_)));
+        assert!(matches!(&ir.transforms[1], TransformIR::Drop(_)));
+        assert!(matches!(&ir.transforms[2], TransformIR::Template(_)));
+    }
+
+    #[test]
+    fn test_parse_flow_no_transforms() {
+        let yaml = r#"
+name: passthrough_flow
+input: kafka.input
+outputs:
+  - kafka.output
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        assert_eq!(ir.name, "passthrough_flow");
+        assert!(ir.transforms.is_empty());
+        assert_eq!(ir.outputs.len(), 1);
+    }
+
+    #[test]
+    fn test_parse_flow_no_outputs() {
+        let yaml = r#"
+name: sink_flow
+input: kafka.input
+transforms:
+  - map:
+      id: source_id
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        assert_eq!(ir.name, "sink_flow");
+        assert!(ir.outputs.is_empty());
+    }
+
+    #[test]
+    fn test_no_match_behavior_from_string() {
+        assert!(matches!(
+            NoMatchBehavior::from("skip".to_string()),
+            NoMatchBehavior::Skip
+        ));
+        assert!(matches!(
+            NoMatchBehavior::from("SKIP".to_string()),
+            NoMatchBehavior::Skip
+        ));
+        assert!(matches!(
+            NoMatchBehavior::from("error".to_string()),
+            NoMatchBehavior::Error
+        ));
+        assert!(matches!(
+            NoMatchBehavior::from("ERROR".to_string()),
+            NoMatchBehavior::Error
+        ));
+        assert!(matches!(
+            NoMatchBehavior::from("null".to_string()),
+            NoMatchBehavior::Null
+        ));
+        assert!(matches!(
+            NoMatchBehavior::from("unknown".to_string()),
+            NoMatchBehavior::Null
+        ));
+        assert!(matches!(
+            NoMatchBehavior::from("".to_string()),
+            NoMatchBehavior::Null
+        ));
+    }
+
+    #[test]
+    fn test_parse_invalid_yaml() {
+        let yaml = "this is not valid yaml: [";
+        let parser = Parser::new(".");
+        let result = parser.parse_yaml(yaml);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_missing_required_fields() {
+        let yaml = r#"
+description: "Missing name and input"
+outputs:
+  - postgres.output
+"#;
+        let parser = Parser::new(".");
+        let result = parser.parse_yaml(yaml);
+
+        assert!(result.is_err());
     }
 }

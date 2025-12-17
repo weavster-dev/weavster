@@ -334,6 +334,17 @@ mod tests {
     }
 
     #[test]
+    fn test_flow_ir_new_with_string() {
+        let ir = FlowIR::new(String::from("my_flow"));
+        assert_eq!(ir.name, "my_flow");
+        assert!(ir.description.is_none());
+        assert!(ir.input.is_empty());
+        assert!(ir.transforms.is_empty());
+        assert!(ir.outputs.is_empty());
+        assert!(ir.artifacts.is_empty());
+    }
+
+    #[test]
     fn test_content_hash_changes() {
         let mut ir1 = FlowIR::new("test");
         ir1.input = "kafka.topic1".to_string();
@@ -342,5 +353,382 @@ mod tests {
         ir2.input = "kafka.topic2".to_string();
 
         assert_ne!(ir1.content_hash(), ir2.content_hash());
+    }
+
+    #[test]
+    fn test_content_hash_same_for_identical() {
+        let mut ir1 = FlowIR::new("test");
+        ir1.input = "kafka.topic".to_string();
+
+        let mut ir2 = FlowIR::new("test");
+        ir2.input = "kafka.topic".to_string();
+
+        assert_eq!(ir1.content_hash(), ir2.content_hash());
+    }
+
+    #[test]
+    fn test_content_hash_changes_with_transforms() {
+        let mut ir1 = FlowIR::new("test");
+        ir1.input = "kafka.topic".to_string();
+        ir1.transforms
+            .push(TransformIR::Drop(vec!["field1".to_string()]));
+
+        let mut ir2 = FlowIR::new("test");
+        ir2.input = "kafka.topic".to_string();
+        ir2.transforms
+            .push(TransformIR::Drop(vec!["field2".to_string()]));
+
+        assert_ne!(ir1.content_hash(), ir2.content_hash());
+    }
+
+    #[test]
+    fn test_content_hash_changes_with_artifacts() {
+        let mut ir1 = FlowIR::new("test");
+        ir1.artifacts.push(ArtifactIR {
+            name: "lookup".to_string(),
+            kind: ArtifactKind::LookupTable,
+            data: ArtifactData::Raw("data1".to_string()),
+        });
+
+        let mut ir2 = FlowIR::new("test");
+        ir2.artifacts.push(ArtifactIR {
+            name: "lookup".to_string(),
+            kind: ArtifactKind::LookupTable,
+            data: ArtifactData::Raw("data2".to_string()),
+        });
+
+        assert_ne!(ir1.content_hash(), ir2.content_hash());
+    }
+
+    #[test]
+    fn test_field_mapping() {
+        let mapping = FieldMapping {
+            target: "output_field".to_string(),
+            source: "input_field".to_string(),
+            default: Some(serde_json::json!("default_value")),
+        };
+
+        assert_eq!(mapping.target, "output_field");
+        assert_eq!(mapping.source, "input_field");
+        assert_eq!(mapping.default, Some(serde_json::json!("default_value")));
+    }
+
+    #[test]
+    fn test_regex_transform() {
+        let mut captures = HashMap::new();
+        captures.insert(
+            "date".to_string(),
+            CaptureMapping {
+                group: CaptureGroup::Index(1),
+                transform: None,
+            },
+        );
+
+        let regex = RegexTransform {
+            source_field: "message".to_string(),
+            pattern: r"(\d{4}-\d{2}-\d{2})".to_string(),
+            captures,
+            on_no_match: NoMatchBehavior::Null,
+        };
+
+        assert_eq!(regex.source_field, "message");
+        assert!(regex.captures.contains_key("date"));
+    }
+
+    #[test]
+    fn test_capture_group_index() {
+        let group = CaptureGroup::Index(3);
+        match group {
+            CaptureGroup::Index(i) => assert_eq!(i, 3),
+            _ => panic!("Expected Index"),
+        }
+    }
+
+    #[test]
+    fn test_capture_group_named() {
+        let group = CaptureGroup::Named("timestamp".to_string());
+        match group {
+            CaptureGroup::Named(n) => assert_eq!(n, "timestamp"),
+            _ => panic!("Expected Named"),
+        }
+    }
+
+    #[test]
+    fn test_capture_transform_variants() {
+        let _ = CaptureTransform::Uppercase;
+        let _ = CaptureTransform::Lowercase;
+        let _ = CaptureTransform::Trim;
+        let _ = CaptureTransform::ParseInt;
+        let _ = CaptureTransform::ParseFloat;
+    }
+
+    #[test]
+    fn test_no_match_behavior_default() {
+        let behavior = NoMatchBehavior::default();
+        assert!(matches!(behavior, NoMatchBehavior::Null));
+    }
+
+    #[test]
+    fn test_template_field() {
+        let field = TemplateField {
+            target: "greeting".to_string(),
+            template: "Hello, {{ name }}!".to_string(),
+        };
+
+        assert_eq!(field.target, "greeting");
+        assert!(field.template.contains("{{ name }}"));
+    }
+
+    #[test]
+    fn test_lookup_transform() {
+        let lookup = LookupTransform {
+            key_field: "country_code".to_string(),
+            table: "countries".to_string(),
+            key_column: Some("code".to_string()),
+            value_column: Some("name".to_string()),
+            output_field: "country_name".to_string(),
+            default: Some(serde_json::json!("Unknown")),
+        };
+
+        assert_eq!(lookup.key_field, "country_code");
+        assert_eq!(lookup.table, "countries");
+        assert_eq!(lookup.key_column, Some("code".to_string()));
+        assert_eq!(lookup.default, Some(serde_json::json!("Unknown")));
+    }
+
+    #[test]
+    fn test_filter_condition_compare() {
+        let condition = FilterCondition::Compare {
+            field: "age".to_string(),
+            op: CompareOp::Gt,
+            value: serde_json::json!(18),
+        };
+
+        match condition {
+            FilterCondition::Compare { field, op, value } => {
+                assert_eq!(field, "age");
+                assert!(matches!(op, CompareOp::Gt));
+                assert_eq!(value, serde_json::json!(18));
+            }
+            _ => panic!("Expected Compare"),
+        }
+    }
+
+    #[test]
+    fn test_filter_condition_not_null() {
+        let condition = FilterCondition::NotNull("email".to_string());
+        match condition {
+            FilterCondition::NotNull(field) => assert_eq!(field, "email"),
+            _ => panic!("Expected NotNull"),
+        }
+    }
+
+    #[test]
+    fn test_filter_condition_is_null() {
+        let condition = FilterCondition::IsNull("optional_field".to_string());
+        match condition {
+            FilterCondition::IsNull(field) => assert_eq!(field, "optional_field"),
+            _ => panic!("Expected IsNull"),
+        }
+    }
+
+    #[test]
+    fn test_filter_condition_matches() {
+        let condition = FilterCondition::Matches {
+            field: "email".to_string(),
+            pattern: r".*@.*\.com".to_string(),
+        };
+
+        match condition {
+            FilterCondition::Matches { field, pattern } => {
+                assert_eq!(field, "email");
+                assert!(pattern.contains("@"));
+            }
+            _ => panic!("Expected Matches"),
+        }
+    }
+
+    #[test]
+    fn test_filter_condition_and() {
+        let condition = FilterCondition::And(vec![
+            FilterCondition::NotNull("field1".to_string()),
+            FilterCondition::NotNull("field2".to_string()),
+        ]);
+
+        match condition {
+            FilterCondition::And(conditions) => assert_eq!(conditions.len(), 2),
+            _ => panic!("Expected And"),
+        }
+    }
+
+    #[test]
+    fn test_filter_condition_or() {
+        let condition = FilterCondition::Or(vec![
+            FilterCondition::IsNull("a".to_string()),
+            FilterCondition::IsNull("b".to_string()),
+        ]);
+
+        match condition {
+            FilterCondition::Or(conditions) => assert_eq!(conditions.len(), 2),
+            _ => panic!("Expected Or"),
+        }
+    }
+
+    #[test]
+    fn test_filter_condition_not() {
+        let condition =
+            FilterCondition::Not(Box::new(FilterCondition::IsNull("field".to_string())));
+
+        match condition {
+            FilterCondition::Not(inner) => {
+                assert!(matches!(*inner, FilterCondition::IsNull(_)));
+            }
+            _ => panic!("Expected Not"),
+        }
+    }
+
+    #[test]
+    fn test_filter_condition_expression() {
+        let condition = FilterCondition::Expression("x > 10 && y < 20".to_string());
+        match condition {
+            FilterCondition::Expression(expr) => assert!(expr.contains("&&")),
+            _ => panic!("Expected Expression"),
+        }
+    }
+
+    #[test]
+    fn test_compare_op_variants() {
+        let _ = CompareOp::Eq;
+        let _ = CompareOp::Ne;
+        let _ = CompareOp::Gt;
+        let _ = CompareOp::Ge;
+        let _ = CompareOp::Lt;
+        let _ = CompareOp::Le;
+        let _ = CompareOp::Contains;
+        let _ = CompareOp::StartsWith;
+        let _ = CompareOp::EndsWith;
+    }
+
+    #[test]
+    fn test_coalesce_field() {
+        let field = CoalesceField {
+            target: "email".to_string(),
+            sources: vec!["primary_email".to_string(), "secondary_email".to_string()],
+        };
+
+        assert_eq!(field.target, "email");
+        assert_eq!(field.sources.len(), 2);
+    }
+
+    #[test]
+    fn test_output_ir() {
+        let output = OutputIR {
+            connector: "kafka.output".to_string(),
+            condition: Some(FilterCondition::Expression(
+                "status == 'active'".to_string(),
+            )),
+        };
+
+        assert_eq!(output.connector, "kafka.output");
+        assert!(output.condition.is_some());
+    }
+
+    #[test]
+    fn test_artifact_ir() {
+        let mut map = HashMap::new();
+        map.insert("key1".to_string(), "value1".to_string());
+
+        let artifact = ArtifactIR {
+            name: "lookup_table".to_string(),
+            kind: ArtifactKind::LookupTable,
+            data: ArtifactData::KeyValue(map),
+        };
+
+        assert_eq!(artifact.name, "lookup_table");
+        assert!(matches!(artifact.kind, ArtifactKind::LookupTable));
+    }
+
+    #[test]
+    fn test_artifact_kind_variants() {
+        let _ = ArtifactKind::LookupTable;
+        let _ = ArtifactKind::JsonConfig;
+        let _ = ArtifactKind::RegexPatterns;
+    }
+
+    #[test]
+    fn test_artifact_data_key_value() {
+        let mut map = HashMap::new();
+        map.insert("A".to_string(), "Alpha".to_string());
+
+        let data = ArtifactData::KeyValue(map);
+        match data {
+            ArtifactData::KeyValue(m) => {
+                assert_eq!(m.get("A"), Some(&"Alpha".to_string()));
+            }
+            _ => panic!("Expected KeyValue"),
+        }
+    }
+
+    #[test]
+    fn test_artifact_data_json() {
+        let json = serde_json::json!({"key": "value"});
+        let data = ArtifactData::Json(json.clone());
+
+        match data {
+            ArtifactData::Json(j) => assert_eq!(j, json),
+            _ => panic!("Expected Json"),
+        }
+    }
+
+    #[test]
+    fn test_artifact_data_raw() {
+        let data = ArtifactData::Raw("raw content".to_string());
+        match data {
+            ArtifactData::Raw(s) => assert_eq!(s, "raw content"),
+            _ => panic!("Expected Raw"),
+        }
+    }
+
+    #[test]
+    fn test_transform_ir_map() {
+        let transform = TransformIR::Map(vec![FieldMapping {
+            target: "out".to_string(),
+            source: "in".to_string(),
+            default: None,
+        }]);
+
+        assert!(matches!(transform, TransformIR::Map(_)));
+    }
+
+    #[test]
+    fn test_transform_ir_drop() {
+        let transform = TransformIR::Drop(vec!["field1".to_string(), "field2".to_string()]);
+
+        match transform {
+            TransformIR::Drop(fields) => assert_eq!(fields.len(), 2),
+            _ => panic!("Expected Drop"),
+        }
+    }
+
+    #[test]
+    fn test_transform_ir_coalesce() {
+        let transform = TransformIR::Coalesce(vec![CoalesceField {
+            target: "result".to_string(),
+            sources: vec!["a".to_string(), "b".to_string()],
+        }]);
+
+        assert!(matches!(transform, TransformIR::Coalesce(_)));
+    }
+
+    #[test]
+    fn test_flow_ir_clone() {
+        let mut ir = FlowIR::new("test");
+        ir.input = "kafka.input".to_string();
+        ir.transforms.push(TransformIR::Drop(vec!["x".to_string()]));
+
+        let cloned = ir.clone();
+        assert_eq!(ir.name, cloned.name);
+        assert_eq!(ir.input, cloned.input);
+        assert_eq!(ir.transforms.len(), cloned.transforms.len());
     }
 }
