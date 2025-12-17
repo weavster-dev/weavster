@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  actions: read
 
 jobs:
   coverage:
@@ -27,7 +28,9 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Generate coverage
-        run: cargo llvm-cov --all-features --workspace --lcov --output-path coverage/lcov.info
+        run: |
+          mkdir -p coverage
+          cargo llvm-cov --all-features --workspace --lcov --output-path coverage/lcov.info
 
       - name: Run octocov
         uses: k1LoW/octocov-action@v1

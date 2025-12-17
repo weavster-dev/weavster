@@ -2,8 +2,7 @@
 
 **Modern Enterprise Service Bus** - Like dbt, but for real-time transactions.
 
-[![CI](https://github.com/yourusername/weavster/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/weavster/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg)](LICENSE)
+[![CI](https://github.com/weavster-dev/weavster/actions/workflows/ci.yml/badge.svg)](https://github.com/weavster-dev/weavster/actions/workflows/ci.yml)
 
 ## What is Weavster?
 
@@ -127,12 +126,3 @@ crates/
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-## License
-
-Licensed under either of:
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
-- MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
-
-at your option.
