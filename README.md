@@ -2,7 +2,7 @@
 
 **Modern Enterprise Service Bus** - Like dbt, but for real-time transactions.
 
-[![CI](https://github.com/weavster-dev/weavster/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/weavster/actions/workflows/ci.yml)
+[![CI](https://github.com/weavster-dev/weavster/actions/workflows/ci.yml/badge.svg)](https://github.com/weavster-dev/weavster/actions/workflows/ci.yml)
 
 ## What is Weavster?
 
