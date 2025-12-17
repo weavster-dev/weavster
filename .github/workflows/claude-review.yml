@@ -1,0 +1,201 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  issue_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+
+jobs:
+  # PR Review - runs on new PRs and updates
+  claude-review:
+    if: |
+      github.event_name == 'pull_request' &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for better diff context
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR TITLE: ${{ github.event.pull_request.title }}
+            PR AUTHOR: ${{ github.event.pull_request.user.login }}
+
+            Please review this pull request for the Weavster project.
+
+            ## Review Focus Areas
+
+            1. **Rust Best Practices**
+               - Proper error handling (thiserror in libs, anyhow in bins)
+               - No unwrap() in library code
+               - Appropriate use of lifetimes and ownership
+               - Idiomatic Rust patterns
+
+            2. **Architecture Compliance**
+               - weavster-core has no workspace dependencies
+               - weavster-runtime stays minimal (Docker image size matters)
+               - Proper separation of concerns between crates
+
+            3. **Code Quality**
+               - Tests included for new functionality
+               - Doc comments on public APIs
+               - No clippy warnings introduced
+               - Follows conventional commit format
+
+            4. **Performance Considerations**
+               - Avoid unnecessary allocations in hot paths
+               - Proper async usage (no blocking in async context)
+               - Efficient serialization/deserialization
+
+            5. **Security**
+               - No secrets or credentials in code
+               - Safe handling of user input
+               - WASM sandboxing maintained for transforms
+
+            ## Review Process
+
+            1. First, minimize any previous Claude review comments:
+               ```bash
+               for comment_id in $(gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json comments --jq '.comments[] | select(.author.login == "claude") | .id'); do
+                 gh api graphql -f query="mutation { minimizeComment(input: {subjectId: \"$comment_id\", classifier: OUTDATED}) { clientMutationId } }"
+               done
+               ```
+
+            2. Review the diff:
+               ```bash
+               gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }}
+               ```
+
+            3. Check related issues:
+               ```bash
+               gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json body
+               ```
+
+            4. Post your review with constructive feedback.
+
+            Use CLAUDE.md for project-specific conventions. Be constructive and specific.
+            If changes look good, say so! Approve straightforward PRs.
+
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh api:*),Bash(cargo fmt:*),Bash(cargo clippy:*)"'
+
+  # Handle @claude mentions in PR/Issue comments
+  claude-respond:
+    if: |
+      github.event_name == 'issue_comment' &&
+      contains(github.event.comment.body, '@claude')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Respond to mention
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            ISSUE/PR NUMBER: ${{ github.event.issue.number }}
+            COMMENT AUTHOR: ${{ github.event.comment.user.login }}
+            COMMENT BODY: ${{ github.event.comment.body }}
+
+            You were mentioned in a comment. Please help with whatever is being asked.
+
+            Context:
+            - This is the Weavster project (Rust-based ESB/data pipeline tool)
+            - Check CLAUDE.md for project conventions
+            - You can view the issue/PR details and respond helpfully
+
+            If this is a PR, you can:
+            - Explain code changes
+            - Suggest improvements
+            - Help debug issues
+            - Answer questions about the implementation
+
+            If this is an issue, you can:
+            - Help clarify requirements
+            - Suggest implementation approaches
+            - Break down into smaller tasks
+            - Provide code examples
+
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh api:*)"'
+
+  # Help with newly created/assigned issues
+  claude-issue-assist:
+    if: |
+      github.event_name == 'issues' &&
+      (github.event.action == 'opened' || github.event.action == 'assigned') &&
+      contains(github.event.issue.labels.*.name, 'claude-assist')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Assist with issue
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            ISSUE NUMBER: ${{ github.event.issue.number }}
+            ISSUE TITLE: ${{ github.event.issue.title }}
+            ISSUE BODY: ${{ github.event.issue.body }}
+            ISSUE LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
+
+            This issue has the 'claude-assist' label. Please help by:
+
+            1. **Analyzing the Issue**
+               - Understand what's being requested
+               - Identify which crates are involved
+               - Check for related issues or PRs
+
+            2. **Creating an Implementation Plan**
+               - Break down into subtasks if complex
+               - Identify files that need changes
+               - Note any dependencies or blockers
+
+            3. **Providing Guidance**
+               - Reference relevant code patterns from the repo
+               - Suggest test cases to include
+               - Note any architecture considerations
+
+            Post a helpful comment with your analysis. Reference CLAUDE.md for conventions.
+
+            If this is a bug report:
+            - Help reproduce the issue
+            - Suggest debugging steps
+            - Identify likely cause
+
+            If this is a feature request:
+            - Clarify scope and requirements
+            - Suggest implementation approach
+            - Estimate complexity (small/medium/large)
+
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh api:*)"'

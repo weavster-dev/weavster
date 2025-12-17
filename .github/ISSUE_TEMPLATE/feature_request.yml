@@ -1,0 +1,67 @@
+name: Feature Request
+description: Request a new feature or enhancement
+labels: ["enhancement", "claude-assist"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement to Weavster!
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Clear description of the feature you'd like
+      placeholder: I would like Weavster to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: What problem does this solve? How would you use it?
+      placeholder: This would help me...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution
+      description: How do you think this should work? Include YAML examples if relevant.
+      placeholder: |
+        ```yaml
+        # Example configuration
+        ```
+    validations:
+      required: false
+
+  - type: dropdown
+    id: crate
+    attributes:
+      label: Affected Crate
+      description: Which crate(s) would this change?
+      multiple: true
+      options:
+        - weavster-core
+        - weavster-runtime
+        - weavster-cli
+        - weavster-python
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: complexity
+    attributes:
+      label: Estimated Complexity
+      description: How complex do you think this is?
+      options:
+        - Small (few hours)
+        - Medium (few days)
+        - Large (week+)
+        - Unknown
+    validations:
+      required: false

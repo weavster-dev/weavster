@@ -1,0 +1,48 @@
+# Weavster Development Environment
+# Full development environment with CLI, tools, and embedded PostgreSQL
+
+FROM rust:1.83-bookworm
+
+WORKDIR /weavster
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    cmake \
+    curl \
+    git \
+    jq \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust tools
+RUN rustup component add \
+    rustfmt \
+    clippy
+
+# Install cargo tools
+RUN cargo install cargo-watch cargo-audit
+
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+
+# Build development binaries (with debug info)
+RUN cargo build -p weavster-cli
+
+# Create weavster user
+RUN useradd -m -u 1000 weavster && \
+    chown -R weavster:weavster /weavster
+
+USER weavster
+
+# Add cargo bin to PATH
+ENV PATH="/weavster/target/debug:${PATH}"
+
+# Default working directory for projects
+WORKDIR /project
+
+# Volume for user projects
+VOLUME ["/project"]
+
+# Default command - run with hot reload
+CMD ["cargo", "watch", "-x", "run -p weavster-cli -- run"]

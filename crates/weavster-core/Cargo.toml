@@ -1,0 +1,40 @@
+[package]
+name = "weavster-core"
+description = "Core library for Weavster - transforms, connectors, and configuration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Serialization
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+
+# Templating
+minijinja.workspace = true
+
+# WASM runtime (for executing compiled transforms)
+wasmtime = { workspace = true, optional = true }
+
+# Async
+tokio.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+
+# Error handling
+thiserror.workspace = true
+
+# Logging
+tracing.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[features]
+default = []
+wasm = ["wasmtime"]

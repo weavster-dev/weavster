@@ -1,0 +1,47 @@
+[package]
+name = "weavster-cli"
+description = "Developer CLI for Weavster - local development and project management"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "weavster"
+path = "src/main.rs"
+
+[dependencies]
+weavster-core.workspace = true
+weavster-codegen.workspace = true
+weavster-runtime.workspace = true
+
+# Database (embedded for local dev)
+sqlx.workspace = true
+postgresql_embedded.workspace = true
+
+# CLI
+clap.workspace = true
+
+# Async
+tokio.workspace = true
+
+# Error handling
+anyhow.workspace = true
+
+# Serialization
+serde_json.workspace = true
+
+# Logging
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+# Config
+directories = "5.0"  # For finding config/data directories
+walkdir = "2.5"      # For directory traversal
+
+[dev-dependencies]
+rstest.workspace = true
+assert_cmd = "2.0"
+predicates = "3.1"

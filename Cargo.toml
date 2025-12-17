@@ -1,0 +1,95 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/weavster-core",
+    "crates/weavster-codegen",
+    "crates/weavster-runtime",
+    "crates/weavster-cli",
+    # "crates/weavster-python",  # Future: PyO3 bindings
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/weavster-dev/weavster"
+authors = ["Gregory Hunt <huntg1@gmail.com>"]
+rust-version = "1.91.0"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.48.0", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "migrate"] }
+postgresql_embedded = { version = "0.20.0", features = ["bundled"] }
+
+# Job queue
+apalis = { version = "0.7.4" }
+apalis-sql = { version = "0.7.4", features = ["postgres"] }
+
+# Templating
+minijinja = { version = "2.5", features = ["loader"] }
+
+# WASM runtime (escape hatch)
+wasmtime = "39.0.1"
+
+# CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging/tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Async utilities
+futures = "0.3"
+async-trait = "0.1"
+
+# Code generation
+quote = "1.0"
+proc-macro2 = "1.0"
+
+# Regex (compiles to WASM)
+regex = "1.11"
+
+# Static hash maps (for lookup tables in WASM)
+phf = { version = "0.13.1", features = ["macros"] }
+
+# Hashing
+sha2 = "0.10"
+hex = "0.4"
+
+# File walking
+walkdir = "2.5"
+
+# CSV parsing (for lookup tables)
+csv = "1.3"
+
+# Lazy static (for regex in WASM)
+once_cell = "1.20"
+
+# Testing
+rstest = "0.26.1"
+
+# Workspace crates (for internal dependencies)
+weavster-core = { path = "crates/weavster-core" }
+weavster-codegen = { path = "crates/weavster-codegen" }
+weavster-runtime = { path = "crates/weavster-runtime" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+# Faster builds for development
+debug = 1

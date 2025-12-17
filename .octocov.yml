@@ -1,0 +1,34 @@
+# Octocov configuration
+# https://github.com/k1LoW/octocov
+
+coverage:
+  paths:
+    - coverage/lcov.info
+  acceptable: 60%
+  badge:
+    path: docs/coverage.svg
+
+codeToTestRatio:
+  code:
+    - 'crates/**/*.rs'
+    - '!crates/**/tests/**'
+    - '!crates/**/*_test.rs'
+  test:
+    - 'crates/**/tests/**'
+    - 'crates/**/*_test.rs'
+  badge:
+    path: docs/ratio.svg
+
+testExecutionTime:
+  acceptable: 5min
+  badge:
+    path: docs/test-time.svg
+
+comment:
+  if: is_pull_request
+  hideFooterLink: false
+
+report:
+  if: is_default_branch
+  datastores:
+    - artifact://

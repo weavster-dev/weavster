@@ -1,0 +1,47 @@
+# Weavster Runtime - Minimal Docker Image
+# This image contains only the runtime binary for production deployments
+
+# Build stage
+FROM rust:1.83-bookworm AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy workspace files
+COPY Cargo.toml Cargo.lock ./
+COPY crates ./crates
+
+# Build release binary
+RUN cargo build --release -p weavster-runtime
+
+# Runtime stage - minimal image
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libssl3 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -u 1000 weavster
+USER weavster
+WORKDIR /home/weavster
+
+# Copy binary from builder
+COPY --from=builder /build/target/release/weavster-runtime /usr/local/bin/weavster
+
+# Default configuration directory
+VOLUME ["/config"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+
+ENTRYPOINT ["weavster"]
+CMD ["run", "--config", "/config/weavster.yaml"]

@@ -1,0 +1,106 @@
+name: Claude Code Issue Worker
+
+on:
+  issues:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+
+jobs:
+  # When an issue is labeled 'claude-work', Claude will start working on it
+  work-issue:
+    if: |
+      github.event_name == 'issues' &&
+      github.event.label.name == 'claude-work'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Work on issue
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            ISSUE NUMBER: ${{ github.event.issue.number }}
+            ISSUE TITLE: ${{ github.event.issue.title }}
+            ISSUE BODY: ${{ github.event.issue.body }}
+            ISSUE LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
+
+            You have been assigned to work on this issue. Please:
+
+            1. **Understand the Issue**
+               - Read the issue carefully
+               - Check related code and tests
+               - Identify affected crates
+
+            2. **Plan the Implementation**
+               - Comment on the issue with your implementation plan
+               - List files to be modified/created
+               - Note any questions or clarifications needed
+
+            3. **Implement the Solution**
+               - Follow CLAUDE.md conventions
+               - Write tests for new functionality
+               - Keep commits atomic and well-described
+
+            4. **Create a Pull Request**
+               - Reference the issue in the PR
+               - Provide a clear description
+               - Request review
+
+            Use conventional commits: feat:, fix:, docs:, refactor:, test:, chore:
+
+            Start by posting your implementation plan as a comment, then proceed with the work.
+
+          claude_args: >-
+            --allowed-tools
+            "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"
+
+  # Handle @claude work requests in comments
+  claude-work-comment:
+    if: |
+      github.event_name == 'issue_comment' &&
+      contains(github.event.comment.body, '@claude work')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Work on request
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            ISSUE NUMBER: ${{ github.event.issue.number }}
+            COMMENT: ${{ github.event.comment.body }}
+            COMMENT AUTHOR: ${{ github.event.comment.user.login }}
+
+            You've been asked to work on something. The request is in the COMMENT above.
+
+            Follow CLAUDE.md conventions. If this requires code changes:
+            1. Implement the changes
+            2. Write/update tests
+            3. Create a PR referencing this issue
+
+            If this is a question or clarification, respond with a helpful comment.
+
+          claude_args: >-
+            --allowed-tools
+            "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"

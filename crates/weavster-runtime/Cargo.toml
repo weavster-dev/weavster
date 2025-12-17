@@ -1,0 +1,36 @@
+[package]
+name = "weavster-runtime"
+description = "Execution runtime for Weavster - designed for minimal Docker images"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+weavster-core.workspace = true
+
+# Serialization
+serde.workspace = true
+
+# Database
+sqlx.workspace = true
+
+# Job queue
+apalis.workspace = true
+apalis-sql.workspace = true
+
+# Async
+tokio.workspace = true
+futures.workspace = true
+
+# Error handling
+anyhow.workspace = true
+
+# Logging
+tracing.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
