@@ -10,8 +10,8 @@ Once you provide the description, I will:
 
 1. **Analyze your request** to determine the issue type:
    - **Bug**: Something is broken or not working correctly
-   - **Enhancement**: New functionality or improvement to existing features
-   - **Documentation**: Missing or unclear documentation
+   - **Feature**: New functionality or improvement to existing features
+   - **Docs**: Missing or unclear documentation
 
 2. **Intelligently fill the template** based on your description:
 
@@ -20,12 +20,12 @@ Once you provide the description, I will:
    - Labels: `bug`
    - Sections: Description, Steps to Reproduce, Configuration (if relevant), Error Output, Version, OS
 
-   **Enhancement Template:**
-   - Title: `[Enhancement] Concise description`
+   **Feature Template:**
+   - Title: `[Feature] Concise description`
    - Labels: `enhancement`
    - Sections: Description, Use Case, Proposed Solution, Affected Crate(s)
 
-   **Documentation Template:**
+   **Docs Template:**
    - Title: `[Docs] Concise description`
    - Labels: `documentation`
    - Sections: Summary, What's Missing or Unclear, Proposed Content, Location

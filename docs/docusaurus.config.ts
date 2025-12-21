@@ -55,7 +55,7 @@ const config: Config = {
   ],
 
   themeConfig: {
-    image: "img/weavster-social-card.jpg",
+    image: "img/docusaurus-social-card.jpg",
     colorMode: {
       respectPrefersColorScheme: true,
     },
