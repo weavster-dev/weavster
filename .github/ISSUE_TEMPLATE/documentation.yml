@@ -1,0 +1,55 @@
+name: Documentation
+description: Report missing, unclear, or incorrect existing documentation
+labels: ["documentation"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Help us improve Weavster's documentation!
+
+        **Note:** This template is for reporting gaps or issues in *existing* documentation.
+        For new features, documentation should be included as part of the feature work itself.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What documentation is missing or needs improvement?
+      placeholder: The documentation for...
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-state
+    attributes:
+      label: What's Missing or Unclear
+      description: What information is lacking or confusing?
+      placeholder: Currently there's no explanation of...
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-content
+    attributes:
+      label: Proposed Content
+      description: What should the documentation include? Examples welcome.
+      placeholder: |
+        The docs should explain:
+        - How to configure X
+        - Example YAML for Y
+    validations:
+      required: false
+
+  - type: dropdown
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Where should this documentation live?
+      options:
+        - README.md
+        - CLAUDE.md
+        - docs/ folder
+        - Code comments / rustdoc
+        - Other
+    validations:
+      required: true
