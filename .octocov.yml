@@ -31,4 +31,4 @@ comment:
 report:
   if: is_default_branch
   datastores:
-    - artifact://
+    - artifact://${GITHUB_REPOSITORY}
