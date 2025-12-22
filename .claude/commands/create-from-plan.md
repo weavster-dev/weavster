@@ -55,7 +55,7 @@ Convert a plan into tracked GitHub issues and add them to the project board.
    gh project item-add 1 --owner weavster-dev --url <epic_url>
 
    # Create sub-issues, linking to epic
-   gh issue create --title "[Enhancement] Task 1" --label "enhancement" --body "Part of #<epic>\n\n..."
+   gh issue create --title "[Feature] Task 1" --label "enhancement" --body "Part of #<epic>\n\n..."
    # Update epic with actual issue numbers
    ```
 

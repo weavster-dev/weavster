@@ -1,5 +1,8 @@
 ---
 description: Create a GitHub issue and add it to the project board
+allowedTools:
+  - "Bash(gh issue:*)"
+  - "Bash(gh project:*)"
 ---
 
 # Create Issue

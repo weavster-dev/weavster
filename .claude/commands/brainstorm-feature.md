@@ -1,5 +1,11 @@
 ---
 description: Brainstorm on a feature with the goal of generating a feature plan
+allowedTools:
+  - "Read"
+  - "Write"
+  - "Glob"
+  - "Grep"
+  - "Bash(ls:*)"
 ---
 
 # Feature Brainstorm
