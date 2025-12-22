@@ -2,5 +2,26 @@
   "enabledPlugins": {
     "code-review@claude-plugins-official": true,
     "pr-review-toolkit@claude-plugins-official": true
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_input.path // empty' | { read file_path; if [ -n \"$file_path\" ] && echo \"$file_path\" | grep -qE '\\.rs$'; then cargo fmt -- \"$file_path\" 2>/dev/null || true; fi; }"
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_input.path // empty' | { read file_path; if [ -n \"$file_path\" ] && echo \"$file_path\" | grep -qE '\\.toml$'; then taplo fmt \"$file_path\" 2>/dev/null || true; fi; }"
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // .tool_input.path // empty' | { read file_path; if [ -n \"$file_path\" ] && echo \"$file_path\" | grep -qE '\\.(yaml|yml)$'; then prettier --write \"$file_path\" 2>/dev/null || true; fi; }"
+          }
+        ]
+      }
+    ]
   }
 }

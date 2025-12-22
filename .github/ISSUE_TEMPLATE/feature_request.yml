@@ -1,6 +1,6 @@
 name: Feature Request
 description: Request a new feature or enhancement
-labels: ["enhancement", "claude-assist"]
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:
@@ -65,3 +65,18 @@ body:
         - Unknown
     validations:
       required: false
+
+  - type: checkboxes
+    id: documentation
+    attributes:
+      label: Documentation Requirements
+      description: What documentation will this feature need?
+      options:
+        - label: README or CLAUDE.md updates
+          required: false
+        - label: API documentation (rustdoc)
+          required: false
+        - label: Usage examples
+          required: false
+        - label: Configuration reference
+          required: false
