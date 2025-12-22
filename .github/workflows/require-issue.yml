@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, edited, synchronize]
 
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   check-issue:
     runs-on: ubuntu-latest
@@ -24,37 +28,47 @@ jobs:
             const hasClosingKeyword = closingKeywords.test(body);
             const hasPartOfKeyword = partOfKeywords.test(body);
 
-            // Check for linked issues via GraphQL (more reliable than timeline API)
-            const query = `
-              query($owner: String!, $repo: String!, $number: Int!) {
-                repository(owner: $owner, name: $repo) {
-                  pullRequest(number: $number) {
-                    closingIssuesReferences(first: 10) {
-                      nodes {
-                        number
+            // If we already found keywords in the body, we're good
+            if (hasClosingKeyword || hasPartOfKeyword) {
+              console.log('✅ PR body contains issue reference');
+              return;
+            }
+
+            // Try to check for linked issues via GraphQL
+            try {
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    pullRequest(number: $number) {
+                      closingIssuesReferences(first: 10) {
+                        nodes {
+                          number
+                        }
                       }
                     }
                   }
                 }
+              `;
+
+              const result = await github.graphql(query, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                number: pr.number,
+              });
+
+              const linkedIssues = result.repository?.pullRequest?.closingIssuesReferences?.nodes || [];
+
+              if (linkedIssues.length > 0) {
+                const issueNumbers = linkedIssues.map(i => `#${i.number}`).join(', ');
+                console.log(`✅ PR is linked to issue(s): ${issueNumbers}`);
+                return;
               }
-            `;
-
-            const result = await github.graphql(query, {
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              number: pr.number,
-            });
-
-            const linkedIssues = result.repository.pullRequest.closingIssuesReferences.nodes;
-            const hasLinkedIssue = linkedIssues.length > 0;
-
-            if (hasLinkedIssue) {
-              const issueNumbers = linkedIssues.map(i => `#${i.number}`).join(', ');
-              console.log(`✅ PR is linked to issue(s): ${issueNumbers}`);
-            } else if (hasClosingKeyword || hasPartOfKeyword) {
-              console.log('✅ PR body contains issue reference');
-            } else {
-              core.setFailed(
-                'PR must be linked to an issue. Use "Closes #N", "Fixes #N", or "Part of #N" in the PR description, or link an issue via the Development section in the sidebar.'
-              );
+            } catch (error) {
+              console.log('⚠️ Could not check linked issues via API, falling back to body check only');
+              console.log(`Error: ${error.message}`);
+              // If API fails, we already checked body above, so fail
             }
+
+            core.setFailed(
+              'PR must be linked to an issue. Use "Closes #N", "Fixes #N", or "Part of #N" in the PR description, or link an issue via the GitHub sidebar.'
+            );
