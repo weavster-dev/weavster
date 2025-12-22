@@ -1,0 +1,74 @@
+name: Require Linked Issue
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  check-issue:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for linked issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const body = pr.body || '';
+
+            // Check for closing keywords in PR body
+            const closingKeywords = /(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#\d+/i;
+
+            // Check for "Part of #" references in PR body
+            const partOfKeywords = /part\s+of\s+#\d+/i;
+
+            const hasClosingKeyword = closingKeywords.test(body);
+            const hasPartOfKeyword = partOfKeywords.test(body);
+
+            // If we already found keywords in the body, we're good
+            if (hasClosingKeyword || hasPartOfKeyword) {
+              console.log('✅ PR body contains issue reference');
+              return;
+            }
+
+            // Try to check for linked issues via GraphQL
+            try {
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    pullRequest(number: $number) {
+                      closingIssuesReferences(first: 10) {
+                        nodes {
+                          number
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+
+              const result = await github.graphql(query, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                number: pr.number,
+              });
+
+              const linkedIssues = result.repository?.pullRequest?.closingIssuesReferences?.nodes || [];
+
+              if (linkedIssues.length > 0) {
+                const issueNumbers = linkedIssues.map(i => `#${i.number}`).join(', ');
+                console.log(`✅ PR is linked to issue(s): ${issueNumbers}`);
+                return;
+              }
+            } catch (error) {
+              console.log('⚠️ Could not check linked issues via API, falling back to body check only');
+              console.log(`Error: ${error.message}`);
+              // If API fails, we already checked body above, so fail
+            }
+
+            core.setFailed(
+              'PR must be linked to an issue. Use "Closes #N", "Fixes #N", or "Part of #N" in the PR description, or link an issue via the GitHub sidebar.'
+            );

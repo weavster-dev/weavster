@@ -118,6 +118,14 @@ weavster.yaml           # Project config, runtime settings
 - Prefer `thiserror` for library errors, `anyhow` for application errors
 - Use `tracing` for logging, not `println!` or `log`
 
+### Automatic Formatting with Claude Code
+
+Files are automatically formatted after Claude edits them via PostToolUse hooks configured in `.claude/settings.json`:
+
+- **cargo fmt** formats: Rust files (*.rs)
+- **taplo** formats: TOML files (*.toml)
+- **prettier** formats: YAML files (*.yaml, *.yml)
+
 ### Error Handling
 
 ```rust
@@ -170,6 +178,53 @@ mod tests {
 - All public APIs must have doc comments
 - Include examples in doc comments where helpful
 - Update CHANGELOG.md for user-facing changes
+- Documentation is part of "done" for all features and fixes
+
+## Documentation Site
+
+User-facing documentation lives in `/docs` (Docusaurus) and is published to https://docs.weavster.dev
+
+### Structure
+
+```
+docs/
+├── docs/                    # Markdown source files
+│   ├── index.md             # Homepage
+│   ├── getting-started/     # Installation, first flow
+│   ├── configuration/       # Project, flows config
+│   ├── concepts/            # Transforms, connectors
+│   └── cli/                 # CLI reference
+├── docusaurus.config.ts     # Site configuration
+└── sidebars.ts              # Sidebar structure
+```
+
+### Versioning
+
+- `next` - Built from `main` branch (development docs)
+- `X.Y.Z` - Snapshot created on each release
+
+### Local Development
+
+```bash
+cd docs
+npm install
+npm start           # Dev server at localhost:3000
+npm run build       # Production build
+```
+
+### Deployment
+
+Docs are automatically deployed via GitHub Actions:
+- **Push to main** → Deploys `next` version
+- **Release published** → Creates version snapshot and deploys
+
+### Writing Docs
+
+When adding features or making changes:
+1. Update relevant docs in `/docs/docs/`
+2. Follow existing patterns for YAML examples
+3. Include practical examples where helpful
+4. PR template includes documentation checklist
 
 ## Git & Version Control Rules
 
@@ -181,6 +236,37 @@ mod tests {
 - ALWAYS wait for confirmation before any git operation
 - When creating PRs, describe only the changes (no test/deploy plans)
 - Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`
+
+### GitHub Project Constants
+
+These values are used by Claude Code commands for project board integration:
+
+| Constant | Value | Usage |
+|----------|-------|-------|
+| Project ID | `1` | `gh project item-add 1 ...` |
+| Owner | `weavster-dev` | `--owner weavster-dev` |
+
+### Issue Title Prefixes
+
+Standardized prefixes for GitHub issues:
+
+| Prefix | Usage |
+|--------|-------|
+| `[Bug]` | Bug reports |
+| `[Feature]` | New functionality |
+| `[Docs]` | Documentation issues |
+| `[Epic]` | Multi-issue tracking |
+
+### YAGNI (You Aren't Gonna Need It)
+
+We strongly value applying YAGNI principles:
+
+- Don't create methods, scopes, or features in anticipation of future use
+- Remove unused code rather than keeping it "just in case"
+- Prefer inline code over abstractions until patterns emerge through actual usage
+- Wait to extract concerns/services until there's a clear need
+- Avoid premature optimization - add indexes, caching, etc. only when performance issues arise
+- Keep implementations simple and direct until complexity is actually required
 
 ## Key Design Decisions
 
@@ -290,7 +376,7 @@ crates/weavster-codegen/
 3. Register in `crates/weavster-core/src/connectors/mod.rs`
 4. Add config parsing in `crates/weavster-core/src/config/connectors.rs`
 5. Add tests in `crates/weavster-core/tests/connectors/{name}.rs`
-6. Document in `docs/connectors/{name}.md`
+6. Document in `docs/docs/concepts/connectors.md`
 
 ### Adding a New Transform
 
@@ -298,7 +384,7 @@ crates/weavster-codegen/
 2. Implement `Transform` trait
 3. Register in transform DSL parser
 4. Add tests with fixture YAML files
-5. Document in `docs/transforms/{name}.md`
+5. Document in `docs/docs/concepts/transforms.md`
 
 ## Dependencies Policy
 
