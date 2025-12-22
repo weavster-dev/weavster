@@ -11,7 +11,7 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-license = "MIT OR Apache-2.0"
+license = "BUSL-1.1"
 repository = "https://github.com/weavster-dev/weavster"
 authors = ["Gregory Hunt <huntg1@gmail.com>"]
 rust-version = "1.92.0"
