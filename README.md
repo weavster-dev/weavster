@@ -126,3 +126,19 @@ crates/
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## License
+
+Weavster is licensed under the [Business Source License 1.1](LICENSE) (BSL 1.1).
+
+**What this means:**
+- **Free for most uses**: You can use, modify, and distribute Weavster for any purpose that doesn't compete with our paid offerings
+- **Source available**: Full source code is always available
+- **Converts to open source**: Each version automatically converts to [MPL 2.0](https://www.mozilla.org/en-US/MPL/2.0/) after 4 years
+- **Free products exempt**: Products offered free of charge are never considered competitive
+
+**Not permitted** without a commercial license:
+- Offering Weavster as a hosted service that competes with Weavster Dev's paid products
+- Embedding Weavster in a competing commercial product
+
+For commercial licensing inquiries, see the [LICENSE](LICENSE) file or contact us.
