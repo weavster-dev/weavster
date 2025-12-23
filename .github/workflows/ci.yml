@@ -108,11 +108,11 @@ jobs:
           name: weavster-${{ matrix.target }}
           path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
 
-  # Build Docker images (only on main)
+  # Build Docker images (temporarily disabled - re-enable when needed)
   docker:
     name: Docker Build
     needs: [fmt, clippy, test]
-    if: github.ref == 'refs/heads/main'
+    if: false # Disabled: was github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
