@@ -15,6 +15,7 @@ Once you provide the description, I will:
    - **Bug**: Something is broken or not working correctly
    - **Feature**: New functionality or improvement to existing features
    - **Docs**: Missing or unclear documentation
+   - **Epic**: Large initiative with multiple sub-tasks (prefer `/create-from-plan` for epics)
 
 2. **Intelligently fill the template** based on your description:
 
@@ -32,6 +33,12 @@ Once you provide the description, I will:
    - Title: `[Docs] Concise description`
    - Labels: `documentation`
    - Sections: Summary, What's Missing or Unclear, Proposed Content, Location
+
+   **Epic Template:**
+   - Title: `[Epic] Concise description`
+   - Labels: `epic`
+   - Sections: Overview, Goals, Sub-tasks (checkboxes), Success Criteria
+   - Note: Sub-issues should link back with `Part of #<epic>`
 
 3. **Create the issue** using the GitHub CLI with appropriate labels
 

@@ -16,8 +16,35 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  check-ci:
+    name: Verify CI Status
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CI status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Get the commit SHA for this tag
+          if [ -n "${{ inputs.tag }}" ]; then
+            REF="${{ inputs.tag }}"
+          else
+            REF="${GITHUB_REF#refs/tags/}"
+          fi
+
+          # Get CI status for the tagged commit
+          STATUS=$(gh api repos/${{ github.repository }}/commits/${GITHUB_SHA}/check-runs \
+            --jq '[.check_runs[] | select(.name | test("Clippy|Test|Format"))] | if length == 0 then "no_runs" else (if all(.conclusion == "success") then "success" else "failure" end) end')
+
+          if [ "$STATUS" != "success" ]; then
+            echo "ERROR: CI has not passed for this commit (status: $STATUS)"
+            echo "Please ensure all CI checks pass before releasing."
+            exit 1
+          fi
+          echo "CI is green for this release"
+
   validate:
     name: Validate Release
+    needs: check-ci
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
@@ -189,6 +216,15 @@ jobs:
           echo "release_name=v${{ needs.validate.outputs.version }}: $NAME" >> $GITHUB_OUTPUT
           echo "release_summary=$SUMMARY" >> $GITHUB_OUTPUT
 
+      - name: Generate changelog for release
+        uses: orhun/git-cliff-action@v3
+        id: changelog
+        with:
+          config: cliff.toml
+          args: --verbose --latest --strip header
+        env:
+          OUTPUT: CHANGES.md
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
@@ -196,12 +232,10 @@ jobs:
           tag_name: v${{ needs.validate.outputs.version }}
           draft: false
           prerelease: ${{ needs.validate.outputs.is_prerelease }}
-          generate_release_notes: true
           body: |
             ${{ steps.parse.outputs.release_summary }}
 
-            ---
-
+            ${{ steps.changelog.outputs.content }}
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -9,8 +9,28 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  check-ci:
+    name: Verify CI Status
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check CI status on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Get the latest CI run on main
+          STATUS=$(gh api repos/${{ github.repository }}/commits/main/check-runs \
+            --jq '[.check_runs[] | select(.name | test("Clippy|Test|Format"))] | if length == 0 then "no_runs" else (if all(.conclusion == "success") then "success" else "failure" end) end')
+
+          if [ "$STATUS" != "success" ]; then
+            echo "ERROR: CI is not green on main branch (status: $STATUS)"
+            echo "Skipping nightly release until CI passes."
+            exit 1
+          fi
+          echo "CI is green on main branch"
+
   check-changes:
     name: Check for Changes
+    needs: check-ci
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.check_changes.outputs.SHOULD_CREATE_RELEASE }}
