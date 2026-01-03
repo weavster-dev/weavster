@@ -1,0 +1,201 @@
+name: Nightly Development Release
+
+on:
+  schedule:
+    - cron: "0 8 * * *" # Run every day at 12AM PST (8AM UTC)
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check-changes:
+    name: Check for Changes
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.check_changes.outputs.SHOULD_CREATE_RELEASE }}
+      latest_tag: ${{ steps.get_latest_tag.outputs.latest_tag }}
+      next_tag: ${{ steps.next_dev_version.outputs.next_tag }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get latest tag
+        id: get_latest_tag
+        run: |
+          # Get latest tag matching semver with optional .devN suffix
+          latest_tag=$(git tag -l | grep -E '^[0-9]+\.[0-9]+\.[0-9]+(\.dev[0-9]+)?$' | grep -Ev 'rc|alpha|beta' | sed 's/\.dev/~dev/' | sort --version-sort | sed 's/~dev/.dev/' | tail -n1)
+          if [ -z "$latest_tag" ]; then
+            echo "No matching tags found, using 0.0.0"
+            latest_tag="0.0.0"
+          fi
+          echo "latest_tag=$latest_tag" >> $GITHUB_OUTPUT
+          echo "Latest tag: $latest_tag"
+
+      - name: Check for changes since latest tag
+        id: check_changes
+        run: |
+          latest_tag=${{ steps.get_latest_tag.outputs.latest_tag }}
+          if [ "$latest_tag" = "0.0.0" ]; then
+            echo "SHOULD_CREATE_RELEASE=true" >> $GITHUB_OUTPUT
+            echo "First release - will create."
+          elif git diff --exit-code $latest_tag HEAD -- '*.rs' '*.toml' '.github/workflows/*.yml' 'Cargo.lock'; then
+            echo "SHOULD_CREATE_RELEASE=false" >> $GITHUB_OUTPUT
+            echo "No changes in Rust files or dependencies since $latest_tag"
+          else
+            echo "SHOULD_CREATE_RELEASE=true" >> $GITHUB_OUTPUT
+            echo "Changes detected since $latest_tag"
+          fi
+
+      - name: Determine next development release tag
+        id: next_dev_version
+        if: steps.check_changes.outputs.SHOULD_CREATE_RELEASE == 'true'
+        run: |
+          latest_tag=${{ steps.get_latest_tag.outputs.latest_tag }}
+
+          # Extract version components
+          if [[ $latest_tag =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)(\.dev([0-9]+))?$ ]]; then
+            major="${BASH_REMATCH[1]}"
+            minor="${BASH_REMATCH[2]}"
+            patch="${BASH_REMATCH[3]}"
+            prev_counter="${BASH_REMATCH[5]}"
+
+            if [ -z "$prev_counter" ]; then
+              # First dev release for next patch version
+              patch=$((patch + 1))
+              counter=1
+            else
+              # Increment dev counter
+              counter=$((prev_counter + 1))
+            fi
+
+            next_tag="${major}.${minor}.${patch}.dev${counter}"
+          else
+            next_tag="0.1.0.dev1"
+          fi
+
+          echo "next_tag=$next_tag" >> $GITHUB_OUTPUT
+          echo "Next tag: $next_tag"
+
+  generate-name:
+    name: Generate Release Name
+    needs: check-changes
+    if: needs.check-changes.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      release_name: ${{ steps.generate.outputs.release_name }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate creative release name
+        id: generate
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          direct_prompt: |
+            Generate a short, creative codename for a nightly development release.
+
+            Version: ${{ needs.check-changes.outputs.next_tag }}
+            Project: Weavster (a real-time data transformation pipeline tool, like dbt for streaming)
+
+            Requirements:
+            - 2-3 words maximum
+            - Evocative and memorable
+            - Can reference: weaving, threads, streams, data flow, pipelines, transformation
+            - Should feel technical but approachable
+            - Examples of good names: "Midnight Loom", "Swift Current", "Thread Spinner"
+
+            Output ONLY the codename, nothing else. No quotes, no explanation.
+
+      - name: Set release name
+        run: |
+          CODENAME="${{ steps.generate.outputs.result }}"
+          # Fallback if AI generation fails
+          if [ -z "$CODENAME" ]; then
+            CODENAME="Nightly Weave"
+          fi
+          echo "release_name=${{ needs.check-changes.outputs.next_tag }}: $CODENAME" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build Release
+    needs: [check-changes, generate-name]
+    if: needs.check-changes.outputs.should_release == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: weavster
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: weavster
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: weavster
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: weavster.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} -p weavster-cli
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weavster-${{ matrix.target }}
+          path: target/${{ matrix.target }}/release/${{ matrix.artifact }}
+
+  release:
+    name: Create Release
+    needs: [check-changes, generate-name, build]
+    if: needs.check-changes.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          for dir in artifacts/weavster-*/; do
+            target=$(basename "$dir")
+            if [[ "$target" == *"windows"* ]]; then
+              cp "$dir/weavster.exe" "release-assets/${target}.exe"
+            else
+              cp "$dir/weavster" "release-assets/${target}"
+              chmod +x "release-assets/${target}"
+            fi
+          done
+          ls -la release-assets/
+
+      - name: Create development release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ needs.generate-name.outputs.release_name }}
+          tag_name: ${{ needs.check-changes.outputs.next_tag }}
+          draft: false
+          prerelease: true
+          generate_release_notes: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

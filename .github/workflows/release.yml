@@ -1,0 +1,203 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g., v0.1.0)"
+        required: true
+        type: string
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          VERSION="${TAG#v}"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          if [[ "$TAG" == *"-rc"* ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "Version: $VERSION"
+
+      - name: Validate Cargo.toml version
+        run: |
+          CARGO_VERSION=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          # Strip -rc.N suffix for comparison
+          TAG_VERSION_BASE="${TAG_VERSION%-rc.*}"
+
+          if [ "$CARGO_VERSION" != "$TAG_VERSION_BASE" ]; then
+            echo "ERROR: Cargo.toml version ($CARGO_VERSION) does not match tag version ($TAG_VERSION_BASE)"
+            exit 1
+          fi
+          echo "Version validated: $CARGO_VERSION"
+
+  generate-notes:
+    name: Generate Release Notes
+    needs: validate
+    runs-on: ubuntu-latest
+    outputs:
+      release_name: ${{ steps.generate.outputs.release_name }}
+      release_notes: ${{ steps.generate.outputs.release_notes }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          # Get the tag before the current one (excluding dev releases)
+          PREV_TAG=$(git tag -l 'v*' | grep -v '\.dev' | sort -V | tail -n2 | head -n1)
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+          echo "Previous tag: $PREV_TAG"
+
+      - name: Generate release name and notes
+        id: generate
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          direct_prompt: |
+            Generate a release name and summary for Weavster version ${{ needs.validate.outputs.version }}.
+
+            Weavster is a modern Enterprise Service Bus - like dbt but for real-time transactions.
+            Built with Rust, WASM sandboxing, and embedded PostgreSQL.
+
+            Get the commits since the last release:
+            ```bash
+            git log ${{ steps.prev_tag.outputs.prev_tag }}..HEAD --oneline
+            ```
+
+            Based on the changes, generate:
+
+            1. A creative release name (2-3 words, evocative, can reference weaving/threads/streams/pipelines)
+
+            2. A brief release summary (2-3 sentences highlighting the most important changes)
+
+            Output in this exact format:
+            RELEASE_NAME: [your creative name]
+            RELEASE_SUMMARY: [your summary]
+
+  build:
+    name: Build Release
+    needs: validate
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: weavster
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            artifact: weavster
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: weavster
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: weavster.exe
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --target ${{ matrix.target }} -p weavster-cli
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create archive (Unix)
+        if: matrix.os != 'windows-latest'
+        run: |
+          cd target/${{ matrix.target }}/release
+          tar -czvf ../../../weavster-${{ needs.validate.outputs.version }}-${{ matrix.target }}.tar.gz ${{ matrix.artifact }}
+
+      - name: Create archive (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          cd target/${{ matrix.target }}/release
+          Compress-Archive -Path ${{ matrix.artifact }} -DestinationPath ../../../weavster-${{ needs.validate.outputs.version }}-${{ matrix.target }}.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: weavster-${{ matrix.target }}
+          path: weavster-${{ needs.validate.outputs.version }}-${{ matrix.target }}.*
+
+  release:
+    name: Create Release
+    needs: [validate, generate-notes, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f \( -name "*.tar.gz" -o -name "*.zip" \) -exec mv {} release-assets/ \;
+          ls -la release-assets/
+
+      - name: Parse release info
+        id: parse
+        run: |
+          RESULT="${{ needs.generate-notes.outputs.release_name }}"
+          # Extract name and summary from Claude's output
+          NAME=$(echo "$RESULT" | grep -oP 'RELEASE_NAME:\s*\K.*' || echo "Weavster ${{ needs.validate.outputs.version }}")
+          SUMMARY=$(echo "$RESULT" | grep -oP 'RELEASE_SUMMARY:\s*\K.*' || echo "")
+
+          echo "release_name=v${{ needs.validate.outputs.version }}: $NAME" >> $GITHUB_OUTPUT
+          echo "release_summary=$SUMMARY" >> $GITHUB_OUTPUT
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ steps.parse.outputs.release_name }}
+          tag_name: v${{ needs.validate.outputs.version }}
+          draft: false
+          prerelease: ${{ needs.validate.outputs.is_prerelease }}
+          generate_release_notes: true
+          body: |
+            ${{ steps.parse.outputs.release_summary }}
+
+            ---
+
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
