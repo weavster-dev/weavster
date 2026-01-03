@@ -1,15 +1,22 @@
 name: Deploy Docs
 
 on:
+  # Deploy "next" when nightly release is created
+  workflow_run:
+    workflows: ["Nightly Development Release"]
+    types: [completed]
+    branches: [main]
+  # Deploy versioned docs when release is published
+  release:
+    types: [published]
+  # Manual trigger
+  workflow_dispatch:
+  # Also deploy when docs content changes (without waiting for nightly)
   push:
     branches:
       - main
     paths:
       - "docs/**"
-      - ".github/workflows/docs.yml"
-  release:
-    types: [published]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,6 +29,10 @@ concurrency:
 
 jobs:
   build:
+    # Skip if triggered by failed nightly workflow
+    if: |
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     defaults:
       run:
