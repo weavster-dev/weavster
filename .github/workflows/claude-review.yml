@@ -35,74 +35,55 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for better diff context
+          fetch-depth: 1
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rust-analyzer
 
       - name: Run Claude Code Review
         uses: anthropics/claude-code-action@v1
+        env:
+          ENABLE_LSP_TOOL: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
-            PR TITLE: ${{ github.event.pull_request.title }}
-            PR AUTHOR: ${{ github.event.pull_request.user.login }}
 
-            Please review this pull request for the Weavster project.
+            Please review this pull request and provide feedback on:
+            - Code quality and Rust best practices (thiserror in libs, anyhow in bins, no unwrap in library code)
+            - Potential bugs or issues
+            - Performance considerations
+            - Security concerns
+            - Architecture compliance (weavster-core has no workspace deps, weavster-runtime stays minimal)
 
-            ## Review Focus Areas
+            Use CLAUDE.md for project-specific conventions. Be constructive and helpful.
 
-            1. **Rust Best Practices**
-               - Proper error handling (thiserror in libs, anyhow in bins)
-               - No unwrap() in library code
-               - Appropriate use of lifetimes and ownership
-               - Idiomatic Rust patterns
+            IMPORTANT: Before posting your review, minimize any previous Claude Code review comments:
 
-            2. **Architecture Compliance**
-               - weavster-core has no workspace dependencies
-               - weavster-runtime stays minimal (Docker image size matters)
-               - Proper separation of concerns between crates
-
-            3. **Code Quality**
-               - Tests included for new functionality
-               - Doc comments on public APIs
-               - No clippy warnings introduced
-               - Follows conventional commit format
-
-            4. **Performance Considerations**
-               - Avoid unnecessary allocations in hot paths
-               - Proper async usage (no blocking in async context)
-               - Efficient serialization/deserialization
-
-            5. **Security**
-               - No secrets or credentials in code
-               - Safe handling of user input
-               - WASM sandboxing maintained for transforms
-
-            ## Review Process
-
-            1. First, minimize any previous Claude review comments:
+            1. Get all previous Claude comment IDs:
                ```bash
-               for comment_id in $(gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json comments --jq '.comments[] | select(.author.login == "claude") | .id'); do
-                 gh api graphql -f query="mutation { minimizeComment(input: {subjectId: \"$comment_id\", classifier: OUTDATED}) { clientMutationId } }"
-               done
+               gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json comments --jq '.comments[] | select(.author.login == "claude") | .id'
                ```
 
-            2. Review the diff:
+            2. For each comment ID (node_id), minimize it as OUTDATED:
                ```bash
-               gh pr diff ${{ github.event.pull_request.number }} --repo ${{ github.repository }}
+               gh api graphql -f query='
+                 mutation {
+                   minimizeComment(input: {subjectId: "COMMENT_NODE_ID_HERE", classifier: OUTDATED}) {
+                     clientMutationId
+                   }
+                 }'
                ```
 
-            3. Check related issues:
+            3. Finally, post your new review using:
                ```bash
-               gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json body
+               gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "YOUR_REVIEW_HERE"
                ```
 
-            4. Post your review with constructive feedback.
-
-            Use CLAUDE.md for project-specific conventions. Be constructive and specific.
-            If changes look good, say so! Approve straightforward PRs.
-
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh api:*),Bash(cargo fmt:*),Bash(cargo clippy:*)"'
+          claude_args: '--model opus --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh api:*),Bash(cargo fmt:*),Bash(cargo clippy:*)"'
 
   # Handle @claude mentions in PR/Issue comments
   # Only responds to org members/collaborators to prevent token abuse
