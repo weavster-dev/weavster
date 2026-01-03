@@ -216,14 +216,20 @@ jobs:
           echo "release_name=v${{ needs.validate.outputs.version }}: $NAME" >> $GITHUB_OUTPUT
           echo "release_summary=$SUMMARY" >> $GITHUB_OUTPUT
 
-      - name: Generate changelog for release
-        uses: orhun/git-cliff-action@v3
-        id: changelog
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
         with:
-          config: cliff.toml
-          args: --verbose --latest --strip header
-        env:
-          OUTPUT: CHANGES.md
+          tool: git-cliff
+
+      - name: Generate changelog for release
+        id: changelog
+        run: |
+          # Generate changelog for latest tag only
+          CONTENT=$(git-cliff --config cliff.toml --latest --strip header)
+          # Handle multiline output for GitHub Actions
+          echo "content<<EOF" >> $GITHUB_OUTPUT
+          echo "$CONTENT" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create release
         uses: softprops/action-gh-release@v2
