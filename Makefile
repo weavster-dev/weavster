@@ -45,7 +45,7 @@ setup:
 	rustup show
 	@echo ""
 	@echo "Installing Rust development tools..."
-	rustup component add rustfmt clippy
+	rustup component add rustfmt clippy rust-analyzer
 	@echo ""
 	@echo "Installing cargo-watch for development..."
 	cargo install cargo-watch || true
