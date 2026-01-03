@@ -85,7 +85,7 @@ jobs:
     if: needs.check-changes.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     outputs:
-      release_name: ${{ steps.generate.outputs.release_name }}
+      release_name: ${{ steps.set_name.outputs.release_name }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -113,6 +113,7 @@ jobs:
             Output ONLY the codename, nothing else. No quotes, no explanation.
 
       - name: Set release name
+        id: set_name
         run: |
           CODENAME="${{ steps.generate.outputs.result }}"
           # Fallback if AI generation fails

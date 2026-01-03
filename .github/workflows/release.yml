@@ -62,8 +62,7 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     outputs:
-      release_name: ${{ steps.generate.outputs.release_name }}
-      release_notes: ${{ steps.generate.outputs.release_notes }}
+      result: ${{ steps.generate.outputs.result }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -177,10 +176,15 @@ jobs:
       - name: Parse release info
         id: parse
         run: |
-          RESULT="${{ needs.generate-notes.outputs.release_name }}"
+          RESULT="${{ needs.generate-notes.outputs.result }}"
           # Extract name and summary from Claude's output
           NAME=$(echo "$RESULT" | grep -oP 'RELEASE_NAME:\s*\K.*' || echo "Weavster ${{ needs.validate.outputs.version }}")
           SUMMARY=$(echo "$RESULT" | grep -oP 'RELEASE_SUMMARY:\s*\K.*' || echo "")
+
+          # Fallback if parsing fails
+          if [ -z "$NAME" ] || [ "$NAME" = "Weavster ${{ needs.validate.outputs.version }}" ]; then
+            NAME="Weavster Release"
+          fi
 
           echo "release_name=v${{ needs.validate.outputs.version }}: $NAME" >> $GITHUB_OUTPUT
           echo "release_summary=$SUMMARY" >> $GITHUB_OUTPUT
