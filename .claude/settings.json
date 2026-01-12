@@ -21,8 +21,9 @@
     ]
   },
   "enabledPlugins": {
-    "code-review@claude-plugins-official": true,
-    "pr-review-toolkit@claude-plugins-official": true,
     "rust-analyzer-lsp@claude-plugins-official": true
-  }
+  },
+  "pluginMarketplaces": [
+    "https://github.com/anthropics/claude-plugins-official.git"
+  ]
 }
