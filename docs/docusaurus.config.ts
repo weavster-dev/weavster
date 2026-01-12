@@ -43,6 +43,7 @@ const config: Config = {
             current: {
               label: "next",
               path: "next",
+              banner: "unreleased",
             },
           },
         },
