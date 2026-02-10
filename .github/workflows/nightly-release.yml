@@ -17,9 +17,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Get the latest CI run on main
-          STATUS=$(gh api repos/${{ github.repository }}/commits/main/check-runs \
-            --jq '[.check_runs[] | select(.name | test("Clippy|Test|Format"))] | if length == 0 then "no_runs" else (if all(.conclusion == "success") then "success" else "failure" end) end')
+          # Get the latest CI workflow run on main branch
+          STATUS=$(gh api repos/${{ github.repository }}/actions/workflows/ci.yml/runs \
+            --jq '.workflow_runs | map(select(.head_branch == "main")) | first | .conclusion // "no_runs"')
 
           if [ "$STATUS" != "success" ]; then
             echo "ERROR: CI is not green on main branch (status: $STATUS)"
