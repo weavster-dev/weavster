@@ -4,6 +4,7 @@
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use std::io::{BufRead, BufReader, BufWriter, Write};
 
 use crate::error::Result;
 
@@ -144,59 +145,109 @@ fn default_pg_schema() -> String {
 
 /// File-based input connector
 pub struct FileInputConnector {
-    #[allow(dead_code)]
     config: FileConnectorConfig,
-    // TODO: Add file reader state
+    reader: Option<BufReader<std::fs::File>>,
+    line_number: usize,
 }
 
 impl FileInputConnector {
     /// Create a new file input connector
     pub fn new(config: FileConnectorConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            reader: None,
+            line_number: 0,
+        }
+    }
+
+    fn ensure_reader(&mut self) -> Result<&mut BufReader<std::fs::File>> {
+        if self.reader.is_none() {
+            let file = std::fs::File::open(&self.config.path)?;
+            self.reader = Some(BufReader::new(file));
+        }
+        Ok(self.reader.as_mut().unwrap())
     }
 }
 
 #[async_trait]
 impl InputConnector for FileInputConnector {
     async fn pull(&mut self) -> Result<Option<Message>> {
-        // TODO: Implement file reading
-        Ok(None)
+        let reader = self.ensure_reader()?;
+        let mut line = String::new();
+        loop {
+            line.clear();
+            let bytes_read = reader.read_line(&mut line)?;
+            if bytes_read == 0 {
+                return Ok(None);
+            }
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            self.line_number += 1;
+            let payload: serde_json::Value = serde_json::from_str(trimmed)?;
+            let mut extra = std::collections::HashMap::new();
+            extra.insert("line".to_string(), self.line_number.to_string());
+            return Ok(Some(Message {
+                payload,
+                metadata: MessageMetadata {
+                    source: Some(self.config.path.clone()),
+                    extra,
+                    ..Default::default()
+                },
+            }));
+        }
     }
 
     async fn ack(&mut self, _metadata: &MessageMetadata) -> Result<()> {
-        // No-op for file connector
         Ok(())
     }
 
     async fn nack(&mut self, _metadata: &MessageMetadata) -> Result<()> {
-        // No-op for file connector
         Ok(())
     }
 }
 
 /// File-based output connector
 pub struct FileOutputConnector {
-    #[allow(dead_code)]
     config: FileConnectorConfig,
-    // TODO: Add file writer state
+    writer: Option<BufWriter<std::fs::File>>,
 }
 
 impl FileOutputConnector {
     /// Create a new file output connector
     pub fn new(config: FileConnectorConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            writer: None,
+        }
+    }
+
+    fn ensure_writer(&mut self) -> Result<&mut BufWriter<std::fs::File>> {
+        if self.writer.is_none() {
+            if let Some(parent) = std::path::Path::new(&self.config.path).parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let file = std::fs::File::create(&self.config.path)?;
+            self.writer = Some(BufWriter::new(file));
+        }
+        Ok(self.writer.as_mut().unwrap())
     }
 }
 
 #[async_trait]
 impl OutputConnector for FileOutputConnector {
-    async fn push(&mut self, _message: Message) -> Result<()> {
-        // TODO: Implement file writing
+    async fn push(&mut self, message: Message) -> Result<()> {
+        let writer = self.ensure_writer()?;
+        let line = serde_json::to_string(&message.payload)?;
+        writeln!(writer, "{}", line)?;
         Ok(())
     }
 
     async fn flush(&mut self) -> Result<()> {
-        // TODO: Flush file buffer
+        if let Some(writer) = self.writer.as_mut() {
+            writer.flush()?;
+        }
         Ok(())
     }
 }
@@ -441,70 +492,115 @@ table: users
     }
 
     #[tokio::test]
-    async fn test_file_input_connector_pull() {
+    async fn test_file_input_reads_jsonl() {
+        let dir = std::env::temp_dir().join("weavster_test_input");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.jsonl");
+        std::fs::write(
+            &path,
+            r#"{"name":"Alice","age":30}
+{"name":"Bob","age":25}
+"#,
+        )
+        .unwrap();
+
         let config = FileConnectorConfig {
-            path: "/tmp/test.jsonl".to_string(),
+            path: path.to_str().unwrap().to_string(),
             format: "jsonl".to_string(),
         };
         let mut connector = FileInputConnector::new(config);
 
-        // Currently returns None (not implemented)
-        let result = connector.pull().await.unwrap();
-        assert!(result.is_none());
+        let msg1 = connector.pull().await.unwrap().unwrap();
+        assert_eq!(msg1.payload["name"], "Alice");
+        assert_eq!(msg1.payload["age"], 30);
+
+        let msg2 = connector.pull().await.unwrap().unwrap();
+        assert_eq!(msg2.payload["name"], "Bob");
+
+        let msg3 = connector.pull().await.unwrap();
+        assert!(msg3.is_none());
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]
-    async fn test_file_input_connector_ack() {
+    async fn test_file_input_skips_blank_lines() {
+        let dir = std::env::temp_dir().join("weavster_test_blank");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("blank.jsonl");
+        std::fs::write(&path, "{\"a\":1}\n\n{\"b\":2}\n").unwrap();
+
         let config = FileConnectorConfig {
-            path: "/tmp/test.jsonl".to_string(),
+            path: path.to_str().unwrap().to_string(),
             format: "jsonl".to_string(),
         };
         let mut connector = FileInputConnector::new(config);
-        let metadata = MessageMetadata::default();
 
-        // Should not error (no-op)
-        connector.ack(&metadata).await.unwrap();
+        let msg1 = connector.pull().await.unwrap().unwrap();
+        assert_eq!(msg1.payload["a"], 1);
+        let msg2 = connector.pull().await.unwrap().unwrap();
+        assert_eq!(msg2.payload["b"], 2);
+        assert!(connector.pull().await.unwrap().is_none());
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]
-    async fn test_file_input_connector_nack() {
-        let config = FileConnectorConfig {
-            path: "/tmp/test.jsonl".to_string(),
-            format: "jsonl".to_string(),
-        };
-        let mut connector = FileInputConnector::new(config);
-        let metadata = MessageMetadata::default();
+    async fn test_file_output_writes_jsonl() {
+        let dir = std::env::temp_dir().join("weavster_test_output");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("out.jsonl");
 
-        // Should not error (no-op)
-        connector.nack(&metadata).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_file_output_connector_push() {
         let config = FileConnectorConfig {
-            path: "/tmp/output.jsonl".to_string(),
+            path: path.to_str().unwrap().to_string(),
             format: "jsonl".to_string(),
         };
         let mut connector = FileOutputConnector::new(config);
-        let message = Message {
-            payload: serde_json::json!({"test": true}),
-            metadata: MessageMetadata::default(),
-        };
 
-        // Should not error (not implemented but returns Ok)
-        connector.push(message).await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_file_output_connector_flush() {
-        let config = FileConnectorConfig {
-            path: "/tmp/output.jsonl".to_string(),
-            format: "jsonl".to_string(),
-        };
-        let mut connector = FileOutputConnector::new(config);
-
-        // Should not error (not implemented but returns Ok)
+        connector
+            .push(Message {
+                payload: serde_json::json!({"x": 1}),
+                metadata: MessageMetadata::default(),
+            })
+            .await
+            .unwrap();
+        connector
+            .push(Message {
+                payload: serde_json::json!({"x": 2}),
+                metadata: MessageMetadata::default(),
+            })
+            .await
+            .unwrap();
         connector.flush().await.unwrap();
+
+        let contents = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = contents.trim().split('\n').collect();
+        assert_eq!(lines.len(), 2);
+        let v1: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(v1["x"], 1);
+        let v2: serde_json::Value = serde_json::from_str(lines[1]).unwrap();
+        assert_eq!(v2["x"], 2);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn test_file_input_connector_ack_nack_noop() {
+        let dir = std::env::temp_dir().join("weavster_test_ack");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ack.jsonl");
+        std::fs::write(&path, "{\"a\":1}\n").unwrap();
+
+        let config = FileConnectorConfig {
+            path: path.to_str().unwrap().to_string(),
+            format: "jsonl".to_string(),
+        };
+        let mut connector = FileInputConnector::new(config);
+        let metadata = MessageMetadata::default();
+        connector.ack(&metadata).await.unwrap();
+        connector.nack(&metadata).await.unwrap();
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

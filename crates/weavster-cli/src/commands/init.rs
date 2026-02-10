@@ -68,11 +68,16 @@ description: An example flow to get you started
 input: file.input
 
 transforms:
-  - add_fields:
-      processed_at: "{{ now() }}"
+  - map:
+      full_name: name
+      email: email
 
-  - compute:
-      message_length: "len(message)"
+  - drop:
+      - name
+      - age
+
+  - add_fields:
+      processed: true
 
 outputs:
   - file.output
@@ -81,18 +86,17 @@ outputs:
 
     // Create example connectors
     let connectors = r#"# Connector configurations
-# These can be referenced in flows as "file.input", "file.output", etc.
+# Referenced in flows as "file.input", "file.output"
 
-file:
-  input:
-    type: file
-    path: "./data/input.jsonl"
-    format: jsonl
+input:
+  type: file
+  path: "./data/input.jsonl"
+  format: jsonl
 
-  output:
-    type: file
-    path: "./data/output.jsonl"
-    format: jsonl
+output:
+  type: file
+  path: "./data/output.jsonl"
+  format: jsonl
 "#;
     fs::write(project_dir.join("connectors/file.yaml"), connectors)?;
 
@@ -112,9 +116,9 @@ data/output*.jsonl
 
     // Create sample input data
     fs::create_dir_all(project_dir.join("data"))?;
-    let sample_data = r#"{"id": 1, "message": "Hello, Weavster!"}
-{"id": 2, "message": "This is a test message"}
-{"id": 3, "message": "Ready for real-time processing"}
+    let sample_data = r#"{"name":"Alice Johnson","email":"alice@example.com","age":30}
+{"name":"Bob Smith","email":"bob@example.com","age":25}
+{"name":"Carol Williams","email":"carol@example.com","age":35}
 "#;
     fs::write(project_dir.join("data/input.jsonl"), sample_data)?;
 

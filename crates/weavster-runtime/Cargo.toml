@@ -13,17 +13,10 @@ weavster-core.workspace = true
 
 # Serialization
 serde.workspace = true
-
-# Database
-sqlx.workspace = true
-
-# Job queue
-apalis.workspace = true
-apalis-sql.workspace = true
+serde_json.workspace = true
 
 # Async
 tokio.workspace = true
-futures.workspace = true
 
 # Error handling
 anyhow.workspace = true
@@ -34,4 +27,3 @@ tracing.workspace = true
 [dev-dependencies]
 rstest.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
-serde_json.workspace = true

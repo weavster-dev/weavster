@@ -34,6 +34,7 @@ pub mod config;
 pub mod connectors;
 pub mod error;
 pub mod flow;
+pub mod interpreter;
 pub mod transforms;
 
 pub use config::{Config, ProjectConfig};

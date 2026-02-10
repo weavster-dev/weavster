@@ -12,7 +12,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
+use crate::connectors::ConnectorConfig;
 use crate::error::{Error, Result};
+use crate::flow::Flow;
 
 /// Root project configuration from `weavster.yaml`
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -149,6 +151,67 @@ impl Config {
 
         Ok(Self { project, base_path })
     }
+
+    /// Load all flow definitions from `flows/*.yaml`
+    pub fn load_flows(&self) -> Result<Vec<Flow>> {
+        let flows_dir = self.base_path.join("flows");
+        if !flows_dir.exists() {
+            return Ok(vec![]);
+        }
+
+        let mut flows = Vec::new();
+        let mut entries: Vec<_> = std::fs::read_dir(&flows_dir)?
+            .filter_map(|e| e.ok())
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .is_some_and(|ext| ext == "yaml" || ext == "yml")
+            })
+            .collect();
+        entries.sort_by_key(|e| e.path());
+
+        for entry in entries {
+            let contents = std::fs::read_to_string(entry.path())?;
+            let flow: Flow = serde_yaml::from_str(&contents)?;
+            flows.push(flow);
+        }
+        Ok(flows)
+    }
+
+    /// Resolve a dotted connector reference like `"file.input"` to a `ConnectorConfig`.
+    ///
+    /// The reference format is `"<filename>.<key>"` which maps to
+    /// `connectors/<filename>.yaml` → key `<key>`.
+    pub fn load_connector_config(&self, reference: &str) -> Result<ConnectorConfig> {
+        let (file, key) = reference
+            .split_once('.')
+            .ok_or_else(|| Error::ConfigInvalid {
+                message: format!(
+                    "connector reference '{}' must be in 'file.key' format",
+                    reference
+                ),
+            })?;
+
+        let path = self
+            .base_path
+            .join("connectors")
+            .join(format!("{}.yaml", file));
+        if !path.exists() {
+            return Err(Error::ConfigNotFound {
+                path: path.display().to_string(),
+            });
+        }
+
+        let contents = std::fs::read_to_string(&path)?;
+        let doc: serde_yaml::Value = serde_yaml::from_str(&contents)?;
+
+        let connector_value = doc.get(key).ok_or_else(|| Error::ConfigInvalid {
+            message: format!("key '{}' not found in {}", key, path.display()),
+        })?;
+
+        let config: ConnectorConfig = serde_yaml::from_value(connector_value.clone())?;
+        Ok(config)
+    }
 }
 
 #[cfg(test)]
@@ -189,5 +252,63 @@ vars:
         assert_eq!(config.version, "1.0.0");
         assert_eq!(config.runtime.mode, RuntimeMode::Local);
         assert_eq!(config.runtime.local.port, 5434);
+    }
+
+    #[test]
+    fn test_load_flows_from_dir() {
+        let dir = std::env::temp_dir().join("weavster_test_flows");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("flows")).unwrap();
+        std::fs::write(dir.join("weavster.yaml"), "name: test\n").unwrap();
+        std::fs::write(
+            dir.join("flows/a.yaml"),
+            "name: flow_a\ninput: file.input\noutputs:\n  - file.output\n",
+        )
+        .unwrap();
+
+        let config = Config::load(&dir).unwrap();
+        let flows = config.load_flows().unwrap();
+        assert_eq!(flows.len(), 1);
+        assert_eq!(flows[0].name, "flow_a");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_load_connector_config() {
+        let dir = std::env::temp_dir().join("weavster_test_conn");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("connectors")).unwrap();
+        std::fs::write(dir.join("weavster.yaml"), "name: test\n").unwrap();
+        std::fs::write(
+            dir.join("connectors/file.yaml"),
+            "input:\n  type: file\n  path: ./data/in.jsonl\n  format: jsonl\noutput:\n  type: file\n  path: ./data/out.jsonl\n  format: jsonl\n",
+        )
+        .unwrap();
+
+        let config = Config::load(&dir).unwrap();
+        let conn = config.load_connector_config("file.input").unwrap();
+        match conn {
+            crate::connectors::ConnectorConfig::File(f) => {
+                assert_eq!(f.path, "./data/in.jsonl");
+            }
+            _ => panic!("Expected file connector"),
+        }
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_load_connector_config_bad_reference() {
+        let dir = std::env::temp_dir().join("weavster_test_conn_bad");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("weavster.yaml"), "name: test\n").unwrap();
+
+        let config = Config::load(&dir).unwrap();
+        let result = config.load_connector_config("noformat");
+        assert!(result.is_err());
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
