@@ -39,13 +39,11 @@ commit_parsers = [
     # Features
     { message = "^feat", group = "Features" },
 
-    # Bug Fixes (conventional + [Bug] prefix from issue titles)
+    # Bug Fixes
     { message = "^fix", group = "Bug Fixes" },
-    { message = "^\\[Bug\\]", group = "Bug Fixes" },
 
     # Documentation
     { message = "^docs", group = "Documentation" },
-    { message = "^\\[Docs\\]", group = "Documentation" },
 
     # Refactoring
     { message = "^refactor", group = "Refactoring" },
