@@ -17,7 +17,7 @@ Weavster is a developer-friendly tool for building real-time data transformation
 
 ```bash
 # Install
-curl -fsSL https://weavster.io/install.sh | sh
+curl -fsSL https://weavster.dev/install.sh | sh
 
 # Create a project
 weavster init my-project
@@ -78,21 +78,21 @@ outputs:
 
 ### Transforms
 
-| Transform | Description |
-|-----------|-------------|
-| `rename` | Rename fields |
-| `add_fields` | Add static or computed fields |
-| `compute` | Calculate new values with expressions |
-| `filter` | Include/exclude messages |
-| `drop_fields` | Remove fields |
-| `coalesce` | Use first non-null value |
+| Transform     | Description                           |
+| ------------- | ------------------------------------- |
+| `rename`      | Rename fields                         |
+| `add_fields`  | Add static or computed fields         |
+| `compute`     | Calculate new values with expressions |
+| `filter`      | Include/exclude messages              |
+| `drop_fields` | Remove fields                         |
+| `coalesce`    | Use first non-null value              |
 
 ### Runtime Modes
 
-| Mode | Use Case | Backend |
-|------|----------|---------|
-| Local | Development | Embedded PostgreSQL |
-| Remote | Production | External Postgres + Redis |
+| Mode   | Use Case    | Backend                   |
+| ------ | ----------- | ------------------------- |
+| Local  | Development | Embedded PostgreSQL       |
+| Remote | Production  | External Postgres + Redis |
 
 ## Development
 
@@ -132,12 +132,14 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 Weavster is licensed under the [Business Source License 1.1](LICENSE) (BSL 1.1).
 
 **What this means:**
+
 - **Free for most uses**: You can use, modify, and distribute Weavster for any purpose that doesn't compete with our paid offerings
 - **Source available**: Full source code is always available
 - **Converts to open source**: Each version automatically converts to [MPL 2.0](https://www.mozilla.org/en-US/MPL/2.0/) after 4 years
 - **Free products exempt**: Products offered free of charge are never considered competitive
 
 **Not permitted** without a commercial license:
+
 - Offering Weavster as a hosted service that competes with Weavster Dev's paid products
 - Embedding Weavster in a competing commercial product
 
