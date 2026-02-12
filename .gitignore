@@ -9,7 +9,12 @@ docs/node_modules/
 
 # IDE
 .idea/
-.vscode/
+# Allow VSCode config files (team-shared)
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
 *.swp
 *.swo
 *~

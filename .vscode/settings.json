@@ -1,0 +1,200 @@
+{
+  // ============================================
+  // Rust-Analyzer Configuration
+  // ============================================
+  "rust-analyzer.check.command": "clippy",
+  "rust-analyzer.check.extraArgs": [
+    "--",
+    "-D",
+    "warnings"
+  ],
+  "rust-analyzer.cargo.features": "all",
+  "rust-analyzer.workspace.symbol.search.scope": "workspace_and_dependencies",
+  "rust-analyzer.lens.enable": true,
+  "rust-analyzer.lens.implementations.enable": true,
+  "rust-analyzer.lens.references.adt.enable": true,
+  "rust-analyzer.lens.references.enumVariant.enable": true,
+  "rust-analyzer.lens.references.method.enable": true,
+  "rust-analyzer.lens.references.trait.enable": true,
+  "rust-analyzer.inlayHints.typeHints.enable": true,
+  "rust-analyzer.inlayHints.parameterHints.enable": true,
+  "rust-analyzer.inlayHints.chainingHints.enable": true,
+
+  // ============================================
+  // Editor Settings
+  // ============================================
+  "editor.formatOnSave": true,
+  "editor.rulers": [
+    100
+  ],
+  "editor.bracketPairColorization.enabled": true,
+  "editor.guides.bracketPairs": true,
+  "editor.semanticHighlighting.enabled": true,
+  "editor.linkedEditing": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll": "explicit",
+    "source.organizeImports": "explicit"
+  },
+
+  // ============================================
+  // File Settings
+  // ============================================
+  "files.insertFinalNewline": true,
+  "files.trimTrailingWhitespace": true,
+  "files.trimFinalNewlines": true,
+  "files.associations": {
+    "*.yaml": "yaml",
+    "*.yml": "yaml",
+    "CLAUDE.md": "markdown"
+  },
+  "files.exclude": {
+    "**/.git": true,
+    "**/target": true,
+    "**/.weavster": true,
+    "**/node_modules": true,
+    "**/.docusaurus": true
+  },
+
+  // ============================================
+  // Language-Specific Settings
+  // ============================================
+  "[rust]": {
+    "editor.defaultFormatter": "rust-lang.rust-analyzer",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true
+  },
+  "[toml]": {
+    "editor.defaultFormatter": "tamasfe.even-better-toml",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  },
+  "[yaml]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  },
+  "[markdown]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true,
+    "editor.wordWrap": "on"
+  },
+  "[json]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  },
+  "[jsonc]": {
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.formatOnSave": true,
+    "editor.tabSize": 2,
+    "editor.insertSpaces": true
+  },
+
+  // ============================================
+  // YAML Schema Association
+  // ============================================
+  "yaml.schemas": {
+    "./schemas/weavster.schema.json": [
+      "weavster.yaml",
+      "weavster.yml"
+    ],
+    "./schemas/flow.schema.json": [
+      "flows/*.yaml",
+      "flows/*.yml"
+    ]
+  },
+  "yaml.format.enable": true,
+  "yaml.validate": true,
+
+  // ============================================
+  // Search & Explorer
+  // ============================================
+  "search.exclude": {
+    "**/target": true,
+    "**/node_modules": true,
+    "**/.weavster": true,
+    "**/docs/build": true,
+    "**/docs/.docusaurus": true
+  },
+  "explorer.fileNesting.enabled": true,
+  "explorer.fileNesting.patterns": {
+    "Cargo.toml": "Cargo.lock, rust-toolchain.toml, rustfmt.toml, .rustfmt.toml",
+    "package.json": "package-lock.json, yarn.lock, pnpm-lock.yaml",
+    "README.md": "CLAUDE.md, CHANGELOG.md, CONTRIBUTING.md, LICENSE*"
+  },
+
+  // ============================================
+  // Terminal
+  // ============================================
+  "terminal.integrated.env.osx": {
+    "RUST_BACKTRACE": "1"
+  },
+  "terminal.integrated.env.linux": {
+    "RUST_BACKTRACE": "1"
+  },
+
+  // ============================================
+  // Testing
+  // ============================================
+  "rust-analyzer.runnables.command": "cargo",
+
+  // ============================================
+  // Error Lens (if installed)
+  // ============================================
+  "errorLens.enabledDiagnosticLevels": [
+    "error",
+    "warning"
+  ],
+  "errorLens.excludeBySource": [
+    "cSpell"
+  ],
+
+  // ============================================
+  // Spell Checker
+  // ============================================
+  "cSpell.words": [
+    "weavster",
+    "apalis",
+    "minijinja",
+    "WASI",
+    "WASM",
+    "wasmtime",
+    "postgresql",
+    "sqlx",
+    "tokio",
+    "serde",
+    "thiserror",
+    "anyhow",
+    "clap",
+    "rstest",
+    "testcontainers",
+    "taplo",
+    "docusaurus",
+    "YAGNI",
+    "phf",
+    "oras"
+  ],
+  "cSpell.enableFiletypes": [
+    "rust",
+    "toml",
+    "yaml"
+  ],
+
+  // ============================================
+  // Git
+  // ============================================
+  "gitlens.codeLens.enabled": false,
+  "gitlens.currentLine.enabled": false,
+
+  // ============================================
+  // Prettier
+  // ============================================
+  "prettier.configPath": ".prettierrc.json",
+  "prettier.requireConfig": false
+}

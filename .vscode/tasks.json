@@ -1,0 +1,98 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "cargo build",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "build"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "cargo test",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "test"
+      ],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "cargo clippy",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "clippy",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "cargo fmt",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "fmt"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "cargo check",
+      "type": "shell",
+      "command": "cargo",
+      "args": [
+        "check",
+        "--workspace"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      },
+      "problemMatcher": "$rustc"
+    },
+    {
+      "label": "Pre-commit checks",
+      "dependsOn": [
+        "cargo fmt",
+        "cargo clippy",
+        "cargo test"
+      ],
+      "dependsOrder": "sequence",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "new"
+      }
+    }
+  ]
+}
