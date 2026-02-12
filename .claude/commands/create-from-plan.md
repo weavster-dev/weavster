@@ -2,7 +2,6 @@
 description: Create GitHub epic or feature from a plan file
 allowedTools:
   - "Bash(gh issue:*)"
-  - "Bash(gh project:*)"
   - "Read"
   - "Edit"
   - "Glob"
@@ -10,7 +9,7 @@ allowedTools:
 
 # Create Epic/Feature from Plan
 
-Convert a plan into tracked GitHub issues and add them to the project board.
+Convert a plan into tracked GitHub issues.
 
 ## Workflow
 
@@ -20,12 +19,10 @@ Convert a plan into tracked GitHub issues and add them to the project board.
 
    - **Feature** (small scope): Single cohesive change
      - Creates: 1 issue → expects 1 PR
-     - Title: `[Feature] <name>`
      - Label: `enhancement`
 
    - **Epic** (large scope): Multiple distinct tasks
      - Creates: 1 tracking issue + N sub-issues
-     - Tracking issue title: `[Epic] <name>`
      - Tracking issue label: `epic`
      - Sub-issues link back with `Part of #<epic>`
      - Each sub-issue → expects 1 PR
@@ -44,18 +41,16 @@ Convert a plan into tracked GitHub issues and add them to the project board.
 
    For **Feature**:
    ```bash
-   gh issue create --title "[Feature] Name" --label "enhancement" --body "..."
-   gh project item-add 1 --owner weavster-dev --url <issue_url>
+   gh issue create --title "Name" --label "enhancement" --body "..."
    ```
 
    For **Epic**:
    ```bash
    # Create tracking issue first
-   gh issue create --title "[Epic] Name" --label "epic" --body "## Tasks\n- [ ] #TBD - Task 1\n..."
-   gh project item-add 1 --owner weavster-dev --url <epic_url>
+   gh issue create --title "Name" --label "epic" --body "## Tasks\n- [ ] #TBD - Task 1\n..."
 
    # Create sub-issues, linking to epic
-   gh issue create --title "[Feature] Task 1" --label "enhancement" --body "Part of #<epic>\n\n..."
+   gh issue create --title "Task 1" --label "enhancement" --body "Part of #<epic>\n\n..."
    # Update epic with actual issue numbers
    ```
 
@@ -81,10 +76,6 @@ Include in every issue:
 ## Tasks
 - [ ] Implementation task 1
 - [ ] Implementation task 2
-
-## Documentation
-- [ ] Update relevant docs (README, CLAUDE.md, rustdoc)
-- [ ] Add/update code examples if applicable
 
 ## Acceptance Criteria
 [From plan or inferred]

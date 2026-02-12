@@ -237,26 +237,6 @@ When adding features or making changes:
 - When creating PRs, describe only the changes (no test/deploy plans)
 - Use conventional commits: `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`
 
-### GitHub Project Constants
-
-These values are used by Claude Code commands for project board integration:
-
-| Constant | Value | Usage |
-|----------|-------|-------|
-| Project ID | `1` | `gh project item-add 1 ...` |
-| Owner | `weavster-dev` | `--owner weavster-dev` |
-
-### Issue Title Prefixes
-
-Standardized prefixes for GitHub issues:
-
-| Prefix | Usage |
-|--------|-------|
-| `[Bug]` | Bug reports |
-| `[Feature]` | New functionality |
-| `[Docs]` | Documentation issues |
-| `[Epic]` | Multi-issue tracking |
-
 ### YAGNI (You Aren't Gonna Need It)
 
 We strongly value applying YAGNI principles:

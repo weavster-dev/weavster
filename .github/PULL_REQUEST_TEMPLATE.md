@@ -2,11 +2,6 @@
 
 <!-- Brief description of what this PR does -->
 
-## Related Issues
-
-<!-- Link to related issues using keywords -->
-<!-- Closes #123, Fixes #456, Part of #789 -->
-
 ## Changes
 
 <!-- Bullet points of what changed -->

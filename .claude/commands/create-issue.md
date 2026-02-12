@@ -1,8 +1,7 @@
 ---
-description: Create a GitHub issue and add it to the project board
+description: Create a GitHub issue
 allowedTools:
   - "Bash(gh issue:*)"
-  - "Bash(gh project:*)"
 ---
 
 # Create Issue
@@ -15,36 +14,27 @@ Once you provide the description, I will:
    - **Bug**: Something is broken or not working correctly
    - **Feature**: New functionality or improvement to existing features
    - **Docs**: Missing or unclear documentation
-   - **Epic**: Large initiative with multiple sub-tasks (prefer `/create-from-plan` for epics)
 
 2. **Intelligently fill the template** based on your description:
 
    **Bug Template:**
-   - Title: `[Bug] Concise description`
+   - Title: Concise description
    - Labels: `bug`
    - Sections: Description, Steps to Reproduce, Configuration (if relevant), Error Output, Version, OS
 
    **Feature Template:**
-   - Title: `[Feature] Concise description`
+   - Title: Concise description
    - Labels: `enhancement`
    - Sections: Description, Use Case, Proposed Solution, Affected Crate(s)
 
    **Docs Template:**
-   - Title: `[Docs] Concise description`
+   - Title: Concise description
    - Labels: `documentation`
    - Sections: Summary, What's Missing or Unclear, Proposed Content, Location
 
-   **Epic Template:**
-   - Title: `[Epic] Concise description`
-   - Labels: `epic`
-   - Sections: Overview, Goals, Sub-tasks (checkboxes), Success Criteria
-   - Note: Sub-issues should link back with `Part of #<epic>`
-
 3. **Create the issue** using the GitHub CLI with appropriate labels
 
-4. **Add to project board** "Weavster" (Project #1)
-
-5. **Return the issue URL** so you can view it
+4. **Return the issue URL** so you can view it
 
 If the type is ambiguous, I'll ask you to clarify before creating.
 

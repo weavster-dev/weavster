@@ -41,4 +41,3 @@ After the plan is saved, suggest running `/create-from-plan` to:
 - Create GitHub issue(s) from the plan
 - Determine if this is a Feature (1 issue) or Epic (tracking issue + sub-issues)
 - Link the plan file to the created issue(s)
-- Add everything to the project board

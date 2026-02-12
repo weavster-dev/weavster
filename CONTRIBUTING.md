@@ -32,11 +32,9 @@ We strongly value keeping things simple:
 4. Make your changes
 5. Open a pull request linking to the issue
 
-## Issue Requirements
+## Issues
 
-**All PRs must be linked to an issue.** This is enforced by CI.
-
-Why we require this:
+We encourage linking PRs to issues when applicable:
 - Issues create a discussion space before code is written
 - They help us track what's being worked on
 - They provide context for reviewers
@@ -45,7 +43,6 @@ Why we require this:
 How to link:
 - Use `Closes #N` in your PR description (auto-closes the issue on merge)
 - Use `Part of #N` for PRs that partially address an issue
-- PRs without linked issues will fail the status check
 
 ## Code Review
 
@@ -111,15 +108,6 @@ refactor: simplify config parsing
 test: add integration tests for Kafka
 chore: update dependencies
 ```
-
-## Issue Title Prefixes
-
-| Prefix | When to Use |
-|--------|-------------|
-| `[Bug]` | Something is broken |
-| `[Feature]` | New functionality |
-| `[Docs]` | Documentation improvements |
-| `[Epic]` | Large multi-issue work |
 
 ## Documentation
 
