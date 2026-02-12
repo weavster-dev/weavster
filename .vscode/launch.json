@@ -1,0 +1,84 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug unit tests in library 'weavster-core'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--lib",
+          "--package=weavster-core"
+        ],
+        "filter": {
+          "name": "weavster-core",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'weavster'",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=weavster",
+          "--package=weavster-cli"
+        ],
+        "filter": {
+          "name": "weavster",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug 'weavster run'",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=weavster",
+          "--package=weavster-cli"
+        ],
+        "filter": {
+          "name": "weavster",
+          "kind": "bin"
+        }
+      },
+      "args": [
+        "run",
+        "--once"
+      ],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug 'weavster init'",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=weavster",
+          "--package=weavster-cli"
+        ],
+        "filter": {
+          "name": "weavster",
+          "kind": "bin"
+        }
+      },
+      "args": [
+        "init",
+        "."
+      ],
+      "cwd": "${workspaceFolder}/test-project"
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "recommendations": [
+    // Rust Development
+    "rust-lang.rust-analyzer",
+    "vadimcn.vscode-lldb",
+    "dustypomerleau.rust-syntax",
+    "serayuzgur.crates",
+
+    // File Format Support
+    "tamasfe.even-better-toml",
+    "redhat.vscode-yaml",
+    "esbenp.prettier-vscode",
+
+    // Code Quality & Utilities
+    "usernamehw.errorlens",
+    "streetsidesoftware.code-spell-checker",
+    "editorconfig.editorconfig",
+
+    // Git
+    "eamodio.gitlens",
+
+    // Testing
+    "swellaby.vscode-rust-test-adapter",
+
+    // Documentation
+    "yzhang.markdown-all-in-one"
+  ],
+  "unwantedRecommendations": []
+}
