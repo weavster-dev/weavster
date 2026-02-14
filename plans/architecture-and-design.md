@@ -192,7 +192,7 @@ Multiple `flows/*.yaml` files → `weavster run` processes all
 Flows execute independently, each with its own input/output connectors.
 
 **Flow 8: Macro Reuse**
-Define macros in `macros/*.yaml` → reference with `{% call macro_name() %}` in flows.
+Define macros in `macros/*.yaml` → reference with `{{ macro('macro_name') }}` in flows.
 Share common transform patterns across flows without duplication.
 
 **Flow 9: Error Handling Hierarchy**
