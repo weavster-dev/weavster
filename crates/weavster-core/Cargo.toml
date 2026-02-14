@@ -17,6 +17,13 @@ serde_yaml.workspace = true
 # Templating
 minijinja.workspace = true
 
+# Regex (for macro expansion)
+regex.workspace = true
+
+# Hashing (for config caching)
+sha2.workspace = true
+hex.workspace = true
+
 # WASM runtime (for executing compiled transforms)
 wasmtime = { workspace = true, optional = true }
 
@@ -27,6 +34,12 @@ async-trait.workspace = true
 
 # Error handling
 thiserror.workspace = true
+
+# Date/time (for dynamic Jinja expressions)
+chrono.workspace = true
+
+# UUID generation (for dynamic Jinja expressions)
+uuid.workspace = true
 
 # Logging
 tracing.workspace = true

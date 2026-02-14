@@ -52,6 +52,10 @@ enum Commands {
         /// Force recompile (ignore cache)
         #[arg(long)]
         force: bool,
+
+        /// Configuration profile to use (e.g., dev, prod)
+        #[arg(short, long)]
+        profile: Option<String>,
     },
 
     /// Package flows into OCI artifact
@@ -63,6 +67,10 @@ enum Commands {
         /// Output path for the artifact
         #[arg(short, long)]
         output: Option<String>,
+
+        /// Configuration profile to use (e.g., dev, prod)
+        #[arg(short, long)]
+        profile: Option<String>,
     },
 
     /// Run the Weavster runtime
@@ -74,10 +82,18 @@ enum Commands {
         /// Process one message and exit
         #[arg(long)]
         once: bool,
+
+        /// Configuration profile to use (e.g., dev, prod)
+        #[arg(short, long)]
+        profile: Option<String>,
     },
 
     /// Validate configuration without running
-    Validate,
+    Validate {
+        /// Configuration profile to use (e.g., dev, prod)
+        #[arg(short, long)]
+        profile: Option<String>,
+    },
 
     /// Show project status
     Status,
@@ -151,17 +167,38 @@ async fn main() -> Result<()> {
         Commands::Init { path, name } => {
             commands::init::run(&path, name.as_deref()).await?;
         }
-        Commands::Compile { flow, debug, force } => {
-            commands::compile::run(&cli.config, flow.as_deref(), debug, force).await?;
+        Commands::Compile {
+            flow,
+            debug,
+            force,
+            profile,
+        } => {
+            commands::compile::run(
+                &cli.config,
+                flow.as_deref(),
+                debug,
+                force,
+                profile.as_deref(),
+            )
+            .await?;
         }
-        Commands::Package { sign, output } => {
-            commands::package::run(&cli.config, sign, output.as_deref()).await?;
+        Commands::Package {
+            sign,
+            output,
+            profile,
+        } => {
+            commands::package::run(&cli.config, sign, output.as_deref(), profile.as_deref())
+                .await?;
         }
-        Commands::Run { flow, once } => {
-            commands::run::run(&cli.config, flow.as_deref(), once).await?;
+        Commands::Run {
+            flow,
+            once,
+            profile,
+        } => {
+            commands::run::run(&cli.config, flow.as_deref(), once, profile.as_deref()).await?;
         }
-        Commands::Validate => {
-            commands::validate::run(&cli.config).await?;
+        Commands::Validate { profile } => {
+            commands::validate::run(&cli.config, profile.as_deref()).await?;
         }
         Commands::Status => {
             commands::status::run(&cli.config).await?;

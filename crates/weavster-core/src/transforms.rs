@@ -31,6 +31,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::config::ErrorHandlingConfig;
+
 /// Regex transform configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RegexConfig {
@@ -74,49 +76,89 @@ pub enum TransformConfig {
     Map {
         /// Field mappings
         map: HashMap<String, String>,
+        /// Transform-level error handling override
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error_handling: Option<ErrorHandlingConfig>,
     },
 
     /// Regex pattern matching and capture extraction
     Regex {
         /// Regex configuration
         regex: RegexConfig,
+        /// Transform-level error handling override
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error_handling: Option<ErrorHandlingConfig>,
     },
 
     /// Jinja template rendering
     Template {
         /// Template mappings
         template: HashMap<String, String>,
+        /// Transform-level error handling override
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error_handling: Option<ErrorHandlingConfig>,
     },
 
     /// Lookup table reference
     Lookup {
         /// Lookup configuration
         lookup: LookupConfig,
+        /// Transform-level error handling override
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error_handling: Option<ErrorHandlingConfig>,
     },
 
     /// Filter messages based on condition
     Filter {
         /// Filter configuration
         filter: FilterConfig,
+        /// Transform-level error handling override
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error_handling: Option<ErrorHandlingConfig>,
     },
 
     /// Drop specified fields
     Drop {
         /// Fields to drop
         drop: Vec<String>,
+        /// Transform-level error handling override
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error_handling: Option<ErrorHandlingConfig>,
     },
 
     /// Coalesce: use first non-null value from list
     Coalesce {
         /// Coalesce mappings
         coalesce: HashMap<String, Vec<String>>,
+        /// Transform-level error handling override
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error_handling: Option<ErrorHandlingConfig>,
     },
 
     /// Add static fields
     AddFields {
         /// Fields to add
         add_fields: HashMap<String, serde_json::Value>,
+        /// Transform-level error handling override
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error_handling: Option<ErrorHandlingConfig>,
     },
+}
+
+impl TransformConfig {
+    /// Get the optional transform-level error handling configuration
+    pub fn error_handling(&self) -> Option<&ErrorHandlingConfig> {
+        match self {
+            Self::Map { error_handling, .. }
+            | Self::Regex { error_handling, .. }
+            | Self::Template { error_handling, .. }
+            | Self::Lookup { error_handling, .. }
+            | Self::Filter { error_handling, .. }
+            | Self::Drop { error_handling, .. }
+            | Self::Coalesce { error_handling, .. }
+            | Self::AddFields { error_handling, .. } => error_handling.as_ref(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -132,7 +174,7 @@ map:
 "#;
         let config: TransformConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
-            TransformConfig::Map { map: mappings } => {
+            TransformConfig::Map { map: mappings, .. } => {
                 assert_eq!(mappings.get("customer_id"), Some(&"cust_id".to_string()));
             }
             _ => panic!("Expected Map transform"),
@@ -150,7 +192,7 @@ regex:
 "#;
         let config: TransformConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
-            TransformConfig::Regex { regex } => {
+            TransformConfig::Regex { regex, .. } => {
                 assert_eq!(regex.field, "phone");
                 assert!(regex.pattern.contains(r"\d"));
                 assert!(regex.captures.contains_key("country_code"));
@@ -170,6 +212,7 @@ template:
         match config {
             TransformConfig::Template {
                 template: templates,
+                ..
             } => {
                 assert!(templates.contains_key("full_name"));
                 assert!(templates.get("greeting").unwrap().contains("Hello"));
@@ -189,7 +232,7 @@ lookup:
 "#;
         let config: TransformConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
-            TransformConfig::Lookup { lookup } => {
+            TransformConfig::Lookup { lookup, .. } => {
                 assert_eq!(lookup.field, "country_code");
                 assert_eq!(lookup.table, "country_names");
                 assert_eq!(lookup.output, "country_name");
@@ -207,7 +250,7 @@ filter:
 "#;
         let config: TransformConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
-            TransformConfig::Filter { filter } => {
+            TransformConfig::Filter { filter, .. } => {
                 assert!(filter.when.contains("total > 100"));
             }
             _ => panic!("Expected Filter transform"),
@@ -224,7 +267,7 @@ drop:
 "#;
         let config: TransformConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
-            TransformConfig::Drop { drop: fields } => {
+            TransformConfig::Drop { drop: fields, .. } => {
                 assert_eq!(fields.len(), 3);
                 assert!(fields.contains(&"internal_id".to_string()));
             }
@@ -243,12 +286,44 @@ coalesce:
 "#;
         let config: TransformConfig = serde_yaml::from_str(yaml).unwrap();
         match config {
-            TransformConfig::Coalesce { coalesce: mappings } => {
+            TransformConfig::Coalesce {
+                coalesce: mappings, ..
+            } => {
                 let sources = mappings.get("email").unwrap();
                 assert_eq!(sources.len(), 3);
                 assert_eq!(sources[0], "primary_email");
             }
             _ => panic!("Expected Coalesce transform"),
         }
+    }
+
+    #[test]
+    fn test_parse_transform_with_error_handling() {
+        let yaml = r#"
+map:
+  customer_id: cust_id
+error_handling:
+  on_error: stop_on_error
+  log_level: warn
+"#;
+        let config: TransformConfig = serde_yaml::from_str(yaml).unwrap();
+        match config {
+            TransformConfig::Map { error_handling, .. } => {
+                let eh = error_handling.unwrap();
+                assert_eq!(eh.on_error, crate::config::OnErrorBehavior::StopOnError);
+                assert_eq!(eh.log_level, "warn");
+            }
+            _ => panic!("Expected Map transform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_transform_without_error_handling() {
+        let yaml = r#"
+drop:
+  - temp_field
+"#;
+        let config: TransformConfig = serde_yaml::from_str(yaml).unwrap();
+        assert!(config.error_handling().is_none());
     }
 }

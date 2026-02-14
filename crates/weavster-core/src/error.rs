@@ -57,6 +57,28 @@ pub enum Error {
     #[error("template error: {0}")]
     TemplateError(#[from] minijinja::Error),
 
+    /// Macro expansion error
+    #[error("macro error in '{macro_name}': {message}")]
+    MacroError {
+        /// Name of the macro
+        macro_name: String,
+        /// Description of the error
+        message: String,
+        /// Source file path
+        file: Option<std::path::PathBuf>,
+        /// Line number in the source file
+        line: Option<usize>,
+    },
+
+    /// Profile resolution error
+    #[error("profile '{profile_name}': {message}")]
+    ProfileError {
+        /// Name of the profile
+        profile_name: String,
+        /// Description of the error
+        message: String,
+    },
+
     /// IO error
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
