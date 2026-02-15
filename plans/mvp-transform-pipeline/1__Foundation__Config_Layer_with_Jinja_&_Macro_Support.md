@@ -25,7 +25,7 @@ Implement the configuration layer that loads, parses, and validates Weavster pro
 **Out of Scope:**
 - WASM compilation (next ticket)
 - Deep validation logic (separate ticket; basic structural validation of expanded output is in scope)
-- CLI commands (separate ticket)
+- CLI commands beyond `--profile` flag (separate ticket; global `--profile` support is included)
 - Database integration (later ticket)
 
 ## Key Architectural Decisions

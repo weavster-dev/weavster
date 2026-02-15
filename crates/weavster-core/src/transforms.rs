@@ -311,7 +311,7 @@ error_handling:
             TransformConfig::Map { error_handling, .. } => {
                 let eh = error_handling.unwrap();
                 assert_eq!(eh.on_error, crate::config::OnErrorBehavior::StopOnError);
-                assert_eq!(eh.log_level, "warn");
+                assert_eq!(eh.log_level, crate::config::LogLevel::Warn);
             }
             _ => panic!("Expected Map transform"),
         }

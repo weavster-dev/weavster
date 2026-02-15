@@ -9,7 +9,7 @@ use regex::Regex;
 use serde_json::Value;
 
 use crate::config::{
-    DynamicJinjaContext, ErrorHandlingConfig, OnErrorBehavior, resolve_error_handling,
+    DynamicJinjaContext, ErrorHandlingConfig, LogLevel, OnErrorBehavior, resolve_error_handling,
 };
 use crate::error::{Error, Result};
 use crate::transforms::TransformConfig;
@@ -66,15 +66,26 @@ pub fn apply_transforms_with_error_handling(
             Err(e) => match resolved_eh.on_error {
                 OnErrorBehavior::StopOnError => return Err(e),
                 OnErrorBehavior::LogAndSkip => {
-                    tracing::warn!(
-                        error = %e,
-                        "Transform error (log_and_skip): skipping transform"
+                    log_at_level(
+                        resolved_eh.log_level,
+                        &format!("Transform error (log_and_skip): skipping transform: {e}"),
                     );
                 }
             },
         }
     }
     Ok(current)
+}
+
+/// Log a message at the configured log level.
+fn log_at_level(level: LogLevel, message: &str) {
+    match level {
+        LogLevel::Trace => tracing::trace!("{}", message),
+        LogLevel::Debug => tracing::debug!("{}", message),
+        LogLevel::Info => tracing::info!("{}", message),
+        LogLevel::Warn => tracing::warn!("{}", message),
+        LogLevel::Error => tracing::error!("{}", message),
+    }
 }
 
 fn apply_one(input: &Value, transform: &TransformConfig) -> Result<Value> {
@@ -191,10 +202,17 @@ fn evaluate_dynamic_transform<'a>(
         return Ok(Cow::Borrowed(transform));
     }
 
+    // Serialize to YAML value for inspection and potential replacement
     let yaml_value = serde_yaml::to_value(transform).map_err(|e| Error::TransformError {
         transform: "dynamic_eval".to_string(),
         message: format!("failed to serialize transform for dynamic evaluation: {e}"),
     })?;
+
+    // Short-circuit: skip the deserialize round-trip if this specific transform
+    // contains no dynamic markers (even though the flow as a whole has some)
+    if !value_contains_dynamic_marker(&yaml_value) {
+        return Ok(Cow::Borrowed(transform));
+    }
 
     let replaced = replace_dynamic_in_value(yaml_value);
 
@@ -203,6 +221,18 @@ fn evaluate_dynamic_transform<'a>(
         message: format!("failed to deserialize transform after dynamic evaluation: {e}"),
     })?;
     Ok(Cow::Owned(result))
+}
+
+/// Check whether a serde_yaml::Value tree contains any dynamic Jinja markers.
+fn value_contains_dynamic_marker(value: &serde_yaml::Value) -> bool {
+    match value {
+        serde_yaml::Value::String(s) => DYNAMIC_RE.is_match(s),
+        serde_yaml::Value::Mapping(map) => map
+            .iter()
+            .any(|(k, v)| value_contains_dynamic_marker(k) || value_contains_dynamic_marker(v)),
+        serde_yaml::Value::Sequence(seq) => seq.iter().any(value_contains_dynamic_marker),
+        _ => false,
+    }
 }
 
 /// Recursively replace dynamic Jinja expressions in a serde_yaml::Value tree.
@@ -380,7 +410,7 @@ mod tests {
             },
             error_handling: Some(ErrorHandlingConfig {
                 on_error: OnErrorBehavior::StopOnError,
-                log_level: "error".to_string(),
+                log_level: crate::config::LogLevel::Error,
                 retry: None,
             }),
         }];
@@ -400,7 +430,7 @@ mod tests {
             },
             error_handling: Some(ErrorHandlingConfig {
                 on_error: OnErrorBehavior::LogAndSkip,
-                log_level: "warn".to_string(),
+                log_level: crate::config::LogLevel::Warn,
                 retry: None,
             }),
         }];
@@ -415,7 +445,7 @@ mod tests {
         let input = json!({"a": 1});
         let flow_eh = ErrorHandlingConfig {
             on_error: OnErrorBehavior::StopOnError,
-            log_level: "error".to_string(),
+            log_level: crate::config::LogLevel::Error,
             retry: None,
         };
         // Transform overrides flow-level stop_on_error with log_and_skip
@@ -428,7 +458,7 @@ mod tests {
             },
             error_handling: Some(ErrorHandlingConfig {
                 on_error: OnErrorBehavior::LogAndSkip,
-                log_level: "warn".to_string(),
+                log_level: crate::config::LogLevel::Warn,
                 retry: None,
             }),
         }];

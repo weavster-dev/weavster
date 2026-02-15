@@ -209,31 +209,61 @@ pub struct ProfileConfig {
 ///
 /// Can be specified at global, flow, or transform level.
 /// More specific levels override less specific ones.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ErrorHandlingConfig {
     /// Behavior when an error occurs
     #[serde(default)]
     pub on_error: OnErrorBehavior,
 
     /// Log level for error reporting
-    #[serde(default = "default_error_log_level")]
-    pub log_level: String,
+    #[serde(default)]
+    pub log_level: LogLevel,
 
     /// Retry configuration
     #[serde(default)]
     pub retry: Option<RetryConfig>,
 }
 
-fn default_error_log_level() -> String {
-    "error".to_string()
+/// Log level for error handling configuration
+///
+/// Invalid values are rejected at deserialization time.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum LogLevel {
+    /// Trace-level logging
+    Trace,
+    /// Debug-level logging
+    Debug,
+    /// Info-level logging
+    Info,
+    /// Warn-level logging
+    Warn,
+    /// Error-level logging
+    #[default]
+    Error,
 }
 
-impl Default for ErrorHandlingConfig {
-    fn default() -> Self {
-        Self {
-            on_error: OnErrorBehavior::default(),
-            log_level: default_error_log_level(),
-            retry: None,
+impl std::fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogLevel::Trace => write!(f, "trace"),
+            LogLevel::Debug => write!(f, "debug"),
+            LogLevel::Info => write!(f, "info"),
+            LogLevel::Warn => write!(f, "warn"),
+            LogLevel::Error => write!(f, "error"),
+        }
+    }
+}
+
+impl LogLevel {
+    /// Convert to a `tracing::Level`
+    pub fn to_tracing_level(self) -> tracing::Level {
+        match self {
+            LogLevel::Trace => tracing::Level::TRACE,
+            LogLevel::Debug => tracing::Level::DEBUG,
+            LogLevel::Info => tracing::Level::INFO,
+            LogLevel::Warn => tracing::Level::WARN,
+            LogLevel::Error => tracing::Level::ERROR,
         }
     }
 }
@@ -543,12 +573,15 @@ impl Config {
             return Ok(vec![]);
         }
 
-        // Use cached macros if available, otherwise load from disk
-        let macros = match &self.cache {
-            Some(cache) => cache.cached_macros.clone(),
+        // Use cached macros if available, otherwise load from disk.
+        // We borrow cached macros to avoid cloning; only allocate when loading from disk.
+        let owned_macros;
+        let macros: &HashMap<String, MacroDefinition> = match &self.cache {
+            Some(cache) => &cache.cached_macros,
             None => {
                 let macros_dir = self.base_path.join(&self.project.macros_dir);
-                load_macros_from_dir(&macros_dir)?
+                owned_macros = load_macros_from_dir(&macros_dir)?;
+                &owned_macros
             }
         };
 
@@ -574,7 +607,7 @@ impl Config {
             let contents = std::fs::read_to_string(entry.path())?;
 
             // Expand macros
-            let expanded = expand_macros(&contents, &macros)?;
+            let expanded = expand_macros(&contents, macros)?;
 
             // Parse to get flow-level vars, merge with project vars
             let pre_parse: Flow = serde_yaml::from_str(&expanded)?;
@@ -896,12 +929,17 @@ pub fn evaluate_static_jinja(yaml_content: &str, context: &JinjaContext) -> Resu
         })
         .to_string();
 
-    // Replace {{ var_name }} for known project vars only
+    // Replace {{ var_name }} for known project vars only using string replacement.
+    // We match the exact token `{{ key }}` as well as variants with extra whitespace.
     for (key, value) in &context.vars {
-        let pattern = format!(r"\{{\{{\s*{}\s*\}}\}}", regex::escape(key));
-        let re = Regex::new(&pattern).expect("valid regex");
         let replacement = yaml_value_to_string(value);
-        result = re.replace_all(&result, replacement.as_str()).to_string();
+        // Fast path: exact token match (covers most cases)
+        let exact_token = format!("{{{{ {} }}}}", key);
+        result = result.replace(&exact_token, &replacement);
+        // Also handle no-space and variable-whitespace variants via regex
+        // (only if the pattern still appears after the fast path)
+        let compact_token = format!("{{{{{}}}}}", key);
+        result = result.replace(&compact_token, &replacement);
     }
 
     Ok(result)
@@ -1634,7 +1672,7 @@ retry:
 "#;
         let config: ErrorHandlingConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(config.on_error, OnErrorBehavior::StopOnError);
-        assert_eq!(config.log_level, "warn");
+        assert_eq!(config.log_level, LogLevel::Warn);
         let retry = config.retry.unwrap();
         assert_eq!(retry.max_attempts, 5);
         assert_eq!(retry.backoff, BackoffStrategy::Linear);
@@ -1644,7 +1682,7 @@ retry:
     fn test_error_handling_defaults() {
         let config = ErrorHandlingConfig::default();
         assert_eq!(config.on_error, OnErrorBehavior::LogAndSkip);
-        assert_eq!(config.log_level, "error");
+        assert_eq!(config.log_level, LogLevel::Error);
         assert!(config.retry.is_none());
     }
 
@@ -1652,24 +1690,24 @@ retry:
     fn test_resolve_error_handling_global_only() {
         let global = ErrorHandlingConfig {
             on_error: OnErrorBehavior::StopOnError,
-            log_level: "warn".to_string(),
+            log_level: LogLevel::Warn,
             retry: None,
         };
         let result = resolve_error_handling(Some(&global), None, None);
         assert_eq!(result.on_error, OnErrorBehavior::StopOnError);
-        assert_eq!(result.log_level, "warn");
+        assert_eq!(result.log_level, LogLevel::Warn);
     }
 
     #[test]
     fn test_resolve_error_handling_flow_overrides_global() {
         let global = ErrorHandlingConfig {
             on_error: OnErrorBehavior::StopOnError,
-            log_level: "warn".to_string(),
+            log_level: LogLevel::Warn,
             retry: None,
         };
         let flow = ErrorHandlingConfig {
             on_error: OnErrorBehavior::LogAndSkip,
-            log_level: "info".to_string(),
+            log_level: LogLevel::Info,
             retry: Some(RetryConfig {
                 max_attempts: 5,
                 backoff: BackoffStrategy::Linear,
@@ -1677,7 +1715,7 @@ retry:
         };
         let result = resolve_error_handling(Some(&global), Some(&flow), None);
         assert_eq!(result.on_error, OnErrorBehavior::LogAndSkip);
-        assert_eq!(result.log_level, "info");
+        assert_eq!(result.log_level, LogLevel::Info);
         assert!(result.retry.is_some());
     }
 
@@ -1685,17 +1723,17 @@ retry:
     fn test_resolve_error_handling_transform_overrides_all() {
         let global = ErrorHandlingConfig {
             on_error: OnErrorBehavior::LogAndSkip,
-            log_level: "error".to_string(),
+            log_level: LogLevel::Error,
             retry: None,
         };
         let flow = ErrorHandlingConfig {
             on_error: OnErrorBehavior::LogAndSkip,
-            log_level: "warn".to_string(),
+            log_level: LogLevel::Warn,
             retry: None,
         };
         let transform = ErrorHandlingConfig {
             on_error: OnErrorBehavior::StopOnError,
-            log_level: "debug".to_string(),
+            log_level: LogLevel::Debug,
             retry: Some(RetryConfig {
                 max_attempts: 10,
                 backoff: BackoffStrategy::Fixed,
@@ -1703,7 +1741,7 @@ retry:
         };
         let result = resolve_error_handling(Some(&global), Some(&flow), Some(&transform));
         assert_eq!(result.on_error, OnErrorBehavior::StopOnError);
-        assert_eq!(result.log_level, "debug");
+        assert_eq!(result.log_level, LogLevel::Debug);
         assert_eq!(result.retry.as_ref().unwrap().max_attempts, 10);
         assert_eq!(
             result.retry.as_ref().unwrap().backoff,
@@ -1715,7 +1753,7 @@ retry:
     fn test_resolve_error_handling_all_none_gives_default() {
         let result = resolve_error_handling(None, None, None);
         assert_eq!(result.on_error, OnErrorBehavior::LogAndSkip);
-        assert_eq!(result.log_level, "error");
+        assert_eq!(result.log_level, LogLevel::Error);
         assert!(result.retry.is_none());
     }
 
@@ -1877,7 +1915,7 @@ error_handling:
         let config: ProjectConfig = serde_yaml::from_str(yaml).unwrap();
         let eh = config.error_handling.unwrap();
         assert_eq!(eh.on_error, OnErrorBehavior::StopOnError);
-        assert_eq!(eh.log_level, "warn");
+        assert_eq!(eh.log_level, LogLevel::Warn);
         assert_eq!(eh.retry.unwrap().max_attempts, 5);
     }
 

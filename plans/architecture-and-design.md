@@ -70,7 +70,7 @@ graph TD
 - **Connector**: Input/Output adapter (currently: File; future: Kafka, HTTP, etc.)
 - **Transform**: Data manipulation (map, drop, add_fields, filter)
 
-> **Deferred transforms:** coalesce, regex, template, lookup — planned for post-MVP.
+> **Deferred transforms:** regex, template, lookup — planned for post-MVP. (coalesce is implemented in the interpreter.)
 
 ---
 
@@ -89,15 +89,14 @@ The MVP also includes a native **interpreter** path (`crates/weavster-core/src/i
 ### Configuration Hierarchy
 
 ```text
-weavster.yaml           # Project config, runtime settings
+weavster.yaml           # Project config (includes profiles: key for env overrides)
 ├── flows/
 │   ├── flow_a.yaml     # Individual flow definitions
 │   └── flow_b.yaml
 ├── connectors/
 │   └── file.yaml       # Reusable connector configs
-├── macros/
-│   └── normalize.yaml  # Reusable transform macros
-└── profiles.yaml       # Environment-specific overrides
+└── macros/
+    └── normalize.yaml  # Reusable transform macros
 ```
 
 Connector references use dotted paths: `file.input` resolves to `connectors/file.yaml` key `input`. See `crates/weavster-core/src/config.rs` for config parsing.

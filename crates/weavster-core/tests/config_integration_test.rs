@@ -12,8 +12,8 @@ use std::collections::HashMap;
 use tempfile::TempDir;
 use weavster_core::Config;
 use weavster_core::config::{
-    ErrorHandlingConfig, JinjaContext, MacroDefinition, OnErrorBehavior, evaluate_static_jinja,
-    expand_macros, resolve_error_handling, resolve_profile,
+    ErrorHandlingConfig, JinjaContext, LogLevel, MacroDefinition, OnErrorBehavior,
+    evaluate_static_jinja, expand_macros, resolve_error_handling, resolve_profile,
 };
 use weavster_core::transforms::TransformConfig;
 
@@ -135,7 +135,7 @@ output:
     assert!(config.project.error_handling.is_some());
     let eh = config.project.error_handling.as_ref().unwrap();
     assert_eq!(eh.on_error, OnErrorBehavior::LogAndSkip);
-    assert_eq!(eh.log_level, "warn");
+    assert_eq!(eh.log_level, LogLevel::Warn);
 }
 
 #[test]
@@ -323,13 +323,13 @@ transforms:
 fn test_error_handling_hierarchy_integration() {
     let global = ErrorHandlingConfig {
         on_error: OnErrorBehavior::LogAndSkip,
-        log_level: "error".to_string(),
+        log_level: LogLevel::Error,
         retry: None,
     };
 
     let flow = ErrorHandlingConfig {
         on_error: OnErrorBehavior::StopOnError,
-        log_level: "warn".to_string(),
+        log_level: LogLevel::Warn,
         retry: None,
     };
 
@@ -340,7 +340,7 @@ fn test_error_handling_hierarchy_integration() {
     // Flow overrides global
     let result = resolve_error_handling(Some(&global), Some(&flow), None);
     assert_eq!(result.on_error, OnErrorBehavior::StopOnError);
-    assert_eq!(result.log_level, "warn");
+    assert_eq!(result.log_level, LogLevel::Warn);
 }
 
 // =============================================================================

@@ -39,7 +39,8 @@ pub mod transforms;
 
 pub use config::{
     BackoffStrategy, Config, ConfigCache, DynamicJinjaContext, ErrorHandlingConfig, JinjaContext,
-    MacroDefinition, OnErrorBehavior, ProfileConfig, ProjectConfig, ResolvedConfig, RetryConfig,
+    LogLevel, MacroDefinition, OnErrorBehavior, ProfileConfig, ProjectConfig, ResolvedConfig,
+    RetryConfig,
 };
 pub use error::{Error, Result};
 pub use flow::Flow;
