@@ -78,7 +78,7 @@ graph TD
 
 ### Transform Pipeline
 
-```
+```text
 YAML Config → Parse → Rust Codegen → WASM Compile → Execute (wasmtime)
 ```
 
@@ -88,14 +88,16 @@ The MVP also includes a native **interpreter** path (`crates/weavster-core/src/i
 
 ### Configuration Hierarchy
 
-```
+```text
 weavster.yaml           # Project config, runtime settings
 ├── flows/
 │   ├── flow_a.yaml     # Individual flow definitions
 │   └── flow_b.yaml
 ├── connectors/
 │   └── file.yaml       # Reusable connector configs
-└── profiles.yaml       # Environment-specific overrides (future)
+├── macros/
+│   └── normalize.yaml  # Reusable transform macros
+└── profiles.yaml       # Environment-specific overrides
 ```
 
 Connector references use dotted paths: `file.input` resolves to `connectors/file.yaml` key `input`. See `crates/weavster-core/src/config.rs` for config parsing.
@@ -201,7 +203,7 @@ Lower-level settings override higher — e.g., a transform can `skip` while the 
 
 **Flow 10: Dev/Prod Profiles**
 `weavster run --profile dev` vs `--profile prod` — switch connectors and runtime settings per environment.
-Define profiles in `profiles.yaml` with different connector configs, log levels, and batch sizes.
+Define profiles in `weavster.yaml` under the `profiles:` key with different connector configs, log levels, and batch sizes.
 
 **Flow 11: File Watching & Glob Patterns**
 `weavster run --watch` — re-run flows when input files or config changes.

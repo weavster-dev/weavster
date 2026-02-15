@@ -9,6 +9,7 @@
 //! - Error handling hierarchy
 
 use std::collections::HashMap;
+use tempfile::TempDir;
 use weavster_core::Config;
 use weavster_core::config::{
     ErrorHandlingConfig, JinjaContext, MacroDefinition, OnErrorBehavior, evaluate_static_jinja,
@@ -16,19 +17,15 @@ use weavster_core::config::{
 };
 use weavster_core::transforms::TransformConfig;
 
-/// Helper to create a temporary project directory with standard structure
-fn setup_project(name: &str) -> std::path::PathBuf {
-    let dir = std::env::temp_dir().join(format!("weavster_integration_{}", name));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("flows")).unwrap();
-    std::fs::create_dir_all(dir.join("connectors")).unwrap();
-    std::fs::create_dir_all(dir.join("macros")).unwrap();
+/// Helper to create a temporary project directory with standard structure.
+///
+/// Returns a `TempDir` that automatically cleans up when dropped.
+fn setup_project(_name: &str) -> TempDir {
+    let dir = TempDir::new().unwrap();
+    std::fs::create_dir_all(dir.path().join("flows")).unwrap();
+    std::fs::create_dir_all(dir.path().join("connectors")).unwrap();
+    std::fs::create_dir_all(dir.path().join("macros")).unwrap();
     dir
-}
-
-/// Helper to clean up a temporary project directory
-fn cleanup(dir: &std::path::Path) {
-    std::fs::remove_dir_all(dir).ok();
 }
 
 // =============================================================================
@@ -41,7 +38,7 @@ fn test_complete_pipeline_with_dev_profile() {
 
     // Write project config with profiles
     std::fs::write(
-        dir.join("weavster.yaml"),
+        dir.path().join("weavster.yaml"),
         r#"
 name: integration-test
 version: "1.0.0"
@@ -70,7 +67,7 @@ error_handling:
 
     // Write a flow
     std::fs::write(
-        dir.join("flows/orders.yaml"),
+        dir.path().join("flows/orders.yaml"),
         r#"
 name: process_orders
 input: file.input
@@ -88,7 +85,7 @@ outputs:
 
     // Write connector config
     std::fs::write(
-        dir.join("connectors/file.yaml"),
+        dir.path().join("connectors/file.yaml"),
         r#"
 input:
   type: file
@@ -103,7 +100,7 @@ output:
     .unwrap();
 
     // Load with dev profile
-    let config = Config::load_with_profile(&dir, Some("dev")).unwrap();
+    let config = Config::load_with_profile(dir.path(), Some("dev")).unwrap();
     assert_eq!(config.project.name, "integration-test");
 
     // Verify profile resolution
@@ -139,8 +136,6 @@ output:
     let eh = config.project.error_handling.as_ref().unwrap();
     assert_eq!(eh.on_error, OnErrorBehavior::LogAndSkip);
     assert_eq!(eh.log_level, "warn");
-
-    cleanup(&dir);
 }
 
 #[test]
@@ -148,7 +143,7 @@ fn test_profile_switching_dev_to_prod() {
     let dir = setup_project("profile_switch");
 
     std::fs::write(
-        dir.join("weavster.yaml"),
+        dir.path().join("weavster.yaml"),
         r#"
 name: switch-test
 vars:
@@ -171,7 +166,7 @@ profiles:
     .unwrap();
 
     // Load with dev profile
-    let dev_config = Config::load_with_profile(&dir, Some("dev")).unwrap();
+    let dev_config = Config::load_with_profile(dir.path(), Some("dev")).unwrap();
     let dev_resolved = dev_config.resolved.as_ref().unwrap();
     assert_eq!(
         dev_resolved.vars.get("db_host"),
@@ -183,7 +178,7 @@ profiles:
     );
 
     // Load with prod profile
-    let prod_config = Config::load_with_profile(&dir, Some("prod")).unwrap();
+    let prod_config = Config::load_with_profile(dir.path(), Some("prod")).unwrap();
     let prod_resolved = prod_config.resolved.as_ref().unwrap();
     assert_eq!(
         prod_resolved.vars.get("db_host"),
@@ -193,8 +188,6 @@ profiles:
         prod_resolved.runtime.mode,
         weavster_core::config::RuntimeMode::Remote
     );
-
-    cleanup(&dir);
 }
 
 // =============================================================================
@@ -205,11 +198,11 @@ profiles:
 fn test_macros_loaded_and_expanded_in_flows() {
     let dir = setup_project("macro_flow");
 
-    std::fs::write(dir.join("weavster.yaml"), "name: macro-test\n").unwrap();
+    std::fs::write(dir.path().join("weavster.yaml"), "name: macro-test\n").unwrap();
 
     // Write a macro definition
     std::fs::write(
-        dir.join("macros/normalize.yaml"),
+        dir.path().join("macros/normalize.yaml"),
         r#"
 name: normalize
 description: Normalize field names
@@ -222,13 +215,11 @@ transforms:
     .unwrap();
 
     // Load config and verify macros are discoverable
-    let config = Config::load(&dir).unwrap();
+    let config = Config::load(dir.path()).unwrap();
     let macros = config.load_macros().unwrap();
     assert_eq!(macros.len(), 1);
     assert!(macros.contains_key("normalize"));
     assert_eq!(macros["normalize"].transforms.len(), 1);
-
-    cleanup(&dir);
 }
 
 #[test]
@@ -406,47 +397,41 @@ profiles:
 #[test]
 fn test_config_cache_populated_on_load() {
     let dir = setup_project("cache_pop");
-    std::fs::write(dir.join("weavster.yaml"), "name: cache-test\n").unwrap();
+    std::fs::write(dir.path().join("weavster.yaml"), "name: cache-test\n").unwrap();
 
-    let config = Config::load(&dir).unwrap();
+    let config = Config::load(dir.path()).unwrap();
     assert!(config.cache.is_some());
 
     let cache = config.cache.as_ref().unwrap();
     assert!(!cache.project_hash.is_empty());
     assert_eq!(cache.cached_project.name, "cache-test");
-
-    cleanup(&dir);
 }
 
 #[test]
 fn test_reload_detects_project_change() {
     let dir = setup_project("reload_change");
-    std::fs::write(dir.join("weavster.yaml"), "name: original\n").unwrap();
+    std::fs::write(dir.path().join("weavster.yaml"), "name: original\n").unwrap();
 
-    let mut config = Config::load(&dir).unwrap();
+    let mut config = Config::load(dir.path()).unwrap();
     assert_eq!(config.project.name, "original");
 
     // Modify the file
-    std::fs::write(dir.join("weavster.yaml"), "name: updated\n").unwrap();
+    std::fs::write(dir.path().join("weavster.yaml"), "name: updated\n").unwrap();
 
     let changed = config.reload_if_changed().unwrap();
     assert!(changed);
     assert_eq!(config.project.name, "updated");
-
-    cleanup(&dir);
 }
 
 #[test]
 fn test_reload_no_change_is_noop() {
     let dir = setup_project("reload_noop");
-    std::fs::write(dir.join("weavster.yaml"), "name: stable\n").unwrap();
+    std::fs::write(dir.path().join("weavster.yaml"), "name: stable\n").unwrap();
 
-    let mut config = Config::load(&dir).unwrap();
+    let mut config = Config::load(dir.path()).unwrap();
     let changed = config.reload_if_changed().unwrap();
     assert!(!changed);
     assert_eq!(config.project.name, "stable");
-
-    cleanup(&dir);
 }
 
 // =============================================================================
@@ -456,9 +441,9 @@ fn test_reload_no_change_is_noop() {
 #[test]
 fn test_bridge_connector_loading() {
     let dir = setup_project("bridge_conn");
-    std::fs::write(dir.join("weavster.yaml"), "name: bridge-test\n").unwrap();
+    std::fs::write(dir.path().join("weavster.yaml"), "name: bridge-test\n").unwrap();
     std::fs::write(
-        dir.join("connectors/queue.yaml"),
+        dir.path().join("connectors/queue.yaml"),
         r#"
 internal:
   type: bridge
@@ -470,7 +455,7 @@ internal:
     )
     .unwrap();
 
-    let config = Config::load(&dir).unwrap();
+    let config = Config::load(dir.path()).unwrap();
     let conn = config.load_connector_config("queue.internal").unwrap();
     match conn {
         weavster_core::connectors::ConnectorConfig::Bridge(b) => {
@@ -481,8 +466,6 @@ internal:
         }
         _ => panic!("Expected bridge connector"),
     }
-
-    cleanup(&dir);
 }
 
 // =============================================================================
@@ -493,23 +476,19 @@ internal:
 fn test_nonexistent_profile_returns_error() {
     let dir = setup_project("bad_profile");
     std::fs::write(
-        dir.join("weavster.yaml"),
+        dir.path().join("weavster.yaml"),
         "name: test\nprofiles:\n  dev:\n    vars:\n      x: y\n",
     )
     .unwrap();
 
-    let result = Config::load_with_profile(&dir, Some("staging"));
+    let result = Config::load_with_profile(dir.path(), Some("staging"));
     assert!(result.is_err());
-
-    cleanup(&dir);
 }
 
 #[test]
 fn test_missing_config_file() {
     let dir = setup_project("missing_config");
     // Don't write weavster.yaml
-    let result = Config::load(&dir);
+    let result = Config::load(dir.path());
     assert!(result.is_err());
-
-    cleanup(&dir);
 }

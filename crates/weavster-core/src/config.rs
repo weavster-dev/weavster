@@ -62,6 +62,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use crate::connectors::ConnectorConfig;
 use crate::error::{Error, Result};
@@ -382,9 +383,6 @@ pub struct ConfigCache {
     /// Cached project configuration
     pub cached_project: ProjectConfig,
 
-    /// Cached flow definitions
-    pub cached_flows: HashMap<String, Flow>,
-
     /// Cached macro definitions
     pub cached_macros: HashMap<String, MacroDefinition>,
 }
@@ -517,7 +515,6 @@ impl Config {
             flow_hashes,
             macro_hashes,
             cached_project: project.clone(),
-            cached_flows: HashMap::new(),
             cached_macros: macros,
         };
 
@@ -546,9 +543,14 @@ impl Config {
             return Ok(vec![]);
         }
 
-        // Load macros for expansion in flow files
-        let macros_dir = self.base_path.join(&self.project.macros_dir);
-        let macros = load_macros_from_dir(&macros_dir)?;
+        // Use cached macros if available, otherwise load from disk
+        let macros = match &self.cache {
+            Some(cache) => cache.cached_macros.clone(),
+            None => {
+                let macros_dir = self.base_path.join(&self.project.macros_dir);
+                load_macros_from_dir(&macros_dir)?
+            }
+        };
 
         // Build Jinja context from project vars
         let mut jinja_vars = self.project.vars.clone();
@@ -585,7 +587,7 @@ impl Config {
             let evaluated = evaluate_static_jinja(&expanded, &flow_context)?;
 
             let mut flow: Flow = serde_yaml::from_str(&evaluated)?;
-            flow.dynamic_context = Some(prepare_dynamic_context(&flow));
+            flow.dynamic_context = Some(prepare_dynamic_context(&flow)?);
             flows.push(flow);
         }
         Ok(flows)
@@ -759,6 +761,18 @@ pub fn expand_macros(
     expand_macros_inner(yaml_content, macros, &mut stack)
 }
 
+/// Regex pattern for matching macro references like `{{ macro('name') }}`.
+static MACRO_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{\{\s*macro\('([^']+)'\)\s*\}\}").expect("valid regex"));
+
+/// Regex pattern for matching `{{ env('VAR_NAME') }}` expressions.
+static ENV_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{\{\s*env\('([^']+)'\)\s*\}\}").expect("valid regex"));
+
+/// Regex pattern for matching dynamic Jinja functions like `{{ now() }}`.
+static DYNAMIC_FUNC_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"\{\{\s*(now|uuid|timestamp)\(\)\s*\}\}").expect("valid regex"));
+
 /// Recursively expand macro references, using `stack` to detect circular references.
 ///
 /// The stack tracks which macros are currently being expanded in the call chain.
@@ -769,7 +783,7 @@ fn expand_macros_inner(
     macros: &HashMap<String, MacroDefinition>,
     stack: &mut Vec<String>,
 ) -> Result<String> {
-    let re = Regex::new(r"\{\{\s*macro\('([^']+)'\)\s*\}\}").expect("valid regex");
+    let re = &MACRO_RE;
 
     if !re.is_match(yaml_content) {
         return Ok(yaml_content.to_string());
@@ -866,12 +880,19 @@ pub fn evaluate_static_jinja(yaml_content: &str, context: &JinjaContext) -> Resu
     let mut result = yaml_content.to_string();
 
     // Replace {{ env('VAR_NAME') }} with environment variable values (YAML-escaped)
-    let env_re = Regex::new(r"\{\{\s*env\('([^']+)'\)\s*\}\}").expect("valid regex");
-    result = env_re
+    result = ENV_RE
         .replace_all(&result, |caps: &regex::Captures| {
             let var_name = &caps[1];
-            let raw = std::env::var(var_name).unwrap_or_default();
-            yaml_escape_scalar(&raw)
+            match std::env::var(var_name) {
+                Ok(raw) => yaml_escape_scalar(&raw),
+                Err(_) => {
+                    tracing::warn!(
+                        var_name,
+                        "environment variable not set, substituting empty string"
+                    );
+                    yaml_escape_scalar("")
+                }
+            }
         })
         .to_string();
 
@@ -894,17 +915,16 @@ pub fn evaluate_static_jinja(yaml_content: &str, context: &JinjaContext) -> Resu
 /// # Arguments
 ///
 /// * `flow` - Flow definition to scan for dynamic expressions
-pub fn prepare_dynamic_context(flow: &Flow) -> DynamicJinjaContext {
-    let dynamic_re = Regex::new(r"\{\{\s*(now|uuid|timestamp)\(\)\s*\}\}").expect("valid regex");
+pub fn prepare_dynamic_context(flow: &Flow) -> Result<DynamicJinjaContext> {
     let mut expressions = Vec::new();
 
     // Scan transform configs for dynamic expressions
-    let flow_yaml = serde_yaml::to_string(&flow.transforms).unwrap_or_default();
-    for cap in dynamic_re.captures_iter(&flow_yaml) {
+    let flow_yaml = serde_yaml::to_string(&flow.transforms)?;
+    for cap in DYNAMIC_FUNC_RE.captures_iter(&flow_yaml) {
         expressions.push(cap[0].to_string());
     }
 
-    DynamicJinjaContext { expressions }
+    Ok(DynamicJinjaContext { expressions })
 }
 
 /// Convert a serde_yaml::Value to a YAML-safe string representation for substitution
@@ -1835,7 +1855,7 @@ profiles:
             dynamic_context: None,
         };
 
-        let ctx = prepare_dynamic_context(&flow);
+        let ctx = prepare_dynamic_context(&flow).unwrap();
         assert!(ctx.expressions.is_empty());
     }
 

@@ -24,7 +24,7 @@ Implement the configuration layer that loads, parses, and validates Weavster pro
 
 **Out of Scope:**
 - WASM compilation (next ticket)
-- Validation logic (separate ticket)
+- Deep validation logic (separate ticket; basic structural validation of expanded output is in scope)
 - CLI commands (separate ticket)
 - Database integration (later ticket)
 
@@ -39,7 +39,7 @@ Implement the configuration layer that loads, parses, and validates Weavster pro
    - Macros defined in `macros/*.yaml`
    - Referenced via `{{ macro('name') }}`
    - Expanded inline during config parsing
-   - Validation sees expanded transforms
+   - Downstream validation (separate ticket) operates on expanded transforms
 
 3. **Profile Resolution:**
    - Profiles defined in `weavster.yaml`

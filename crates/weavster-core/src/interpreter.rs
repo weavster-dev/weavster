@@ -2,6 +2,7 @@
 //!
 //! Applies transforms directly to JSON values without WASM compilation.
 
+use std::borrow::Cow;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -176,18 +177,18 @@ fn apply_coalesce(
 /// Replaces runtime expressions (`{{ now() }}`, `{{ uuid() }}`, `{{ timestamp() }}`)
 /// with their computed values. Called per-message to ensure fresh values.
 ///
-/// Returns the transform unchanged (cloned) when no dynamic context is present
-/// or when the context has no dynamic expressions.
-fn evaluate_dynamic_transform(
-    transform: &TransformConfig,
+/// Returns `Cow::Borrowed` when no dynamic evaluation is needed (avoiding a clone),
+/// or `Cow::Owned` with the evaluated transform when dynamic expressions are present.
+fn evaluate_dynamic_transform<'a>(
+    transform: &'a TransformConfig,
     dynamic_context: Option<&DynamicJinjaContext>,
-) -> Result<TransformConfig> {
+) -> Result<Cow<'a, TransformConfig>> {
     let needs_eval = dynamic_context
         .map(|ctx| !ctx.expressions.is_empty())
         .unwrap_or(false);
 
     if !needs_eval {
-        return Ok(transform.clone());
+        return Ok(Cow::Borrowed(transform));
     }
 
     let yaml_value = serde_yaml::to_value(transform).map_err(|e| Error::TransformError {
@@ -197,10 +198,11 @@ fn evaluate_dynamic_transform(
 
     let replaced = replace_dynamic_in_value(yaml_value);
 
-    serde_yaml::from_value(replaced).map_err(|e| Error::TransformError {
+    let result = serde_yaml::from_value(replaced).map_err(|e| Error::TransformError {
         transform: "dynamic_eval".to_string(),
         message: format!("failed to deserialize transform after dynamic evaluation: {e}"),
-    })
+    })?;
+    Ok(Cow::Owned(result))
 }
 
 /// Recursively replace dynamic Jinja expressions in a serde_yaml::Value tree.
