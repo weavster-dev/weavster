@@ -5,10 +5,16 @@ use std::path::PathBuf;
 use weavster_core::Config;
 
 /// Run the package command
-pub async fn run(config_path: &str, sign: bool, output: Option<&str>) -> Result<()> {
+pub async fn run(
+    config_path: &str,
+    sign: bool,
+    output: Option<&str>,
+    profile: Option<&str>,
+) -> Result<()> {
     tracing::info!("Loading configuration from {}", config_path);
 
-    let config = Config::load(config_path).context("Failed to load configuration")?;
+    let config =
+        Config::load_with_profile(config_path, profile).context("Failed to load configuration")?;
 
     let output_path = output
         .map(PathBuf::from)

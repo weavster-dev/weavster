@@ -5,10 +5,16 @@ use weavster_core::Config;
 use weavster_runtime::Runtime;
 
 /// Run the Weavster runtime
-pub async fn run(config_path: &str, _flow: Option<&str>, _once: bool) -> Result<()> {
+pub async fn run(
+    config_path: &str,
+    _flow: Option<&str>,
+    _once: bool,
+    profile: Option<&str>,
+) -> Result<()> {
     tracing::info!("Loading configuration from {}", config_path);
 
-    let config = Config::load(config_path).context("Failed to load configuration")?;
+    let config =
+        Config::load_with_profile(config_path, profile).context("Failed to load configuration")?;
 
     tracing::info!("Project: {}", config.project.name);
 

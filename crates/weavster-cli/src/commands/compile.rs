@@ -6,10 +6,17 @@ use weavster_codegen::{CompileOptions, Compiler};
 use weavster_core::Config;
 
 /// Run the compile command
-pub async fn run(config_path: &str, flow: Option<&str>, debug: bool, force: bool) -> Result<()> {
+pub async fn run(
+    config_path: &str,
+    flow: Option<&str>,
+    debug: bool,
+    force: bool,
+    profile: Option<&str>,
+) -> Result<()> {
     tracing::info!("Loading configuration from {}", config_path);
 
-    let config = Config::load(config_path).context("Failed to load configuration")?;
+    let config =
+        Config::load_with_profile(config_path, profile).context("Failed to load configuration")?;
     let flows_dir = config.base_path.join("flows");
 
     let options = CompileOptions {

@@ -61,7 +61,11 @@ impl Runtime {
                 let message = input.pull().await?;
                 let Some(msg) = message else { break };
 
-                match weavster_core::interpreter::apply_transforms(&msg.payload, &flow.transforms) {
+                match weavster_core::interpreter::apply_transforms(
+                    &msg.payload,
+                    &flow.transforms,
+                    flow.dynamic_context.as_ref(),
+                ) {
                     Ok(result) => {
                         let out_msg = Message {
                             payload: result,

@@ -37,6 +37,9 @@ pub mod flow;
 pub mod interpreter;
 pub mod transforms;
 
-pub use config::{Config, ProjectConfig};
+pub use config::{
+    BackoffStrategy, Config, ConfigCache, DynamicJinjaContext, ErrorHandlingConfig, JinjaContext,
+    MacroDefinition, OnErrorBehavior, ProfileConfig, ProjectConfig, ResolvedConfig, RetryConfig,
+};
 pub use error::{Error, Result};
 pub use flow::Flow;
