@@ -23,14 +23,37 @@ jobs:
           LINEAR_TEAM_KEY: ${{ vars.LINEAR_TEAM_KEY || 'WEA' }}
         run: |
           # Query Linear for issues in "On Deck" state, filtered by team
-          RESPONSE=$(curl -s -X POST https://api.linear.app/graphql \
+          RAW_RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://api.linear.app/graphql \
             -H "Authorization: $LINEAR_API_KEY" \
             -H "Content-Type: application/json" \
             -d "{
               \"query\": \"query { issues(filter: { state: { name: { eq: \\\"On Deck\\\" } }, team: { key: { eq: \\\"$LINEAR_TEAM_KEY\\\" } } }) { nodes { id identifier title description priority url labels { nodes { name } } } } }\"
             }")
 
-          echo "$RESPONSE" | jq -r '.data.issues.nodes // [] | .[] | @base64' > /tmp/linear_issues.txt
+          HTTP_CODE=$(echo "$RAW_RESPONSE" | tail -n1)
+          RESPONSE=$(echo "$RAW_RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Linear API returned HTTP $HTTP_CODE"
+            echo "$RESPONSE"
+            exit 1
+          fi
+
+          # Check for GraphQL errors
+          GQL_ERRORS=$(echo "$RESPONSE" | jq -r '.errors // empty')
+          if [ -n "$GQL_ERRORS" ]; then
+            echo "::error::Linear GraphQL error: $GQL_ERRORS"
+            exit 1
+          fi
+
+          # Validate expected JSON structure
+          if ! echo "$RESPONSE" | jq -e '.data.issues.nodes | type == "array"' > /dev/null 2>&1; then
+            echo "::error::Unexpected Linear API response structure"
+            echo "$RESPONSE" | jq .
+            exit 1
+          fi
+
+          echo "$RESPONSE" | jq -r '.data.issues.nodes | .[] | @base64' > /tmp/linear_issues.txt
 
           if [ ! -s /tmp/linear_issues.txt ]; then
             echo "No On Deck issues found"

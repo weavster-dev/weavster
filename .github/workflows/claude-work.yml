@@ -192,11 +192,25 @@ jobs:
           STATE_ID=$(echo "$BODY" | jq -r '.data.issue.team.states.nodes[] | select(.name == "In Progress") | .id')
 
           if [ -n "$STATE_ID" ]; then
-            curl -s -X POST https://api.linear.app/graphql \
+            MUTATION_RESPONSE=$(curl -s -X POST https://api.linear.app/graphql \
               -H "Authorization: $LINEAR_API_KEY" \
               -H "Content-Type: application/json" \
-              -d "{\"query\": \"mutation { issueUpdate(id: \\\"$ISSUE_ID\\\", input: { stateId: \\\"$STATE_ID\\\" }) { success } }\"}"
-            echo "Moved ${{ github.event.client_payload.linear_identifier }} to In Progress"
+              -d "{\"query\": \"mutation { issueUpdate(id: \\\"$ISSUE_ID\\\", input: { stateId: \\\"$STATE_ID\\\" }) { success } }\"}")
+
+            MUTATION_ERRORS=$(echo "$MUTATION_RESPONSE" | jq -r '.errors // empty')
+            if [ -n "$MUTATION_ERRORS" ]; then
+              echo "::error::Failed to update Linear issue: $MUTATION_ERRORS"
+              exit 1
+            fi
+
+            SUCCESS=$(echo "$MUTATION_RESPONSE" | jq -r '.data.issueUpdate.success')
+            if [ "$SUCCESS" = "true" ]; then
+              echo "Moved ${{ github.event.client_payload.linear_identifier }} to In Progress"
+            else
+              echo "::error::Linear issueUpdate returned success=$SUCCESS"
+              echo "$MUTATION_RESPONSE" | jq .
+              exit 1
+            fi
           else
             echo "::warning::Could not find 'In Progress' state for this team"
           fi
