@@ -168,11 +168,28 @@ jobs:
           ISSUE_ID="${{ github.event.client_payload.linear_id }}"
 
           # Get the "In Progress" state ID for this team
-          STATE_ID=$(curl -s -X POST https://api.linear.app/graphql \
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST https://api.linear.app/graphql \
             -H "Authorization: $LINEAR_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "{\"query\": \"query { issue(id: \\\"$ISSUE_ID\\\") { team { states { nodes { id name } } } } }\"}" \
-            | jq -r '.data.issue.team.states.nodes[] | select(.name == "In Progress") | .id')
+            -d "{\"query\": \"query { issue(id: \\\"$ISSUE_ID\\\") { team { states { nodes { id name } } } } }\"}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+          BODY=$(echo "$RESPONSE" | sed '$d')
+
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Linear API returned HTTP $HTTP_CODE"
+            echo "$BODY"
+            exit 1
+          fi
+
+          # Check for GraphQL errors
+          GQL_ERRORS=$(echo "$BODY" | jq -r '.errors // empty')
+          if [ -n "$GQL_ERRORS" ]; then
+            echo "::error::Linear GraphQL error: $GQL_ERRORS"
+            exit 1
+          fi
+
+          STATE_ID=$(echo "$BODY" | jq -r '.data.issue.team.states.nodes[] | select(.name == "In Progress") | .id')
 
           if [ -n "$STATE_ID" ]; then
             curl -s -X POST https://api.linear.app/graphql \
@@ -181,7 +198,7 @@ jobs:
               -d "{\"query\": \"mutation { issueUpdate(id: \\\"$ISSUE_ID\\\", input: { stateId: \\\"$STATE_ID\\\" }) { success } }\"}"
             echo "Moved ${{ github.event.client_payload.linear_identifier }} to In Progress"
           else
-            echo "Warning: Could not find 'In Progress' state"
+            echo "::warning::Could not find 'In Progress' state for this team"
           fi
 
       - name: Work on Linear ticket
