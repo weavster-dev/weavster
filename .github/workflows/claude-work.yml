@@ -5,6 +5,8 @@ on:
     types: [labeled]
   issue_comment:
     types: [created]
+  repository_dispatch:
+    types: [linear-work]
 
 jobs:
   # When an issue is labeled 'claude-work', Claude will start working on it
@@ -13,6 +15,9 @@ jobs:
       github.event_name == 'issues' &&
       github.event.label.name == 'claude-work'
     runs-on: ubuntu-latest
+    concurrency:
+      group: claude-work-issue-${{ github.event.issue.number }}
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
@@ -24,10 +29,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy, rust-analyzer
+
       - name: Work on issue
         uses: anthropics/claude-code-action@v1
+        env:
+          ENABLE_LSP_TOOL: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
+          plugins: rust-analyzer-lsp@claude-plugins-official
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ github.event.issue.number }}
@@ -53,8 +67,8 @@ jobs:
                - Keep commits atomic and well-described
 
             4. **Create a Pull Request**
-               - Reference the issue in the PR
-               - Provide a clear description
+               - Title: "@coderabbitai" (CodeRabbit will generate the real title)
+               - Body: "@coderabbitai summary" on the first line, then reference the issue
                - Request review
 
             Use conventional commits: feat:, fix:, docs:, refactor:, test:, chore:
@@ -66,11 +80,20 @@ jobs:
             "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"
 
   # Handle @claude work requests in comments
+  # Only org members/collaborators can trigger this
   claude-work-comment:
     if: |
       github.event_name == 'issue_comment' &&
-      contains(github.event.comment.body, '@claude work')
+      contains(github.event.comment.body, '@claude work') &&
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      )
     runs-on: ubuntu-latest
+    concurrency:
+      group: claude-work-comment-${{ github.event.issue.number }}
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
@@ -82,10 +105,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy, rust-analyzer
+
       - name: Work on request
         uses: anthropics/claude-code-action@v1
+        env:
+          ENABLE_LSP_TOOL: "1"
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
+          plugins: rust-analyzer-lsp@claude-plugins-official
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ github.event.issue.number }}
@@ -97,10 +129,98 @@ jobs:
             Follow CLAUDE.md conventions. If this requires code changes:
             1. Implement the changes
             2. Write/update tests
-            3. Create a PR referencing this issue
+            3. Create a PR with title "@coderabbitai" and body starting with "@coderabbitai summary", referencing this issue
 
             If this is a question or clarification, respond with a helpful comment.
 
           claude_args: >-
             --allowed-tools
             "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"
+
+  # Dispatched from Linear via claude-dispatch.yml polling
+  work-linear-ticket:
+    if: github.event_name == 'repository_dispatch' && github.event.action == 'linear-work'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: claude-work-linear-${{ github.event.client_payload.linear_identifier }}
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy, rust-analyzer
+
+      - name: Move Linear ticket to "In Progress"
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        run: |
+          # Use the UUID (linear_id) for all Linear API calls
+          ISSUE_ID="${{ github.event.client_payload.linear_id }}"
+
+          # Get the "In Progress" state ID for this team
+          STATE_ID=$(curl -s -X POST https://api.linear.app/graphql \
+            -H "Authorization: $LINEAR_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{\"query\": \"query { issue(id: \\\"$ISSUE_ID\\\") { team { states { nodes { id name } } } } }\"}" \
+            | jq -r '.data.issue.team.states.nodes[] | select(.name == "In Progress") | .id')
+
+          if [ -n "$STATE_ID" ]; then
+            curl -s -X POST https://api.linear.app/graphql \
+              -H "Authorization: $LINEAR_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "{\"query\": \"mutation { issueUpdate(id: \\\"$ISSUE_ID\\\", input: { stateId: \\\"$STATE_ID\\\" }) { success } }\"}"
+            echo "Moved ${{ github.event.client_payload.linear_identifier }} to In Progress"
+          else
+            echo "Warning: Could not find 'In Progress' state"
+          fi
+
+      - name: Work on Linear ticket
+        uses: anthropics/claude-code-action@v1
+        env:
+          ENABLE_LSP_TOOL: "1"
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
+          plugins: rust-analyzer-lsp@claude-plugins-official
+          prompt: |
+            LINEAR TICKET: ${{ github.event.client_payload.linear_identifier }}
+            TITLE: ${{ github.event.client_payload.title }}
+            URL: ${{ github.event.client_payload.url }}
+            PRIORITY: ${{ github.event.client_payload.priority }}
+
+            DESCRIPTION:
+            ${{ github.event.client_payload.description }}
+
+            You have been assigned a Linear ticket. Please:
+
+            1. **Understand the Ticket**
+               - Read the description carefully
+               - Check related code and tests
+               - Identify affected crates
+
+            2. **Implement the Solution**
+               - Follow CLAUDE.md conventions
+               - Write tests for new functionality
+               - Keep commits atomic and well-described
+
+            3. **Create a Pull Request**
+               - Use the Linear identifier for the branch name:
+                 lowercase the ID and prefix with the type, e.g. feat/${{ github.event.client_payload.linear_identifier }}-short-description
+               - Title: "[${{ github.event.client_payload.linear_identifier }}]: @coderabbitai"
+               - Body: "@coderabbitai summary" on the first line, then reference the Linear ticket URL
+
+            Use conventional commits: feat:, fix:, docs:, refactor:, test:, chore:
+
+          claude_args: >-
+            --allowed-tools
+            "Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"

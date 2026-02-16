@@ -1,0 +1,84 @@
+name: Claude Code Dispatch
+
+# Polls Linear for "On Deck" tickets and dispatches them to claude-work.yml
+# Rename LINEAR_TEAM_KEY variable in GitHub repo settings to match your Linear team
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  dispatch-on-deck:
+    runs-on: ubuntu-latest
+    # Prevent overlapping poll runs from dispatching duplicates
+    concurrency:
+      group: claude-dispatch
+      cancel-in-progress: false
+    steps:
+      - name: Fetch "On Deck" issues from Linear
+        id: fetch
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_KEY: ${{ vars.LINEAR_TEAM_KEY || 'WEA' }}
+        run: |
+          # Query Linear for issues in "On Deck" state, filtered by team
+          RESPONSE=$(curl -s -X POST https://api.linear.app/graphql \
+            -H "Authorization: $LINEAR_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"query\": \"query { issues(filter: { state: { name: { eq: \\\"On Deck\\\" } }, team: { key: { eq: \\\"$LINEAR_TEAM_KEY\\\" } } }) { nodes { id identifier title description priority url labels { nodes { name } } } } }\"
+            }")
+
+          echo "$RESPONSE" | jq -r '.data.issues.nodes // [] | .[] | @base64' > /tmp/linear_issues.txt
+
+          if [ ! -s /tmp/linear_issues.txt ]; then
+            echo "No On Deck issues found"
+            echo "has_issues=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_issues=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dispatch Claude work for each ticket
+        if: steps.fetch.outputs.has_issues == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.LINEAR_DISPATCH_TOKEN }}
+        run: |
+          while IFS= read -r encoded; do
+            [ -z "$encoded" ] && continue
+
+            ISSUE=$(echo "$encoded" | base64 -d)
+            LINEAR_ID=$(echo "$ISSUE" | jq -r '.id')
+            LINEAR_IDENTIFIER=$(echo "$ISSUE" | jq -r '.identifier')
+            TITLE=$(echo "$ISSUE" | jq -r '.title')
+            DESCRIPTION=$(echo "$ISSUE" | jq -r '.description // "No description provided"')
+            URL=$(echo "$ISSUE" | jq -r '.url')
+            PRIORITY=$(echo "$ISSUE" | jq -r '.priority')
+
+            # Check if already dispatched by looking for an open PR with this Linear identifier
+            EXISTING=$(gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --search "$LINEAR_IDENTIFIER" \
+              --state all \
+              --json number \
+              --jq 'length')
+
+            if [ "$EXISTING" -gt 0 ]; then
+              echo "Skipping $LINEAR_IDENTIFIER — PR already exists"
+              continue
+            fi
+
+            echo "Dispatching Claude work for $LINEAR_IDENTIFIER: $TITLE"
+
+            # Send both UUID (for API calls) and identifier (for branch names/PR titles)
+            gh api repos/"$GITHUB_REPOSITORY"/dispatches \
+              --method POST \
+              -f event_type=linear-work \
+              -f "client_payload[linear_id]=$LINEAR_ID" \
+              -f "client_payload[linear_identifier]=$LINEAR_IDENTIFIER" \
+              -f "client_payload[title]=$TITLE" \
+              -f "client_payload[description]=$DESCRIPTION" \
+              -f "client_payload[url]=$URL" \
+              -f "client_payload[priority]=$PRIORITY"
+
+          done < /tmp/linear_issues.txt
