@@ -35,6 +35,10 @@ pub mod connectors;
 pub mod error;
 pub mod flow;
 pub mod interpreter;
+
+/// The evaluation and assertion engine backend
+pub mod testing;
+
 pub mod transforms;
 
 pub use config::{

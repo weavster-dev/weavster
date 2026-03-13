@@ -223,7 +223,7 @@ async fn main() -> Result<()> {
             }
         },
         Commands::Test { pattern } => {
-            commands::test::run(&cli.config, pattern.as_deref()).await?;
+            commands::test::run(pattern.as_deref()).await?;
         }
     }
 

@@ -142,11 +142,17 @@ name = "{name}"
 version = "0.1.0"
 edition = "2021"
 
+[workspace]
+
 [lib]
 crate-type = ["cdylib"]
 
 [dependencies]
-serde_json = {{ version = "1.0", default-features = false, features = ["alloc"] }}
+serde_json = {{ version = "1.0", features = ["alloc"] }}
+minijinja = "2.0"
+regex = "1.10"
+once_cell = "1.19"
+phf = {{ version = "0.13.1", features = ["macros"] }}
 
 [profile.release]
 lto = true
@@ -170,14 +176,14 @@ strip = true
     }
 
     async fn compile_to_wasm(&self, crate_dir: &Path, name: &str) -> Result<Vec<u8>> {
-        // Check for wasm32-wasi target
+        // Check for wasm32-unknown-unknown target
         self.ensure_wasm_target().await?;
 
         tracing::debug!("Running cargo build for WASM target");
 
         let output = Command::new("cargo")
             .current_dir(crate_dir)
-            .args(["build", "--release", "--target", "wasm32-wasi"])
+            .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
             .output()
             .await
             .map_err(|e| Error::ToolchainError {
@@ -195,12 +201,16 @@ strip = true
         // Read the compiled WASM
         let wasm_path = crate_dir
             .join("target")
-            .join("wasm32-wasi")
+            .join("wasm32-unknown-unknown")
             .join("release")
             .join(format!("{}.wasm", name));
 
         let wasm_bytes = std::fs::read(&wasm_path).map_err(|e| Error::CompilationError {
-            message: format!("Failed to read compiled WASM: {}", e),
+            message: format!(
+                "Failed to read compiled WASM from {}: {}",
+                wasm_path.display(),
+                e
+            ),
             stderr: None,
         })?;
 
@@ -220,20 +230,20 @@ strip = true
 
         let installed = String::from_utf8_lossy(&output.stdout);
 
-        if !installed.contains("wasm32-wasi") {
-            tracing::info!("Installing wasm32-wasi target...");
+        if !installed.contains("wasm32-unknown-unknown") {
+            tracing::info!("Installing wasm32-unknown-unknown target...");
 
             let install_output = Command::new("rustup")
-                .args(["target", "add", "wasm32-wasi"])
+                .args(["target", "add", "wasm32-unknown-unknown"])
                 .output()
                 .await
                 .map_err(|e| Error::ToolchainError {
-                    message: format!("Failed to install wasm32-wasi target: {}", e),
+                    message: format!("Failed to install wasm32-unknown-unknown target: {}", e),
                 })?;
 
             if !install_output.status.success() {
                 return Err(Error::ToolchainError {
-                    message: "Failed to install wasm32-wasi target".to_string(),
+                    message: "Failed to install wasm32-unknown-unknown target".to_string(),
                 });
             }
         }

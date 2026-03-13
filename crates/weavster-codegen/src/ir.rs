@@ -45,6 +45,9 @@ pub enum TransformIR {
     /// Filter (conditional pass-through)
     Filter(FilterTransform),
 
+    /// AddFields (append new static fields onto the payload)
+    AddFields(HashMap<String, serde_json::Value>),
+
     /// Drop fields
     Drop(Vec<String>),
 
@@ -169,6 +172,22 @@ pub struct FilterTransform {
 /// Filter condition
 #[derive(Debug, Clone)]
 pub enum FilterCondition {
+    /// Strict equality match
+    Equals {
+        /// Field to compare
+        field: String,
+        /// Value to equal exactly
+        value: serde_json::Value,
+    },
+
+    /// String inclusion match
+    Contains {
+        /// Field to examine
+        field: String,
+        /// Expected substring
+        value: String,
+    },
+
     /// Simple field comparison
     Compare {
         /// Field to compare
@@ -718,6 +737,18 @@ mod tests {
         }]);
 
         assert!(matches!(transform, TransformIR::Coalesce(_)));
+    }
+
+    #[test]
+    fn test_transform_ir_add_fields() {
+        let mut fields = HashMap::new();
+        fields.insert("new_field".to_string(), serde_json::json!("active"));
+        let transform = TransformIR::AddFields(fields);
+
+        match transform {
+            TransformIR::AddFields(f) => assert_eq!(f.len(), 1),
+            _ => panic!("Expected AddFields"),
+        }
     }
 
     #[test]

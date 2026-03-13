@@ -1,0 +1,1232 @@
+Starting CodeRabbit review in plain text mode...
+
+Connecting to review service
+Setting up
+Analyzing
+Reviewing
+
+============================================================================
+File: check_eq.rs
+Line: 1 to 3
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @check_eq.rs around lines 1 - 3, The compilation fails because serde_json::Value implements PartialEq but not Eq; update the generic bound on the check function from Eq to PartialEq (change fn check(_: T) {} to fn check(_: T) {}), so that calling check(Value::Null) in main compiles; ensure you modify the check function signature (and any callers) rather than trying to derive Eq for serde_json::Value.
+
+
+
+============================================================================
+File: coderabbit_output.txt
+Line: 1
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @coderabbit_output.txt at line 1, coderabbit_output.txt looks like a generated log/output and should not be committed; add "coderabbit_output.txt" (or a glob like "*_output.txt") to your .gitignore to prevent accidental commits, or if this file is intentionally checked in as documentation/test fixture/template, update the PR description to explain its purpose and move it into a clearly named docs/ or test/ directory; ensure any CI or build steps that generate this file are not relying on the committed copy and update relevant README/CI notes if needed.
+
+
+
+============================================================================
+File: coderabbit_output.txt
+Line: 2 to 3
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @coderabbit_output.txt around lines 2 - 3, Remove the two unnecessary trailing blank lines at the end of coderabbit_output.txt so the file ends immediately after the final line "Connecting to review service" with exactly one newline character; open the file, delete the extra blank lines at EOF, and save so there is only a single terminating newline.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/lib.rs
+Line: 33
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/lib.rs at line 33, Add a documentation comment for the public module declaration pub mod wasm so it no longer triggers the missing_docs lint; open the module declaration for wasm and insert a concise /// doc comment above it describing the module's purpose and public API surface (include a short example if useful), mirroring the style used for models, schema, and state so the crate-level #![warn(missing_docs)] is satisfied.
+
+
+
+============================================================================
+File: crates/weavster-runtime/migrations_postgres/20260310000000_init/down.sql
+Line: 1 to 4
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/migrations_postgres/20260310000000_init/down.sql around lines 1 - 4, The rollback DROP statements for tables test_results, flow_executions, bridge_messages, and processed_files should use CASCADE to force removal of dependent objects and avoid failures; update the DROP TABLE IF EXISTS statements for these tables to include CASCADE and ensure the drop order removes child tables before parent tables (identify which of test_results, flow_executions, bridge_messages, processed_files have FK references and reorder so referenced tables are dropped after their dependents).
+
+
+
+============================================================================
+File: crates/weavster-codegen/src/parser.rs
+Line: 506 to 529
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-codegen/src/parser.rs around lines 506 - 529, Add additional unit tests for the AddFields transform to cover edge cases: create new tests alongside test_parse_add_fields_transform that call Parser::new(".") and Parser::parse_yaml(yaml) and assert behavior when TransformIR::AddFields is present — specifically add tests for an empty add_fields map (ensure fields.len() == 0), nested JSON objects/arrays as values (assert the nested structures are preserved via serde_json::json! comparisons), and boolean/null values (assert true/false and null are parsed to serde_json::Value correctly); reference the existing test function name test_parse_add_fields_transform and the enum variant TransformIR::AddFields to locate where to add these new tests.
+
+
+
+============================================================================
+File: GEMINI.md
+Line: 1 to 3
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @GEMINI.md around lines 1 - 3, The file GEMINI.md contains a header and references for Claude ("# CLAUDE.md" and "Claude Code (claude.ai/code)"); fix this inconsistency by either renaming the file to CLAUDE.md or updating the file content to reference Gemini throughout: change the header to "# GEMINI.md" (or appropriate Gemini title), replace any occurrences of "Claude", "claude.ai/code" and related wording with "Gemini" and the correct Gemini URL/branding, and run a quick search in the file for any remaining Claude-specific tokens to update them consistently.
+
+
+
+============================================================================
+File: crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql
+Line: 8
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql at line 8, Add CHECK constraints to the status columns so only valid states are allowed: locate each CREATE TABLE that defines a column named status (e.g., the status TEXT NOT NULL declarations) and replace or augment them with a CHECK constraint enumerating your allowed values (for example CHECK (status IN ('pending','processing','completed','failed'))), or alternatively create and use a PostgreSQL ENUM type and reference it instead of TEXT; update every status column across the schema to use the same constraint/type for consistency.
+
+
+
+============================================================================
+File: crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql
+Line: 25 to 34
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql around lines 25 - 34, Add two indexes to speed queries on flow_executions by flow and recent runs: create an index on flow_executions(flow_name) and a separate index on flow_executions(started_at DESC). Modify the migration that defines the flow_executions table (table name: flow_executions) to include statements to create these indexes (use index names like idx_flow_executions_flow_name and idx_flow_executions_started_at) so queries filtering by flow_name or ordering by started_at are accelerated.
+
+
+
+============================================================================
+File: crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql
+Line: 36 to 45
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql around lines 36 - 45, Add three indexes to optimize queries on test_results: create a B-tree index named idx_test_results_test_name on the test_results.test_name column, create idx_test_results_flow_name on test_results.flow_name, and create idx_test_results_executed_at on test_results.executed_at using DESC ordering; add these CREATE INDEX statements after the test_results table definition (or in a separate migration) so queries filtering by test_name, flow_name, or ordering by executed_at DESC use the indexes.
+
+
+
+============================================================================
+File: crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql
+Line: 13 to 23
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql around lines 13 - 23, Add indexes to speed up queue operations on the bridge_messages table: create a single-column index on bridge_name and a composite index on (status, created_at). Specifically, add statements to create idx_bridge_messages_bridge_name for bridge_name and idx_bridge_messages_status_created for (status, created_at) so queries that filter by bridge_name or select oldest unprocessed messages by status+created_at will use the indexes; ensure the CREATE INDEX statements are idempotent with the table (e.g., run during migration after table creation).
+
+
+
+============================================================================
+File: crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql
+Line: 1 to 11
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql around lines 1 - 11, Add dedicated indexes to the processed_files table to speed common queries: create a single-column index on flow_name and another on status so queries filtering by flow_name or status (e.g., WHERE flow_name = ... or WHERE status = ...) won't have to scan the unique constraint; update the migration that defines processed_files to add these indexes (referencing the processed_files table and the flow_name and status columns) after the table creation.
+
+
+
+============================================================================
+File: crates/weavster-runtime/migrations_sqlite/20260310000000_init/up.sql
+Line: 13 to 23
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/migrations_sqlite/20260310000000_init/up.sql around lines 13 - 23, The migration creates bridge_messages but lacks an index for common queue queries; add a composite index to speed lookups like WHERE bridge_name = ? AND status = 'pending' by adding an index creation for the bridge_messages table (e.g., create an index named idx_bridge_messages_bridge_status on columns bridge_name and status) in the up.sql migration so runtime message polling uses the index.
+
+
+
+============================================================================
+File: crates/weavster-codegen/src/ir.rs
+Line: 742 to 752
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-codegen/src/ir.rs around lines 742 - 752, Add unit tests for the new FilterCondition variants by mirroring existing tests (e.g., test_filter_condition_compare, test_filter_condition_not_null): create test_filter_condition_equals and test_filter_condition_contains that construct FilterCondition::Equals and FilterCondition::Contains respectively, verify their internal values (e.g., assert expected field/key and value presence) and ensure round-trip behavior or matching logic used in other tests (serialization/deserialization or pattern matching) is exercised; reference the FilterCondition enum and the new variants Equals and Contains when locating where to add these tests.
+
+
+
+============================================================================
+File: crates/weavster-runtime/migrations_sqlite/20260310000000_init/up.sql
+Line: 25 to 34
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/migrations_sqlite/20260310000000_init/up.sql around lines 25 - 34, The migration lacks an index to speed up queries by flow name; add an index for the flow_executions.table to improve lookups (especially for recent executions or latest-run queries) by creating an index such as idx_flow_executions_flow_name on the flow_name column; update the migration file that defines the flow_executions table to include creating this index (or add a new migration that runs CREATE INDEX idx_flow_executions_flow_name ON flow_executions(flow_name)) so queries filtering or ordering by flow_name become efficient.
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/mod.rs
+Line: 1 to 8
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/mod.rs around lines 1 - 8, Add a module-level doc comment (using //! at the top of the file) that briefly describes the purpose of the testing module and how its public submodules relate (assertions, executor, models); include a one-line summary for each submodule (assertions: core assertion helpers, executor: test execution environments, models: serde schemas for YAML configs) so users reading the API docs immediately understand intent and structure.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/models.rs
+Line: 21 to 33
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/models.rs around lines 21 - 33, Change the signed integer fields that represent counts to unsigned types: update BridgeMessage.retry_count from i32 to u32, ProcessedFile.record_count from i32 to u32, and FlowExecution.records_processed and FlowExecution.records_failed from i32 to u32; ensure any associated DB schema mappings, Diesel types/derive annotations (e.g., in structs BridgeMessage, ProcessedFile, FlowExecution) and places that read/write these fields are adjusted to use u32 and compatible SQL column types (or cast/convert where necessary) to keep types consistent across serialization/deserialization and queries.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/models.rs
+Line: 17
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/models.rs at line 17, Replace the String-typed status fields with a strongly-typed enum (e.g., ProcessingStatus) and update all four structs that currently declare pub status: String to use that enum; define the enum with derives such as Debug, Clone, Copy, PartialEq, Eq, serde::{Serialize,Deserialize} and diesel::AsExpression + diesel::FromSqlRow mapped to diesel::sql_types::Text (or implement ToSql/FromSql) so it serializes to/from the DB/text column, and update any places that construct or compare status values to use the enum variants (Pending, Processing, Completed, Failed) instead of raw strings.
+
+
+
+============================================================================
+File: Redesign/tickets/CLI_Foundation__init,_validate,_and_help_Commands.md
+Line: 85 to 109
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/CLI_Foundation__init,_validate,_and_help_Commands.md around lines 85 - 109, Validate the project_name at the start of init_command (ensure it's non-empty and contains only safe filesystem characters) and return a clear error if invalid; before creating directories, check if the target project directory already exists (e.g., std::path::Path::exists on project_name) and fail or prompt accordingly to avoid overwriting; ensure all create_dir_all and write_file calls use joined paths (join project_name with "flows", "connectors", "weavster.yaml", etc.) rather than hardcoded relative paths so files are created inside the new project directory; keep existing templates/constants (WEAVSTER_YAML_TEMPLATE, EXAMPLE_FLOW_TEMPLATE, FILE_CONNECTOR_TEMPLATE, EXAMPLE_TEST_TEMPLATE, SAMPLE_DATA, GITIGNORE_TEMPLATE) but pass them to write_file with the project-prefixed paths and handle errors with clear messages.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/schema.rs
+Line: 1 to 3
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/schema.rs around lines 1 - 3, Remove the redundant "// schema.rs" header comment at the top of the file and replace it with a single clarifying note indicating whether the file is auto-generated or manually maintained (e.g., "Auto-generated by diesel print-schema - do not edit manually." or "Manually maintained schema file"). Update the top of the file where the current header comment appears (the file-level comment in schema.rs) to reflect this choice so future maintainers know whether edits are allowed.
+
+
+
+============================================================================
+File: crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql
+Line: 6
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/migrations_postgres/20260310000000_init/up.sql at line 6, Change the timestamp column types in the migration to use TIMESTAMPTZ instead of TIMESTAMP to avoid timezone ambiguity: update processed_at, created_at, started_at, completed_at, and executed_at definitions in the migration (migrations_postgres/20260310000000_init/up.sql) from TIMESTAMP to TIMESTAMPTZ and ensure their DEFAULT expressions remain valid for timestamptz (e.g., using CURRENT_TIMESTAMP/now()); keep existing NOT NULL/default semantics and any indexes or constraints intact, then re-run the migration tests to verify no schema or compatibility issues.
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/executor.rs
+Line: 109 to 127
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/executor.rs around lines 109 - 127, The helper read_jsonl currently does blocking filesystem I/O (File::open and reader.lines()) which will block the async runtime; change it to either (A) an async implementation using tokio's async APIs (make read_jsonl async, use tokio::fs::File, tokio::io::BufReader and AsyncBufReadExt::lines to read lines and serde_json::from_str for parsing) or (B) keep it sync but run it off the async runtime via tokio::task::spawn_blocking (wrap the existing read_jsonl body in spawn_blocking and await the join handle) so the executor thread is not blocked; update call sites accordingly (look for read_jsonl references) and ensure error types are adapted to the async variant.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/models.rs
+Line: 1
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/models.rs at line 1, Remove the crate-level #![allow(missing_docs)] and add doc comments for each public type mentioned (ProcessedFile, BridgeMessage, FlowExecution, TestResult); for each struct add a brief module-level or type-level /// comment describing its purpose and per-field /// comments explaining semantics (e.g., id: Option meaning DB primary key, timestamp fields meaning creation/update times, enum variants meaning their semantics), keeping examples where helpful; ensure the docs are placed directly above the struct and its public fields and remove the allow attribute so docs warnings no longer suppressed.
+
+
+
+============================================================================
+File: Redesign/tickets/CLI_Foundation__init,_validate,_and_help_Commands.md
+Line: 92
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/CLI_Foundation__init,_validate,_and_help_Commands.md at line 92, The code only creates the cache directory but omits the logs directory; add a create_dir_all call for the "{}/.weavster/logs" path (using the same project_name variable and error propagation with ?) alongside the existing create_dir_all(format!("{}/.weavster/cache", project_name))?; so both ".weavster/cache" and ".weavster/logs" are created to match the template/acceptance criteria.
+
+
+
+============================================================================
+File: Redesign/Epic_Brief__Weavster_MVP_-_WASM-Based_Data_Transformation_Engine.md
+Line: 57 to 63
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Epic_Brief__Weavster_MVP_-_WASM-Based_Data_Transformation_Engine.md around lines 57 - 63, The checklist items currently use filled checkmarks (e.g., the lines starting with "✅ Technical Proof:", "✅ Functional Validation:", "✅ Testing Framework:", and "✅ Foundation Quality:"); change these to empty checkbox markers (e.g., "[ ] Technical Proof:" etc.) or plain bullets so the document reflects planned MVP goals rather than completed tasks—update each of those four lines consistently to use the chosen empty checkbox or bullet format.
+
+
+
+============================================================================
+File: Redesign/Epic_Brief__Weavster_MVP_-_WASM-Based_Data_Transformation_Engine.md
+Line: 79
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Epic_Brief__Weavster_MVP_-_WASM-Based_Data_Transformation_Engine.md at line 79, Clarify the ambiguous term "flow load time" in the requirement line "Compile YAML to WASM at flow load time (not pre-compiled)" by specifying exactly when compilation occurs (e.g., at application startup, on first YAML read/ingest, on flow activation/deployment, or per-request), pick the intended lifecycle event (preferably "on flow activation/deployment" or "on first YAML read" depending on desired performance/latency), and add a short note about implications for caching, error handling, and deployment (e.g., cache compiled WASM per flow id, surface compile errors to operator, and avoid repeated compilation on every request).
+
+
+
+============================================================================
+File: Redesign/Epic_Brief__Weavster_MVP_-_WASM-Based_Data_Transformation_Engine.md
+Line: 59
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Epic_Brief__Weavster_MVP_-_WASM-Based_Data_Transformation_Engine.md at line 59, Add concise definitions for the four core transforms referenced in the success criteria: for map state it transforms field values (e.g., rename fields or apply simple functions), for drop state it removes specified fields from records, for add_fields state it adds new fields with static or computed values, and for filter state it includes or excludes records based on boolean conditions; place this short "Core Transforms for MVP" subsection under "Success Criteria for MVP" or "Key Assumptions" so stakeholders and implementers have an explicit, shared definition of map, drop, add_fields, and filter.
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/models.rs
+Line: 1 to 53
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/models.rs around lines 1 - 53, Add a #[cfg(test)] mod tests in this file that verifies serde (de)serialization for TestDefinition and each Assertion variant: create representative Assertion instances (RecordCount, FieldExists, FieldNotExists, FieldValue) and a TestDefinition with and without assertions to assert correct JSON shape (tag "type" using snake_case and expected field names), perform serde_json::to_string and serde_json::from_str roundtrips, and assert equality after deserialization; also test that TestDefinition's #[serde(default)] assertions field deserializes to an empty Vec when omitted. Use the types TestDefinition and Assertion to locate the code.
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/executor.rs
+Line: 1 to 127
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/executor.rs around lines 1 - 127, Add a #[cfg(test)] mod tests in the same file and add unit tests covering TestResult::new() (assert passed == true, failures empty, diff is None), TestResult::add_failure() (mutate a TestResult, call add_failure and assert passed == false and failures.len() increased and message present), and read_jsonl(path) (use temp files to assert it correctly parses valid JSONL, ignores empty lines, and returns an Err for invalid JSON); reference the TestResult::new, TestResult::add_failure, and read_jsonl symbols when writing the tests so they live alongside the implementation.
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/models.rs
+Line: 5 to 6
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/models.rs around lines 5 - 6, The TestDefinition struct should derive PartialEq so tests can compare instances; update the derive attribute on TestDefinition (where it currently has Debug, Clone, Deserialize, Serialize) to include PartialEq (similar to Assertion which already derives PartialEq) so equality comparisons in test code compile and work as expected.
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/executor.rs
+Line: 17 to 35
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/executor.rs around lines 17 - 35, The TestResult struct derives Default but its new() constructor sets passed: true while the derived Default would set passed: false, causing an API inconsistency and clippy warnings; fix by removing #[derive(Default)] and implementing Default manually to return the same state as TestResult::new() (or alternatively remove new() and keep the derive), i.e., ensure the Default impl for TestResult (or the retained constructor) sets passed: true, failures: Vec::new(), diff: None so Default and TestResult::new() are consistent.
+
+
+
+============================================================================
+File: crates/weavster-cli/src/commands/run.rs
+Line: 69 to 73
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-cli/src/commands/run.rs around lines 69 - 73, The db_url construction uses inconsistent path conversion (to_string_lossy() vs display()) and may produce an incorrect SQLite URL; normalize by using to_string_lossy() for both branches, replace backslashes with '/' on Windows, and ensure the correct number of slashes for an absolute file path (use "sqlite:///" + path_str for absolute paths and "sqlite://" + path_str for relative paths) so the connection string matches what sqlx expects; update the db_url formation in the run.rs block that builds db_url accordingly.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/state.rs
+Line: 162 to 281
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/state.rs around lines 162 - 281, PostgresStateStore duplicates SqliteStateStore logic (connection, spawn_blocking closures, and the three methods mark_file_processed, is_file_processed, record_flow_execution); extract the shared query/execution logic into reusable helpers or a generic layer to eliminate duplication. Create shared functions (e.g., insert_processed_file(conn: &mut impl ConnTrait, flow_name: &str, file_path: &str, file_hash: &str, record_count: usize), query_is_processed(conn: &mut impl ConnTrait, flow_name: &str, file_path: &str, file_hash: &str) -> bool, insert_flow_execution(...)) and call them from both PostgresStateStore and SqliteStateStore inside their spawn_blocking closures; alternatively implement a macro to generate the two impl blocks if you prefer codegen, or document intentional divergence if duplication is kept. Ensure helper signatures abstract over the connection type (or trait) and keep error conversions identical to current behavior.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/state.rs
+Line: 7
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/state.rs at line 7, Replace the std Mutex with the async-aware tokio::sync::Mutex by changing the import line from std::sync::{Arc, Mutex} to std::sync::Arc and tokio::sync::Mutex (or simply use Arc> where the state is defined); then update all call sites that currently use sync .lock() (and which may be wrapped in spawn_blocking) to use .lock().await (removing unnecessary spawn_blocking wrappers where appropriate) and adjust any MutexGuard usage to the async guard returned by tokio::sync::Mutex::lock; ensure types and awaits compile after replacing occurrences of Mutex and .lock().
+
+
+
+============================================================================
+File: Redesign/Epic_Brief__Weavster_MVP_-_WASM-Based_Data_Transformation_Engine.md
+Line: 5
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Epic_Brief__Weavster_MVP_-_WASM-Based_Data_Transformation_Engine.md at line 5, The summary currently lists multiple file formats but the MVP only supports JSONL; update the opening paragraph that describes "Weavster" / "MVP" / "WASM-based transformation engine" to explicitly state that the MVP focuses on JSONL input only and that CSV, XML, HL7, EDI, X12 are planned for future iterations; also add a short parenthetical or sentence linking this clarification to the "Out of Scope" and "Key Assumptions" sections so the scope is consistent across the document.
+
+
+
+============================================================================
+File: Cargo.toml
+Line: 52 to 53
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Cargo.toml around lines 52 - 53, The dependency entry for colored ("colored" = "2.2") lacks documentation: add a brief comment next to the colored dependency in Cargo.toml explaining why it's needed (e.g., used for terminal string styling for CLI output) and what features or cfgs are required, then update the project README (or a DEPENDENCIES.md / CHANGELOG) with a one-line description of colored's purpose, example usage (where you call colored methods in the codebase), and a link to the crate docs so maintainers can find usage and configuration details; reference the dependency name "colored" and any locations where it's used (search for .color(), .bold(), or other colored API usages) when editing docs.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/state.rs
+Line: 141 to 152
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/state.rs around lines 141 - 152, The insert into flow_executions currently sets flow_executions::started_at = Utc::now() while immediately marking status = "completed", losing execution duration; either add a flow_executions::completed_at column and populate both started_at and completed_at in this insertion (or use an actual start timestamp if available) so duration can be computed, or refactor into two operations: implement start_flow_execution (insert with flow_executions::started_at and status="running") and complete_flow_execution (UPDATE the row to set flow_executions::completed_at, status="completed", and records_processed/records_failed), or if duration truly isn’t needed, rename flow_executions::started_at to flow_executions::recorded_at for clarity; update schema/migrations and use the identifiers flow_executions::started_at, flow_executions::completed_at (or flow_executions::recorded_at), status, records_processed, records_failed, and the new start_flow_execution/complete_flow_execution functions as appropriate.
+
+
+
+============================================================================
+File: crates/weavster-core/Cargo.toml
+Line: 44 to 47
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/Cargo.toml around lines 44 - 47, The new workspace dependency "colored" was added without documentation and likely belongs in the CLI crate rather than the core library; either move the "colored" entry out of the weavster-core workspace declaration into the weavster-cli Cargo.toml, or if core truly needs it (e.g., for structured/error formatting functions in weavster-core), add a clear comment above the "colored.workspace = true" line explaining the exact use case and why the core crate requires terminal colorization (reference the "colored" crate and the weavster-core formatting/Error types that depend on it) so reviewers understand the rationale.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/state.rs
+Line: 1
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/state.rs at line 1, Remove the crate-level suppression (#![allow(missing_docs)]) and add proper doc comments to all public APIs: document the StateStore trait (describe purpose, key methods and typical usage), the SqliteStateStore and PostgresStateStore structs (constructor behavior, connection expectations, and thread/sync guarantees), and the SQLITE_MIGRATIONS and POSTGRES_MIGRATIONS constants (what migrations they contain and when to run them); include short usage examples for StateStore and each concrete store where helpful, and if you must suppress docs for specific non-public items, replace the blanket attribute with targeted allows only on those private/internal symbols.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/state.rs
+Line: 281
+Type: refactor_suggestion
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/state.rs at line 281, Add a #[cfg(test)] mod tests in the same file using rstest and implement unit tests that cover: constructing the Store with valid and invalid DB URLs (exercise Store::new or the constructor used in this file), round-trip tests for mark_file_processed and is_file_processed, behavior tests for record_flow_execution (including expected DB state changes/return values), and error-handling tests such as simulating mutex poisoning and passing invalid data to ensure errors are surfaced; use rstest for parameterized inputs (good/Bad DB URLs, different flow inputs) and include setup/teardown helpers inside the test module to create temporary DBs or mocks used by the Store.
+
+
+
+============================================================================
+File: crates/weavster-cli/Cargo.toml
+Line: 31
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-cli/Cargo.toml at line 31, Add a short inline comment next to the serde_yaml.workspace = true entry explaining why serde_yaml was added (for example: "used to parse YAML configuration files for CLI settings and presets"), so reviewers know its purpose; locate the serde_yaml.workspace entry in Cargo.toml and add a one-line comment describing its use case and any relevant constraints (e.g., only required for config parsing in weavster-cli).
+
+
+
+============================================================================
+File: crates/weavster-cli/Cargo.toml
+Line: 33 to 34
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-cli/Cargo.toml around lines 33 - 34, The header line currently contains a duplicated/two-headed markdown comment "# Logging# Logging"; open the Cargo.toml and replace that header text with the single correct header "# Logging" (i.e., remove the duplicate trailing "# Logging") so the section heading reads exactly "# Logging".
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/executor.rs
+Line: 64 to 72
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/executor.rs around lines 64 - 72, The async functions run_unit_test and run_integration_test currently contain no .await and will trigger clippy::unused_async; either make them synchronous by removing the async keyword and returning Result directly, or keep them async for future use and suppress the lint by adding #[allow(clippy::unused_async)] above each function (or introduce a no-op await such as futures::future::ready(()).await inside the body). Update the signatures and any callers if you remove async, or simply add the attribute above run_unit_test and run_integration_test to silence the warning.
+
+
+
+============================================================================
+File: crates/weavster-cli/src/commands/test.rs
+Line: 87 to 88
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-cli/src/commands/test.rs around lines 87 - 88, Add a #[cfg(test)] mod tests in this file and implement unit tests covering the pattern filtering logic (exercise the tests.retain(|t| t.name.contains(p)) behavior), plus edge cases such as an empty test list/directory and a pattern that matches nothing; create sample Test structs or fixtures used by the module to assert that filtering returns expected subsets and that the code gracefully handles empty/no-match scenarios, referencing the filtering closure and any public functions that call it so tests exercise the real logic.
+
+
+
+============================================================================
+File: Redesign/tickets/CLI_Polish,_Documentation_&_End-to-End_Testing.md
+Line: 59 to 79
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/CLI_Polish,_Documentation_&_End-to-End_Testing.md around lines 59 - 79, The nested docs/docs/ listing is ambiguous; update the documentation file (the block showing "docs/" tree) to clarify intent by adding a short inline note indicating "outer docs/ = Docusaurus project root, inner docs/ = content directory" next to the docs/docs/ entry (or flatten the tree if you prefer) and explicitly state where llm.txt should live (move or annotate llm.txt as either "docs/llm.txt" or "../llm.txt" for repo root) so the structure and the intended location of llm.txt are unambiguous; refer to the "docs/docs/" entry and the "llm.txt" item when making the change.
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/executor.rs
+Line: 84 to 89
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/executor.rs around lines 84 - 89, The method compare_and_assert currently takes &self but never uses any fields; change it to a static/associated function by removing the &self parameter (signature -> fn compare_and_assert(expected: &[Value], actual: &[Value], assertions: &[Assertion]) -> TestResult) or move it to a free function with the same signature, and then update all call sites that currently call self.compare_and_assert(...) to call Executor::compare_and_assert(...) (if kept as an associated fn) or compare_and_assert(...) (if made free); ensure imports for Value, Assertion, and TestResult remain available where call sites are updated.
+
+
+
+============================================================================
+File: Redesign/tickets/CLI_Polish,_Documentation_&_End-to-End_Testing.md
+Line: 281 to 292
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/CLI_Polish,_Documentation_&_End-to-End_Testing.md around lines 281 - 292, The Success Criteria list currently marks every item as completed (✅) but the Acceptance Criteria above are unchecked, causing inconsistency; update the document to either (A) mark the Success Criteria items as unchecked to match the current ticket's Acceptance Criteria, (B) add a clarifying note stating that the listed items are overall MVP goals (not specific to this ticket) and keep per-ticket acceptance unchecked, or (C) if the ticket is truly complete, update the Acceptance Criteria section to match and remove the mismatch—make the change near the weavster command entries (weavster init, weavster validate, weavster compile, weavster test, weavster run) so the status of those items is consistent across both sections.
+
+
+
+============================================================================
+File: Redesign/tickets/CLI_Polish,_Documentation_&_End-to-End_Testing.md
+Line: 150 to 163
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/CLI_Polish,_Documentation_&_End-to-End_Testing.md around lines 150 - 163, The call to .green() in list_flows_command() requires a colorization crate; update the file to import the appropriate trait (e.g., add a use statement for colored::Colorize or owo_colors::OwoColorize) or add a short comment indicating which crate/trait is expected, and ensure Cargo.toml has the crate enabled; specifically, reference the list_flows_command function and the .green() invocation so the implementer knows to add the trait import for the chosen crate.
+
+
+
+============================================================================
+File: Cargo.toml
+Line: 31 to 34
+Type: refactor_suggestion
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Cargo.toml around lines 31 - 34, Add documentation explaining the switch from sqlx to Diesel and the chosen Diesel features: update Cargo.toml (near the diesel, diesel_migrations, postgresql_embedded entries) or the repository README with a short note stating why Diesel was chosen over sqlx (e.g., compile-time schema safety, better migrations support, ecosystem needs) and briefly justify each feature flag used ("sqlite" and "postgres" for multi-backend support, "chrono" for time types, "serde_json" for JSON columns) plus why postgresql_embedded was added; keep it concise, reference the diesel/diesel_migrations/postgresql_embedded entries, and include any migration or developer-impact notes (how to run migrations, compatibility implications).
+
+
+
+============================================================================
+File: Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md
+Line: 33 to 36
+Type: refactor_suggestion
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md around lines 33 - 36, Add a new subsection to the Jinja strategy section that enumerates the available Jinja context for both load-time and runtime evaluation: list built-in variables (e.g., env, profile_name, config_version), built-in functions (e.g., now(), utcnow(), format_datetime(), uuid()), how to reference environment variables (e.g., env["VAR_NAME"] or a helper getenv("VAR")), return types and examples for each item, and note which items are only available at load-time vs per-message runtime; reference the existing examples that use {{ env }} and {{ now() }} and mention that the minijinja crate is the implementation target so semantics follow its calling/conversion rules.
+
+
+
+============================================================================
+File: Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md
+Line: 22
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md at line 22, The Implementation Details section is missing a concrete example for the "bridge connector configuration" referenced in the scope/acceptance criteria; add a clear example under Implementation Details showing the expected structure and keys (e.g., connector identifier, source/target, auth credentials, mapping rules, and any optional settings) and an example of how it would be used in context (include a sample configuration block labeled "Bridge connector configuration example" and a short sentence describing each field); update any mention of "bridge connector configuration" to point readers to this example so the acceptance criteria and implementation match.
+
+
+
+============================================================================
+File: Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md
+Line: 49 to 77
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md around lines 49 - 77, The doc only shows global error_handling (error_handling: on_error, log_level, retry) — add concrete flow- and transform-level examples demonstrating overrides: add a flow example (e.g., flows/customer.yaml with name: customer_enrichment and its own error_handling: on_error, log_level) and a transform example under transforms (e.g., normalize_phone with error_handling and retry: max_attempts) to illustrate hierarchical precedence (global → flow → transform) and which fields can be overridden; reference the existing global fields (error_handling, on_error, log_level, retry) when writing the examples so readers can clearly see override behavior.
+
+
+
+============================================================================
+File: Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md
+Line: 38 to 42
+Type: refactor_suggestion
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md around lines 38 - 42, Clarify that the macro expansion uses a custom minijinja global function named macro(name) registered into the Minijinja environment during config parsing (not built-in), describe where it's implemented (the loader that reads macros/*.yaml and registers them), and explain that macro() returns the parsed YAML subtree to be inlined into the parent YAML at load-time before validation; explicitly state the merging rules (e.g., if macro content is a list and used as a list item it is spliced into the parent list, if it is a mapping it merges into the parent mapping with key collision semantics: either overwrite or error—specify which), and note that validation operates on the fully expanded config (i.e., after macro() inlining) so transforms are validated post-expansion.
+
+
+
+============================================================================
+File: Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md
+Line: 79 to 91
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md around lines 79 - 91, Add a short clarifying note that the normalize_phone macro is a simplified US-centric example: update the macro's description or add an inline comment in macros/normalize_phone.yaml (referencing the name: normalize_phone and the regex pattern '^\+?1?(\d{3})(\d{3})(\d{4})$') to state it only handles simplified US phone formats and is not suitable for international numbers.
+
+
+
+============================================================================
+File: Redesign/Core_Flows__Weavster_Developer_Experience.md
+Line: 396
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Core_Flows__Weavster_Developer_Experience.md at line 396, Update the wording that currently reads "clear suffixes (.test.yaml)" to use the underscore variant _test.yaml so it matches the examples; specifically replace the phrase containing .test.yaml (the "clear suffixes (.test.yaml)" fragment) with "clear suffixes (_test.yaml)" and scan the document for any other occurrences to ensure consistency with filenames such as example_test.yaml and customer_enrichment_test.yaml.
+
+
+
+============================================================================
+File: Redesign/Core_Flows__Weavster_Developer_Experience.md
+Line: 110
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Core_Flows__Weavster_Developer_Experience.md at line 110, The phrase "LSP validates YAML syntax" in the description of the "weavster validate" CLI command is misleading; update the text to remove LSP attribution and clearly state that the CLI command performs YAML syntax and configuration/schema validation (or the specific semantic checks it runs), and keep any LSP mentions limited to editor/integration contexts (e.g., refer to "LSP (editor integration)" only where discussing editor features). Locate the "weavster validate" line and replace the wording to something like "weavster validate — validates YAML syntax and configuration/schema" or an equivalent that names the actual checks performed, and ensure any remaining reference to "LSP" is confined to editor integration descriptions.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/engine.rs
+Line: 266 to 338
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/engine.rs around lines 266 - 338, Tests work but can be consolidated into a parameterized rstest; replace the two test functions (test_resolve_file_path_relative and test_resolve_file_path_absolute) with a single rstest that calls Runtime::new using test_config(), creates the SqliteStateStore tmp DB as before, and invokes runtime.resolve_file_path with a FileConnectorConfig parameterized for relative and absolute paths, asserting the expected resolved.path for each case; add rstest to dev-dependencies and import #[rstest] so the single test covers both inputs while still using test_config() and resolve_file_path().
+
+
+
+============================================================================
+File: crates/weavster-codegen/src/generator.rs
+Line: 785 to 795
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-codegen/src/generator.rs around lines 785 - 795, Expand the unit test test_generate_add_fields_transform to cover edge cases: add entries to the fields HashMap with string values containing quotes and backslashes (e.g., values with " and \), add nested objects/arrays as serde_json::json! values to ensure correct serialization, and add multiple keys to assert deterministic ordering if/when Generator::generate_add_fields_transform is expected to emit keys in a stable order; reference the test function test_generate_add_fields_transform and the Generator::generate_add_fields_transform method and update assertions to validate properly escaped output snippets and nested structure serialization rather than only basic insert checks.
+
+
+
+============================================================================
+File: Redesign/Core_Flows__Weavster_Developer_Experience.md
+Line: 52
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Core_Flows__Weavster_Developer_Experience.md at line 52, Replace the ambiguous phrase "LSP-based validation checks schema, references, logic" with clearer wording that reflects CLI behavior—e.g., "Schema-based validation checks schema, references, logic" or simply "Validation checks schema, references, logic"—and ensure the surrounding text references the CLI command weavster validate (not LSP/IDE) so users understand this is a CLI validation step; update any instances of "LSP-based validation" in the doc to the chosen term for consistency.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/engine.rs
+Line: 147 to 150
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/engine.rs around lines 147 - 150, The output Message is created with MessageMetadata::default(), discarding the original metadata; change construction of out_msg in engine.rs to reuse the incoming msg.metadata (e.g., set metadata: msg.metadata.clone() or msg.metadata.into()) so tracing IDs/timestamps are preserved when wrapping result_json into Message; ensure MessageMetadata implements Clone or otherwise transfer ownership safely and keep other fields intact.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/state.rs
+Line: 42 to 44
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/state.rs around lines 42 - 44, The struct SqliteStateStore currently declares a field named pool of type Arc> which is misleading and serializes all DB access; rename the field to conn and update all usages in methods/impls to reflect the new name to make semantics clear, and for production replace the single-connection type with a real connection pool (e.g., swap Arc> for a deadpool-diesel or bb8-diesel pool type) and update methods (e.g., where SqliteStateStore acquires a connection) to call the pool's get/get_conn API instead of locking the mutex.
+
+
+
+============================================================================
+File: crates/weavster-cli/src/commands/run.rs
+Line: 48 to 52
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-cli/src/commands/run.rs around lines 48 - 52, The code duplicates the cache subpath ".weavster/cache" when building wasm_cache_path which can drift from the value in CompileOptions; update the code to derive the cache directory from a single source (e.g., add a method or field on CompileOptions like cache_dir() or wasm_cache_subpath) and use that when constructing wasm_cache_path instead of hardcoding ".weavster/cache"; change callers that build paths (the block creating wasm_cache_path and insertion into flow_wasm_paths) to call the new CompileOptions accessor and combine with base_path and format!("{}.wasm", compile_ctx.hash) so the cache location is centralized.
+
+
+
+============================================================================
+File: Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md
+Line: 23
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Foundation__Config_Layer_with_Jinja_&_Macro_Support.md at line 23, Add a concrete "Config caching" subsection that specifies: triggers for invalidation (file modification detection, profile/ENV changes, explicit calls), the storage mechanism (default in-memory with optional file-backed persistent cache and TTL), the cache key structure (e.g., canonical config file path + profile name + environment variables hash + Jinja/template checksum), whether caching is optional (config flag like enableConfigCache with default true) and eviction strategy (LRU/TTL/manual invalidate). Also describe public API/ops to implement (functions/methods such as getCachedConfig, parseConfigWithCache, invalidateConfigCache) and any required knobs (cacheTTL, maxEntries, persistentCachePath) so implementers can follow a precise design.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/wasm.rs
+Line: 117 to 119
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/wasm.rs around lines 117 - 119, Add a #[cfg(test)] mod tests at the bottom of this file that contains unit tests for WasmRuntime::new() and WasmRuntime::execute(): write a test that constructs a WasmRuntime via WasmRuntime::new() (asserting Ok and any expected initial state) and a test that loads a tiny test/mocked WASM module (e.g. a minimal wasm binary via include_bytes! or a simple wasm builder) and calls WasmRuntime::execute() asserting expected result or no error; ensure the tests import and instantiate the same types used in the file (WasmRuntime, execute) and run any async code with a test runtime or block_on as required, and mark the module with #[cfg(test)] and use #[test] on each function.
+
+
+
+============================================================================
+File: Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md
+Line: 107 to 108
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md around lines 107 - 108, The mention of "macro expansion" and "different profiles" is undefined; add a short subsection in this document (e.g., under Validation Layer or Definitions) that defines "macro expansion" (what it expands, when, expected semantics) and "profiles" (what variants/configurations they represent, how they alter validation), or insert references/links to the existing spec docs that define them; update the bullet list "Validate after macro expansion" and "Validate with different profiles" to point to those definitions/sections so implementers can locate the detailed behavior and scope.
+
+
+
+============================================================================
+File: Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md
+Line: 82
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md at line 82, The phrase "Jinja variables are defined in context" is ambiguous—update the doc section that contains that phrase to explicitly list and define the allowed variable sources for Weavster (e.g., variables from the input connector schema, outputs of previous transforms, macro parameters, and environment variables), describe precedence/resolution rules (which source wins on conflict), and add a short concrete example for each source showing a sample variable name and how it would be referenced in a Jinja template; refer to the exact sentence "Jinja variables are defined in context" when making the change so implementers can see the clarified scope and examples.
+
+
+
+============================================================================
+File: Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md
+Line: 77
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md at line 77, The validation rule named "Field references are consistent" is too vague—update its definition to enumerate concrete checks: (1) referenced fields must exist in the input schema (presence check), (2) referenced field types must be compatible with the operations performed (type compatibility check, e.g., numeric vs. string), (3) references respect naming conventions/aliases (naming/alias resolution), and (4) report precise error messages (missing field, type mismatch, naming mismatch) so callers of the validation rule "Field references are consistent" can locate and fix the exact problem.
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/assertions.rs
+Line: 5 to 6
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/assertions.rs around lines 5 - 6, The AssertionError enum should be made comparable to simplify tests: add #[derive(PartialEq)] to the AssertionError enum (and #[derive(Eq)] only if all contained types implement Eq); because FieldValueMismatch carries a serde_json::Value which implements PartialEq but not Eq, prefer deriving only PartialEq on AssertionError (or change/wrap the Value type in FieldValueWrapper that implements Eq) so tests can use assert_eq! with variants like AssertionError::RecordCountMismatch and FieldValueMismatch comparisons will still work via PartialEq.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/wasm.rs
+Line: 23
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/wasm.rs at line 23, Update the misleading doc comment to reflect generic byte-buffer semantics: replace the mention of "JSON byte array" and "parsed string" with wording that the function accepts a byte slice (&[u8]) and returns a Vec containing the modified wasm bytes; specifically, for the function in wasm.rs that takes an input &[u8] and returns Vec<u8], document that it loads a raw .wasm, writes the provided byte buffer into the wasm blob, and returns the resulting wasm bytes (no JSON/parsed-string language).
+
+
+
+============================================================================
+File: Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md
+Line: 115
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md at line 115, The document references "Phase 1 of implementation plan" without defining subsequent phases; either add a new "Phased Implementation Plan" section that enumerates Phase 1, Phase 2, Phase 3 (with brief scope, deliverables, and timeline for each) or remove the "Phase 1" phrase so the ticket describes a single complete implementation; update the heading or the sentence containing "Phase 1 of implementation plan" to reflect your chosen approach and ensure consistency with section titles like "Validation Layer" and any existing implementation plan bullets.
+
+
+
+============================================================================
+File: crates/weavster-codegen/src/generator.rs
+Line: 291 to 311
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-codegen/src/generator.rs around lines 291 - 311, The generate_add_fields_transform function produces non-deterministic output by iterating a HashMap and emits unescaped string literals; fix by iterating fields in a deterministic, sorted order (collect the keys, sort them, then loop) and ensure string values are safely escaped when embedded in generated Rust source (for example use serde_json::to_string(s).unwrap() to produce a properly quoted/escaped string and insert that into the Value::String(...) expression). Update the code paths that build value_str (the match arm for serde_json::Value::String and the fallback) to use the serialized/escaped representation and build output.insert(...) using the sorted keys so generated code is stable.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/engine.rs
+Line: 157 to 181
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/engine.rs around lines 157 - 181, The duplicate calls to weavster_core::config::resolve_error_handling (using self.config.project.error_handling.as_ref(), flow.error_handling.as_ref(), None) in the deserialization error branch and the WASM execution error branch should be extracted to a single local variable before the match/handler block in engine.rs; create a local let policy = weavster_core::config::resolve_error_handling(...) above the code that handles deserialization and Err(e) WASM execution, then replace the two inline calls with references to that policy (preserving the existing checks against policy.on_error and subsequent behavior).
+
+
+
+============================================================================
+File: Redesign/tickets/WASM_Compilation_Pipeline__Codegen_&_Runtime.md
+Line: 206 to 229
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/WASM_Compilation_Pipeline__Codegen_&_Runtime.md around lines 206 - 229, The Testing Strategy section currently omits performance testing; add a new "Performance Tests" subsection under Testing Strategy that defines measurable baselines and test cases such as: measuring compilation time for varying flow sizes, runtime execution overhead vs native, cache hit/miss latency and throughput impact, and memory usage of compiled WASM modules; include concrete metrics/thresholds and suggested harnesses (e.g., representative workloads, benchmark runner, and measurement of latency/throughput/memory) to validate the "efficient" execution MVP goal referenced earlier.
+
+
+
+============================================================================
+File: Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md
+Line: 42 to 51
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md around lines 42 - 51, Add an implementation note after the "Error Message Format" example explaining recommended Rust crates for diagnostic formatting: state that implementers can use miette or codespan-reporting to produce rich diagnostics with source spans and show a brief suggested sentence to insert (e.g., "Implementation Note: Consider using the miette or codespan-reporting crate for rich diagnostic formatting with source code spans."). Target the "Error Message Format" section so readers immediately see the library recommendations alongside the example.
+
+
+
+============================================================================
+File: Redesign/tickets/WASM_Compilation_Pipeline__Codegen_&_Runtime.md
+Line: 47 to 58
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/WASM_Compilation_Pipeline__Codegen_&_Runtime.md around lines 47 - 58, The ABI for the exported transform function is underspecified and mismatches the runtime; update the documentation and the exported signature/comments for transform to explicitly state how output length is encoded (e.g., first 4 bytes at the returned pointer as little-endian u32), who owns and must free the returned buffer (caller/host or callee and provide a free function), and how errors are signalled (e.g., return 0 pointer and set a global error code or special length value); also reconcile this with the runtime expectation referenced in the notes (the code that expects a (u32, u32) -> u32 calling convention at the runtime check around the existing "line 181") by either changing the runtime to read a single pointer whose first 4 bytes are length or by changing transform to accept separate (ptr,len) and return an output pointer/len pair (or output_len_ptr) — update the transform documentation and any example signatures to match the chosen convention and document ownership/freeing and error behavior.
+
+
+
+============================================================================
+File: Redesign/tickets/WASM_Compilation_Pipeline__Codegen_&_Runtime.md
+Line: 145 to 186
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/WASM_Compilation_Pipeline__Codegen_&_Runtime.md around lines 145 - 186, The runtime pseudocode mixes component vs module APIs, uses the wrong WASI preview, exposes stdio, and uses the wrong transform signature; fix by: in WasmRuntime::new and execute replace Module::from_file with wasmtime::component::Component::from_file and use component Linker (e.g., wasmtime::component::Linker) and component instantiation APIs; switch WASI setup to the Preview2 API (use wasmtime_wasi::preview2::WasiCtxBuilder / preview2 helpers) and add it to the component Linker via the preview2 add_to_linker functions; remove any .inherit_stdio() or argv/stdin/stdout wiring so the WasiCtx is locked down; and change the transform lookup in execute to use the component-compatible function signature matching the ABI (const u8, usize) -> const u8 (adjust the typed func/adapter call accordingly) so it matches the ABI defined earlier.
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/assertions.rs
+Line: 118 to 148
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/assertions.rs around lines 118 - 148, The match on (exp, act) includes an unreachable wildcard arm for (None, None); since the surrounding if checks if exp != act, (None, None) can never occur. Remove the _ => {} arm and make the match exhaustive only for the three possible unequal variants—(Some(e), Some(a)), (Some(e), None), and (None, Some(a))—or replace the match with explicit conditional branches using exp and act; update the block handling in assertions.rs (referencing variables exp, act and diff_str) accordingly.
+
+
+
+============================================================================
+File: Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md
+Line: 14
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md at line 14, Update the spec to remove ambiguity by either making a definitive choice (embed the validation module into the existing crate weavster-core) or explicitly documenting decision criteria for creating a separate weavster-validation crate; include concise criteria such as coupling/cohesion needs, public API surface, versioning/release independence, compile-time impact, and expected contributors, and then replace the current line ("Create validation module in weavster-core (or new crate weavster-validation)") with the chosen option or a short decision note referencing the crates weavster-core and weavster-validation so implementers know which path to follow.
+
+
+
+============================================================================
+File: crates/weavster-core/src/testing/assertions.rs
+Line: 154 to 212
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-core/src/testing/assertions.rs around lines 154 - 212, Add a unit test for the missing Assertion::FieldNotExists case by creating a new test function (e.g., test_field_not_exists_assertion) inside the existing #[cfg(test)] mod tests; build an actual Vec of serde_json::json values, construct a passing Assertion::FieldNotExists with a non-existent field (assert evaluate(...).is_ok()) and a failing Assertion::FieldNotExists with an existing field (assert evaluate(...).is_err()), and import/use the same json! macro and test patterns as the other tests so it follows the existing style.
+
+
+
+============================================================================
+File: Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md
+Line: 110 to 113
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Validation_Layer_with_LSP-Ready_Architecture.md around lines 110 - 113, Update the Dependencies section (the "Depends on: Config Layer (Ticket 1)" entry) to also list Technical Dependencies needed for implementation: add entries for serde_yaml (YAML syntax validation), minijinja (Jinja syntax validation), regex (pattern validation), and an error-formatting/reporting library such as miette or codespan-reporting so readers see both architectural and library/crate requirements.
+
+
+
+============================================================================
+File: Redesign/tickets/WASM_Compilation_Pipeline__Codegen_&_Runtime.md
+Line: 108 to 120
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/WASM_Compilation_Pipeline__Codegen_&_Runtime.md around lines 108 - 120, The FilterCondition enum is missing numeric comparison operators referenced by the YAML (e.g., gte: 18); add new variants Gte { field: String, value: Value }, Gt { field: String, value: Value }, Lte { field: String, value: Value }, Lt { field: String, value: Value } and a NotEquals { field: String, value: Value } variant to the FilterCondition enum, then update any places that construct or match on FilterCondition (e.g., FilterMatcher, parse_filter_condition, eval_condition or any deserialization/serde code and match arms) to handle these new variants and perform the appropriate numeric comparisons and inequality checks when evaluating filters.
+
+
+
+============================================================================
+File: Redesign/tickets/Transform_Engine_&_State_Management.md
+Line: 65 to 115
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Transform_Engine_&_State_Management.md around lines 65 - 115, The SQL schema uses SQLite-specific AUTOINCREMENT for primary keys in processed_files, bridge_messages, flow_executions, and test_results which breaks Postgres support; update the migration strategy to be DB-specific: either create separate Diesel migration up.sql files for SQLite (keep INTEGER PRIMARY KEY AUTOINCREMENT) and Postgres (use SERIAL PRIMARY KEY or GENERATED ... AS IDENTITY) or remove raw SQL from the docs and rely on Diesel’s abstractions (Diesel migrations or the table! macro) to generate the correct DDL per backend so both SQLite and Postgres are supported.
+
+
+
+============================================================================
+File: Redesign/tickets/Testing_Framework_&_Test_Command.md
+Line: 102 to 109
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Testing_Framework_&_Test_Command.md around lines 102 - 109, The enum Assertion is annotated for internally-tagged deserialization (#[serde(tag = "type")]) but the YAML uses externally-tagged keys like record_count: 5; remove the #[serde(tag = "type")] and instead apply externally-tagged renaming by adding #[serde(rename_all = "snake_case")] to the Assertion enum so the variants (RecordCount, FieldExists, FieldNotExists, FieldValue) map to record_count, field_exists, field_not_exists, field_value as expected during Deserialize.
+
+
+
+============================================================================
+File: Redesign/tickets/WASM_Compilation_Pipeline__Codegen_&_Runtime.md
+Line: 124 to 131
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/WASM_Compilation_Pipeline__Codegen_&_Runtime.md around lines 124 - 131, The dependency list may include crates incompatible with wasm32-wasip2 and uses once_cell unnecessarily; verify WASM compatibility for serde_json, regex, minijinja, and phf (enable any wasm features or replace with wasm-friendly alternatives if needed), replace once_cell with std::sync::OnceLock/LazyLock where you target Rust >=1.70 (update code references to OnceLock/LazyLock in places using once_cell), and pin critical crates to more specific versions (e.g., change "1.0" to exact patch versions for serde_json/regex/phf/minijinja) to ensure reproducible builds for the wasm32-wasip2 target.
+
+
+
+============================================================================
+File: Redesign/Technical_Plan__Weavster_MVP_Architecture.md
+Line: 215
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Technical_Plan__Weavster_MVP_Architecture.md at line 215, The inline INDEX declaration (e.g., INDEX idx_flow_started on the CREATE TABLE that defines flow_name and started_at) is PostgreSQL-incompatible; remove any inline INDEX lines inside CREATE TABLE blocks and instead add separate CREATE INDEX statements after the table is created (reference the same index names such as idx_flow_started and any others from the CREATE TABLEs). Ensure you update the schema generation order so CREATE TABLE runs first and then CREATE INDEX  ON (flow_name, started_at) (and the other index definitions) are executed for Postgres while keeping behavior equivalent for SQLite.
+
+
+
+============================================================================
+File: crates/weavster-runtime/src/wasm.rs
+Line: 44 to 59
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @crates/weavster-runtime/src/wasm.rs around lines 44 - 59, The code currently takes a mutable borrow via memory.data_mut(&mut store) into data solely to read its length before potentially growing memory, which causes a fragile double-mutable borrow when memory.grow(&mut store, ...) is called; change the pre-grow length check to use memory.data_size(&store) (or memory.data_size(&mut store) per API) to compute current memory size for the bounds check (use that value for computing pages_needed) and only call memory.data_mut(&mut store) after any necessary memory.grow so data.len() is read from the post-grow mutable borrow; update uses around input_len, output_capacity, memory.data_mut, memory.grow, and data.len() accordingly.
+
+
+
+============================================================================
+File: Redesign/Technical_Plan__Weavster_MVP_Architecture.md
+Line: 397 to 398
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Technical_Plan__Weavster_MVP_Architecture.md around lines 397 - 398, Add a new subsection under "Transform Engine" that explicitly defines filter-as-matcher semantics and the allowed MVP filter syntax: state that "structured matcher-only filters" (object/JSON matchers with explicit fields and operators) are valid, and "expression strings" (freeform code/DSL expressions) are invalid; include 2–3 short examples showing a valid structured matcher and an invalid expression-string variant, and a brief note tying the "when a filter returns false, drop the record" behavior into the hierarchical error handling policy chain by describing that a false result causes immediate record termination (no further transforms/outputs) and should be treated as a non-error match outcome at transform-level but can be escalated per global→flow→transform policies.
+
+
+
+============================================================================
+File: Redesign/Technical_Plan__Weavster_MVP_Architecture.md
+Line: 84 to 92
+Type: refactor_suggestion
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Technical_Plan__Weavster_MVP_Architecture.md around lines 84 - 92, The document lacks a concrete lock expiration and recovery plan for bridge message leasing; add a short subsection under "Bridge Scheduling & Flow Concurrency" that specifies (1) the lock fields to use (lock_owner, lock_expires_at on bridge_messages), (2) a default configurable lock timeout (e.g., 30s) and heartbeat semantics where workers renew lock_expires_at while processing, (3) a background recovery task name/behavior that scans for lock_expires_at < now() and resets those rows to ready/requeues them for retry, (4) graceful-shutdown behavior where workers attempt to clear their lock_owner/lock_expires_at before exit, and (5) that messages with expired locks are automatically retried to preserve at-least-once delivery; reference these exact symbols (bridge_messages, lock_owner, lock_expires_at) so implementers can map the policy to the code.
+
+
+
+============================================================================
+File: Redesign/tickets/Transform_Engine_&_State_Management.md
+Line: 129 to 152
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Transform_Engine_&_State_Management.md around lines 129 - 152, In process_message, treat wasm_runtime.execute as returning Result>> instead of unwrapping it with ?, so remove the ? on the call to self.wasm_runtime.execute(&wasm_path, message) and capture the Result into a variable (e.g., let result = ...). Then first check for Ok(None) to handle dropped messages, and match on result to forward Ok(Some(output)) or call self.handle_error(flow, e) for Err(e). Keep existing ? usage on build_jinja_context and evaluate_jinja_runtime, and ensure get_or_compile_wasm remains unchanged.
+
+
+
+============================================================================
+File: Redesign/tickets/Transform_Engine_&_State_Management.md
+Line: 134 to 139
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Transform_Engine_&_State_Management.md around lines 134 - 139, Add a short clarifying note in the sketch that the helper methods build_jinja_context, evaluate_jinja_runtime, and get_or_compile_wasm are placeholders to be implemented; either insert a brief comment above the block naming each helper and its intended signature/return type (e.g., build_jinja_context(&self, flow: &Flow, message: &Message) -> Result, evaluate_jinja_runtime(&self, flow: Flow, ctx: &Context) -> Result, get_or_compile_wasm(&self, flow: &Flow) -> Result) or a single-line comment stating “helper methods below to be implemented” so reviewers know these are intentional stubs.
+
+
+
+============================================================================
+File: Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md
+Line: 278
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md at line 278, Move the "atomic rename convention for producers" from the risk mitigation fallback into the Key Architectural Decisions and Implementation Details sections and explicitly state that producers must write to a temp file and then atomically rename to the final filename as the primary defense; update the Stability Debounce description (stability debounce) to clarify it is a defensive mechanism only and reference the atomic-rename requirement as the recommended primary approach for avoiding partial-file processing, ensuring both sections include the pattern, rationale, and a short example description of write-to-temp+rename.
+
+
+
+============================================================================
+File: Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md
+Line: 179 to 217
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md around lines 179 - 217, The examples are inconsistent: FileWatcher::watch is currently defined as pub async fn watch(&mut self) -> Result but the flow example calls watcher.watch(|file_path| async { ... }) expecting a callback; pick one approach and reconcile both. Either change FileWatcher::watch to accept a callback (e.g., add a generic FnMut/async closure parameter used when a file is detected and update any callers like run_flow to pass the closure), or switch to the message-passing design: change FileWatcher::watch to accept an mpsc::Sender and send discovered paths, then update run_flow to create the channel, spawn the watcher task with tx, and consume paths from rx to run the existing processing logic; update function signatures and call sites accordingly (references: FileWatcher::watch, watcher.watch(...), and run_flow).
+
+
+
+============================================================================
+File: Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md
+Line: 251 to 252
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md around lines 251 - 252, Add a clear entry to the "Key Architectural Decisions" section that states the system uses hash-based file tracking for duplicate detection: reference the behavior described by "duplicate detection prevents reprocessing" and "content change triggers reprocessing", explain that files are tracked by content hash (so identical content is skipped and changes to content requeue processing), and link this decision to the existing implementation that performs the hashing/duplicate checks so future readers know to consult that logic when changing file processing behavior.
+
+
+
+============================================================================
+File: Redesign/tickets/Testing_Framework_&_Test_Command.md
+Line: 189 to 196
+Type: nitpick
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Testing_Framework_&_Test_Command.md around lines 189 - 196, Replace the double-negative check in the iteration over actual records: inside the for loop that uses actual.iter().enumerate(), change the condition that currently reads if !record.get(field).is_some() to use the clearer idiom record.get(field).is_none() so the failure path in result.add_failure(...) is simpler and more readable.
+
+
+
+============================================================================
+File: Redesign/tickets/Transform_Engine_&_State_Management.md
+Line: 169 to 206
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Transform_Engine_&_State_Management.md around lines 169 - 206, StateStore defines async methods (mark_file_processed, is_file_processed, record_flow_execution) but SqliteStateStore and PostgresStateStore hold synchronous diesel::SqliteConnection / diesel::PgConnection — change the store structs to use async connection pools or run sync calls on a blocking thread. Either (preferred) replace the pool fields with diesel_async-compatible pooled async connections (e.g., an async Pool for diesel_async::AsyncSqliteConnection / diesel_async::AsyncPgConnection) and update implementations to await async DB calls, or (alternate) keep synchronous Diesel connections but wrap all database access inside task::spawn_blocking() in the StateStore impls so the async trait methods remain non-blocking; in both cases ensure the pool type is a shared connection pool rather than a single connection.
+
+
+
+============================================================================
+File: Redesign/Technical_Plan__Weavster_MVP_Architecture.md
+Line: 7 to 12
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Technical_Plan__Weavster_MVP_Architecture.md around lines 7 - 12, Update the inconsistent WASM target wording: change the heading that currently says "wasm32-wasip2" to "wasm32-unknown-unknown" to match the content, and edit the sentence referencing "wasm32-wasi" (line 35) so it states that the current and chosen target is "wasm32-unknown-unknown" rather than implying a migration; ensure all occurrences (heading and body) consistently refer to the target symbol "wasm32-unknown-unknown" and remove references to "wasm32-wasip2" or "wasm32-wasi" to avoid confusion.
+
+
+
+============================================================================
+File: Redesign/Technical_Plan__Weavster_MVP_Architecture.md
+Line: 468
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Technical_Plan__Weavster_MVP_Architecture.md at line 468, The unit test example currently invokes MapTransform.execute natively (MapTransform, execute) which bypasses the WASM ABI checks; change the example to compile/load the transform as a WASM module and call its exported entry (e.g., an exported execute_transform or similar export) in-memory via a WASM runtime (wasmtime/wasmer) so the test performs module instantiation, host↔WASM marshalling, and ABI validation; ensure the test shows compiling/loading the .wasm, instantiating with required host imports, invoking the exported function and asserting the returned output rather than calling MapTransform.execute directly.
+
+
+
+============================================================================
+File: Redesign/tickets/Testing_Framework_&_Test_Command.md
+Line: 126 to 148
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/Testing_Framework_&_Test_Command.md around lines 126 - 148, The functions use the ? operator but currently return TestResult directly; update the signatures of run_test, run_unit_test, and run_integration_test to return Result (or your crate's error type) and propagate errors accordingly: change pub async fn run_test(&self, test: &TestDefinition) -> TestResult to -> Result and have the match arms call self.run_unit_test(test).await? / self.run_integration_test(test).await?; likewise change async fn run_unit_test(&self, test: &TestDefinition) -> TestResult to -> Result and ensure calls to read_jsonl, self.engine.process_message, and compare_and_assert propagate errors (use ?), and update any callers of run_test to handle the Result.
+
+
+
+============================================================================
+File: Redesign/Technical_Plan__Weavster_MVP_Architecture.md
+Line: 529
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/Technical_Plan__Weavster_MVP_Architecture.md at line 529, The doc is inconsistent about WASI: reconcile the mention on line "Initialize a reusable wasmtime Engine configured for standard module execution (or WASI Preview 1 if absolutely needed for compute fallbacks)" with the earlier architectural decision "wasm32-unknown-unknown (pure compute)" and "WASM-only (no interpreter fallback)"; either remove the WASI Preview 1 parenthetical so the Engine description explicitly targets wasm32-unknown-unknown and pure compute-only execution, or update the architecture section to state that we use wasm32-wasi and allow WASI fallback (update the "wasm32-unknown-unknown" and "WASM-only (no interpreter fallback)" lines accordingly) so the document consistently reflects whether WASI is supported at runtime.
+
+
+
+============================================================================
+File: Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md
+Line: 96 to 97
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md around lines 96 - 97, The code calls channel() without importing or specifying which channel type and uses an undefined path variable; replace the call with a fully-qualified channel constructor (e.g., std::sync::mpsc::channel or tokio::sync::mpsc::channel depending on sync/async usage) to create (tx, rx), and derive the path passed to self.watcher.watch(...) from self.glob_pattern (for example compute the parent directory or base path from self.glob_pattern) so that self.watcher.watch(parent_path, RecursiveMode::NonRecursive)? uses a defined variable; update imports if necessary and ensure tx and rx have the correct types for downstream usage.
+
+
+
+============================================================================
+File: Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md
+Line: 100 to 107
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md around lines 100 - 107, The code uses a blocking rx.recv() inside tokio::select!, which will block the async runtime; change the event receive to an async-safe operation by offloading the blocking call (e.g., wrap rx.recv() in tokio::task::spawn_blocking and await that inside the select, or replace the sync receiver with an async channel/watch API), then keep the existing flow that calls self.handle_event(...), self.wait_for_stability(&path).await and self.process_file(path).await so that handle_event, wait_for_stability, and process_file remain unchanged.
+
+
+
+============================================================================
+File: Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md
+Line: 116 to 130
+Type: potential_issue
+
+Prompt for AI Agent:
+Verify each finding against the current code and only fix it if needed.
+
+In @Redesign/tickets/File_Processing__Watching,_Glob_Patterns_&_Run_Command.md around lines 116 - 130, The wait_for_stability function has TOCTOU and deletion risks: wrap every fs::metadata(...) call inside explicit error handling that matches std::io::ErrorKind::NotFound and either return a clear Err (or a custom error variant) so callers know the file disappeared, or retry/back off as appropriate; adjust wait_for_stability to propagate that NotFound result instead of panicking, and update callers (e.g., process_file) and its docs to explicitly handle a file-not-found result gracefully. Ensure references to fs::metadata, wait_for_stability, and process_file are used so reviewers can locate and update the exact spots.
+
+
+
+Review completed: 102 findings ✔

@@ -28,6 +28,8 @@ anyhow.workspace = true
 
 # Serialization
 serde_json.workspace = true
+serde_yaml.workspace = true
+
 
 # Logging
 tracing.workspace = true

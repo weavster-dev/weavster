@@ -43,6 +43,8 @@ uuid.workspace = true
 
 # Logging
 tracing.workspace = true
+colored.workspace = true
+
 
 [dev-dependencies]
 rstest.workspace = true

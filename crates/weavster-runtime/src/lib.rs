@@ -24,6 +24,14 @@
 pub mod engine;
 pub mod error;
 pub mod jobs;
+/// Database models
+pub mod models;
+/// Diesel schema definitions
+pub mod schema;
+/// State store implementations
+pub mod state;
+/// WASM execution engine and environment
+pub mod wasm;
 
 pub use engine::Runtime;
 pub use error::{Error, Result};
