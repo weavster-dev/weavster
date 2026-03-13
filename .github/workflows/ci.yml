@@ -43,6 +43,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Install dependencies
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            brew install postgresql libpq
+            echo "PQ_LIB_DIR=$(brew --prefix libpq)/lib" >> $GITHUB_ENV
+          fi
       - uses: Swatinem/rust-cache@v2
       - run: cargo test --all-features
         env:
