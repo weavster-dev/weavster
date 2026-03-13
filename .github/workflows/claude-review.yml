@@ -1,33 +1,28 @@
 name: Claude Code Review
 
 on:
-  pull_request:
-    types: [opened, synchronize]
   pull_request_target:
     types: [labeled]
+  pull_request_review:
+    types: [submitted]
   issue_comment:
     types: [created]
   issues:
     types: [opened, assigned]
 
 jobs:
-  # PR Review - runs on new PRs and updates
-  # For fork PRs: only runs when maintainer adds 'safe-to-review' label
-  claude-review:
+  # Respond to CodeRabbit reviews that request changes
+  claude-coderabbit-response:
     if: |
-      (
-        github.event_name == 'pull_request' &&
-        github.event.pull_request.head.repo.full_name == github.repository &&
-        github.actor != 'dependabot[bot]'
-      ) ||
-      (
-        github.event_name == 'pull_request_target' &&
-        github.event.action == 'labeled' &&
-        github.event.label.name == 'safe-to-review'
-      )
+      github.event_name == 'pull_request_review' &&
+      github.event.review.user.login == 'coderabbitai[bot]' &&
+      github.event.review.state == 'changes_requested'
     runs-on: ubuntu-latest
+    concurrency:
+      group: claude-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
       issues: read
       id-token: write
@@ -35,14 +30,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: rust-analyzer
+          components: rustfmt, clippy, rust-analyzer
 
-      - name: Run Claude Code Review
+      - name: Respond to CodeRabbit Review
         uses: anthropics/claude-code-action@v1
         env:
           ENABLE_LSP_TOOL: "1"
@@ -51,41 +47,23 @@ jobs:
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
           plugins: rust-analyzer-lsp@claude-plugins-official
           prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            CodeRabbit has reviewed PR #${{ github.event.pull_request.number }}.
+            Review state: ${{ github.event.review.state }}
 
-            Please review this pull request and provide feedback on:
-            - Code quality and Rust best practices (thiserror in libs, anyhow in bins, no unwrap in library code)
-            - Potential bugs or issues
-            - Performance considerations
-            - Security concerns
-            - Architecture compliance (weavster-core has no workspace deps, weavster-runtime stays minimal)
+            INSTRUCTIONS:
+            1. Read CodeRabbit's full review comments on this PR
+            2. For each comment, decide:
+               a) AGREE: Fix the issue, commit the change
+               b) DISAGREE: Reply explaining your reasoning clearly
+            3. After making all fixes, run cargo fmt, cargo clippy, and cargo test
+            4. Push the fixes to the PR branch
+            5. Reply to CodeRabbit's comments summarizing what you fixed vs what you intentionally kept
 
-            Use CLAUDE.md for project-specific conventions. Be constructive and helpful.
-
-            IMPORTANT: Before posting your review, minimize any previous Claude Code review comments:
-
-            1. Get all previous Claude comment IDs:
-               ```bash
-               gh pr view ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --json comments --jq '.comments[] | select(.author.login == "claude") | .id'
-               ```
-
-            2. For each comment ID (node_id), minimize it as OUTDATED:
-               ```bash
-               gh api graphql -f query='
-                 mutation {
-                   minimizeComment(input: {subjectId: "COMMENT_NODE_ID_HERE", classifier: OUTDATED}) {
-                     clientMutationId
-                   }
-                 }'
-               ```
-
-            3. Finally, post your new review using:
-               ```bash
-               gh pr comment ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --body "YOUR_REVIEW_HERE"
-               ```
-
-          claude_args: '--model opus --allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh api:*),Bash(cargo fmt:*),Bash(cargo clippy:*)"'
+            IMPORTANT:
+            - When you disagree, explain the design decision clearly so CodeRabbit learns
+            - Use @coderabbitai in replies so it picks up the feedback
+            - Follow CLAUDE.md conventions
+            - Use conventional commits for fix commits
 
   # Handle @claude mentions in PR/Issue comments
   # Only responds to org members/collaborators to prevent token abuse
@@ -93,12 +71,16 @@ jobs:
     if: |
       github.event_name == 'issue_comment' &&
       contains(github.event.comment.body, '@claude') &&
+      !contains(github.event.comment.body, '@claude work') &&
       (
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
         github.event.comment.author_association == 'COLLABORATOR'
       )
     runs-on: ubuntu-latest
+    concurrency:
+      group: claude-respond-${{ github.event.issue.number }}
+      cancel-in-progress: false
     permissions:
       contents: read
       pull-requests: write
@@ -157,6 +139,9 @@ jobs:
       (github.event.action == 'opened' || github.event.action == 'assigned') &&
       contains(github.event.issue.labels.*.name, 'claude-assist')
     runs-on: ubuntu-latest
+    concurrency:
+      group: claude-assist-${{ github.event.issue.number }}
+      cancel-in-progress: false
     permissions:
       contents: read
       issues: write
