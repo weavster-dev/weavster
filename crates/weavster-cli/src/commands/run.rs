@@ -6,7 +6,7 @@ use std::sync::Arc;
 use weavster_codegen::{CompileOptions, Compiler};
 use weavster_core::config::Config;
 use weavster_runtime::Runtime;
-use weavster_runtime::state::{PostgresStateStore, SqliteStateStore, StateStore};
+use weavster_runtime::state::{SqliteStateStore, StateStore};
 
 /// Run the Weavster runtime
 pub async fn run(
@@ -55,10 +55,18 @@ pub async fn run(
     let state_store: Arc<dyn StateStore> = if let Some(pg_url) = std::env::var_os("WEAVSTER_PG_URL")
     {
         tracing::info!("Using Postgres state store from environment");
-        let pg_url_str = pg_url
+        let _pg_url_str = pg_url
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("WEAVSTER_PG_URL is not valid UTF-8"))?;
-        Arc::new(PostgresStateStore::new(pg_url_str).context("Failed to connect to Postgres")?)
+
+        #[cfg(feature = "postgres")]
+        {
+            Arc::new(weavster_runtime::state::PostgresStateStore::new(_pg_url_str).context("Failed to connect to Postgres")?)
+        }
+        #[cfg(not(feature = "postgres"))]
+        {
+            anyhow::bail!("Postgres support requires the 'postgres' feature to be enabled")
+        }
     } else {
         tracing::info!("Using SQLite state store for local development");
         let db_path = config.base_path.join(".weavster/data/local.db");

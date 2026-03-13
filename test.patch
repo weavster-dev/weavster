@@ -1,0 +1,20 @@
+--- crates/weavster-cli/src/commands/run.rs
++++ crates/weavster-cli/src/commands/run.rs
+@@ -5,8 +5,7 @@
+ use weavster_codegen::{CompileOptions, Compiler};
+ use weavster_core::config::Config;
+ use weavster_runtime::Runtime;
+-#[cfg(feature = "postgres")]
+-use weavster_runtime::state::PostgresStateStore;
+ use weavster_runtime::state::{SqliteStateStore, StateStore};
+
+ /// Run the Weavster runtime
+@@ -62,7 +61,7 @@
+
+         #[cfg(feature = "postgres")]
+         {
+-            Arc::new(PostgresStateStore::new(_pg_url_str).context("Failed to connect to Postgres")?)
++            Arc::new(weavster_runtime::state::PostgresStateStore::new(_pg_url_str).context("Failed to connect to Postgres")?)
+         }
+         #[cfg(not(feature = "postgres"))]
+         {

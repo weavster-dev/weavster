@@ -1,5 +1,3 @@
-#![allow(missing_docs)]
-
 use async_trait::async_trait;
 use chrono::Utc;
 use diesel::prelude::*;
@@ -11,6 +9,8 @@ use crate::error::Result;
 use crate::schema::{flow_executions, processed_files};
 
 pub const SQLITE_MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations_sqlite");
+
+#[cfg(feature = "postgres")]
 pub const POSTGRES_MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations_postgres");
 
 #[async_trait]
@@ -159,11 +159,13 @@ impl StateStore for SqliteStateStore {
     }
 }
 
+#[cfg(feature = "postgres")]
 /// Postgres state store for production
 pub struct PostgresStateStore {
     pool: Arc<Mutex<PgConnection>>,
 }
 
+#[cfg(feature = "postgres")]
 impl PostgresStateStore {
     pub fn new(database_url: &str) -> Result<Self> {
         let mut conn = PgConnection::establish(database_url)
@@ -178,6 +180,7 @@ impl PostgresStateStore {
     }
 }
 
+#[cfg(feature = "postgres")]
 #[async_trait]
 impl StateStore for PostgresStateStore {
     async fn mark_file_processed(
