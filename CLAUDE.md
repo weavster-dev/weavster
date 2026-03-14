@@ -170,7 +170,7 @@ We strongly value applying YAGNI principles:
 
 - **Serialization**: serde, serde_yaml, serde_json
 - **Async Runtime**: tokio
-- **Database**: sqlx, postgresql_embedded
+- **Database**: sqlx
 - **Job Queue**: apalis
 - **CLI**: clap
 - **Templating**: minijinja (compiles to WASM)

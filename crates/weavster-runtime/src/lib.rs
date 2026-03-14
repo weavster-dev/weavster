@@ -26,8 +26,6 @@ pub mod error;
 pub mod jobs;
 /// Database models
 pub mod models;
-/// Diesel schema definitions
-pub mod schema;
 /// State store implementations
 pub mod state;
 /// WASM execution engine and environment

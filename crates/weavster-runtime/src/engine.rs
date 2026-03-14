@@ -296,14 +296,17 @@ mod tests {
     }
 
     // Setup isolated tests using unique paths for Sqlite Migration instances
-    #[test]
-    fn test_resolve_file_path_relative() {
+    #[tokio::test]
+    async fn test_resolve_file_path_relative() {
         let config = test_config();
 
         let db_dir = tempfile::tempdir().unwrap();
         let db_path = db_dir.path().join("test_rel.db");
-        let store =
-            Arc::new(SqliteStateStore::new(&format!("sqlite://{}", db_path.display())).unwrap());
+        let store = Arc::new(
+            SqliteStateStore::new(&format!("sqlite://{}?mode=rwc", db_path.display()))
+                .await
+                .unwrap(),
+        );
 
         let runtime = Runtime::new(config, store, HashMap::new()).unwrap();
 
@@ -316,14 +319,17 @@ mod tests {
         assert_eq!(resolved.path, "/my/project/dir/data/input.jsonl");
     }
 
-    #[test]
-    fn test_resolve_file_path_absolute() {
+    #[tokio::test]
+    async fn test_resolve_file_path_absolute() {
         let config = test_config();
 
         let db_dir = tempfile::tempdir().unwrap();
         let db_path = db_dir.path().join("test_abs.db");
-        let store =
-            Arc::new(SqliteStateStore::new(&format!("sqlite://{}", db_path.display())).unwrap());
+        let store = Arc::new(
+            SqliteStateStore::new(&format!("sqlite://{}?mode=rwc", db_path.display()))
+                .await
+                .unwrap(),
+        );
 
         let runtime = Runtime::new(config, store, HashMap::new()).unwrap();
 

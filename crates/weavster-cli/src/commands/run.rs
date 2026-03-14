@@ -58,7 +58,11 @@ pub async fn run(
         let pg_url_str = pg_url
             .to_str()
             .ok_or_else(|| anyhow::anyhow!("WEAVSTER_PG_URL is not valid UTF-8"))?;
-        Arc::new(PostgresStateStore::new(pg_url_str).context("Failed to connect to Postgres")?)
+        Arc::new(
+            PostgresStateStore::new(pg_url_str)
+                .await
+                .context("Failed to connect to Postgres")?,
+        )
     } else {
         tracing::info!("Using SQLite state store for local development");
         let db_path = config.base_path.join(".weavster/data/local.db");
@@ -67,11 +71,18 @@ pub async fn run(
         }
         // Ensure path is converted to a forward-slash URL format for SQLite compatibility (important on Windows)
         let db_url = if cfg!(windows) {
-            format!("sqlite://{}", db_path.to_string_lossy().replace("\\", "/"))
+            format!(
+                "sqlite://{}?mode=rwc",
+                db_path.to_string_lossy().replace("\\", "/")
+            )
         } else {
-            format!("sqlite://{}", db_path.display())
+            format!("sqlite://{}?mode=rwc", db_path.display())
         };
-        Arc::new(SqliteStateStore::new(&db_url).context("Failed to connect to SQLite")?)
+        Arc::new(
+            SqliteStateStore::new(&db_url)
+                .await
+                .context("Failed to connect to SQLite")?,
+        )
     };
 
     let runtime = Runtime::new(config, state_store, flow_wasm_paths)

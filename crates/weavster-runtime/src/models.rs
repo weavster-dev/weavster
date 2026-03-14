@@ -1,12 +1,9 @@
 #![allow(missing_docs)]
 
 use chrono::NaiveDateTime;
-use diesel::prelude::*;
+use sqlx::FromRow;
 
-use crate::schema::*;
-
-#[derive(Queryable, Selectable, Insertable, Debug, Clone)]
-#[diesel(table_name = processed_files)]
+#[derive(FromRow, Debug, Clone)]
 pub struct ProcessedFile {
     pub id: Option<i32>,
     pub flow_name: String,
@@ -18,8 +15,7 @@ pub struct ProcessedFile {
     pub error_message: Option<String>,
 }
 
-#[derive(Queryable, Selectable, Insertable, Debug, Clone)]
-#[diesel(table_name = bridge_messages)]
+#[derive(FromRow, Debug, Clone)]
 pub struct BridgeMessage {
     pub id: Option<i32>,
     pub bridge_name: String,
@@ -32,8 +28,7 @@ pub struct BridgeMessage {
     pub error_message: Option<String>,
 }
 
-#[derive(Queryable, Selectable, Insertable, Debug, Clone)]
-#[diesel(table_name = flow_executions)]
+#[derive(FromRow, Debug, Clone)]
 pub struct FlowExecution {
     pub id: Option<i32>,
     pub flow_name: String,
@@ -45,8 +40,7 @@ pub struct FlowExecution {
     pub error_message: Option<String>,
 }
 
-#[derive(Queryable, Selectable, Insertable, Debug, Clone)]
-#[diesel(table_name = test_results)]
+#[derive(FromRow, Debug, Clone)]
 pub struct TestResult {
     pub id: Option<i32>,
     pub test_name: String,

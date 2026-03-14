@@ -2,16 +2,9 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use diesel::prelude::*;
-use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
-use std::sync::{Arc, Mutex};
-use tokio::task::spawn_blocking;
+use sqlx::{PgPool, SqlitePool};
 
 use crate::error::Result;
-use crate::schema::{flow_executions, processed_files};
-
-pub const SQLITE_MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations_sqlite");
-pub const POSTGRES_MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations_postgres");
 
 #[async_trait]
 pub trait StateStore: Send + Sync {
@@ -40,20 +33,21 @@ pub trait StateStore: Send + Sync {
 
 /// SQLite state store for local dev
 pub struct SqliteStateStore {
-    pool: Arc<Mutex<SqliteConnection>>,
+    pool: SqlitePool,
 }
 
 impl SqliteStateStore {
-    pub fn new(database_url: &str) -> Result<Self> {
-        let mut conn = SqliteConnection::establish(database_url)
+    pub async fn new(database_url: &str) -> Result<Self> {
+        let pool = SqlitePool::connect(database_url)
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to connect to SQLite: {}", e))?;
 
-        conn.run_pending_migrations(SQLITE_MIGRATIONS)
+        sqlx::migrate!("./migrations_sqlite")
+            .run(&pool)
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to run SQLite migrations: {}", e))?;
 
-        Ok(Self {
-            pool: Arc::new(Mutex::new(conn)),
-        })
+        Ok(Self { pool })
     }
 }
 
@@ -66,31 +60,22 @@ impl StateStore for SqliteStateStore {
         file_hash: &str,
         record_count: usize,
     ) -> Result<()> {
-        let flow_name = flow_name.to_string();
-        let file_path = file_path.to_string();
-        let file_hash = file_hash.to_string();
-        let pool = self.pool.clone();
+        let record_count = i32::try_from(record_count)
+            .map_err(|e| anyhow::anyhow!("record_count overflow: {}", e))?;
 
-        spawn_blocking(move || -> Result<()> {
-            let mut conn = pool
-                .lock()
-                .map_err(|_| anyhow::anyhow!("DB pool mutex poisoned"))?;
-            diesel::insert_into(processed_files::table)
-                .values((
-                    processed_files::flow_name.eq(&flow_name),
-                    processed_files::file_path.eq(&file_path),
-                    processed_files::file_hash.eq(&file_hash),
-                    processed_files::processed_at.eq(Utc::now().naive_utc()),
-                    processed_files::record_count.eq(i32::try_from(record_count)
-                        .map_err(|e| anyhow::anyhow!("record_count overflow: {}", e))?),
-                    processed_files::status.eq("success"),
-                ))
-                .execute(&mut *conn)
-                .map_err(|e| anyhow::anyhow!("Failed to mark file processed: {}", e))?;
-            Ok(())
-        })
+        sqlx::query(
+            "INSERT INTO processed_files (flow_name, file_path, file_hash, processed_at, record_count, status)
+             VALUES ($1, $2, $3, $4, $5, $6)"
+        )
+        .bind(flow_name)
+        .bind(file_path)
+        .bind(file_hash)
+        .bind(Utc::now().naive_utc())
+        .bind(record_count)
+        .bind("success")
+        .execute(&self.pool)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn blocking task: {}", e))??;
+        .map_err(|e| anyhow::anyhow!("Failed to mark file processed: {}", e))?;
 
         Ok(())
     }
@@ -101,28 +86,18 @@ impl StateStore for SqliteStateStore {
         file_path: &str,
         file_hash: &str,
     ) -> Result<bool> {
-        let flow_name = flow_name.to_string();
-        let file_path = file_path.to_string();
-        let file_hash = file_hash.to_string();
-        let pool = self.pool.clone();
-
-        let is_processed = spawn_blocking(move || -> Result<bool> {
-            let mut conn = pool
-                .lock()
-                .map_err(|_| anyhow::anyhow!("DB pool mutex poisoned"))?;
-            let count: i64 = processed_files::table
-                .filter(processed_files::flow_name.eq(&flow_name))
-                .filter(processed_files::file_path.eq(&file_path))
-                .filter(processed_files::file_hash.eq(&file_hash))
-                .count()
-                .get_result(&mut *conn)
-                .map_err(|e| anyhow::anyhow!("Failed to query processed_files: {}", e))?;
-            Ok(count > 0)
-        })
+        let result: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM processed_files
+             WHERE flow_name = $1 AND file_path = $2 AND file_hash = $3",
+        )
+        .bind(flow_name)
+        .bind(file_path)
+        .bind(file_hash)
+        .fetch_one(&self.pool)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn blocking task: {}", e))??;
+        .map_err(|e| anyhow::anyhow!("Failed to query processed_files: {}", e))?;
 
-        Ok(is_processed)
+        Ok(result.0 > 0)
     }
 
     async fn record_flow_execution(
@@ -131,29 +106,23 @@ impl StateStore for SqliteStateStore {
         records_processed: usize,
         records_failed: usize,
     ) -> Result<()> {
-        let flow_name = flow_name.to_string();
-        let pool = self.pool.clone();
+        let records_processed = i32::try_from(records_processed)
+            .map_err(|e| anyhow::anyhow!("records_processed overflow: {}", e))?;
+        let records_failed = i32::try_from(records_failed)
+            .map_err(|e| anyhow::anyhow!("records_failed overflow: {}", e))?;
 
-        spawn_blocking(move || -> Result<()> {
-            let mut conn = pool
-                .lock()
-                .map_err(|_| anyhow::anyhow!("DB pool mutex poisoned"))?;
-            diesel::insert_into(flow_executions::table)
-                .values((
-                    flow_executions::flow_name.eq(&flow_name),
-                    flow_executions::started_at.eq(Utc::now().naive_utc()),
-                    flow_executions::status.eq("completed"),
-                    flow_executions::records_processed.eq(i32::try_from(records_processed)
-                        .map_err(|e| anyhow::anyhow!("records_processed overflow: {}", e))?),
-                    flow_executions::records_failed.eq(i32::try_from(records_failed)
-                        .map_err(|e| anyhow::anyhow!("records_failed overflow: {}", e))?),
-                ))
-                .execute(&mut *conn)
-                .map_err(|e| anyhow::anyhow!("Failed to record flow execution: {}", e))?;
-            Ok(())
-        })
+        sqlx::query(
+            "INSERT INTO flow_executions (flow_name, started_at, status, records_processed, records_failed)
+             VALUES ($1, $2, $3, $4, $5)"
+        )
+        .bind(flow_name)
+        .bind(Utc::now().naive_utc())
+        .bind("completed")
+        .bind(records_processed)
+        .bind(records_failed)
+        .execute(&self.pool)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn blocking task: {}", e))??;
+        .map_err(|e| anyhow::anyhow!("Failed to record flow execution: {}", e))?;
 
         Ok(())
     }
@@ -161,20 +130,21 @@ impl StateStore for SqliteStateStore {
 
 /// Postgres state store for production
 pub struct PostgresStateStore {
-    pool: Arc<Mutex<PgConnection>>,
+    pool: PgPool,
 }
 
 impl PostgresStateStore {
-    pub fn new(database_url: &str) -> Result<Self> {
-        let mut conn = PgConnection::establish(database_url)
+    pub async fn new(database_url: &str) -> Result<Self> {
+        let pool = PgPool::connect(database_url)
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to connect to Postgres: {}", e))?;
 
-        conn.run_pending_migrations(POSTGRES_MIGRATIONS)
+        sqlx::migrate!("./migrations_postgres")
+            .run(&pool)
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to run Postgres migrations: {}", e))?;
 
-        Ok(Self {
-            pool: Arc::new(Mutex::new(conn)),
-        })
+        Ok(Self { pool })
     }
 }
 
@@ -187,31 +157,22 @@ impl StateStore for PostgresStateStore {
         file_hash: &str,
         record_count: usize,
     ) -> Result<()> {
-        let flow_name = flow_name.to_string();
-        let file_path = file_path.to_string();
-        let file_hash = file_hash.to_string();
-        let pool = self.pool.clone();
+        let record_count = i32::try_from(record_count)
+            .map_err(|e| anyhow::anyhow!("record_count overflow: {}", e))?;
 
-        spawn_blocking(move || -> Result<()> {
-            let mut conn = pool
-                .lock()
-                .map_err(|_| anyhow::anyhow!("DB pool mutex poisoned"))?;
-            diesel::insert_into(processed_files::table)
-                .values((
-                    processed_files::flow_name.eq(&flow_name),
-                    processed_files::file_path.eq(&file_path),
-                    processed_files::file_hash.eq(&file_hash),
-                    processed_files::processed_at.eq(Utc::now().naive_utc()),
-                    processed_files::record_count.eq(i32::try_from(record_count)
-                        .map_err(|e| anyhow::anyhow!("record_count overflow: {}", e))?),
-                    processed_files::status.eq("success"),
-                ))
-                .execute(&mut *conn)
-                .map_err(|e| anyhow::anyhow!("Failed to mark file processed: {}", e))?;
-            Ok(())
-        })
+        sqlx::query(
+            "INSERT INTO processed_files (flow_name, file_path, file_hash, processed_at, record_count, status)
+             VALUES ($1, $2, $3, $4, $5, $6)"
+        )
+        .bind(flow_name)
+        .bind(file_path)
+        .bind(file_hash)
+        .bind(Utc::now().naive_utc())
+        .bind(record_count)
+        .bind("success")
+        .execute(&self.pool)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn blocking task: {}", e))??;
+        .map_err(|e| anyhow::anyhow!("Failed to mark file processed: {}", e))?;
 
         Ok(())
     }
@@ -222,28 +183,18 @@ impl StateStore for PostgresStateStore {
         file_path: &str,
         file_hash: &str,
     ) -> Result<bool> {
-        let flow_name = flow_name.to_string();
-        let file_path = file_path.to_string();
-        let file_hash = file_hash.to_string();
-        let pool = self.pool.clone();
-
-        let is_processed = spawn_blocking(move || -> Result<bool> {
-            let mut conn = pool
-                .lock()
-                .map_err(|_| anyhow::anyhow!("DB pool mutex poisoned"))?;
-            let count: i64 = processed_files::table
-                .filter(processed_files::flow_name.eq(&flow_name))
-                .filter(processed_files::file_path.eq(&file_path))
-                .filter(processed_files::file_hash.eq(&file_hash))
-                .count()
-                .get_result(&mut *conn)
-                .map_err(|e| anyhow::anyhow!("Failed to query processed_files: {}", e))?;
-            Ok(count > 0)
-        })
+        let result: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM processed_files
+             WHERE flow_name = $1 AND file_path = $2 AND file_hash = $3",
+        )
+        .bind(flow_name)
+        .bind(file_path)
+        .bind(file_hash)
+        .fetch_one(&self.pool)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn blocking task: {}", e))??;
+        .map_err(|e| anyhow::anyhow!("Failed to query processed_files: {}", e))?;
 
-        Ok(is_processed)
+        Ok(result.0 > 0)
     }
 
     async fn record_flow_execution(
@@ -252,29 +203,23 @@ impl StateStore for PostgresStateStore {
         records_processed: usize,
         records_failed: usize,
     ) -> Result<()> {
-        let flow_name = flow_name.to_string();
-        let pool = self.pool.clone();
+        let records_processed = i32::try_from(records_processed)
+            .map_err(|e| anyhow::anyhow!("records_processed overflow: {}", e))?;
+        let records_failed = i32::try_from(records_failed)
+            .map_err(|e| anyhow::anyhow!("records_failed overflow: {}", e))?;
 
-        spawn_blocking(move || -> Result<()> {
-            let mut conn = pool
-                .lock()
-                .map_err(|_| anyhow::anyhow!("DB pool mutex poisoned"))?;
-            diesel::insert_into(flow_executions::table)
-                .values((
-                    flow_executions::flow_name.eq(&flow_name),
-                    flow_executions::started_at.eq(Utc::now().naive_utc()),
-                    flow_executions::status.eq("completed"),
-                    flow_executions::records_processed.eq(i32::try_from(records_processed)
-                        .map_err(|e| anyhow::anyhow!("records_processed overflow: {}", e))?),
-                    flow_executions::records_failed.eq(i32::try_from(records_failed)
-                        .map_err(|e| anyhow::anyhow!("records_failed overflow: {}", e))?),
-                ))
-                .execute(&mut *conn)
-                .map_err(|e| anyhow::anyhow!("Failed to record flow execution: {}", e))?;
-            Ok(())
-        })
+        sqlx::query(
+            "INSERT INTO flow_executions (flow_name, started_at, status, records_processed, records_failed)
+             VALUES ($1, $2, $3, $4, $5)"
+        )
+        .bind(flow_name)
+        .bind(Utc::now().naive_utc())
+        .bind("completed")
+        .bind(records_processed)
+        .bind(records_failed)
+        .execute(&self.pool)
         .await
-        .map_err(|e| anyhow::anyhow!("Failed to spawn blocking task: {}", e))??;
+        .map_err(|e| anyhow::anyhow!("Failed to record flow execution: {}", e))?;
 
         Ok(())
     }

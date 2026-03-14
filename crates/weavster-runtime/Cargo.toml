@@ -10,8 +10,7 @@ rust-version.workspace = true
 
 [dependencies]
 weavster-core.workspace = true
-diesel.workspace = true
-diesel_migrations.workspace = true
+sqlx.workspace = true
 
 # Serialization
 serde.workspace = true

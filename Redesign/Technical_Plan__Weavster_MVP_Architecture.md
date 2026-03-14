@@ -93,7 +93,7 @@ Bridges are persisted queues that connect flows. To avoid stalls (producer runs 
 
 **4. Comprehensive Server State Management (sqlx)**
 
-We persist state for **server mode** in a relational DB: SQLite for dev server and Postgres for prod server, managed natively via `sqlx`.
+We persist state for **server mode** in a relational DB: SQLite for dev server and Postgres for prod server, managed natively via **sqlx**.
 
 **State Categories:**
 - **File Tracking:** which (flow, path, hash) have been processed
@@ -104,13 +104,13 @@ We persist state for **server mode** in a relational DB: SQLite for dev server a
 
 **Trade-offs:**
 - ✅ **Pro:** Enables persisted bridges, replays, and restart safety
-- ✅ **Pro:** `sqlx` is fully async-native and avoids `spawn_blocking` bottlenecks
-- ✅ **Pro:** Migrations can be compiled into the binary, adhering to the Single Binary Distribution goal
+- ✅ **Pro:** **sqlx** is fully async-native and avoids `spawn_blocking` bottlenecks
+- ✅ **Pro:** Migrations can be compiled into the binary using `sqlx::migrate!`, adhering to the Single Binary Distribution goal
 - ❌ **Con:** Adds operational/state complexity (migrations, schema)
 
 **Implementation:**
 - Commit to **sqlx** natively (SQLite + Postgres backends)
-- Compile migrations directly into the Weavster binary to avoid shipping external CLI tools
+- Compile migrations directly into the Weavster binary using `sqlx::migrate!`
 - DB used for server runtime state only
 - Developer artifacts (cache/logs/profiles/test logs) remain repo-local under `.weavster/` (dbt-like)
 - Automatically run migrations on startup (or provide an explicit `weavster migrate`)
@@ -250,7 +250,7 @@ CREATE TABLE test_results (
 - Replay is supported by resetting status/availability for selected `message_id`s (implementation detail depends on server tooling).
 
 **Migration Strategy:**
-- Use sqlx migrations (compiled into the binary)
+- Use **sqlx migrations** (compiled into the binary)
 - Automatic migration on startup for dev server (SQLite)
 - Explicit migration command for prod server: `weavster migrate` (or auto-migrate)
 - DB is for server mode; repo-local artifacts stay in `.weavster/`
@@ -490,11 +490,11 @@ assertions:
 
 **7. State Management**
 
-Abstracts database operations for **server mode** using `sqlx`, supporting SQLite (dev server) and Postgres (prod server).
+Abstracts database operations for **server mode** using **sqlx**, supporting SQLite (dev server) and Postgres (prod server).
 
 **Responsibilities:**
 - Provide unified interface for server-state operations (processed files, executions, test results, and bridge queues)
-- Handle sqlx migrations built directly into the binary
+- Handle sqlx migrations built directly into the binary via `sqlx::migrate!`
 - Manage connection pooling
 - Support both SQLite (dev server) and Postgres (prod server)
 - `sqlx` inherently handles async runtime natively without `spawn_blocking` overhead
@@ -502,15 +502,15 @@ Abstracts database operations for **server mode** using `sqlx`, supporting SQLit
 
 **Key Interfaces:**
 ```rust
+#[async_trait]
 pub trait StateStore {
-    async fn record_processed_file(&self, file: ProcessedFile) -> Result<()>;
-    async fn is_file_processed(&self, path: &Path, flow: &str) -> Result<bool>;
-    async fn record_execution(&self, exec: FlowExecution) -> Result<()>;
-    async fn record_test_result(&self, result: TestResult) -> Result<()>;
+    async fn mark_file_processed(&self, flow: &str, path: &str, hash: &str, count: usize) -> Result<()>;
+    async fn is_file_processed(&self, flow: &str, path: &str, hash: &str) -> Result<bool>;
+    async fn record_flow_execution(&self, flow: &str, processed: usize, failed: usize) -> Result<()>;
 }
 
-pub struct SqliteStore { ... }
-pub struct PostgresStore { ... }
+pub struct SqliteStateStore { ... }
+pub struct PostgresStateStore { ... }
 ```
 
 **Integration Points:**
@@ -1079,19 +1079,8 @@ fn test_assertion_field_exists() {
 ```rust
 #[sqlx::test]
 async fn test_record_processed_file(pool: PgPool) {
-    let store = PostgresStore::new(pool);
-
-    let file = ProcessedFile {
-        path: "test.jsonl",
-        flow: "test_flow",
-        status: "success",
-        ..Default::default()
-    };
-
-    store.record_processed_file(&file).await.unwrap();
-
-    assert!(store.is_file_processed("test.jsonl", "test_flow").await.unwrap());
-}
+    let store = PostgresStateStore::new(pool);
+    // ...
 ```
 
 ---
