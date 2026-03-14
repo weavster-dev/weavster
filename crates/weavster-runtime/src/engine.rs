@@ -299,11 +299,11 @@ mod tests {
 
         let db_dir = tempfile::tempdir().unwrap();
         let db_path = db_dir.path().join("test_rel.db");
-        let store = Arc::new(
-            SqliteStateStore::new(&format!("sqlite://{}?mode=rwc", db_path.display()))
-                .await
-                .unwrap(),
+        let db_url = format!(
+            "sqlite://{}?mode=rwc",
+            db_path.to_string_lossy().replace("\\", "/")
         );
+        let store = Arc::new(SqliteStateStore::new(&db_url).await.unwrap());
 
         let runtime = Runtime::new(config, store, HashMap::new()).unwrap();
 
@@ -322,11 +322,11 @@ mod tests {
 
         let db_dir = tempfile::tempdir().unwrap();
         let db_path = db_dir.path().join("test_abs.db");
-        let store = Arc::new(
-            SqliteStateStore::new(&format!("sqlite://{}?mode=rwc", db_path.display()))
-                .await
-                .unwrap(),
+        let db_url = format!(
+            "sqlite://{}?mode=rwc",
+            db_path.to_string_lossy().replace("\\", "/")
         );
+        let store = Arc::new(SqliteStateStore::new(&db_url).await.unwrap());
 
         let runtime = Runtime::new(config, store, HashMap::new()).unwrap();
 
