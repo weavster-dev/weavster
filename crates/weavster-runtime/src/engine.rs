@@ -247,14 +247,11 @@ impl Runtime {
 
     /// Resolve relative file paths against the project base path
     fn resolve_file_path(&self, fc: &FileConnectorConfig) -> FileConnectorConfig {
-        let path = if std::path::Path::new(&fc.path).is_relative() {
-            self.config
-                .base_path
-                .join(&fc.path)
-                .to_string_lossy()
-                .to_string()
-        } else {
+        let path = if fc.path.starts_with('/') || std::path::Path::new(&fc.path).is_absolute() {
             fc.path.clone()
+        } else {
+            let joined = self.config.base_path.join(&fc.path);
+            joined.to_string_lossy().replace("\\", "/").to_string()
         };
         FileConnectorConfig {
             path,
