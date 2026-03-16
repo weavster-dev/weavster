@@ -62,27 +62,27 @@ impl TestExecutor {
     /// Entry point for evaluating tests
     pub async fn run_test(&self, test: &TestDefinition) -> Result<TestResult> {
         match self.mode {
-            TestMode::Unit => self.run_unit_test(test),
-            TestMode::Integration => self.run_integration_test(test),
+            TestMode::Unit => self.run_unit_test(test).await,
+            TestMode::Integration => self.run_integration_test(test).await,
         }
     }
 
-    fn run_unit_test(&self, test: &TestDefinition) -> Result<TestResult> {
+    async fn run_unit_test(&self, test: &TestDefinition) -> Result<TestResult> {
         // MOCK IMPLEMENTATION FOR MVP
         // TODO: Actually construct WASM engine runtime and feed `.jsonl` directly
 
-        let expected = read_jsonl(&test.expected_output)?;
-        let actual = read_jsonl(&test.input)?; // temporary mock
+        let expected = read_jsonl(&test.expected_output).await?;
+        let actual = read_jsonl(&test.input).await?; // temporary mock
 
         Ok(self.compare_and_assert(&expected, &actual, &test.assertions))
     }
 
-    fn run_integration_test(&self, test: &TestDefinition) -> Result<TestResult> {
+    async fn run_integration_test(&self, test: &TestDefinition) -> Result<TestResult> {
         // MOCK IMPLEMENTATION FOR MVP
         // TODO: actually orchestrate the file watching system on the temp directory mapped to integration configs
 
-        let expected = read_jsonl(&test.expected_output)?;
-        let actual = read_jsonl(&test.expected_output)?; // temporary mock returning expected
+        let expected = read_jsonl(&test.expected_output).await?;
+        let actual = read_jsonl(&test.expected_output).await?; // temporary mock returning expected
 
         Ok(self.compare_and_assert(&expected, &actual, &test.assertions))
     }
@@ -111,16 +111,16 @@ impl TestExecutor {
     }
 }
 
-fn read_jsonl(path: &std::path::Path) -> Result<Vec<Value>> {
-    use std::fs::File;
-    use std::io::{BufRead, BufReader};
+async fn read_jsonl(path: &std::path::Path) -> Result<Vec<Value>> {
+    use tokio::fs::File;
+    use tokio::io::{AsyncBufReadExt, BufReader};
 
-    let file = File::open(path)?;
+    let file = File::open(path).await?;
     let reader = BufReader::new(file);
 
     let mut records = Vec::new();
-    for line in reader.lines() {
-        let line = line?;
+    let mut lines = reader.lines();
+    while let Some(line) = lines.next_line().await? {
         if line.trim().is_empty() {
             continue;
         }
@@ -129,4 +129,29 @@ fn read_jsonl(path: &std::path::Path) -> Result<Vec<Value>> {
     }
 
     Ok(records)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::error::Error;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    #[tokio::test]
+    async fn test_read_jsonl() -> Result<()> {
+        let mut file = NamedTempFile::new().map_err(Error::Io)?;
+        writeln!(file, "{}", r#"{"id": 1, "name": "foo"}"#).map_err(Error::Io)?;
+        writeln!(file, "{}", r#"{"id": 2, "name": "bar"}"#).map_err(Error::Io)?;
+        writeln!(file, "").map_err(Error::Io)?; // empty line
+        writeln!(file, "{}", r#"{"id": 3, "name": "baz"}"#).map_err(Error::Io)?;
+
+        let records = read_jsonl(file.path()).await?;
+        assert_eq!(records.len(), 3);
+        assert_eq!(records[0]["id"], 1);
+        assert_eq!(records[1]["name"], "bar");
+        assert_eq!(records[2]["id"], 3);
+
+        Ok(())
+    }
 }
