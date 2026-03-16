@@ -296,7 +296,9 @@ impl Generator {
 
         for (field, value) in sorted_fields {
             let value_str = match value {
-                serde_json::Value::String(s) => serde_json::to_string(s).unwrap_or_else(|_| "\"\".to_string()),
+                serde_json::Value::String(s) => {
+                    serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
+                }
                 _ => serde_json::to_string(value).unwrap_or_else(|_| "null".to_string()),
             };
 
