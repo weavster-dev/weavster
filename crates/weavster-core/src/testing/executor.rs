@@ -183,10 +183,10 @@ mod tests {
     #[tokio::test]
     async fn test_read_jsonl() -> Result<()> {
         let mut file = NamedTempFile::new().map_err(Error::Io)?;
-        writeln!(file, "{}", r#"{"id": 1, "name": "foo"}"#).map_err(Error::Io)?;
-        writeln!(file, "{}", r#"{"id": 2, "name": "bar"}"#).map_err(Error::Io)?;
-        writeln!(file, "").map_err(Error::Io)?; // empty line
-        writeln!(file, "{}", r#"{"id": 3, "name": "baz"}"#).map_err(Error::Io)?;
+        writeln!(file, r#"{{"id": 1, "name": "foo"}}"#).map_err(Error::Io)?;
+        writeln!(file, r#"{{"id": 2, "name": "bar"}}"#).map_err(Error::Io)?;
+        writeln!(file).map_err(Error::Io)?; // empty line
+        writeln!(file, r#"{{"id": 3, "name": "baz"}}"#).map_err(Error::Io)?;
 
         let records = read_jsonl(file.path()).await?;
         assert_eq!(records.len(), 3);
