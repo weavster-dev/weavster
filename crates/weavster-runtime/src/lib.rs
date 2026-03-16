@@ -28,8 +28,9 @@ pub mod jobs;
 pub mod models;
 /// State store implementations
 pub mod state;
-/// WASM execution engine and environment
-pub mod wasm;
+
+/// Re-export WASM runtime from core
+pub use weavster_core::wasm;
 
 pub use engine::Runtime;
 pub use error::{Error, Result};

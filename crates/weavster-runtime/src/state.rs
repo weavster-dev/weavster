@@ -3,8 +3,22 @@
 use async_trait::async_trait;
 use chrono::Utc;
 use sqlx::{PgPool, SqlitePool};
+use std::path::Path;
 
 use crate::error::Result;
+use crate::models::ProcessingStatus;
+
+/// Convert a filesystem path to a SQLite connection URL
+pub fn path_to_sqlite_url(path: &Path) -> String {
+    if cfg!(windows) {
+        format!(
+            "sqlite://{}?mode=rwc",
+            path.to_string_lossy().replace("\\", "/")
+        )
+    } else {
+        format!("sqlite://{}?mode=rwc", path.display())
+    }
+}
 
 #[async_trait]
 pub trait StateStore: Send + Sync {
@@ -60,7 +74,7 @@ impl StateStore for SqliteStateStore {
         file_hash: &str,
         record_count: usize,
     ) -> Result<()> {
-        let record_count = i32::try_from(record_count)
+        let record_count = i64::try_from(record_count)
             .map_err(|e| anyhow::anyhow!("record_count overflow: {}", e))?;
 
         sqlx::query(
@@ -72,7 +86,7 @@ impl StateStore for SqliteStateStore {
         .bind(file_hash)
         .bind(Utc::now().naive_utc())
         .bind(record_count)
-        .bind("success")
+        .bind(ProcessingStatus::Completed)
         .execute(&self.pool)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to mark file processed: {}", e))?;
@@ -106,9 +120,9 @@ impl StateStore for SqliteStateStore {
         records_processed: usize,
         records_failed: usize,
     ) -> Result<()> {
-        let records_processed = i32::try_from(records_processed)
+        let records_processed = i64::try_from(records_processed)
             .map_err(|e| anyhow::anyhow!("records_processed overflow: {}", e))?;
-        let records_failed = i32::try_from(records_failed)
+        let records_failed = i64::try_from(records_failed)
             .map_err(|e| anyhow::anyhow!("records_failed overflow: {}", e))?;
 
         sqlx::query(
@@ -117,7 +131,7 @@ impl StateStore for SqliteStateStore {
         )
         .bind(flow_name)
         .bind(Utc::now().naive_utc())
-        .bind("completed")
+        .bind(ProcessingStatus::Completed)
         .bind(records_processed)
         .bind(records_failed)
         .execute(&self.pool)
@@ -157,7 +171,7 @@ impl StateStore for PostgresStateStore {
         file_hash: &str,
         record_count: usize,
     ) -> Result<()> {
-        let record_count = i32::try_from(record_count)
+        let record_count = i64::try_from(record_count)
             .map_err(|e| anyhow::anyhow!("record_count overflow: {}", e))?;
 
         sqlx::query(
@@ -169,7 +183,7 @@ impl StateStore for PostgresStateStore {
         .bind(file_hash)
         .bind(Utc::now().naive_utc())
         .bind(record_count)
-        .bind("success")
+        .bind(ProcessingStatus::Completed)
         .execute(&self.pool)
         .await
         .map_err(|e| anyhow::anyhow!("Failed to mark file processed: {}", e))?;
@@ -203,9 +217,9 @@ impl StateStore for PostgresStateStore {
         records_processed: usize,
         records_failed: usize,
     ) -> Result<()> {
-        let records_processed = i32::try_from(records_processed)
+        let records_processed = i64::try_from(records_processed)
             .map_err(|e| anyhow::anyhow!("records_processed overflow: {}", e))?;
-        let records_failed = i32::try_from(records_failed)
+        let records_failed = i64::try_from(records_failed)
             .map_err(|e| anyhow::anyhow!("records_failed overflow: {}", e))?;
 
         sqlx::query(
@@ -214,7 +228,7 @@ impl StateStore for PostgresStateStore {
         )
         .bind(flow_name)
         .bind(Utc::now().naive_utc())
-        .bind("completed")
+        .bind(ProcessingStatus::Completed)
         .bind(records_processed)
         .bind(records_failed)
         .execute(&self.pool)

@@ -86,4 +86,8 @@ pub enum Error {
     /// JSON serialization/deserialization error
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    /// WASM runtime error
+    #[error("WASM error: {0}")]
+    Wasm(#[from] anyhow::Error),
 }

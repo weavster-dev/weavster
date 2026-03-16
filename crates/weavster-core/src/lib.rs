@@ -26,7 +26,7 @@
 //! }
 //! ```
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
@@ -40,6 +40,10 @@ pub mod interpreter;
 pub mod testing;
 
 pub mod transforms;
+
+/// WASM runtime for executing compiled transforms
+#[cfg(feature = "wasm")]
+pub mod wasm;
 
 pub use config::{
     BackoffStrategy, Config, ConfigCache, DynamicJinjaContext, ErrorHandlingConfig, JinjaContext,

@@ -34,6 +34,7 @@ async-trait.workspace = true
 
 # Error handling
 thiserror.workspace = true
+anyhow.workspace = true
 
 # Date/time (for dynamic Jinja expressions)
 chrono.workspace = true
@@ -43,7 +44,6 @@ uuid.workspace = true
 
 # Logging
 tracing.workspace = true
-colored.workspace = true
 
 
 [dev-dependencies]

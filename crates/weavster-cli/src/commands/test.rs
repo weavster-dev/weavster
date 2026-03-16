@@ -1,13 +1,21 @@
 //! Test runner command
 
 use anyhow::{Context, Result, anyhow};
+use std::collections::HashMap;
 use std::time::Instant;
 use walkdir::WalkDir;
 
+use weavster_codegen::{CompileOptions, Compiler};
+use weavster_core::config::Config;
 use weavster_core::testing::{TestDefinition, TestExecutor, TestMode};
 
 /// Run tests
-pub async fn run(pattern: Option<&str>) -> Result<()> {
+pub async fn run(pattern: Option<&str>, profile: Option<&str>) -> Result<()> {
+    // 0. Load configuration
+    let config_path = "weavster.yaml";
+    let config = Config::load_with_profile(config_path, profile)
+        .context("Failed to load configuration for testing")?;
+
     // 1. Discover test YAMLs in `tests/` directory
     let mut tests: Vec<TestDefinition> = Vec::new();
 
@@ -51,8 +59,50 @@ pub async fn run(pattern: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    // 3. Execute tests
-    let executor = TestExecutor::new(TestMode::Unit);
+    // 3. Compile flows required by tests
+    tracing::info!("Compiling flows for testing...");
+    let mut flow_wasm_paths = HashMap::new();
+    let options = CompileOptions {
+        output_dir: config.base_path.join(".weavster/output"),
+        cache_dir: config.base_path.join(".weavster/cache"),
+        ..Default::default()
+    };
+    let compiler = Compiler::new(options);
+
+    // Identify unique flows needed by the filtered tests
+    let mut flows_to_compile = std::collections::HashSet::new();
+    for test in &tests {
+        flows_to_compile.insert(test.flow.clone());
+    }
+
+    for flow_name in flows_to_compile {
+        tracing::info!("Compiling flow: {}", flow_name);
+        let flow_config_path = config
+            .base_path
+            .join("flows")
+            .join(format!("{}.yaml", flow_name));
+
+        if !flow_config_path.exists() {
+            return Err(anyhow!(
+                "Flow configuration not found: {:?}",
+                flow_config_path
+            ));
+        }
+
+        let compile_ctx = compiler
+            .compile_flow(&flow_config_path)
+            .await
+            .with_context(|| format!("Failed to compile flow: {}", flow_name))?;
+
+        let wasm_cache_path = config
+            .base_path
+            .join(".weavster/cache")
+            .join(format!("{}.wasm", compile_ctx.hash));
+        flow_wasm_paths.insert(flow_name, wasm_cache_path);
+    }
+
+    // 4. Execute tests
+    let executor = TestExecutor::new(TestMode::Unit, flow_wasm_paths);
     let mut passed = 0;
     let mut failed = 0;
 
@@ -79,7 +129,7 @@ pub async fn run(pattern: Option<&str>) -> Result<()> {
 
     println!("\n{} passed, {} failed", passed, failed);
 
-    // 4. Set appropriate exit code on failure
+    // 5. Set appropriate exit code on failure
     if failed > 0 {
         return Err(anyhow!("{} tests failed", failed));
     }

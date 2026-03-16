@@ -27,9 +27,10 @@ pub async fn run(
         .load_flows()
         .context("Failed to load flow configurations")?;
     let mut flow_wasm_paths = HashMap::new();
+    let cache_dir = config.base_path.join(".weavster/cache");
     let options = CompileOptions {
         output_dir: config.base_path.join(".weavster/output"),
-        cache_dir: config.base_path.join(".weavster/cache"),
+        cache_dir: cache_dir.clone(),
         ..Default::default()
     };
     let compiler = Compiler::new(options);
@@ -45,7 +46,8 @@ pub async fn run(
             .await
             .with_context(|| format!("Failed to compile flow: {}", flow.name))?;
 
-        let wasm_cache_path = options.cache_dir.join(format!("{}.wasm", compile_ctx.hash));
+        let wasm_cache_path = cache_dir.join(format!("{}.wasm", compile_ctx.hash));
+        flow_wasm_paths.insert(flow.name.clone(), wasm_cache_path);
     }
 
     let state_store: Arc<dyn StateStore> = if let Some(pg_url) = std::env::var_os("WEAVSTER_PG_URL")
@@ -65,15 +67,7 @@ pub async fn run(
         if let Some(parent) = db_path.parent() {
             std::fs::create_dir_all(parent).context("Failed to create database directory")?;
         }
-        // Ensure path is converted to a forward-slash URL format for SQLite compatibility (important on Windows)
-        let db_url = if cfg!(windows) {
-            format!(
-                "sqlite://{}?mode=rwc",
-                db_path.to_string_lossy().replace("\\", "/")
-            )
-        } else {
-            format!("sqlite://{}?mode=rwc", db_path.display())
-        };
+        let db_url = weavster_runtime::state::path_to_sqlite_url(&db_path);
         Arc::new(
             SqliteStateStore::new(&db_url)
                 .await

@@ -295,7 +295,12 @@ impl Generator {
         sorted_fields.sort_by_key(|(k, _)| *k);
 
         for (field, value) in sorted_fields {
-            let value_str = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
+            let value_str = match value {
+                serde_json::Value::String(s) => {
+                    serde_json::to_string(s).unwrap_or_else(|_| "\"\"".to_string())
+                }
+                _ => serde_json::to_string(value).unwrap_or_else(|_| "null".to_string()),
+            };
 
             code.push_str(&format!(
                 "    output.insert(\"{}\".into(), serde_json::from_str({:?}).unwrap());\n",

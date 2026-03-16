@@ -929,18 +929,20 @@ pub fn evaluate_static_jinja(yaml_content: &str, context: &JinjaContext) -> Resu
         })
         .to_string();
 
-    // Replace {{ var_name }} for known project vars only using string replacement.
-    // We match the exact token `{{ key }}` as well as variants with extra whitespace.
-    for (key, value) in &context.vars {
-        let replacement = yaml_value_to_string(value);
-        // Fast path: exact token match (covers most cases)
-        let exact_token = format!("{{{{ {} }}}}", key);
-        result = result.replace(&exact_token, &replacement);
-        // Also handle no-space and variable-whitespace variants via regex
-        // (only if the pattern still appears after the fast path)
-        let compact_token = format!("{{{{{}}}}}", key);
-        result = result.replace(&compact_token, &replacement);
-    }
+    // Replace {{ var_name }} for known project vars using a single regex pass.
+    // This is safer than iterative String::replace which could lead to substring corruption.
+    let var_re = regex::Regex::new(r"\{\{\s*(\w+)\s*\}\}").unwrap();
+    result = var_re
+        .replace_all(&result, |caps: &regex::Captures| {
+            let key = &caps[1];
+            if let Some(value) = context.vars.get(key) {
+                yaml_value_to_string(value)
+            } else {
+                // Not a known project variable, leave it for runtime/other substitution
+                caps[0].to_string()
+            }
+        })
+        .to_string();
 
     Ok(result)
 }

@@ -4,7 +4,7 @@ CREATE TABLE processed_files (
     file_path TEXT NOT NULL,
     file_hash TEXT NOT NULL,
     processed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    record_count INTEGER NOT NULL,
+    record_count BIGINT NOT NULL,
     status TEXT NOT NULL,
     error_message TEXT,
     UNIQUE(flow_name, file_path, file_hash)
@@ -28,8 +28,8 @@ CREATE TABLE flow_executions (
     started_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at TIMESTAMP,
     status TEXT NOT NULL,
-    records_processed INTEGER NOT NULL DEFAULT 0,
-    records_failed INTEGER NOT NULL DEFAULT 0,
+    records_processed BIGINT NOT NULL DEFAULT 0,
+    records_failed BIGINT NOT NULL DEFAULT 0,
     error_message TEXT
 );
 

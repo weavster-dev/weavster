@@ -9,11 +9,11 @@ use weavster_core::flow::OutputConfig;
 
 use crate::error::Result;
 use crate::state::StateStore;
-use crate::wasm::WasmRuntime;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
+use weavster_core::wasm::WasmRuntime;
 
 /// Runtime engine for executing flows
 pub struct Runtime {
@@ -154,39 +154,25 @@ impl Runtime {
                                 processed += 1;
                             }
                             Err(e) => {
-                                let policy = weavster_core::config::resolve_error_handling(
-                                    self.config.project.error_handling.as_ref(),
-                                    flow.error_handling.as_ref(),
-                                    None,
-                                );
-                                if policy.on_error
-                                    == weavster_core::config::OnErrorBehavior::StopOnError
-                                {
-                                    return Err(e.into());
-                                }
-                                tracing::error!(
-                                    "Failed to deserialize return payload on message {}: {}",
+                                self.handle_process_error(
+                                    &flow.name,
+                                    &flow.error_handling,
                                     processed + 1,
-                                    e
-                                );
+                                    "Failed to deserialize return payload",
+                                    e.into(),
+                                )?;
                                 failed += 1;
                             }
                         }
                     }
                     Err(e) => {
-                        let policy = weavster_core::config::resolve_error_handling(
-                            self.config.project.error_handling.as_ref(),
-                            flow.error_handling.as_ref(),
-                            None,
-                        );
-                        if policy.on_error == weavster_core::config::OnErrorBehavior::StopOnError {
-                            return Err(e);
-                        }
-                        tracing::error!(
-                            "Transform WASM engine error on message {}: {}",
+                        self.handle_process_error(
+                            &flow.name,
+                            &flow.error_handling,
                             processed + 1,
-                            e
-                        );
+                            "Transform WASM engine error",
+                            e,
+                        )?;
                         failed += 1;
                     }
                 }
@@ -258,12 +244,41 @@ impl Runtime {
             format: fc.format.clone(),
         }
     }
+
+    /// Internal error handling helper to apply flow error policies
+    fn handle_process_error(
+        &self,
+        flow_name: &str,
+        flow_error_policy: &Option<weavster_core::config::ErrorHandlingConfig>,
+        index: usize,
+        context: &str,
+        err: anyhow::Error,
+    ) -> Result<()> {
+        let policy = weavster_core::config::resolve_error_handling(
+            self.config.project.error_handling.as_ref(),
+            flow_error_policy.as_ref(),
+            None,
+        );
+
+        if policy.on_error == weavster_core::config::OnErrorBehavior::StopOnError {
+            return Err(err);
+        }
+
+        tracing::error!(
+            "Flow '{}': {} on message {}: {}",
+            flow_name,
+            context,
+            index,
+            err
+        );
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::SqliteStateStore;
+    use crate::state::{SqliteStateStore, path_to_sqlite_url};
     use std::collections::HashMap;
     use std::path::PathBuf;
     use weavster_core::config::{Config, LocalConfig, ProjectConfig, RuntimeConfig, RuntimeMode};
@@ -299,10 +314,7 @@ mod tests {
 
         let db_dir = tempfile::tempdir().unwrap();
         let db_path = db_dir.path().join("test_rel.db");
-        let db_url = format!(
-            "sqlite://{}?mode=rwc",
-            db_path.to_string_lossy().replace("\\", "/")
-        );
+        let db_url = path_to_sqlite_url(&db_path);
         let store = Arc::new(SqliteStateStore::new(&db_url).await.unwrap());
 
         let runtime = Runtime::new(config, store, HashMap::new()).unwrap();
@@ -322,10 +334,7 @@ mod tests {
 
         let db_dir = tempfile::tempdir().unwrap();
         let db_path = db_dir.path().join("test_abs.db");
-        let db_url = format!(
-            "sqlite://{}?mode=rwc",
-            db_path.to_string_lossy().replace("\\", "/")
-        );
+        let db_url = path_to_sqlite_url(&db_path);
         let store = Arc::new(SqliteStateStore::new(&db_url).await.unwrap());
 
         let runtime = Runtime::new(config, store, HashMap::new()).unwrap();

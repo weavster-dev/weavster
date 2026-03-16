@@ -1,8 +1,12 @@
 use super::assertions::generate_diff;
 use super::models::{Assertion, TestDefinition};
 use crate::error::Result;
+#[cfg(feature = "wasm")]
+use crate::wasm::WasmRuntime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::HashMap;
+use std::path::PathBuf;
 
 /// Evaluation strategy logic
 #[derive(Debug, Clone, Copy)]
@@ -51,12 +55,25 @@ impl TestResult {
 pub struct TestExecutor {
     /// Tracks if we execute WASM modules natively or spawn up server systems.
     pub mode: TestMode,
+    /// Mapping of flow names to their compiled WASM paths
+    pub flow_wasm_paths: HashMap<String, PathBuf>,
+    /// The WASM runtime environment
+    #[cfg(feature = "wasm")]
+    wasm_runtime: Option<WasmRuntime>,
 }
 
 impl TestExecutor {
     /// Spin up an instance
-    pub fn new(mode: TestMode) -> Self {
-        Self { mode }
+    pub fn new(mode: TestMode, flow_wasm_paths: HashMap<String, PathBuf>) -> Self {
+        #[cfg(feature = "wasm")]
+        let wasm_runtime = WasmRuntime::new().ok();
+
+        Self {
+            mode,
+            flow_wasm_paths,
+            #[cfg(feature = "wasm")]
+            wasm_runtime,
+        }
     }
 
     /// Entry point for evaluating tests
@@ -68,11 +85,36 @@ impl TestExecutor {
     }
 
     async fn run_unit_test(&self, test: &TestDefinition) -> Result<TestResult> {
-        // MOCK IMPLEMENTATION FOR MVP
-        // TODO: Actually construct WASM engine runtime and feed `.jsonl` directly
+        #[cfg(feature = "wasm")]
+        if let Some(ref runtime) = self.wasm_runtime {
+            if let Some(wasm_path) = self.flow_wasm_paths.get(&test.flow) {
+                let input_records = read_jsonl(&test.input).await?;
+                let mut actual_records = Vec::new();
 
+                for record in input_records {
+                    let input_bytes = serde_json::to_vec(&record)?;
+                    let output_bytes = runtime.execute(wasm_path, &input_bytes)?;
+
+                    if !output_bytes.is_empty() {
+                        let output_json: Value = serde_json::from_slice(&output_bytes)?;
+                        actual_records.push(output_json);
+                    }
+                }
+
+                let expected_records = read_jsonl(&test.expected_output).await?;
+                return Ok(self.compare_and_assert(
+                    &expected_records,
+                    &actual_records,
+                    &test.assertions,
+                ));
+            } else {
+                return Err(anyhow::anyhow!("No WASM path found for flow '{}'", test.flow).into());
+            }
+        }
+
+        // Fallback for non-wasm or missing runtime
         let expected = read_jsonl(&test.expected_output).await?;
-        let actual = read_jsonl(&test.input).await?; // temporary mock
+        let actual = read_jsonl(&test.input).await?; // temporary mock fallback
 
         Ok(self.compare_and_assert(&expected, &actual, &test.assertions))
     }

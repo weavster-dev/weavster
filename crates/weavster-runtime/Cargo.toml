@@ -9,7 +9,7 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-weavster-core.workspace = true
+weavster-core = { workspace = true, features = ["wasm"] }
 sqlx.workspace = true
 
 # Serialization

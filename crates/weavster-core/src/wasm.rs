@@ -1,5 +1,7 @@
 //! WASM Execution Runtime Integration
 
+#![allow(unsafe_code)]
+
 use anyhow::{Result, anyhow};
 use std::path::Path;
 use wasmtime::{Config, Engine, Linker, Module, Store};

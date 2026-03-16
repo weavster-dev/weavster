@@ -24,6 +24,7 @@ docs/node_modules/
 
 # Test output
 *.log
+coderabbit_output.txt
 coverage/
 
 # OS files

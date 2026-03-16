@@ -114,6 +114,10 @@ enum Commands {
     Test {
         /// Test file or pattern
         pattern: Option<String>,
+
+        /// Configuration profile to use (e.g., dev, prod)
+        #[arg(short, long)]
+        profile: Option<String>,
     },
 }
 
@@ -222,8 +226,8 @@ async fn main() -> Result<()> {
                 commands::connector::test(&cli.config, &name).await?;
             }
         },
-        Commands::Test { pattern } => {
-            commands::test::run(pattern.as_deref()).await?;
+        Commands::Test { pattern, profile } => {
+            commands::test::run(pattern.as_deref(), profile.as_deref()).await?;
         }
     }
 
