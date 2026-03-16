@@ -45,11 +45,7 @@ pub async fn run(
             .await
             .with_context(|| format!("Failed to compile flow: {}", flow.name))?;
 
-        let wasm_cache_path = config
-            .base_path
-            .join(".weavster/cache")
-            .join(format!("{}.wasm", compile_ctx.hash));
-        flow_wasm_paths.insert(flow.name.clone(), wasm_cache_path);
+        let wasm_cache_path = options.cache_dir.join(format!("{}.wasm", compile_ctx.hash));
     }
 
     let state_store: Arc<dyn StateStore> = if let Some(pg_url) = std::env::var_os("WEAVSTER_PG_URL")
