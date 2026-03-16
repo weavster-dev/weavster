@@ -35,7 +35,8 @@ impl WasmRuntime {
             .ok_or_else(|| anyhow!("Failed to find exported memory in WASM Module"))?;
 
         // Standard memory configuration limit handles payloads up to 1MB currently (as an MVP safeguard)
-        let output_capacity = 1024 * 1024;
+        const DEFAULT_WASM_OUTPUT_CAPACITY_BYTES: usize = 1024 * 1024;
+        let output_capacity = DEFAULT_WASM_OUTPUT_CAPACITY_BYTES;
 
         // Find exported transform function: Fn(input_ptr: i32, input_len: i32, output_ptr: i32, output_cap: i32) -> i32
         let transform_fn =
