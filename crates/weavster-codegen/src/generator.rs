@@ -291,18 +291,17 @@ impl Generator {
     fn generate_add_fields_transform(&self, fields: &HashMap<String, serde_json::Value>) -> String {
         let mut code = String::new();
 
-        for (field, value) in fields {
+        let mut sorted_fields: Vec<_> = fields.iter().collect();
+        sorted_fields.sort_by_key(|(k, _)| *k);
+
+        for (field, value) in sorted_fields {
             let value_str = match value {
-                serde_json::Value::String(s) => format!("Value::String(\"{}\".into())", s),
-                serde_json::Value::Number(n) => format!("serde_json::json!({})", n),
-                serde_json::Value::Bool(b) => format!("Value::Bool({})", b),
-                serde_json::Value::Null => "Value::Null".to_string(),
-                // Note: Complex objects/arrays fallback to standard serde serialization mapping
-                _ => format!("serde_json::json!({})", value),
+                serde_json::Value::String(s) => serde_json::to_string(s).unwrap_or_else(|_| "\"\".to_string()),
+                _ => serde_json::to_string(value).unwrap_or_else(|_| "null".to_string()),
             };
 
             code.push_str(&format!(
-                "    output.insert(\"{}\".into(), {});\n",
+                "    output.insert(\"{}\".into(), serde_json::from_str({}).unwrap());\n",
                 field, value_str
             ));
         }
