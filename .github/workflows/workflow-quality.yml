@@ -98,3 +98,58 @@ jobs:
 
           claude_args: >-
             --allowed-tools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(ls:*),Bash(mkdir:*),Write,Edit,Read"
+
+  sync-master-changelog:
+    name: Sync Master Changelog
+    needs: check-changelog
+    # If a changelog was added/updated (manually OR by autofix), sync it to root CHANGELOG.md
+    if: always() && needs.check-changelog.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Check if wf-changelog.md was updated
+        id: check_update
+        run: |
+          # Check if any wf-changelog.md was added or modified in the PR branch
+          CHANGELOG_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep "wf-changelog.md" || true)
+          if [ -n "$CHANGELOG_CHANGED" ]; then
+            echo "has_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_update=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Sync to root CHANGELOG.md
+        if: steps.check_update.outputs.has_update == 'true'
+        uses: google-github-actions/run-gemini-cli@v1
+        env:
+          ENABLE_LSP_TOOL: "1"
+        with:
+          api_key: ${{ secrets.GEMINI_API_KEY }}
+          prompt: |
+            A workflow changelog was added or updated in this PR. Please sync its contents to the root `CHANGELOG.md` file under the `## [Unreleased]` section.
+
+            PR TITLE: ${{ github.event.pull_request.title }}
+            PR BODY: ${{ github.event.pull_request.body }}
+
+            INSTRUCTIONS:
+            1. Find the newly updated `wf-changelog.md` files in the `thoughts/` directory using `git diff --name-only origin/${{ github.base_ref }}...HEAD | grep "wf-changelog.md"`
+            2. Read their contents.
+            3. Synthesize a concise summary for the root `CHANGELOG.md`.
+            4. Append this summary under the `## [Unreleased]` header in `CHANGELOG.md`.
+            5. If `CHANGELOG.md` doesn't exist, create it.
+            6. Ensure the tone is professional and consistent with existing entries.
+            7. Commit the changes to the PR branch.
+
+            IMPORTANT: Do not duplicate entries. Check if a summary for this PR is already in the `CHANGELOG.md`.
+
+          claude_args: >-
+            --allowed-tools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(ls:*),Write,Edit,Read"
