@@ -75,7 +75,6 @@ jobs:
 
             Start by posting your implementation plan as a comment, then proceed with the work.
 
-          gemini_args: >-
             --allowed-tools
             "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"
 
@@ -133,7 +132,6 @@ jobs:
 
             If this is a question or clarification, respond with a helpful comment.
 
-          gemini_args: >-
             --allowed-tools
             "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"
 
@@ -252,6 +250,5 @@ jobs:
 
             Use conventional commits: feat:, fix:, docs:, refactor:, test:, chore:
 
-          gemini_args: >-
             --allowed-tools
             "Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"

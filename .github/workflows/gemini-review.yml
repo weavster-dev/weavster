@@ -130,7 +130,6 @@ jobs:
             - Break down into smaller tasks
             - Provide code examples
 
-          gemini_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh api:*)"'
 
   # Help with newly created/assigned issues
   gemini-issue-assist:
@@ -200,5 +199,3 @@ jobs:
             - Clarify scope and requirements
             - Suggest implementation approach
             - Estimate complexity (small/medium/large)
-
-          gemini_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh api:*)"'
