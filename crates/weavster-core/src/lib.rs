@@ -26,7 +26,7 @@
 //! }
 //! ```
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![warn(missing_docs)]
 #![warn(clippy::all)]
 
@@ -35,8 +35,20 @@ pub mod connectors;
 pub mod error;
 pub mod flow;
 pub mod interpreter;
+
+/// The evaluation and assertion engine backend
+pub mod testing;
+
 pub mod transforms;
 
-pub use config::{Config, ProjectConfig};
+/// WASM runtime for executing compiled transforms
+#[cfg(feature = "wasm")]
+pub mod wasm;
+
+pub use config::{
+    BackoffStrategy, Config, ConfigCache, DynamicJinjaContext, ErrorHandlingConfig, JinjaContext,
+    LogLevel, MacroDefinition, OnErrorBehavior, ProfileConfig, ProjectConfig, ResolvedConfig,
+    RetryConfig,
+};
 pub use error::{Error, Result};
 pub use flow::Flow;

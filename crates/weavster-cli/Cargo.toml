@@ -28,10 +28,13 @@ anyhow.workspace = true
 
 # Serialization
 serde_json.workspace = true
+serde_yaml.workspace = true
+
 
 # Logging
 tracing.workspace = true
 tracing-subscriber.workspace = true
+colored.workspace = true
 
 # Config
 walkdir = "2.5"      # For directory traversal

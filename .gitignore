@@ -24,6 +24,7 @@ docs/node_modules/
 
 # Test output
 *.log
+coderabbit_output.txt
 coverage/
 
 # OS files
@@ -39,3 +40,5 @@ Thumbs.db
 *.pem
 *.key
 credentials.yaml
+# SQLite data
+*.db
