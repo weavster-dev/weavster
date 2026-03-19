@@ -1,0 +1,100 @@
+name: Workflow Quality
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled]
+
+jobs:
+  check-changelog:
+    name: Check Workflow Changelog
+    runs-on: ubuntu-latest
+    outputs:
+      needs_changelog: ${{ steps.check.outputs.needs_changelog }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            crates/**
+            src/**
+            **/*.rs
+
+      - name: Check for wf-changelog.md
+        id: check
+        run: |
+          CODE_CHANGED="${{ steps.changed-files.outputs.any_changed }}"
+
+          # Check if any wf-changelog.md was added or modified in the PR
+          CHANGELOG_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep "wf-changelog.md" || true)
+
+          if [ "$CODE_CHANGED" = "true" ] && [ -z "$CHANGELOG_CHANGED" ]; then
+            echo "needs_changelog=true" >> $GITHUB_OUTPUT
+            echo "::warning::PR changes code but missing wf-changelog.md in thoughts/ directory"
+          else
+            echo "needs_changelog=false" >> $GITHUB_OUTPUT
+          fi
+
+  fail-if-missing:
+    name: Fail if Missing
+    needs: check-changelog
+    if: needs.check-changelog.outputs.needs_changelog == 'true' && !contains(github.event.pull_request.labels.*.name, 'gemini-autofix')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail check
+        run: |
+          echo "ERROR: This PR modifies code but is missing a workflow changelog (wf-changelog.md)."
+          echo "Please use the /wf-update-changelog skill to document your changes."
+          echo "Or add the 'gemini-autofix' label to have this automatically generated for you."
+          exit 1
+
+  auto-generate-changelog:
+    name: Auto-generate Changelog
+    needs: check-changelog
+    if: needs.check-changelog.outputs.needs_changelog == 'true' && contains(github.event.pull_request.labels.*.name, 'gemini-autofix')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Generate Workflow Changelog
+        uses: google-github-actions/run-gemini-cli@v1
+        env:
+          ENABLE_LSP_TOOL: "1"
+        with:
+          api_key: ${{ secrets.GEMINI_API_KEY }}
+          prompt: |
+            This PR is missing a required `wf-changelog.md` file in the `thoughts/` directory.
+            PR NUMBER: #${{ github.event.pull_request.number }}
+            PR TITLE: ${{ github.event.pull_request.title }}
+            PR BODY: ${{ github.event.pull_request.body }}
+
+            INSTRUCTIONS:
+            1. Analyze the changes in this PR using `git diff origin/${{ github.base_ref }}...HEAD`
+            2. Determine the appropriate feature slug for this work. Check `thoughts/` for existing directories or create a new one based on the branch name.
+            3. Generate a `wf-changelog.md` following the established project conventions:
+               - Use the feature directory: `thoughts/{namespace}/{NNNN-slug}/`
+               - File path: `thoughts/{namespace}/{NNNN-slug}/wf-changelog.md`
+            4. If a `wf-plan.md` doesn't exist, create a minimal placeholder plan to satisfy the workflow directory requirements.
+            5. Commit these files directly to the PR branch.
+            6. Post a comment on the PR informing the developer that Gemini CLI (via automation) has auto-generated the documentation.
+
+            Context:
+            - This is the Weavster project (Rust ESB/data pipelines).
+            - Refer to CLAUDE.md for core project conventions.
+
+          claude_args: >-
+            --allowed-tools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(ls:*),Bash(mkdir:*),Write,Edit,Read"

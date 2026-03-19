@@ -1,7 +1,7 @@
 //! Weavster Runtime
 //!
 //! This crate provides the execution runtime for Weavster flows.
-//! It's designed to be minimal for small Docker images.
+//!
 //!
 //! # Features
 //!

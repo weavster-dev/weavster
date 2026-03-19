@@ -1,4 +1,4 @@
-name: Claude Code Review
+name: Gemini CLI Code Review
 
 on:
   pull_request_target:
@@ -12,14 +12,14 @@ on:
 
 jobs:
   # Respond to CodeRabbit reviews that request changes
-  claude-coderabbit-response:
+  gemini-coderabbit-response:
     if: |
       github.event_name == 'pull_request_review' &&
       github.event.review.user.login == 'coderabbitai[bot]' &&
       github.event.review.state == 'changes_requested'
     runs-on: ubuntu-latest
     concurrency:
-      group: claude-review-${{ github.event.pull_request.number }}
+      group: gemini-review-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     permissions:
       contents: write
@@ -39,13 +39,13 @@ jobs:
           components: rustfmt, clippy, rust-analyzer
 
       - name: Respond to CodeRabbit Review
-        uses: anthropics/claude-code-action@v1
+        uses: google-github-actions/run-gemini-cli@v1
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          api_key: ${{ secrets.GEMINI_API_KEY }}
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
-          plugins: rust-analyzer-lsp@claude-plugins-official
+          plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             CodeRabbit has reviewed PR #${{ github.event.pull_request.number }}.
             Review state: ${{ github.event.review.state }}
@@ -65,13 +65,13 @@ jobs:
             - Follow CLAUDE.md conventions
             - Use conventional commits for fix commits
 
-  # Handle @claude mentions in PR/Issue comments
+  # Handle @gemini-cli mentions in PR/Issue comments
   # Only responds to org members/collaborators to prevent token abuse
-  claude-respond:
+  gemini-respond:
     if: |
       github.event_name == 'issue_comment' &&
-      contains(github.event.comment.body, '@claude') &&
-      !contains(github.event.comment.body, '@claude work') &&
+      contains(github.event.comment.body, '@gemini-cli') &&
+      !contains(github.event.comment.body, '@gemini-cli work') &&
       (
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
@@ -79,7 +79,7 @@ jobs:
       )
     runs-on: ubuntu-latest
     concurrency:
-      group: claude-respond-${{ github.event.issue.number }}
+      group: gemini-respond-${{ github.event.issue.number }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -98,13 +98,13 @@ jobs:
           components: rust-analyzer
 
       - name: Respond to mention
-        uses: anthropics/claude-code-action@v1
+        uses: google-github-actions/run-gemini-cli@v1
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          api_key: ${{ secrets.GEMINI_API_KEY }}
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
-          plugins: rust-analyzer-lsp@claude-plugins-official
+          plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE/PR NUMBER: ${{ github.event.issue.number }}
@@ -133,14 +133,14 @@ jobs:
           claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh api:*)"'
 
   # Help with newly created/assigned issues
-  claude-issue-assist:
+  gemini-issue-assist:
     if: |
       github.event_name == 'issues' &&
       (github.event.action == 'opened' || github.event.action == 'assigned') &&
-      contains(github.event.issue.labels.*.name, 'claude-assist')
+      contains(github.event.issue.labels.*.name, 'gemini-assist')
     runs-on: ubuntu-latest
     concurrency:
-      group: claude-assist-${{ github.event.issue.number }}
+      group: gemini-assist-${{ github.event.issue.number }}
       cancel-in-progress: false
     permissions:
       contents: read
@@ -158,13 +158,13 @@ jobs:
           components: rust-analyzer
 
       - name: Assist with issue
-        uses: anthropics/claude-code-action@v1
+        uses: google-github-actions/run-gemini-cli@v1
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          api_key: ${{ secrets.GEMINI_API_KEY }}
           plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
-          plugins: rust-analyzer-lsp@claude-plugins-official
+          plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ github.event.issue.number }}
@@ -172,7 +172,7 @@ jobs:
             ISSUE BODY: ${{ github.event.issue.body }}
             ISSUE LABELS: ${{ join(github.event.issue.labels.*.name, ', ') }}
 
-            This issue has the 'claude-assist' label. Please help by:
+            This issue has the 'gemini-assist' label. Please help by:
 
             1. **Analyzing the Issue**
                - Understand what's being requested

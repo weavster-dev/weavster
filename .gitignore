@@ -39,3 +39,9 @@ Thumbs.db
 *.pem
 *.key
 credentials.yaml
+
+# gemini-cli settings
+.gemini/
+
+# GitHub App credentials
+gha-creds-*.json

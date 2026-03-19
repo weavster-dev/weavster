@@ -106,10 +106,10 @@ jobs:
 
       - name: Generate release name and notes
         id: generate
-        uses: anthropics/claude-code-action@v1
+        uses: google-github-actions/run-gemini-cli@v1
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          direct_prompt: |
+          api_key: ${{ secrets.GEMINI_API_KEY }}
+          prompt: |
             Generate a release name and summary for Weavster version ${{ needs.validate.outputs.version }}.
 
             Weavster is a modern Enterprise Service Bus - like dbt but for real-time transactions.
@@ -216,20 +216,41 @@ jobs:
           echo "release_name=v${{ needs.validate.outputs.version }}: $NAME" >> $GITHUB_OUTPUT
           echo "release_summary=$SUMMARY" >> $GITHUB_OUTPUT
 
-      - name: Install git-cliff
-        uses: taiki-e/install-action@v2
-        with:
-          tool: git-cliff
-
-      - name: Generate changelog for release
-        id: changelog
+      - name: Gather Workflow Changelogs
+        id: workflow_changelogs
         run: |
-          # Generate changelog for latest tag only
-          CONTENT=$(git-cliff --config cliff.toml --latest --strip header)
-          # Handle multiline output for GitHub Actions
-          echo "content<<EOF" >> $GITHUB_OUTPUT
-          echo "$CONTENT" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          # Find all wf-changelog.md files in the thoughts directory
+          # and format them for the release body
+          echo "Gathering workflow changelogs..."
+
+          # Use a heredoc for the output to handle multi-line content safely
+          {
+            echo "changelog_content<<EOF"
+            echo "### Detailed Changes (Workflow Logs)"
+            echo ""
+
+            # Find all wf-changelog.md files that were modified since the last release
+            # If no previous tag, just find all of them
+            if [ -n "${{ steps.prev_tag.outputs.prev_tag }}" ]; then
+              FILES=$(git diff --name-only ${{ steps.prev_tag.outputs.prev_tag }}..HEAD | grep "wf-changelog.md" || true)
+            else
+              FILES=$(find thoughts -name "wf-changelog.md" || true)
+            fi
+
+            if [ -z "$FILES" ]; then
+              echo "No detailed workflow logs found for this release."
+            else
+              for file in $FILES; do
+                if [ -f "$file" ]; then
+                  echo "#### From $file"
+                  # Strip the frontmatter if it exists and indentation/headers for clarity
+                  sed -n '/^# /,$p' "$file" | sed 's/^# /##### /' | sed 's/^## /###### /'
+                  echo ""
+                fi
+              done
+            fi
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -241,7 +262,7 @@ jobs:
           body: |
             ${{ steps.parse.outputs.release_summary }}
 
-            ${{ steps.changelog.outputs.content }}
+            ${{ steps.workflow_changelogs.outputs.changelog_content }}
           files: release-assets/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
