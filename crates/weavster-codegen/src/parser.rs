@@ -121,6 +121,10 @@ impl Parser {
                 default: lookup.default,
             })),
 
+            RawTransform::AddFields { add_fields } => Ok(TransformIR::AddFields(add_fields)),
+
+            // Note: Currently maps the entire expression YAML string
+            // The FilterCondition::Expression acts as a bridging parser gap till Phase 5
             RawTransform::Filter { filter } => Ok(TransformIR::Filter(FilterTransform {
                 condition: FilterCondition::Expression(filter.when),
             })),
@@ -209,6 +213,9 @@ enum RawTransform {
     },
     Lookup {
         lookup: LookupTransformYaml,
+    },
+    AddFields {
+        add_fields: HashMap<String, serde_json::Value>,
     },
     Filter {
         filter: FilterTransformYaml,
@@ -493,6 +500,31 @@ outputs:
                 _ => panic!("Expected expression condition"),
             },
             _ => panic!("Expected filter transform"),
+        }
+    }
+
+    #[test]
+    fn test_parse_add_fields_transform() {
+        let yaml = r#"
+name: add_fields_flow
+input: kafka.orders
+transforms:
+  - add_fields:
+      status: "active"
+      priority: 1
+outputs:
+  - postgres.orders
+"#;
+        let parser = Parser::new(".");
+        let ir = parser.parse_yaml(yaml).unwrap();
+
+        match &ir.transforms[0] {
+            TransformIR::AddFields(fields) => {
+                assert_eq!(fields.len(), 2);
+                assert_eq!(fields.get("status"), Some(&serde_json::json!("active")));
+                assert_eq!(fields.get("priority"), Some(&serde_json::json!(1)));
+            }
+            _ => panic!("Expected add_fields transform"),
         }
     }
 

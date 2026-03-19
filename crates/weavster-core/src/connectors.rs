@@ -72,6 +72,28 @@ pub enum ConnectorConfig {
 
     /// PostgreSQL connector
     Postgres(PostgresConnectorConfig),
+
+    /// Bridge connector (database-backed queue between flows)
+    Bridge(BridgeConnectorConfig),
+}
+
+/// Bridge connector configuration (database-backed queue between flows)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BridgeConnectorConfig {
+    /// Database table name for the bridge queue
+    pub queue_table: String,
+
+    /// Number of messages to fetch per poll
+    #[serde(default)]
+    pub batch_size: Option<u32>,
+
+    /// Polling interval in milliseconds
+    #[serde(default)]
+    pub poll_interval_ms: Option<u64>,
+
+    /// How long to hold a message lease in milliseconds
+    #[serde(default)]
+    pub lease_duration_ms: Option<u64>,
 }
 
 /// File connector configuration

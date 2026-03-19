@@ -24,6 +24,13 @@
 pub mod engine;
 pub mod error;
 pub mod jobs;
+/// Database models
+pub mod models;
+/// State store implementations
+pub mod state;
+
+/// Re-export WASM runtime from core
+pub use weavster_core::wasm;
 
 pub use engine::Runtime;
 pub use error::{Error, Result};

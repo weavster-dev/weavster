@@ -9,7 +9,8 @@ authors.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-weavster-core.workspace = true
+weavster-core = { workspace = true, features = ["wasm"] }
+sqlx.workspace = true
 
 # Serialization
 serde.workspace = true
@@ -21,9 +22,18 @@ tokio.workspace = true
 # Error handling
 anyhow.workspace = true
 
+chrono.workspace = true
+async-trait.workspace = true
+
 # Logging
 tracing.workspace = true
+wasmtime.workspace = true
+
+sha2 = { workspace = true }
+hex = { workspace = true }
+minijinja = { workspace = true }
 
 [dev-dependencies]
 rstest.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true

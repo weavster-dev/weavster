@@ -26,7 +26,7 @@ pub enum Error {
     GenerationError(String),
 
     /// Failed to compile to WASM
-    #[error("WASM compilation failed: {message}")]
+    #[error("WASM compilation failed: {message}\nStderr: {stderr:?}")]
     CompilationError {
         /// Error message
         message: String,

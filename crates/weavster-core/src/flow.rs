@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+use crate::config::{DynamicJinjaContext, ErrorHandlingConfig};
 use crate::transforms::TransformConfig;
 
 /// A flow definition
@@ -31,6 +32,14 @@ pub struct Flow {
     /// Flow-level variables
     #[serde(default)]
     pub vars: HashMap<String, serde_yaml::Value>,
+
+    /// Flow-level error handling configuration
+    #[serde(default)]
+    pub error_handling: Option<ErrorHandlingConfig>,
+
+    /// Dynamic Jinja context for runtime expression evaluation
+    #[serde(skip)]
+    pub dynamic_context: Option<DynamicJinjaContext>,
 }
 
 /// Output configuration
