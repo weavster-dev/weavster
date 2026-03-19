@@ -1,4 +1,4 @@
-name: Claude Code Issue Worker
+name: Gemini CLI Issue Worker
 
 on:
   issues:
@@ -9,14 +9,14 @@ on:
     types: [linear-work]
 
 jobs:
-  # When an issue is labeled 'claude-work', Claude will start working on it
+  # When an issue is labeled 'gemini-work', Claude will start working on it
   work-issue:
     if: |
       github.event_name == 'issues' &&
-      github.event.label.name == 'claude-work'
+      github.event.label.name == 'gemini-work'
     runs-on: ubuntu-latest
     concurrency:
-      group: claude-work-issue-${{ github.event.issue.number }}
+      group: gemini-work-issue-${{ github.event.issue.number }}
       cancel-in-progress: false
     permissions:
       contents: write
@@ -35,13 +35,13 @@ jobs:
           components: rustfmt, clippy, rust-analyzer
 
       - name: Work on issue
-        uses: anthropics/claude-code-action@v1
+        uses: google-github-actions/run-gemini-cli@v0
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
-          plugins: rust-analyzer-lsp@claude-plugins-official
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
+          plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ github.event.issue.number }}
@@ -62,7 +62,7 @@ jobs:
                - Note any questions or clarifications needed
 
             3. **Implement the Solution**
-               - Follow CLAUDE.md conventions
+               - Follow AGENTS.md conventions
                - Write tests for new functionality
                - Keep commits atomic and well-described
 
@@ -75,16 +75,15 @@ jobs:
 
             Start by posting your implementation plan as a comment, then proceed with the work.
 
-          claude_args: >-
             --allowed-tools
             "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"
 
-  # Handle @claude work requests in comments
+  # Handle @gemini-cli work requests in comments
   # Only org members/collaborators can trigger this
-  claude-work-comment:
+  gemini-work-comment:
     if: |
       github.event_name == 'issue_comment' &&
-      contains(github.event.comment.body, '@claude work') &&
+      contains(github.event.comment.body, '@gemini-cli work') &&
       (
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
@@ -92,7 +91,7 @@ jobs:
       )
     runs-on: ubuntu-latest
     concurrency:
-      group: claude-work-comment-${{ github.event.issue.number }}
+      group: gemini-work-comment-${{ github.event.issue.number }}
       cancel-in-progress: false
     permissions:
       contents: write
@@ -111,13 +110,13 @@ jobs:
           components: rustfmt, clippy, rust-analyzer
 
       - name: Work on request
-        uses: anthropics/claude-code-action@v1
+        uses: google-github-actions/run-gemini-cli@v0
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
-          plugins: rust-analyzer-lsp@claude-plugins-official
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
+          plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ github.event.issue.number }}
@@ -126,14 +125,13 @@ jobs:
 
             You've been asked to work on something. The request is in the COMMENT above.
 
-            Follow CLAUDE.md conventions. If this requires code changes:
+            Follow AGENTS.md conventions. If this requires code changes:
             1. Implement the changes
             2. Write/update tests
             3. Create a PR with title "@coderabbitai" and body starting with "@coderabbitai summary", referencing this issue
 
             If this is a question or clarification, respond with a helpful comment.
 
-          claude_args: >-
             --allowed-tools
             "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"
 
@@ -142,7 +140,7 @@ jobs:
     if: github.event_name == 'repository_dispatch' && github.event.action == 'linear-work'
     runs-on: ubuntu-latest
     concurrency:
-      group: claude-work-linear-${{ github.event.client_payload.linear_identifier }}
+      group: gemini-work-linear-${{ github.event.client_payload.linear_identifier }}
       cancel-in-progress: false
     permissions:
       contents: write
@@ -216,13 +214,13 @@ jobs:
           fi
 
       - name: Work on Linear ticket
-        uses: anthropics/claude-code-action@v1
+        uses: google-github-actions/run-gemini-cli@v0
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
-          plugins: rust-analyzer-lsp@claude-plugins-official
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
+          plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             LINEAR TICKET: ${{ github.event.client_payload.linear_identifier }}
             TITLE: ${{ github.event.client_payload.title }}
@@ -240,7 +238,7 @@ jobs:
                - Identify affected crates
 
             2. **Implement the Solution**
-               - Follow CLAUDE.md conventions
+               - Follow AGENTS.md conventions
                - Write tests for new functionality
                - Keep commits atomic and well-described
 
@@ -252,6 +250,5 @@ jobs:
 
             Use conventional commits: feat:, fix:, docs:, refactor:, test:, chore:
 
-          claude_args: >-
             --allowed-tools
             "Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"

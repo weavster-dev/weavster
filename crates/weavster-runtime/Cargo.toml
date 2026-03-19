@@ -1,6 +1,6 @@
 [package]
 name = "weavster-runtime"
-description = "Execution runtime for Weavster - designed for minimal Docker images"
+description = "Execution runtime for Weavster"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

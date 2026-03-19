@@ -40,5 +40,9 @@ Thumbs.db
 *.pem
 *.key
 credentials.yaml
-# SQLite data
-*.db
+
+# gemini-cli settings
+.gemini/
+
+# GitHub App credentials
+gha-creds-*.json

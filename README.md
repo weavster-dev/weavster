@@ -27,6 +27,16 @@ cd my-project
 weavster run
 ```
 
+## MRK (Mapping, Routing & Keys) - Coming Soon
+
+The next evolution of Weavster focuses on **MRK**, enabling complex message orchestration:
+
+- **Mapping**: Dynamic field mapping across multiple schemas
+- **Routing**: Sophisticated event-driven routing logic
+- **Keys**: Integrated partitioning and key management for distributed streams
+
+Stay tuned for the 0.2.0 release!
+
 ## Example Flow
 
 ```yaml
@@ -35,15 +45,14 @@ name: enrich_orders
 input: kafka.orders
 
 transforms:
-  - rename:
+  - map:
       customer_id: cust_id
 
   - add_fields:
       processed_at: "{{ now() }}"
 
-  - compute:
-      total_with_tax: "total * 1.08"
-      priority: 'if total > 1000 { "high" } else { "normal" }'
+  - template:
+      total_with_tax: "{{ total * 1.08 }}"
 
   - filter:
       when: "region != 'TEST'"
@@ -71,21 +80,23 @@ outputs:
 
 ### Connectors
 
-- **Kafka** - Consume and produce messages
-- **PostgreSQL** - Read and write to tables
-- **HTTP** - Webhooks and API calls
 - **File** - JSON, JSONL, CSV for local development
+- **Kafka** - Consume and produce messages (Partial)
+- **PostgreSQL** - Read and write to tables (Partial)
+- **HTTP** - Webhooks and API calls (Partial)
 
 ### Transforms
 
-| Transform     | Description                           |
-| ------------- | ------------------------------------- |
-| `rename`      | Rename fields                         |
-| `add_fields`  | Add static or computed fields         |
-| `compute`     | Calculate new values with expressions |
-| `filter`      | Include/exclude messages              |
-| `drop_fields` | Remove fields                         |
-| `coalesce`    | Use first non-null value              |
+| Transform    | Description                             |
+| ------------ | --------------------------------------- |
+| `map`        | Rename or map fields                    |
+| `add_fields` | Add static fields                       |
+| `template`   | Compute new fields using Jinja          |
+| `filter`     | Include/exclude messages                |
+| `drop`       | Remove fields                           |
+| `coalesce`   | Use first non-null value                |
+| `regex`      | Extract fields using regular expression |
+| `lookup`     | Enrich data from external sources       |
 
 ### Runtime Modes
 
@@ -118,7 +129,7 @@ cargo run -p weavster-cli -- --help
 ```
 crates/
 ├── weavster-core/      # Shared library (config, transforms, connectors)
-├── weavster-runtime/   # Execution engine (for Docker)
+├── weavster-codegen/   # Core compiler and IR generator
 ├── weavster-cli/       # Developer CLI tool
 └── weavster-python/    # Python bindings (future)
 ```
