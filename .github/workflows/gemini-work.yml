@@ -35,7 +35,7 @@ jobs:
           components: rustfmt, clippy, rust-analyzer
 
       - name: Work on issue
-        uses: google-github-actions/run-gemini-cli@v1
+        uses: google-github-actions/run-gemini-cli@v0
         env:
           ENABLE_LSP_TOOL: "1"
         with:
@@ -111,7 +111,7 @@ jobs:
           components: rustfmt, clippy, rust-analyzer
 
       - name: Work on request
-        uses: google-github-actions/run-gemini-cli@v1
+        uses: google-github-actions/run-gemini-cli@v0
         env:
           ENABLE_LSP_TOOL: "1"
         with:
@@ -216,7 +216,7 @@ jobs:
           fi
 
       - name: Work on Linear ticket
-        uses: google-github-actions/run-gemini-cli@v1
+        uses: google-github-actions/run-gemini-cli@v0
         env:
           ENABLE_LSP_TOOL: "1"
         with:

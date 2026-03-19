@@ -39,7 +39,7 @@ jobs:
           components: rustfmt, clippy, rust-analyzer
 
       - name: Respond to CodeRabbit Review
-        uses: google-github-actions/run-gemini-cli@v1
+        uses: google-github-actions/run-gemini-cli@v0
         env:
           ENABLE_LSP_TOOL: "1"
         with:
@@ -98,7 +98,7 @@ jobs:
           components: rust-analyzer
 
       - name: Respond to mention
-        uses: google-github-actions/run-gemini-cli@v1
+        uses: google-github-actions/run-gemini-cli@v0
         env:
           ENABLE_LSP_TOOL: "1"
         with:
@@ -158,7 +158,7 @@ jobs:
           components: rust-analyzer
 
       - name: Assist with issue
-        uses: google-github-actions/run-gemini-cli@v1
+        uses: google-github-actions/run-gemini-cli@v0
         env:
           ENABLE_LSP_TOOL: "1"
         with:

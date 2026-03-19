@@ -27,7 +27,7 @@ cd my-project
 weavster run
 ```
 
-## MRK (Mapping, Routing & Keys) - Coming Soon 🚀
+## MRK (Mapping, Routing & Keys) - Coming Soon
 
 The next evolution of Weavster focuses on **MRK**, enabling complex message orchestration:
 
