@@ -108,7 +108,7 @@ jobs:
         id: generate
         uses: google-github-actions/run-gemini-cli@v0
         with:
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           prompt: |
             Generate a release name and summary for Weavster version ${{ needs.validate.outputs.version }}.
 

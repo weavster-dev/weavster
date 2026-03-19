@@ -39,7 +39,7 @@ jobs:
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
           plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
@@ -75,7 +75,7 @@ jobs:
 
             Start by posting your implementation plan as a comment, then proceed with the work.
 
-          claude_args: >-
+          gemini_args: >-
             --allowed-tools
             "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"
 
@@ -115,7 +115,7 @@ jobs:
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
           plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
@@ -133,7 +133,7 @@ jobs:
 
             If this is a question or clarification, respond with a helpful comment.
 
-          claude_args: >-
+          gemini_args: >-
             --allowed-tools
             "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"
 
@@ -220,7 +220,7 @@ jobs:
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
           plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
@@ -252,6 +252,6 @@ jobs:
 
             Use conventional commits: feat:, fix:, docs:, refactor:, test:, chore:
 
-          claude_args: >-
+          gemini_args: >-
             --allowed-tools
             "Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"

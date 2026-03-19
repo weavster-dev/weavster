@@ -116,7 +116,7 @@ jobs:
         id: generate
         uses: google-github-actions/run-gemini-cli@v0
         with:
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           prompt: |
             Generate a short, creative codename for a nightly development release.
 

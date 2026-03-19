@@ -75,7 +75,7 @@ jobs:
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           prompt: |
             This PR is missing a required `wf-changelog.md` file in the `thoughts/` directory.
             PR NUMBER: #${{ github.event.pull_request.number }}
@@ -96,7 +96,7 @@ jobs:
             - This is the Weavster project (Rust ESB/data pipelines).
             - Refer to AGENTS.md for core project conventions.
 
-          claude_args: >-
+          gemini_args: >-
             --allowed-tools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(ls:*),Bash(mkdir:*),Write,Edit,Read"
 
   sync-master-changelog:
@@ -133,7 +133,7 @@ jobs:
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           prompt: |
             A workflow changelog was added or updated in this PR. Please sync its contents to the root `CHANGELOG.md` file under the `## [Unreleased]` section.
 
@@ -151,5 +151,5 @@ jobs:
 
             IMPORTANT: Do not duplicate entries. Check if a summary for this PR is already in the `CHANGELOG.md`.
 
-          claude_args: >-
+          gemini_args: >-
             --allowed-tools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(ls:*),Write,Edit,Read"

@@ -43,7 +43,7 @@ jobs:
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
           plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
@@ -102,7 +102,7 @@ jobs:
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
           plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
@@ -130,7 +130,7 @@ jobs:
             - Break down into smaller tasks
             - Provide code examples
 
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh api:*)"'
+          gemini_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*),Bash(gh api:*)"'
 
   # Help with newly created/assigned issues
   gemini-issue-assist:
@@ -162,7 +162,7 @@ jobs:
         env:
           ENABLE_LSP_TOOL: "1"
         with:
-          api_key: ${{ secrets.GEMINI_API_KEY }}
+          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
           plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
           plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
@@ -201,4 +201,4 @@ jobs:
             - Suggest implementation approach
             - Estimate complexity (small/medium/large)
 
-          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh api:*)"'
+          gemini_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr list:*),Bash(gh api:*)"'
