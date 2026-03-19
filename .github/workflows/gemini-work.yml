@@ -40,8 +40,8 @@ jobs:
           ENABLE_LSP_TOOL: "1"
         with:
           api_key: ${{ secrets.GEMINI_API_KEY }}
-          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
-          plugins: rust-analyzer-lsp@claude-plugins-official
+          plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
+          plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ github.event.issue.number }}
@@ -62,7 +62,7 @@ jobs:
                - Note any questions or clarifications needed
 
             3. **Implement the Solution**
-               - Follow CLAUDE.md conventions
+               - Follow AGENTS.md conventions
                - Write tests for new functionality
                - Keep commits atomic and well-described
 
@@ -79,12 +79,12 @@ jobs:
             --allowed-tools
             "Bash(gh issue view:*),Bash(gh issue comment:*),Bash(gh pr create:*),Bash(gh pr view:*),Bash(cargo:*),Bash(git:*),Edit,Write,Read"
 
-  # Handle @claude work requests in comments
+  # Handle @gemini-cli work requests in comments
   # Only org members/collaborators can trigger this
   gemini-work-comment:
     if: |
       github.event_name == 'issue_comment' &&
-      contains(github.event.comment.body, '@claude work') &&
+      contains(github.event.comment.body, '@gemini-cli work') &&
       (
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
@@ -116,8 +116,8 @@ jobs:
           ENABLE_LSP_TOOL: "1"
         with:
           api_key: ${{ secrets.GEMINI_API_KEY }}
-          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
-          plugins: rust-analyzer-lsp@claude-plugins-official
+          plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
+          plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             REPO: ${{ github.repository }}
             ISSUE NUMBER: ${{ github.event.issue.number }}
@@ -126,7 +126,7 @@ jobs:
 
             You've been asked to work on something. The request is in the COMMENT above.
 
-            Follow CLAUDE.md conventions. If this requires code changes:
+            Follow AGENTS.md conventions. If this requires code changes:
             1. Implement the changes
             2. Write/update tests
             3. Create a PR with title "@coderabbitai" and body starting with "@coderabbitai summary", referencing this issue
@@ -221,8 +221,8 @@ jobs:
           ENABLE_LSP_TOOL: "1"
         with:
           api_key: ${{ secrets.GEMINI_API_KEY }}
-          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
-          plugins: rust-analyzer-lsp@claude-plugins-official
+          plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
+          plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             LINEAR TICKET: ${{ github.event.client_payload.linear_identifier }}
             TITLE: ${{ github.event.client_payload.title }}
@@ -240,7 +240,7 @@ jobs:
                - Identify affected crates
 
             2. **Implement the Solution**
-               - Follow CLAUDE.md conventions
+               - Follow AGENTS.md conventions
                - Write tests for new functionality
                - Keep commits atomic and well-described
 

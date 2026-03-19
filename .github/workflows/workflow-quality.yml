@@ -94,7 +94,7 @@ jobs:
 
             Context:
             - This is the Weavster project (Rust ESB/data pipelines).
-            - Refer to CLAUDE.md for core project conventions.
+            - Refer to AGENTS.md for core project conventions.
 
           claude_args: >-
             --allowed-tools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(ls:*),Bash(mkdir:*),Write,Edit,Read"

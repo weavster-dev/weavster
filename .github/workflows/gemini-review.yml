@@ -44,7 +44,7 @@ jobs:
           ENABLE_LSP_TOOL: "1"
         with:
           api_key: ${{ secrets.GEMINI_API_KEY }}
-          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
+          plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
           plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             CodeRabbit has reviewed PR #${{ github.event.pull_request.number }}.
@@ -62,7 +62,7 @@ jobs:
             IMPORTANT:
             - When you disagree, explain the design decision clearly so CodeRabbit learns
             - Use @coderabbitai in replies so it picks up the feedback
-            - Follow CLAUDE.md conventions
+            - Follow AGENTS.md conventions
             - Use conventional commits for fix commits
 
   # Handle @gemini-cli mentions in PR/Issue comments
@@ -103,7 +103,7 @@ jobs:
           ENABLE_LSP_TOOL: "1"
         with:
           api_key: ${{ secrets.GEMINI_API_KEY }}
-          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
+          plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
           plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             REPO: ${{ github.repository }}
@@ -115,7 +115,7 @@ jobs:
 
             Context:
             - This is the Weavster project (Rust-based ESB/data pipeline tool)
-            - Check CLAUDE.md for project conventions
+            - Check AGENTS.md for project conventions
             - You can view the issue/PR details and respond helpfully
 
             If this is a PR, you can:
@@ -163,7 +163,7 @@ jobs:
           ENABLE_LSP_TOOL: "1"
         with:
           api_key: ${{ secrets.GEMINI_API_KEY }}
-          plugin_marketplaces: https://github.com/anthropics/claude-plugins-official.git
+          plugin_marketplaces: https://github.com/google-github-actions/gemini-cli-plugins-official.git
           plugins: rust-analyzer-lsp@gemini-cli-plugins-official
           prompt: |
             REPO: ${{ github.repository }}
@@ -189,7 +189,7 @@ jobs:
                - Suggest test cases to include
                - Note any architecture considerations
 
-            Post a helpful comment with your analysis. Reference CLAUDE.md for conventions.
+            Post a helpful comment with your analysis. Reference AGENTS.md for conventions.
 
             If this is a bug report:
             - Help reproduce the issue
