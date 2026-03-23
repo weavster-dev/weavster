@@ -359,7 +359,6 @@ vars:
 runtime:
   mode: local
   local:
-    port: 5433
 profiles:
   minimal:
     vars:
@@ -387,7 +386,6 @@ profiles:
         resolved.runtime.mode,
         weavster_core::config::RuntimeMode::Local
     );
-    assert_eq!(resolved.runtime.local.port, 5433);
 }
 
 // =============================================================================

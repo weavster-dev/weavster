@@ -12,7 +12,7 @@ Weavster is a developer-friendly tool for building real-time data transformation
 
 - **dbt-like DX** - YAML configuration, Jinja templating, simple CLI
 - **Real-time focus** - FIFO queues, not batch processing
-- **Zero-config local dev** - Embedded PostgreSQL, single binary distribution
+- **Zero-config local dev** - SQLite, single binary distribution
 - **Safe transforms** - WASM sandboxing for untrusted code
 
 ## Quick Start
@@ -25,7 +25,7 @@ cargo install weavster-cli
 weavster init my-project
 cd my-project
 
-# Run locally with embedded Postgres
+# Run locally with SQLite
 weavster run
 ```
 

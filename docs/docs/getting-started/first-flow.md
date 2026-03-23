@@ -54,7 +54,7 @@ weavster run
 ```
 
 Weavster will:
-1. Start an embedded PostgreSQL instance (for job queue)
+1. Start an SQLite database (for job queue)
 2. Load your flow configuration
 3. Process data from input through transforms to output
 

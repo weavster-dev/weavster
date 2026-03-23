@@ -17,9 +17,8 @@ runtime:
   workers: 4
   log_level: info
 
-# Database (optional - uses embedded by default)
+# Database (optional - uses SQLite by default)
 database:
-  embedded: true
   # Or connect to external:
   # url: postgres://user:pass@host:5432/db
 ```
@@ -44,7 +43,6 @@ database:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `database.embedded` | bool | true | Use embedded PostgreSQL |
 | `database.url` | string | - | External database URL |
 
 ## Environment Variables
@@ -61,10 +59,6 @@ database:
 Use `profiles.yaml` for environment-specific overrides (similar to dbt):
 
 ```yaml title="profiles.yaml"
-development:
-  database:
-    embedded: true
-
 production:
   database:
     url: ${DATABASE_URL}

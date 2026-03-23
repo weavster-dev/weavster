@@ -293,7 +293,6 @@ mod tests {
                     mode: RuntimeMode::Local,
                     local: LocalConfig {
                         data_dir: ".weavster/data".to_string(),
-                        port: 5433,
                     },
                     remote: Default::default(),
                 },

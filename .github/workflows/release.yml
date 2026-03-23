@@ -113,7 +113,7 @@ jobs:
             Generate a release name and summary for Weavster version ${{ needs.validate.outputs.version }}.
 
             Weavster is a modern Enterprise Service Bus - like dbt but for real-time transactions.
-            Built with Rust, WASM sandboxing, and embedded PostgreSQL.
+            Built with Rust, WASM sandboxing, and SQLite.
 
             Get the commits since the last release:
             ```bash

@@ -10,7 +10,7 @@ Weavster is a developer-friendly tool for building real-time data transformation
 
 - **YAML Configuration**: Define flows, transforms, and connectors in simple YAML
 - **Jinja Templating**: Use familiar Jinja syntax for dynamic configuration
-- **Zero-Config Local Dev**: Embedded PostgreSQL - just run `weavster run`
+- **Zero-Config Local Dev**: SQLite - just run `weavster run`
 - **Single Binary**: No dependencies to install
 
 ## Quick Start
@@ -102,7 +102,7 @@ outputs:
 
 | Mode   | Use Case    | Backend                   |
 | ------ | ----------- | ------------------------- |
-| Local  | Development | Embedded PostgreSQL       |
+| Local  | Development | SQLite       |
 | Remote | Production  | External Postgres + Redis |
 
 ## Development

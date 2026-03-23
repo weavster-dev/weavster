@@ -132,7 +132,7 @@ pub struct RuntimeConfig {
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum RuntimeMode {
-    /// Local mode with embedded PostgreSQL
+    /// Local mode with SQLite
     #[default]
     Local,
     /// Remote mode connecting to external services
@@ -142,30 +142,21 @@ pub enum RuntimeMode {
 /// Local runtime configuration
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LocalConfig {
-    /// Directory for local data (embedded Postgres, caches)
+    /// Directory for local data (SQLite, caches)
     #[serde(default = "default_data_dir")]
     pub data_dir: String,
-
-    /// Port for embedded PostgreSQL
-    #[serde(default = "default_pg_port")]
-    pub port: u16,
 }
 
 impl Default for LocalConfig {
     fn default() -> Self {
         Self {
             data_dir: default_data_dir(),
-            port: default_pg_port(),
         }
     }
 }
 
 fn default_data_dir() -> String {
     ".weavster/data".to_string()
-}
-
-fn default_pg_port() -> u16 {
-    5433 // Avoid conflict with system Postgres on 5432
 }
 
 /// Remote runtime configuration
@@ -1144,7 +1135,6 @@ runtime:
   mode: local
   local:
     data_dir: ".data"
-    port: 5434
 vars:
   environment: production
 "#;
@@ -1152,7 +1142,6 @@ vars:
         assert_eq!(config.name, "test-project");
         assert_eq!(config.version, "1.0.0");
         assert_eq!(config.runtime.mode, RuntimeMode::Local);
-        assert_eq!(config.runtime.local.port, 5434);
     }
 
     #[test]
