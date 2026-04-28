@@ -1,0 +1,4 @@
+command: spektacular
+agent: codex
+debug:
+    enabled: false
