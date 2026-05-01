@@ -5,7 +5,7 @@ description: Create a new Plan from an approved Specification.
 
 # What this skill does
 
-This skill drives a **multi-step interactive workflow** that produces a complete implementation plan in `.spektacular/plans/<name>.md` from an existing spec. The workflow is owned by the `spektacular` CLI, not by you — the CLI is the state machine and you are the executor.
+This skill drives a **multi-step interactive workflow** that produces a complete implementation plan in `.spektacular/plans/<name>/plan.md` from an existing spec. The workflow is owned by the `spektacular` CLI, not by you — the CLI is the state machine and you are the executor.
 
 On each turn, the CLI returns JSON containing an `instruction` field. That instruction describes exactly one step (e.g. discovery, data structures, phases, testing approach, …). You must:
 

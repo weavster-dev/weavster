@@ -44,10 +44,10 @@ macros_dir: macros
 | --- | --- | --- |
 | `name` | Current | Project name |
 | `version` | Current | Project version, defaults to `0.1.0` |
-| `runtime.mode` | Current | `local` or `remote` |
+| `runtime.mode` | Config-only | Parsed from config, but it does not currently select the runtime backend |
 | `runtime.local.data_dir` | Current | Local runtime data directory |
 | `runtime.local.port` | Partial | Config field exists; local state currently uses SQLite rather than embedded PostgreSQL |
-| `runtime.remote.postgres_url` | Partial | Used for state storage when `WEAVSTER_PG_URL` is provided to the CLI runtime |
+| `runtime.remote.postgres_url` | Config-only | Parsed from config; current CLI runtime selects Postgres state only from the `WEAVSTER_PG_URL` environment variable |
 | `runtime.remote.redis_url` | Planned | Modeled in config; distributed Redis runtime is not implemented |
 | `vars` | Current | Static variables available for config-level Jinja substitution |
 | `profiles` | Current | Inline environment-specific overrides |
@@ -58,7 +58,7 @@ macros_dir: macros
 
 Local runtime state currently defaults to SQLite at `.weavster/data/local.db`.
 
-Postgres state is available when `WEAVSTER_PG_URL` is set in the environment. The `remote` config shape exists, but remote/distributed runtime behavior is not complete.
+Postgres state is available when `WEAVSTER_PG_URL` is set in the environment. Setting only `runtime.mode: remote` or `runtime.remote.postgres_url` in `weavster.yaml` does not currently switch the CLI runtime away from the local SQLite path. The `remote` config shape exists, but remote/distributed runtime behavior is not complete.
 
 ## Environment Variables
 
