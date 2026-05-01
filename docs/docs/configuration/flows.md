@@ -4,83 +4,93 @@ sidebar_position: 2
 
 # Flow Configuration
 
-Flows define how data moves through your pipeline.
+Flows define how data moves from one input connector reference, through transforms, to one or more output connector references.
 
 ## Basic Structure
 
-```yaml title="flows/my-flow.yaml"
-name: my-flow
-description: Process incoming events
+```yaml title="flows/example_flow.yaml"
+name: example_flow
+description: An example flow to get you started
 
-input:
-  type: kafka
-  topic: events
-  group_id: weavster-processor
+input: file.input
 
 transforms:
-  - type: map
-    fields:
-      event_id: "{{ id }}"
-      timestamp: "{{ created_at }}"
+  - map:
+      full_name: name
+      email: email
+
+  - drop:
+      - name
+      - age
+
+  - add_fields:
+      processed: true
 
 outputs:
-  - type: postgres
-    table: processed_events
+  - file.output
 ```
 
-## Input Configuration
+## Connector References
 
-Each flow has exactly one input:
+Flow `input` and `outputs` use connector references, not inline connector definitions.
 
 ```yaml
-input:
-  type: <connector-type>
-  # ... connector-specific options
+input: file.input
+outputs:
+  - file.output
 ```
 
-See [Connectors](../concepts/connectors) for available input types.
+The reference format is `filename.key`. `file.input` maps to the `input` entry in `connectors/file.yaml`.
 
 ## Transforms
 
-Transforms are applied in order:
+Transforms are applied in order. The current starter path uses `map`, `drop`, and `add_fields`.
 
 ```yaml
 transforms:
-  - type: map
-    fields:
-      new_field: "{{ existing_field }}"
+  - map:
+      full_name: name
 
-  - type: filter
-    condition: "{{ status == 'active' }}"
+  - drop:
+      - name
+
+  - add_fields:
+      processed: true
 ```
 
-See [Transforms](../concepts/transforms) for available transform types.
+Other transform types are parsed or generated in some layers, but support varies. See [Transforms](../concepts/transforms).
 
 ## Outputs
 
-Flows can have multiple outputs:
+Simple outputs are connector references:
 
 ```yaml
 outputs:
-  - type: postgres
-    table: events
-
-  - type: file
-    path: ./backup/events.jsonl
+  - file.output
 ```
 
-## Bridges
-
-Link flows together using bridges:
+Conditional output syntax is parsed:
 
 ```yaml
-# In flow-a.yaml
 outputs:
-  - type: bridge
-    target: flow-b
-
-# In flow-b.yaml
-input:
-  type: bridge
-  source: flow-a
+  - connector: file.high_value
+    when: "total > 1000"
 ```
+
+Conditional output expression enforcement is partial today and should not be treated as a complete routing feature.
+
+## Flow-Level Options
+
+| Field | Status | Description |
+| --- | --- | --- |
+| `name` | Current | Flow name |
+| `description` | Current | Optional description |
+| `input` | Current | Connector reference |
+| `transforms` | Current | Ordered transform list, with support varying by transform |
+| `outputs` | Current | Output connector references |
+| `vars` | Current | Flow-level variables for static config substitution |
+| `error_handling` | Partial | Flow-level error behavior for supported execution paths |
+
+## Bridge Flows
+
+Bridge connector configuration is parsed, but bridge runtime processing is not implemented end-to-end. Treat Bridge as config-only until runtime support lands.

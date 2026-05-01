@@ -4,91 +4,117 @@ sidebar_position: 1
 
 # Transforms
 
-Transforms manipulate data as it flows through your pipeline.
+Transforms manipulate JSON records as they move through a flow. Support varies by layer: YAML parsing, generated WASM code, direct interpreter support, and end-to-end runtime behavior are not always the same.
 
-## How Transforms Work
+## Status Summary
 
-All transforms compile to WebAssembly (WASM) for:
+| Transform | Status | Notes |
+| --- | --- | --- |
+| `map` | Current | Used by the generated starter flow and supported by the direct interpreter |
+| `drop` | Current | Used by the generated starter flow and supported by the direct interpreter |
+| `add_fields` | Current | Used by the generated starter flow and supported by the direct interpreter |
+| `coalesce` | Partial | Parsed, interpreted, and code-generated; not in the starter flow |
+| `regex` | Partial | Parsed and code-generated; not supported by the direct interpreter |
+| `template` | Partial | Parsed and code-generated; not supported by the direct interpreter |
+| `lookup` | Partial | Parsed and code-generated; lookup artifact loading is limited |
+| `filter` | Partial | Parsed, but generated runtime behavior is currently pass-through/incomplete |
 
-- **Sandboxed execution** - Transforms can't escape the WASM sandbox
-- **Portable artifacts** - Same WASM runs anywhere wasmtime runs
-- **Supply chain security** - OCI artifacts can be signed and verified
-
-## Available Transforms
+## Current Starter Transforms
 
 ### Map
 
-Rename or compute new fields:
+Copy a field into a new field name.
 
 ```yaml
-- type: map
-  fields:
-    user_id: "{{ id }}"
-    full_name: "{{ first_name }} {{ last_name }}"
-    created: "{{ now() }}"
+- map:
+    full_name: name
+    email: email
 ```
 
-### Filter
+### Drop
 
-Include or exclude records:
+Remove fields from the current record.
 
 ```yaml
-- type: filter
-  condition: "{{ status == 'active' and age >= 18 }}"
+- drop:
+    - name
+    - age
+```
+
+### Add Fields
+
+Add static JSON values.
+
+```yaml
+- add_fields:
+    processed: true
+```
+
+Dynamic helpers such as `{{ now() }}`, `{{ uuid() }}`, and `{{ timestamp() }}` are handled only in supported dynamic-evaluation paths. Treat them as partial rather than generally available in every transform.
+
+## Other Parsed Transform Shapes
+
+These transform shapes are accepted by the config/parser layers and have generated-code support in some cases, but they should be treated as partial until the runtime behavior is fully validated.
+
+### Coalesce
+
+```yaml
+- coalesce:
+    email:
+      - primary_email
+      - secondary_email
+      - backup_email
 ```
 
 ### Regex
 
-Pattern matching and extraction:
+```yaml
+- regex:
+    field: email
+    pattern: "^(.+)@(.+)$"
+    captures:
+      username: "1"
+      domain: "2"
+```
+
+### Template
 
 ```yaml
-- type: regex
-  field: email
-  pattern: "^(.+)@(.+)$"
-  captures:
-    username: 1
-    domain: 2
+- template:
+    full_name: "{{ first_name }} {{ last_name }}"
 ```
 
 ### Lookup
 
-Translation tables for data enrichment:
-
 ```yaml
-- type: lookup
-  field: country_code
-  table: countries.csv
-  output: country_name
+- lookup:
+    field: country_code
+    table: country_names
+    output: country_name
+    default: "Unknown"
 ```
 
-## Jinja Templates
+### Filter
 
-Transforms use MiniJinja for templating. Available functions:
+```yaml
+- filter:
+    when: "status == 'active'"
+```
 
-| Function | Description |
-|----------|-------------|
-| `now()` | Current timestamp |
-| `uuid()` | Generate UUID |
-| `upper(s)` | Uppercase string |
-| `lower(s)` | Lowercase string |
-| `trim(s)` | Trim whitespace |
+Filter expression support is incomplete in the generated runtime path. Do not rely on filters or conditional output expressions for production routing yet.
 
 ## Chaining Transforms
 
-Transforms execute in order, each receiving the output of the previous:
+Transforms execute in order. Keep starter flows to current transforms unless you are intentionally testing partial behavior.
 
 ```yaml
 transforms:
-  - type: map
-    fields:
-      email: "{{ email | lower | trim }}"
+  - map:
+      full_name: name
 
-  - type: filter
-    condition: "{{ email is defined }}"
+  - drop:
+      - name
 
-  - type: regex
-    field: email
-    pattern: "@(.+)$"
-    captures:
-      domain: 1
+  - add_fields:
+      processed: true
 ```
