@@ -48,7 +48,7 @@ pub async fn run(
         let entry = entry?;
         let path = entry.path();
         if path.extension().is_some_and(|ext| ext == "wasm") {
-            let dest = wasm_dir.join(path.file_name().unwrap());
+            let dest = wasm_dir.join(entry.file_name());
             std::fs::copy(&path, &dest)?;
             tracing::debug!("Copied {}", path.display());
         }

@@ -4,74 +4,96 @@ sidebar_position: 1
 
 # Project Configuration
 
-The `weavster.yaml` file is the root configuration for your Weavster project.
+`weavster.yaml` is the root project configuration file.
 
 ## Basic Structure
 
 ```yaml title="weavster.yaml"
 name: my-project
-version: "1.0"
+version: "0.1.0"
 
-# Runtime settings
 runtime:
-  workers: 4
-  log_level: info
+  mode: local
+  local:
+    data_dir: ".weavster/data"
+    port: 5433
 
-# Database (optional - uses embedded by default)
-database:
-  embedded: true
-  # Or connect to external:
-  # url: postgres://user:pass@host:5432/db
+vars:
+  environment: development
+
+profiles:
+  production:
+    runtime:
+      mode: remote
+      remote:
+        postgres_url: "{{ env('WEAVSTER_PG_URL') }}"
+        redis_url: "{{ env('REDIS_URL') }}"
+    vars:
+      environment: production
+
+error_handling:
+  on_error: log_and_skip
+  log_level: warn
+
+macros_dir: macros
 ```
 
-## Configuration Options
+## Project Fields
 
-### Project Metadata
+| Field | Status | Description |
+| --- | --- | --- |
+| `name` | Current | Project name |
+| `version` | Current | Project version, defaults to `0.1.0` |
+| `runtime.mode` | Config-only | Parsed from config, but it does not currently select the runtime backend |
+| `runtime.local.data_dir` | Current | Local runtime data directory |
+| `runtime.local.port` | Partial | Config field exists; local state currently uses SQLite rather than embedded PostgreSQL |
+| `runtime.remote.postgres_url` | Config-only | Parsed from config; current CLI runtime selects Postgres state only from the `WEAVSTER_PG_URL` environment variable |
+| `runtime.remote.redis_url` | Planned | Modeled in config; distributed Redis runtime is not implemented |
+| `vars` | Current | Static variables available for config-level Jinja substitution |
+| `profiles` | Current | Inline environment-specific overrides |
+| `error_handling` | Partial | Parsed and used by current transform/runtime paths where errors are surfaced |
+| `macros_dir` | Current | Directory containing macro definitions |
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `name` | string | Yes | Project name |
-| `version` | string | No | Project version |
+## Runtime State
 
-### Runtime Settings
+Local runtime state currently defaults to SQLite at `.weavster/data/local.db`.
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `runtime.workers` | int | 4 | Number of worker threads |
-| `runtime.log_level` | string | "info" | Log level (debug, info, warn, error) |
-
-### Database Settings
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `database.embedded` | bool | true | Use embedded PostgreSQL |
-| `database.url` | string | - | External database URL |
+Postgres state is available when `WEAVSTER_PG_URL` is set in the environment. Setting only `runtime.mode: remote` or `runtime.remote.postgres_url` in `weavster.yaml` does not currently switch the CLI runtime away from the local SQLite path. The `remote` config shape exists, but remote/distributed runtime behavior is not complete.
 
 ## Environment Variables
 
-Configuration values can reference environment variables:
+Config-level Jinja expressions can read environment variables:
 
 ```yaml
-database:
-  url: ${DATABASE_URL}
+profiles:
+  production:
+    runtime:
+      mode: remote
+      remote:
+        postgres_url: "{{ env('WEAVSTER_PG_URL') }}"
 ```
+
+Unknown runtime template expressions are preserved for later transform/runtime handling.
 
 ## Profiles
 
-Use `profiles.yaml` for environment-specific overrides (similar to dbt):
+Profiles are currently loaded from the `profiles` map inside `weavster.yaml`:
 
-```yaml title="profiles.yaml"
-development:
-  database:
-    embedded: true
+```yaml
+profiles:
+  development:
+    vars:
+      log_level: debug
 
-production:
-  database:
-    url: ${DATABASE_URL}
+  production:
+    vars:
+      log_level: warn
 ```
 
-Run with a specific profile:
+Run with a profile:
 
 ```bash
 weavster run --profile production
 ```
+
+`weavster init` also writes a separate `profiles.yaml` file. That file is planned for alignment; current config loading expects profiles inline in `weavster.yaml`.

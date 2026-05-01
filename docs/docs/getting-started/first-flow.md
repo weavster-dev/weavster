@@ -4,7 +4,7 @@ sidebar_position: 2
 
 # Your First Flow
 
-This guide walks you through creating your first Weavster data flow.
+This guide uses the current supported path: a generated project with file connectors, JSONL input, generated WASM transforms, and SQLite local state.
 
 ## Initialize a Project
 
@@ -13,53 +13,85 @@ weavster init my-project
 cd my-project
 ```
 
-This creates the following structure:
+This creates:
 
-```
+```text
 my-project/
-├── weavster.yaml          # Project configuration
+├── weavster.yaml
+├── profiles.yaml
 ├── flows/
-│   └── example.yaml       # Example flow definition
-└── connectors/
-    └── .gitkeep
+│   └── example_flow.yaml
+├── connectors/
+│   └── file.yaml
+├── tests/
+└── data/
+    └── input.jsonl
 ```
 
-## Understanding the Flow
+## Flow Definition
 
-A flow defines how data moves from an input, through transforms, to outputs:
+The generated flow uses connector references. `file.input` resolves to the `input` entry in `connectors/file.yaml`; `file.output` resolves to the `output` entry.
 
-```yaml title="flows/example.yaml"
-name: example
-description: Example flow
+```yaml title="flows/example_flow.yaml"
+name: example_flow
+description: An example flow to get you started
 
-input:
-  type: file
-  path: ./data/input.json
+input: file.input
 
 transforms:
-  - type: map
-    fields:
-      user_id: "{{ id }}"
-      full_name: "{{ first_name }} {{ last_name }}"
+  - map:
+      full_name: name
+      email: email
+
+  - drop:
+      - name
+      - age
+
+  - add_fields:
+      processed: true
+
+outputs:
+  - file.output
+```
+
+## Connector Definition
+
+```yaml title="connectors/file.yaml"
+input:
+  type: file
+  path: "./data/input.jsonl"
+  format: jsonl
 
 output:
   type: file
-  path: ./data/output.json
+  path: "./data/output.jsonl"
+  format: jsonl
 ```
 
 ## Run the Flow
 
 ```bash
-weavster run
+weavster run --once
 ```
 
 Weavster will:
-1. Start an embedded PostgreSQL instance (for job queue)
-2. Load your flow configuration
-3. Process data from input through transforms to output
+
+1. Load the project and flow configuration.
+2. Compile the flow to a cached WASM artifact.
+3. Read records from `data/input.jsonl`.
+4. Apply the transform pipeline.
+5. Write records to `data/output.jsonl`.
+6. Store local runtime state in SQLite under `.weavster/data/local.db`.
+
+## Current Limits
+
+- The end-to-end runtime path currently supports file connectors only.
+- Local state uses SQLite, not embedded PostgreSQL.
+- `--once` is accepted by the CLI, but current file processing already runs over available input records and exits.
 
 ## Next Steps
 
-- [Configuration Reference](../configuration/project) - Learn all configuration options
-- [Transforms](../concepts/transforms) - Available transform types
-- [Connectors](../concepts/connectors) - Input/output connectors
+- [Project Configuration](../configuration/project) - Learn current project config fields
+- [Flow Configuration](../configuration/flows) - Learn flow YAML shape
+- [Transforms](../concepts/transforms) - See transform support by layer
+- [Connectors](../concepts/connectors) - See connector support by status
