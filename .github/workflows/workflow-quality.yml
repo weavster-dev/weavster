@@ -26,17 +26,19 @@ jobs:
             src/**
             **/*.rs
 
-      - name: Check for wf-changelog.md
+      - name: Check for release-note artifacts
         id: check
         run: |
           CODE_CHANGED="${{ steps.changed-files.outputs.any_changed }}"
 
-          # Check if any wf-changelog.md was added or modified in the PR
-          CHANGELOG_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep "wf-changelog.md" || true)
+          # Code changes should carry current documentation artifacts:
+          # - a user-facing root changelog entry, or
+          # - Spektacular spec/plan artifacts for the change.
+          RELEASE_NOTES_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep -E '^(CHANGELOG\.md|\.spektacular/(specs|plans)/)' || true)
 
-          if [ "$CODE_CHANGED" = "true" ] && [ -z "$CHANGELOG_CHANGED" ]; then
+          if [ "$CODE_CHANGED" = "true" ] && [ -z "$RELEASE_NOTES_CHANGED" ]; then
             echo "needs_changelog=true" >> $GITHUB_OUTPUT
-            echo "::warning::PR changes code but missing wf-changelog.md in thoughts/ directory"
+            echo "::warning::PR changes Rust code but is missing a root changelog update or Spektacular spec/plan artifacts"
           else
             echo "needs_changelog=false" >> $GITHUB_OUTPUT
           fi
@@ -44,110 +46,84 @@ jobs:
   fail-if-missing:
     name: Fail if Missing
     needs: check-changelog
-    if: needs.check-changelog.outputs.needs_changelog == 'true' && !contains(github.event.pull_request.labels.*.name, 'gemini-autofix')
+    if: needs.check-changelog.outputs.needs_changelog == 'true' && (!contains(github.event.pull_request.labels.*.name, 'codex-autofix') || github.event.pull_request.head.repo.full_name != github.repository)
     runs-on: ubuntu-latest
     steps:
       - name: Fail check
         run: |
-          echo "ERROR: This PR modifies code but is missing a workflow changelog (wf-changelog.md)."
-          echo "Please use the /wf-update-changelog skill to document your changes."
-          echo "Or add the 'gemini-autofix' label to have this automatically generated for you."
+          echo "ERROR: This PR modifies Rust code but is missing release-note documentation."
+          echo "Update CHANGELOG.md or add Spektacular spec/plan artifacts under .spektacular/specs/ and .spektacular/plans/."
+          echo "For same-repository PRs, maintainers may add the 'codex-autofix' label to generate a root CHANGELOG.md entry."
           exit 1
 
   auto-generate-changelog:
     name: Auto-generate Changelog
     needs: check-changelog
-    if: needs.check-changelog.outputs.needs_changelog == 'true' && contains(github.event.pull_request.labels.*.name, 'gemini-autofix')
+    if: needs.check-changelog.outputs.needs_changelog == 'true' && contains(github.event.pull_request.labels.*.name, 'codex-autofix') && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
-      id-token: write
     steps:
-      - name: Checkout repository
+      - name: Checkout PR branch
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.ref }}
 
-      - name: Generate Workflow Changelog
-        uses: google-github-actions/run-gemini-cli@v0
+      - name: Fetch base branch
         env:
-          ENABLE_LSP_TOOL: "1"
+          BASE_REF: ${{ github.base_ref }}
+        run: git fetch --no-tags origin "$BASE_REF"
+
+      - name: Generate changelog entry with Codex
+        uses: openai/codex-action@v1
         with:
-          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          sandbox: workspace-write
           prompt: |
-            This PR is missing a required `wf-changelog.md` file in the `thoughts/` directory.
-            PR NUMBER: #${{ github.event.pull_request.number }}
-            PR TITLE: ${{ github.event.pull_request.title }}
-            PR BODY: ${{ github.event.pull_request.body }}
+            You are updating release-note documentation for a pull request in ${{ github.repository }}.
 
-            INSTRUCTIONS:
-            1. Analyze the changes in this PR using `git diff origin/${{ github.base_ref }}...HEAD`
-            2. Determine the appropriate feature slug for this work. Check `thoughts/` for existing directories or create a new one based on the branch name.
-            3. Generate a `wf-changelog.md` following the established project conventions:
-               - Use the feature directory: `thoughts/{namespace}/{NNNN-slug}/`
-               - File path: `thoughts/{namespace}/{NNNN-slug}/wf-changelog.md`
-            4. If a `wf-plan.md` doesn't exist, create a minimal placeholder plan to satisfy the workflow directory requirements.
-            5. Commit these files directly to the PR branch.
-            6. Post a comment on the PR informing the developer that Gemini CLI (via automation) has auto-generated the documentation.
+            The PR modifies Rust code but is missing current release-note evidence.
+            Update only the root CHANGELOG.md file.
 
-            Context:
-            - This is the Weavster project (Rust ESB/data pipelines).
-            - Refer to AGENTS.md for core project conventions.
+            Requirements:
+            - Inspect the PR diff with: git diff --stat origin/${{ github.base_ref }}...HEAD
+            - Inspect relevant code changes with: git diff origin/${{ github.base_ref }}...HEAD
+            - Add one concise user-facing entry near the top of CHANGELOG.md.
+            - Prefer a heading based on the PR branch or title.
+            - Do not create retired per-workflow changelog files.
+            - Do not create retired planning-directory files.
+            - Do not create Spektacular specs or plans.
+            - Do not modify source code or workflow files.
 
-            --allowed-tools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*),Bash(ls:*),Bash(mkdir:*),Write,Edit,Read"
+            PR title:
+            ${{ github.event.pull_request.title }}
+
+            PR body:
+            ${{ github.event.pull_request.body }}
+
+      - name: Commit generated changelog
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "ERROR: Codex did not update CHANGELOG.md."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit -m "docs: add changelog entry"
+          git push origin "HEAD:$HEAD_REF"
 
   sync-master-changelog:
     name: Sync Master Changelog
     needs: check-changelog
-    # If a changelog was added/updated (manually OR by autofix), sync it to root CHANGELOG.md
     if: always() && needs.check-changelog.result == 'success'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      id-token: write
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.ref }}
-
-      - name: Check if wf-changelog.md was updated
-        id: check_update
+      - name: Report current master changelog workflow
         run: |
-          # Check if any wf-changelog.md was added or modified in the PR branch
-          CHANGELOG_CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD | grep "wf-changelog.md" || true)
-          if [ -n "$CHANGELOG_CHANGED" ]; then
-            echo "has_update=true" >> $GITHUB_OUTPUT
-          else
-            echo "has_update=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Sync to root CHANGELOG.md
-        if: steps.check_update.outputs.has_update == 'true'
-        uses: google-github-actions/run-gemini-cli@v0
-        env:
-          ENABLE_LSP_TOOL: "1"
-        with:
-          gemini_api_key: ${{ secrets.GEMINI_API_KEY }}
-          prompt: |
-            A workflow changelog was added or updated in this PR. Please sync its contents to the root `CHANGELOG.md` file under the `## [Unreleased]` section.
-
-            PR TITLE: ${{ github.event.pull_request.title }}
-            PR BODY: ${{ github.event.pull_request.body }}
-
-            INSTRUCTIONS:
-            1. Find the newly updated `wf-changelog.md` files in the `thoughts/` directory using `git diff --name-only origin/${{ github.base_ref }}...HEAD | grep "wf-changelog.md"`
-            2. Read their contents.
-            3. Synthesize a concise summary for the root `CHANGELOG.md`.
-            4. Append this summary under the `## [Unreleased]` header in `CHANGELOG.md`.
-            5. If `CHANGELOG.md` doesn't exist, create it.
-            6. Ensure the tone is professional and consistent with existing entries.
-            7. Commit the changes to the PR branch.
-
-            IMPORTANT: Do not duplicate entries. Check if a summary for this PR is already in the `CHANGELOG.md`.
-
-            --allowed-tools "Bash(git:*),Bash(gh pr view:*),Bash(gh pr diff:*),Bash(ls:*),Write,Edit,Read"
+          echo "Root CHANGELOG.md updates are committed directly as part of Spektacular workflows."
