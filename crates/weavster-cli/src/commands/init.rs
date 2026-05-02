@@ -51,7 +51,6 @@ runtime:
   mode: local
   local:
     data_dir: ".weavster/data"
-    port: 5433
 
 # Global variables available in Jinja templates
 vars:

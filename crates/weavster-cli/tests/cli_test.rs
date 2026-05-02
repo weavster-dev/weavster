@@ -16,6 +16,18 @@ fn test_init_and_run_once() {
     assert!(dir.path().join("connectors/file.yaml").exists());
     assert!(dir.path().join("data/input.jsonl").exists());
 
+    let config = std::fs::read_to_string(dir.path().join("weavster.yaml")).unwrap();
+    let config_yaml: serde_yaml::Value = serde_yaml::from_str(&config).unwrap();
+    let local_config = config_yaml
+        .get("runtime")
+        .and_then(|runtime| runtime.get("local"))
+        .and_then(serde_yaml::Value::as_mapping)
+        .expect("generated weavster.yaml should contain runtime.local");
+    assert!(
+        !local_config.contains_key(serde_yaml::Value::String("port".to_string())),
+        "generated weavster.yaml should omit runtime.local.port"
+    );
+
     // Run --once
     cargo_bin_cmd!("weavster")
         .args(["--config", dir.path().to_str().unwrap(), "run", "--once"])
