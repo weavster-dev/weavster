@@ -80,6 +80,7 @@ jobs:
         uses: openai/codex-action@v1
         with:
           openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          model: gpt-5-nano
           sandbox: workspace-write
           prompt: |
             You are updating release-note documentation for a pull request in ${{ github.repository }}.
