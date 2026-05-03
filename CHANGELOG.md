@@ -4,6 +4,10 @@ All notable changes to the Weavster project will be documented in this file.
 
 This project follows a Spektacular-driven documentation workflow where approved specs and plans contribute to this master file.
 
+## 20260503134624-pin-codex-action-nano-model
+
+Maintainer-triggered changelog autofix jobs now explicitly use the GPT-5 nano model instead of relying on the Codex CLI default. This makes generated changelog updates more predictable and cost-efficient while preserving the existing pull request quality workflow and maintainer controls.
+
 ## 20260502165842-workflow-quality-spektacular-alignment
 
 Pull request quality checks now recognize the current Spektacular documentation workflow. Code changes can satisfy the release-note gate with a root changelog update or Spektacular spec/plan artifacts, and contributors no longer receive instructions for retired workflow changelog or Gemini autofix processes. Same-repository PRs can use a maintainer-applied `codex-autofix` label to generate a root changelog entry with Codex when release-note evidence is missing.
