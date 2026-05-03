@@ -4,6 +4,11 @@ All notable changes to the Weavster project will be documented in this file.
 
 This project follows a Spektacular-driven documentation workflow where approved specs and plans contribute to this master file.
 
+## 20260503150000-codegen-string-allocs
+
+- Performance: optimize string allocations in codegen. The Rust code generator now uses `std::fmt::Write` and `write!` directly on the target `String` buffers, reducing temporary allocations in `crates/weavster-codegen/src/generator.rs` (including the coalesce transform).
+- This aligns with the PR title "⚡ [performance] optimize string allocations in codegen".
+
 ## 20260502160602-sqlite-local-runtime-docs-cleanup
 
 Starter projects and configuration documentation now present SQLite-backed local state without recommending an unused local runtime port. Existing projects that still include the legacy local port remain compatible, but new generated configuration no longer implies embedded PostgreSQL setup. This replaces the valid part of the old embedded-Postgres cleanup with a current-main scoped change.
