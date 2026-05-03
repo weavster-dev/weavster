@@ -4,6 +4,11 @@ All notable changes to the Weavster project will be documented in this file.
 
 This project follows a Spektacular-driven documentation workflow where approved specs and plans contribute to this master file.
 
+## 20260503150000-codegen-string-allocs
+
+- Performance: optimize string allocations in codegen. The Rust code generator now uses `std::fmt::Write` and `write!` directly on the target `String` buffers, reducing temporary allocations in `crates/weavster-codegen/src/generator.rs` (including the coalesce transform).
+- This aligns with the PR title "⚡ [performance] optimize string allocations in codegen".
+
 ## 20260503134624-pin-codex-action-nano-model
 
 Maintainer-triggered changelog autofix jobs now explicitly use the GPT-5 nano model instead of relying on the Codex CLI default. This makes generated changelog updates more predictable and cost-efficient while preserving the existing pull request quality workflow and maintainer controls.
