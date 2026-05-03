@@ -16,7 +16,6 @@ runtime:
   mode: local
   local:
     data_dir: ".weavster/data"
-    port: 5433
 
 vars:
   environment: development
@@ -46,7 +45,7 @@ macros_dir: macros
 | `version` | Current | Project version, defaults to `0.1.0` |
 | `runtime.mode` | Config-only | Parsed from config, but it does not currently select the runtime backend |
 | `runtime.local.data_dir` | Current | Local runtime data directory |
-| `runtime.local.port` | Partial | Config field exists; local state currently uses SQLite rather than embedded PostgreSQL |
+| `runtime.local.port` | Compatibility-only | Legacy field accepted by config parsing; not used by SQLite local state and not included in new starter projects |
 | `runtime.remote.postgres_url` | Config-only | Parsed from config; current CLI runtime selects Postgres state only from the `WEAVSTER_PG_URL` environment variable |
 | `runtime.remote.redis_url` | Planned | Modeled in config; distributed Redis runtime is not implemented |
 | `vars` | Current | Static variables available for config-level Jinja substitution |

@@ -4,6 +4,9 @@ All notable changes to the Weavster project will be documented in this file.
 
 This project follows a Spektacular-driven documentation workflow where approved specs and plans contribute to this master file.
 
+## 20260502160602-sqlite-local-runtime-docs-cleanup
+
+Starter projects and configuration documentation now present SQLite-backed local state without recommending an unused local runtime port. Existing projects that still include the legacy local port remain compatible, but new generated configuration no longer implies embedded PostgreSQL setup. This replaces the valid part of the old embedded-Postgres cleanup with a current-main scoped change.
 ## 20260503134624-pin-codex-action-nano-model
 
 Maintainer-triggered changelog autofix jobs now explicitly use the GPT-5 nano model instead of relying on the Codex CLI default. This makes generated changelog updates more predictable and cost-efficient while preserving the existing pull request quality workflow and maintainer controls.
