@@ -36,7 +36,7 @@ cargo install --path crates/weavster-cli
 
 weavster init my-project
 cd my-project
-weavster run --once
+weavster run
 ```
 
 ## Core Concepts

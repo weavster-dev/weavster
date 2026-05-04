@@ -40,7 +40,7 @@ cargo install --path crates/weavster-cli
 ```bash
 weavster init my-project
 cd my-project
-weavster run --once
+weavster run
 ```
 
 The generated project includes:
@@ -147,9 +147,9 @@ output:
 | `coalesce` | Partial | Parsed, interpreted, and code-generated; not in the starter flow |
 | `regex` | Partial | Parsed and code-generated; not supported by the direct interpreter |
 | `template` | Partial | Parsed and code-generated; not supported by the direct interpreter |
-| `lookup` | Partial | Parsed and code-generated; lookup artifact loading is limited |
+| `lookup` | Partial | Parsed and code-generated, but lookup data is not loaded into generated artifacts in the normal CLI path |
 | `filter` | Partial | Parsed, but generated runtime behavior is currently pass-through/incomplete |
-| Conditional outputs | Partial | Parsed, but expression handling is not enforced end-to-end |
+| Conditional outputs | Partial | Parsed, but current runtime delivery sends each successful record to all configured outputs |
 
 ### Configuration
 
@@ -167,7 +167,7 @@ output:
 
 - Runtime connector execution is file-only today.
 - Local state uses SQLite, not embedded PostgreSQL.
-- `run --flow` and `run --once` are accepted by the CLI, but flow filtering and continuous mode semantics are still limited.
+- `weavster run` has no one-shot or per-flow mode flags; use `weavster test` for explicit one-shot flow checks.
 - `status`, `flow`, and `connector` management commands are placeholders.
 - `validate` does not yet validate all flows, connector references, or expressions.
 - Packaging does not yet produce a complete OCI registry workflow, and signing is not implemented.

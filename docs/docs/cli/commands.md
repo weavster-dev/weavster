@@ -11,7 +11,7 @@ The CLI currently exposes implemented, partial, placeholder, and planned surface
 | Command | Status | Notes |
 | --- | --- | --- |
 | `weavster init` | Current | Creates a starter project |
-| `weavster run` | Current | Runs the file-based flow path, with limited option semantics |
+| `weavster run` | Current | Runs the file-based flow path |
 | `weavster compile` | Current | Compiles flows to WASM artifacts |
 | `weavster test` | Partial | Runs YAML-defined flow tests through compiled WASM where available |
 | `weavster validate` | Partial | Loads project config; deeper validation is still TODO |
@@ -52,18 +52,17 @@ Creates `weavster.yaml`, `flows/example_flow.yaml`, `connectors/file.yaml`, `tes
 Run the runtime.
 
 ```bash
-weavster run --once
+weavster run
 weavster run --profile production
-weavster run --flow example_flow
 ```
 
 Options:
 
 | Option | Status | Notes |
 | --- | --- | --- |
-| `--once` | Partial | Accepted by the CLI; current file flow already runs over available input records and exits |
-| `--flow <name>` | Partial | Accepted by the CLI; flow filtering semantics are limited |
 | `--profile <name>` | Current | Loads an inline profile from `weavster.yaml` |
+
+There are no current one-shot or per-flow options for `weavster run`.
 
 ## `weavster compile`
 
@@ -115,9 +114,10 @@ Run YAML-defined tests from a project `tests/` directory.
 weavster test
 weavster test example
 weavster test --profile development
+weavster --config ./my-project test
 ```
 
-Test execution is partial and centered on compiled WASM flow checks.
+Test execution is partial and centered on compiled WASM flow checks. Use `weavster test` for explicit one-shot flow validation; the global `--config` option selects which project supplies tests and relative fixtures.
 
 ## Placeholder Commands
 

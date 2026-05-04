@@ -9,12 +9,7 @@ use weavster_runtime::Runtime;
 use weavster_runtime::state::{PostgresStateStore, SqliteStateStore, StateStore};
 
 /// Run the Weavster runtime
-pub async fn run(
-    config_path: &str,
-    _flow: Option<&str>,
-    _once: bool,
-    profile: Option<&str>,
-) -> Result<()> {
+pub async fn run(config_path: &str, profile: Option<&str>) -> Result<()> {
     tracing::info!("Loading configuration from {}", config_path);
 
     let config =

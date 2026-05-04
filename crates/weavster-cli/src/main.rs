@@ -75,14 +75,6 @@ enum Commands {
 
     /// Run the Weavster runtime
     Run {
-        /// Run a specific flow only
-        #[arg(short, long)]
-        flow: Option<String>,
-
-        /// Process one message and exit
-        #[arg(long)]
-        once: bool,
-
         /// Configuration profile to use (e.g., dev, prod)
         #[arg(short, long)]
         profile: Option<String>,
@@ -112,7 +104,7 @@ enum Commands {
 
     /// Run tests
     Test {
-        /// Test file or pattern
+        /// Test name filter
         pattern: Option<String>,
 
         /// Configuration profile to use (e.g., dev, prod)
@@ -194,12 +186,8 @@ async fn main() -> Result<()> {
             commands::package::run(&cli.config, sign, output.as_deref(), profile.as_deref())
                 .await?;
         }
-        Commands::Run {
-            flow,
-            once,
-            profile,
-        } => {
-            commands::run::run(&cli.config, flow.as_deref(), once, profile.as_deref()).await?;
+        Commands::Run { profile } => {
+            commands::run::run(&cli.config, profile.as_deref()).await?;
         }
         Commands::Validate { profile } => {
             commands::validate::run(&cli.config, profile.as_deref()).await?;
@@ -227,7 +215,7 @@ async fn main() -> Result<()> {
             }
         },
         Commands::Test { pattern, profile } => {
-            commands::test::run(pattern.as_deref(), profile.as_deref()).await?;
+            commands::test::run(&cli.config, pattern.as_deref(), profile.as_deref()).await?;
         }
     }
 
