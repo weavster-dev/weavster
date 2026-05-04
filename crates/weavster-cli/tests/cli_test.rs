@@ -1,9 +1,13 @@
 use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 use std::fs;
+use std::sync::Mutex;
+
+static WASM_COMPILE_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn test_init_and_run() {
+    let _guard = WASM_COMPILE_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
 
     // Init project
@@ -108,6 +112,7 @@ fn test_run_rejects_removed_flags() {
 
 #[test]
 fn test_test_command_uses_config_project_for_relative_fixtures() {
+    let _guard = WASM_COMPILE_LOCK.lock().unwrap();
     let dir = tempfile::tempdir().unwrap();
 
     cargo_bin_cmd!("weavster")
