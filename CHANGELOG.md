@@ -4,6 +4,10 @@ All notable changes to the Weavster project will be documented in this file.
 
 This project follows a Spektacular-driven documentation workflow where approved specs and plans contribute to this master file.
 
+## 20260504125300-runtime-docs-alignment-followup
+
+Removed ignored `weavster run --once` and `weavster run --flow` options from the CLI and updated README/docs to stop teaching those unsupported modes. The test command now honors the global config path for project discovery and relative fixtures, and docs now label current runtime limits around SQLite state path selection, conditional outputs, lookup artifacts, and generated transform chaining more precisely.
+
 ## 20260503150000-codegen-string-allocs
 
 - Performance: optimize string allocations in codegen. The Rust code generator now uses `std::fmt::Write` and `write!` directly on the target `String` buffers, reducing temporary allocations in `crates/weavster-codegen/src/generator.rs` (including the coalesce transform).

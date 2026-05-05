@@ -5,9 +5,9 @@
 //!
 //! # Features
 //!
-//! - Job queue management via apalis
-//! - Flow execution engine
-//! - Connector lifecycle management
+//! - WASM-backed flow execution engine
+//! - File connector input/output runtime
+//! - SQLite and Postgres state store implementations
 //!
 //! # Usage
 //!

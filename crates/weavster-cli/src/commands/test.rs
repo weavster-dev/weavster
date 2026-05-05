@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result, anyhow};
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 use walkdir::WalkDir;
 
@@ -10,18 +11,17 @@ use weavster_core::config::Config;
 use weavster_core::testing::{TestDefinition, TestExecutor, TestMode};
 
 /// Run tests
-pub async fn run(pattern: Option<&str>, profile: Option<&str>) -> Result<()> {
+pub async fn run(config_path: &str, pattern: Option<&str>, profile: Option<&str>) -> Result<()> {
     // 0. Load configuration
-    let config_path = "weavster.yaml";
     let config = Config::load_with_profile(config_path, profile)
         .context("Failed to load configuration for testing")?;
 
     // 1. Discover test YAMLs in `tests/` directory
     let mut tests: Vec<TestDefinition> = Vec::new();
 
-    let tests_dir = std::path::Path::new("tests");
+    let tests_dir = config.base_path.join("tests");
     if tests_dir.exists() && tests_dir.is_dir() {
-        for entry_res in WalkDir::new(tests_dir) {
+        for entry_res in WalkDir::new(&tests_dir) {
             let entry = match entry_res {
                 Ok(e) => e,
                 Err(e) => {
@@ -36,8 +36,9 @@ pub async fn run(pattern: Option<&str>, profile: Option<&str>) -> Result<()> {
             {
                 let content = std::fs::read_to_string(entry.path())
                     .with_context(|| format!("Failed to read test file: {:?}", entry.path()))?;
-                let test_def: TestDefinition = serde_yaml::from_str(&content)
+                let mut test_def: TestDefinition = serde_yaml::from_str(&content)
                     .with_context(|| format!("Failed to parse test YAML: {:?}", entry.path()))?;
+                normalize_test_paths(&mut test_def, &config.base_path);
                 tests.push(test_def);
             }
         }
@@ -135,4 +136,20 @@ pub async fn run(pattern: Option<&str>, profile: Option<&str>) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn normalize_test_paths(test: &mut TestDefinition, base_path: &Path) {
+    let input = resolve_project_path(base_path, &test.input);
+    let expected_output = resolve_project_path(base_path, &test.expected_output);
+
+    test.input = input;
+    test.expected_output = expected_output;
+}
+
+fn resolve_project_path(base_path: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        base_path.join(path)
+    }
 }

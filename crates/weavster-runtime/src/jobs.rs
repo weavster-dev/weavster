@@ -1,4 +1,4 @@
-//! Job definitions for apalis
+//! Job data models for future queue integration
 
 use serde::{Deserialize, Serialize};
 

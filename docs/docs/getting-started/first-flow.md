@@ -71,7 +71,7 @@ output:
 ## Run the Flow
 
 ```bash
-weavster run --once
+weavster run
 ```
 
 Weavster will:
@@ -87,7 +87,7 @@ Weavster will:
 
 - The end-to-end runtime path currently supports file connectors only.
 - Local state uses SQLite, not embedded PostgreSQL.
-- `--once` is accepted by the CLI, but current file processing already runs over available input records and exits.
+- `weavster run` processes available file input records and exits. Use `weavster test` for explicit one-shot flow checks.
 
 ## Next Steps
 

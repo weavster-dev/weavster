@@ -44,7 +44,7 @@ The reference format is `filename.key`. `file.input` maps to the `input` entry i
 
 ## Transforms
 
-Transforms are applied in order. The current starter path uses `map`, `drop`, and `add_fields`.
+Transforms are applied in order by the direct interpreter. The current generated starter path uses `map`, `drop`, and `add_fields`; see [Transforms](../concepts/transforms) for generated-runtime chaining limits.
 
 ```yaml
 transforms:
@@ -77,7 +77,7 @@ outputs:
     when: "total > 1000"
 ```
 
-Conditional output expression enforcement is partial today and should not be treated as a complete routing feature.
+Conditional output `when` expressions are parsed, but current runtime delivery does not enforce them. Successful records are sent to all resolved output connectors, so this syntax should not be treated as a routing feature yet.
 
 ## Flow-Level Options
 

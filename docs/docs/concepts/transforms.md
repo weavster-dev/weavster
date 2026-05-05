@@ -16,7 +16,7 @@ Transforms manipulate JSON records as they move through a flow. Support varies b
 | `coalesce` | Partial | Parsed, interpreted, and code-generated; not in the starter flow |
 | `regex` | Partial | Parsed and code-generated; not supported by the direct interpreter |
 | `template` | Partial | Parsed and code-generated; not supported by the direct interpreter |
-| `lookup` | Partial | Parsed and code-generated; lookup artifact loading is limited |
+| `lookup` | Partial | Parsed and code-generated, but lookup data is not loaded into generated artifacts in the normal CLI path |
 | `filter` | Partial | Parsed, but generated runtime behavior is currently pass-through/incomplete |
 
 ## Current Starter Transforms
@@ -105,7 +105,7 @@ Filter expression support is incomplete in the generated runtime path. Do not re
 
 ## Chaining Transforms
 
-Transforms execute in order. Keep starter flows to current transforms unless you are intentionally testing partial behavior.
+The direct interpreter applies transforms in order. In the generated runtime path, several transform generators still read from the original input record rather than the current accumulated output, so keep starter flows to the validated `map`, `drop`, and `add_fields` pattern unless you are intentionally testing partial behavior.
 
 ```yaml
 transforms:
