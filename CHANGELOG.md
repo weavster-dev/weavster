@@ -17,6 +17,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `CHANGELOG.md` and a CLAUDE.md rule to update it with every commit.
 - `README.md` describing the current state of the project.
 - CLAUDE.md rule to keep `README.md` matching actual (not future) state.
+- GitHub milestone labels M0–M9 matching the MVP plan.
 
 ### Changed
 

@@ -44,7 +44,7 @@ Use this on every meaningful task before merge.
 - [x] Commit this `MVP_TASKS.md` file.
 - [x] Add `CONTRIBUTING.md` with small-PR and testing rules.
 - [x] Add PR template with docs and test checklist.
-- [ ] Add issue labels or project board columns matching milestones.
+- [x] Add issue labels or project board columns matching milestones. _(labels M0–M9 on GitHub)_
 
 ### Personal control
 
