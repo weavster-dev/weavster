@@ -68,6 +68,14 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Group under Added / Changed / Fixed / Removed (Keep a Changelog format).
 - One short line per change, written for a reader, not a diff.
 
+## 6. README Reflects Actual State
+
+**Each commit updates `README.md` to match what exists now — never aspirational.**
+
+- Describe only features and commands that work today.
+- No roadmap, no "coming soon", no planned APIs (those live in `docs/MVP_PLAN.md`).
+- If a commit changes what the project can do, the README changes with it.
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.

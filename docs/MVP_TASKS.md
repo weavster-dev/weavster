@@ -40,8 +40,8 @@ Use this on every meaningful task before merge.
 
 ### Planning artifacts
 
-- [ ] Commit `MVP_PLAN.md`.
-- [ ] Commit this `MVP_TASKS.md` file.
+- [x] Commit `MVP_PLAN.md`.
+- [x] Commit this `MVP_TASKS.md` file.
 - [x] Add `CONTRIBUTING.md` with small-PR and testing rules.
 - [x] Add PR template with docs and test checklist.
 - [ ] Add issue labels or project board columns matching milestones.
