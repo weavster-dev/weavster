@@ -18,7 +18,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `README.md` describing the current state of the project.
 - CLAUDE.md rule to keep `README.md` matching actual (not future) state.
 - GitHub milestone labels M0–M9 matching the MVP plan.
+- M1 documentation platform: Docusaurus site in `website/` (TypeScript, classic preset).
+- pnpm workspace at the repo root with `docs:start` / `docs:build` / `docs:serve` / `format` scripts.
+- Documentation IA: explicit sidebar and placeholder pages for Getting Started, Concepts,
+  CLI, Config, Testing, Architecture, and Contributing.
+- GitHub Actions: build docs on PRs (`docs-build`) and deploy to GitHub Pages on merge (`docs-deploy`).
 
 ### Changed
 
 - Moved planning docs from `mvp/` to `docs/` to match the plan's repo shape.
+- Clarified tool-repo vs user-project split in `MVP_PLAN.md`: defined the `weavster init` user-project layout once, separated tool-test fixtures from user-project fixtures, and pinned `examples/golden-path/` as the reference `init` output.
+- Patched M9 in `MVP_TASKS.md` to generate the golden-path example via `weavster init` and treat it as the `init` output contract.

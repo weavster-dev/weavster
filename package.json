@@ -1,0 +1,19 @@
+{
+  "name": "weavster",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.20.0",
+  "engines": {
+    "node": ">=20.0"
+  },
+  "scripts": {
+    "docs:start": "pnpm --filter website start",
+    "docs:build": "pnpm --filter website build",
+    "docs:serve": "pnpm --filter website serve",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "^3.3.3"
+  }
+}
