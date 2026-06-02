@@ -56,24 +56,24 @@ Use this on every meaningful task before merge.
 
 ### Docs scaffold
 
-- [ ] Create Docusaurus site in `website/`.[cite:145]
-- [ ] Configure title, base URL, repo links, and navigation.[cite:145][cite:150]
-- [ ] Create initial sidebar structure.
-- [ ] Create placeholder pages: Getting Started, Concepts, CLI, Config, Testing, Architecture, Contributing.
+- [x] Create Docusaurus site in `website/`.[cite:145]
+- [x] Configure title, base URL, repo links, and navigation.[cite:145][cite:150]
+- [x] Create initial sidebar structure.
+- [x] Create placeholder pages: Getting Started, Concepts, CLI, Config, Testing, Architecture, Contributing.
 
 ### Docs operations
 
-- [ ] Add docs build command to local workflow.
-- [ ] Add GitHub Actions job to build docs on PRs.[cite:150][cite:152]
-- [ ] Add GitHub Actions job to deploy docs on merge to default branch.[cite:150][cite:152]
-- [ ] Document the docs update policy in `CONTRIBUTING.md`.
-- [ ] Add docs review checklist to PR template.
+- [x] Add docs build command to local workflow. _(root `docs:build` / `docs:start` scripts)_
+- [x] Add GitHub Actions job to build docs on PRs.[cite:150][cite:152]
+- [x] Add GitHub Actions job to deploy docs on merge to default branch.[cite:150][cite:152]
+- [x] Document the docs update policy in `CONTRIBUTING.md`. _(added in M0)_
+- [x] Add docs review checklist to PR template. _(added in M0)_
 
 ### Understanding checkpoint
 
-- [ ] Build docs locally from scratch.
-- [ ] Verify you understand where nav, pages, and config live.
-- [ ] Write a short dev log entry on how docs are built and deployed.
+- [x] Build docs locally from scratch.
+- [x] Verify you understand where nav, pages, and config live.
+- [x] Write a short dev log entry on how docs are built and deployed.
 
 ## Milestone 2 — Config schema and validation
 

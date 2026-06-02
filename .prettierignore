@@ -4,3 +4,4 @@ build/
 website/build/
 website/.docusaurus/
 coverage/
+pnpm-lock.yaml

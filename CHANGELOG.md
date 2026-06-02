@@ -18,6 +18,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - `README.md` describing the current state of the project.
 - CLAUDE.md rule to keep `README.md` matching actual (not future) state.
 - GitHub milestone labels M0–M9 matching the MVP plan.
+- M1 documentation platform: Docusaurus site in `website/` (TypeScript, classic preset).
+- pnpm workspace at the repo root with `docs:start` / `docs:build` / `docs:serve` / `format` scripts.
+- Documentation IA: explicit sidebar and placeholder pages for Getting Started, Concepts,
+  CLI, Config, Testing, Architecture, and Contributing.
+- GitHub Actions: build docs on PRs (`docs-build`) and deploy to GitHub Pages on merge (`docs-deploy`).
 
 ### Changed
 
