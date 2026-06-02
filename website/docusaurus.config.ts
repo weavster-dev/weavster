@@ -13,9 +13,9 @@ const config: Config = {
     v4: true,
   },
 
-  // Production URL for GitHub Pages.
-  url: 'https://weavster-dev.github.io',
-  baseUrl: '/weavster/',
+  // Production URL (custom domain served via GitHub Pages).
+  url: 'https://docs.weavster.dev',
+  baseUrl: '/',
 
   organizationName: 'weavster-dev',
   projectName: 'weavster',
