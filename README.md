@@ -11,7 +11,7 @@ them locally, test them with fixtures, and run them through a modular engine.
 
 - Repository scaffold and folder structure.
 - Docusaurus documentation site in [`website/`](website/) with placeholder pages and
-  CI to build on PRs and deploy to GitHub Pages on merge.
+  CI to build on PRs and deploy to [docs.weavster.dev](https://docs.weavster.dev) on merge.
 - pnpm workspace at the repo root.
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
 - Editor/formatter config (`.editorconfig`, Prettier).
