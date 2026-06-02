@@ -10,6 +10,8 @@
     "docs:start": "pnpm --filter website start",
     "docs:build": "pnpm --filter website build",
     "docs:serve": "pnpm --filter website serve",
+    "cli:build": "pnpm --filter @weavster/cli build",
+    "test": "pnpm --filter @weavster/cli test",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },

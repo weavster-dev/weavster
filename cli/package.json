@@ -1,0 +1,29 @@
+{
+  "name": "@weavster/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "weavster": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx src/index.ts",
+    "validate": "tsx src/index.ts validate",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "commander": "^13.1.0",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

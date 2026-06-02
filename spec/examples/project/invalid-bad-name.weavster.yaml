@@ -1,0 +1,2 @@
+apiVersion: weavster/v0alpha1
+name: Orders To Warehouse

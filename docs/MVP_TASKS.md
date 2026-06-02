@@ -79,27 +79,27 @@ Use this on every meaningful task before merge.
 
 ### Config spec
 
-- [ ] Create `spec/schemas/project.schema.json`.
-- [ ] Define `v0alpha1` top-level config structure.[cite:49][cite:112][cite:121]
-- [ ] Decide required top-level keys.
-- [ ] Decide which unknown properties are rejected.
-- [ ] Create one valid sample config.
-- [ ] Create at least three invalid sample configs.
+- [x] Create `spec/schemas/project.schema.json`.
+- [x] Define `v0alpha1` top-level config structure.[cite:49][cite:112][cite:121]
+- [x] Decide required top-level keys. _(`apiVersion`, `name`)_
+- [x] Decide which unknown properties are rejected. _(all — `additionalProperties: false`)_
+- [x] Create one valid sample config.
+- [x] Create at least three invalid sample configs. _(4 under `spec/examples/project/`)_
 
 ### Validation command
 
-- [ ] Add YAML loading.
-- [ ] Add schema validation with Ajv.[cite:49][cite:125]
-- [ ] Implement `weavster validate`.
-- [ ] Print useful path-aware validation errors.[cite:117][cite:125]
-- [ ] Add tests for valid and invalid configs.
+- [x] Add YAML loading.
+- [x] Add schema validation with Ajv.[cite:49][cite:125]
+- [x] Implement `weavster validate`.
+- [x] Print useful path-aware validation errors.[cite:117][cite:125]
+- [x] Add tests for valid and invalid configs.
 
 ### Docs and understanding
 
-- [ ] Write config reference page.
-- [ ] Write `validate` command docs.
-- [ ] Confirm you can explain the difference between schema validation and deeper compile-time validation.
-- [ ] Add a dev log entry with one config that failed and why.
+- [x] Write config reference page.
+- [x] Write `validate` command docs.
+- [x] Confirm you can explain the difference between schema validation and deeper compile-time validation. _(see DEV_LOG M2 entry)_
+- [x] Add a dev log entry with one config that failed and why.
 
 ## Milestone 3 — Fixture test harness
 
