@@ -31,6 +31,41 @@ These items are explicitly out of scope for MVP:
 
 The MVP should optimize for clarity, testability, local developer experience, and continuously accurate docs rather than completeness.[cite:101][cite:104][cite:147]
 
+## Tool repo vs user project
+
+There are two distinct repositories, and this document describes the first one.
+
+- **This repo is the Weavster tool.** It holds the engine source: CLI, core, format packs, built-in functions, and the TypeScript runtime. It also ships the schema, docs site, and one reference example. End users do not edit this repo.
+- **A Weavster project is a separate repo owned by the user.** It holds only config, fixtures, and expected outputs. The user creates it by running `weavster init` in their own directory, then runs `weavster validate`, `weavster test`, `weavster compile`, and `weavster run` against it.
+
+The CLI is the boundary between the two. The tool repo defines behavior and schema; the user project supplies data and config. The tool never assumes its own layout when running against a user project — it works from the project directory it is pointed at.
+
+### User project layout
+
+`weavster init` scaffolds this shape in the user's directory:
+
+```text
+my-integration/
+  weavster.yaml          # project config, schema version v0alpha1
+  flows/                 # transform pipelines, one concept per file
+  fixtures/
+    <case-name>/
+      input.<ext>        # source document (json, xml, ...)
+      expected.<ext>     # expected output for `weavster test`
+  README.md
+```
+
+This layout is the contract `weavster init` must produce and the layout `weavster validate|test|run` must accept. It is defined once here so the example below and the CLI scaffolder do not drift apart.
+
+### Where fixtures live
+
+The word "fixtures" appears in two roles; keep them separate:
+
+- **Tool-test fixtures** (`tests/fixtures/`, `spec/examples/`) verify the tool itself — schema validation cases, format round-trips, DSL operations. They are CI inputs for the engine.
+- **User-project fixtures** (inside a project's `fixtures/`) verify a user's transforms. `weavster test` runs these.
+
+`examples/golden-path/` is a reference **user project** living inside the tool repo. It must match the user project layout above — it is exactly what `weavster init` produces — and CI exercises it as a smoke test of the user-facing path.
+
 ## Golden path
 
 The MVP should center on one complete golden-path workflow:
@@ -119,6 +154,8 @@ weavster/
 ```
 
 This structure keeps artifacts, runtime code, format packs, docs site, and examples separated so work can be committed in small understandable pieces.[cite:3][cite:42][cite:147]
+
+Tool source is `cli/`, `core/`, `formats/`, `functions/`, and `ts-runtime/`. Tool-test inputs are `tests/` and `spec/examples/`. `examples/golden-path/` is a reference **user project** (see "Tool repo vs user project") and follows the user project layout, not the tool layout.
 
 ## Documentation strategy
 

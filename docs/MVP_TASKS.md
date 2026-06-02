@@ -236,11 +236,13 @@ Use this on every meaningful task before merge.
 
 ### Example project
 
-- [ ] Create `examples/golden-path/`.
-- [ ] Add sample config.
-- [ ] Add sample fixtures.
-- [ ] Add sample expected outputs.
+- [ ] Generate `examples/golden-path/` via `weavster init` (not hand-built).
+- [ ] Confirm the generated layout matches the user project layout in `MVP_PLAN.md`.
+- [ ] Fill in sample config (`weavster.yaml`, `flows/`).
+- [ ] Add sample fixtures (`fixtures/<case>/input.*`).
+- [ ] Add sample expected outputs (`fixtures/<case>/expected.*`).
 - [ ] Ensure `validate`, `test`, and `run` work against the example.
+- [ ] Treat this example as the contract for `weavster init` output — if it drifts, fix `init` or the layout spec.
 
 ### Developer docs
 
