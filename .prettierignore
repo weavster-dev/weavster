@@ -1,0 +1,6 @@
+node_modules/
+dist/
+build/
+website/build/
+website/.docusaurus/
+coverage/
