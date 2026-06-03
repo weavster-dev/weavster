@@ -9,7 +9,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const schemaPath = resolve(here, '../../spec/schemas/project.schema.json');
 const projectSchema = JSON.parse(readFileSync(schemaPath, 'utf8'));
 
-const ajv = new Ajv({ allErrors: true });
+const ajv = new Ajv();
 const validate = ajv.compile(projectSchema);
 
 export interface ValidationResult {
