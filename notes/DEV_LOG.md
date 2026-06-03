@@ -13,6 +13,27 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-03 — M4 canonical document model
+
+- What changed: Created the `@weavster/core` package holding the canonical model.
+  `core/src/model.ts` defines `Node` as a tagged union of `scalar`/`object`/`array`, a
+  `Document` wrapping a root node with `{ sourceFormat, errors }` metadata, type guards,
+  and `fromValue`/`toValue` to normalize native JS values to/from nodes.
+  `core/src/path.ts` defines path addressing: segment arrays are canonical (strings =
+  object fields, numbers = array indices), with `parsePath`/`formatPath` for the dotted +
+  bracket string form (`lines[0].sku`) and `get`/`getValue` to resolve a path to a node or
+  value. Added the package to the pnpm workspace, switched root `test` to `pnpm -r test`,
+  added a core build step to CI, and wrote the Concepts page.
+- What I learned: The model is the seam that lets one transform serve many formats — by
+  the time a transform runs, format is gone and only nodes remain (M5 JSON / M6 XML both
+  target the same three kinds). Decisions: a tagged union (not native values + sidecar
+  metadata) makes XML attributes/text/order representable later without reshaping; the
+  dotted+bracket path syntax keeps a numeric object key (`counts.0`, string) distinct from
+  an array index (`counts[0]`, number). `fromValue`/`toValue` are the model's intake
+  boundary; format packs own only text⇄value, the model owns value⇄node. vitest runs TS
+  without typechecking, so CI builds core with `tsc` to catch type errors.
+- What is next: M5 — JSON format pack (parse/serialize, map into the canonical model).
+
 ## 2026-06-03 — M3 fixture test harness
 
 - What changed: Added `weavster test [path]`. `cli/src/fixtures.ts` scans a project's
