@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { registerValidate } from './commands/validate.js';
+import { registerTest } from './commands/test.js';
 
 const program = new Command();
 
@@ -10,5 +11,6 @@ program
   .version('0.0.0');
 
 registerValidate(program);
+registerTest(program);
 
 program.parseAsync();

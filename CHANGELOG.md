@@ -14,6 +14,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M3 fixture test harness: `weavster test` runs a project's `fixtures/<case>/`
+  (`input.json` vs `expected.json`), compares output, and prints a readable diff on
+  mismatch. The flow is an identity passthrough until the transform engine lands.
+- Reference user project at `examples/golden-path/` exercised by `validate` and `test`.
 - `cli:link` root script that builds `@weavster/cli` and links `weavster` globally
   for local use in any folder.
 - M2 config validation: `v0alpha1` project schema at `spec/schemas/project.schema.json`.

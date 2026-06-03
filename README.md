@@ -16,13 +16,18 @@ them locally, test them with fixtures, and run them through a modular engine.
 - `weavster validate`: validates a project's `weavster.yaml` against the `v0alpha1`
   schema ([`spec/schemas/project.schema.json`](spec/schemas/project.schema.json)) with
   path-aware errors.
+- `weavster test`: runs a project's `fixtures/` (input vs expected JSON) and prints a
+  diff for any mismatch. The flow is an identity passthrough until the transform engine
+  lands, so a fixture passes when `expected.json` matches `input.json`.
+- A reference user project at [`examples/golden-path/`](examples/golden-path/) exercised
+  by `validate` and `test`.
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
 - Editor/formatter config (`.editorconfig`, Prettier).
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
-The runtime and format packs are not implemented yet, and only `validate` exists of
-the planned CLI commands.
+The transform engine and format packs are not implemented yet; `validate` and `test`
+exist of the planned CLI commands.
 
 ## Local development
 
@@ -35,24 +40,25 @@ pnpm docs:build     # production build of the docs site
 pnpm test           # run the CLI test suite
 pnpm format         # format with Prettier
 
-# validate a project during development
+# run a command against a project during development
 pnpm --filter @weavster/cli dev validate ./path/to/project
+pnpm --filter @weavster/cli dev test ./path/to/project
 ```
 
 ## Layout
 
-| Path | Purpose |
-| --- | --- |
-| `docs/` | Plan, task list, and (later) the documentation site source |
-| `website/` | Docusaurus docs site (not yet scaffolded) |
-| `spec/` | Config JSON Schemas and example configs |
-| `cli/` | CLI commands |
-| `core/` | Canonical document model and engine |
-| `formats/` | Format packs (JSON, XML) |
-| `functions/` | Built-in transform functions |
-| `ts-runtime/` | TypeScript escape hatch for custom transforms |
-| `tests/` | Fixtures and integration tests |
-| `examples/` | Golden-path example project |
+| Path          | Purpose                                                    |
+| ------------- | ---------------------------------------------------------- |
+| `docs/`       | Plan, task list, and (later) the documentation site source |
+| `website/`    | Docusaurus docs site (not yet scaffolded)                  |
+| `spec/`       | Config JSON Schemas and example configs                    |
+| `cli/`        | CLI commands                                               |
+| `core/`       | Canonical document model and engine                        |
+| `formats/`    | Format packs (JSON, XML)                                   |
+| `functions/`  | Built-in transform functions                               |
+| `ts-runtime/` | TypeScript escape hatch for custom transforms              |
+| `tests/`      | Fixtures and integration tests                             |
+| `examples/`   | Golden-path example project                                |
 
 ## Contributing
 

@@ -13,7 +13,27 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-03 — M3 fixture test harness
+
+- What changed: Added `weavster test [path]`. `cli/src/fixtures.ts` scans a project's
+  `fixtures/` directory (one folder per case, each with `input.json` + `expected.json`),
+  runs each input through `runFlow`, deep-compares the result to expected, and builds a
+  line-by-line JSON diff on mismatch. `cli/src/commands/test.ts` prints `✓`/`✗` per case,
+  a passed count, and sets exit code 1 on any failure. Created `examples/golden-path/`, a
+  real user project (matching the `weavster init` layout) used as a CI smoke test, plus
+  tool-test fixtures under `tests/fixtures/harness/` (passing + failing). Wrote the testing
+  guide and `test` CLI docs.
+- What I learned: M3 has no transform engine, so `runFlow` is an identity passthrough —
+  output equals input, and a fixture passes when `expected.json` matches `input.json`. The
+  harness is deliberately decoupled from the flow: M4–M6 swap the body of `runFlow` for the
+  canonical model + transform DSL without touching loader, compare, or diff. The data flow
+  is path → `fixtures/` scan → per-case parse → `runFlow` → `deepEqual` → diff. Keeping
+  "tool-test fixtures" (`tests/fixtures/`, verify the tool) separate from "user-project
+  fixtures" (a project's `fixtures/`, verified by `weavster test`) avoids confusion.
+- What is next: M4 — canonical document model.
+
 ## 2026-06-02 — M2 config schema and validation
+
 - What changed: Defined the `v0alpha1` project schema (`spec/schemas/project.schema.json`):
   required `apiVersion` (const `weavster/v0alpha1`) and `name` (kebab pattern), optional
   `description`, and `additionalProperties: false`. Added the `@weavster/cli` package with
@@ -28,6 +48,7 @@ Newest entries on top. One entry per merged slice.
 - What is next: M3 — fixture test harness (`weavster test`).
 
 ## 2026-06-02 — M1 documentation platform
+
 - What changed: Scaffolded a Docusaurus TypeScript site in `website/`, wired the repo
   as a pnpm workspace (root `package.json` + `pnpm-workspace.yaml`), set Weavster config
   (title, GitHub Pages URL/baseUrl, nav, footer, blog disabled), replaced the sample
@@ -41,6 +62,7 @@ Newest entries on top. One entry per merged slice.
 - What is next: M2 — config schema and validation (`weavster validate`).
 
 ## 2026-06-02 — M0 reboot foundation
+
 - What changed: Added `.gitignore`, `.editorconfig`, Prettier config, `CONTRIBUTING.md`,
   PR template, and `notes/DEV_LOG.md`. Created the top-level folder structure from
   `MVP_PLAN.md` and moved the planning docs into `docs/`.
