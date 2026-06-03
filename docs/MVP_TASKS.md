@@ -105,25 +105,25 @@ Use this on every meaningful task before merge.
 
 ### Fixture design
 
-- [ ] Define fixture folder layout.
-- [ ] Decide fixture naming convention.
-- [ ] Define input, expected output, and assertions structure.
-- [ ] Add first failing fixture-based test.
+- [x] Define fixture folder layout. _(`fixtures/<case>/input.json` + `expected.json`)_
+- [x] Decide fixture naming convention. _(case = folder name)_
+- [x] Define input, expected output, and assertions structure. _(deep JSON equality)_
+- [x] Add first failing fixture-based test. _(`tests/fixtures/harness/fail`)_
 
 ### Test command
 
-- [ ] Implement fixture loader.
-- [ ] Implement actual vs expected comparison.
-- [ ] Implement readable diff output.
-- [ ] Add `weavster test` command.
-- [ ] Add tests covering passing and failing fixtures.
+- [x] Implement fixture loader.
+- [x] Implement actual vs expected comparison.
+- [x] Implement readable diff output.
+- [x] Add `weavster test` command.
+- [x] Add tests covering passing and failing fixtures.
 
 ### Docs and understanding
 
-- [ ] Write testing guide page.
-- [ ] Document how to add a new fixture.
-- [ ] Run the test harness manually on at least two examples.
-- [ ] Add a dev log entry on how fixture tests flow through the code.
+- [x] Write testing guide page.
+- [x] Document how to add a new fixture.
+- [x] Run the test harness manually on at least two examples. _(golden-path + harness/fail)_
+- [x] Add a dev log entry on how fixture tests flow through the code. _(see DEV_LOG M3 entry)_
 
 ## Milestone 4 — Canonical document model
 
@@ -303,4 +303,3 @@ Run this once a week so the project stays understandable.
 - [ ] Are docs still aligned with actual behavior?
 - [ ] Can the golden path still be explained simply?
 - [ ] What is the single most important next slice?
-

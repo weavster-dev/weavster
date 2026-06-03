@@ -35,7 +35,45 @@ On failure it prints one path-aware message per problem and exits `1`:
   /apiVersion: must equal "weavster/v0alpha1"
 ```
 
+## `test`
+
+Run a project's [fixtures](./testing.md) and compare each output against its
+expected document.
+
+```bash
+weavster test [path]
+```
+
+- `path` — a project directory. Defaults to the current directory (`.`).
+
+Each fixture case under `fixtures/<case-name>/` is read, run through the project's
+flow, and compared to `expected.json`. On success:
+
+```text
+✓ order-passthrough
+
+1/1 fixtures passed
+```
+
+A failing case prints a diff (`-` expected, `+` actual) and the command exits `1`:
+
+```text
+✗ changed
+    {
+  -   "a": 2
+  +   "a": 1
+    }
+
+0/1 fixtures passed
+```
+
 :::note
-The `weavster` binary is not yet published. From the tool repo, run the command
-during development with `pnpm --filter @weavster/cli dev validate <path>`.
+M3 runs an identity passthrough: with no transform engine yet, output equals input,
+so a fixture passes when `expected.json` matches `input.json`. The transform DSL
+(later milestones) changes what the flow produces, not how `weavster test` works.
+:::
+
+:::note
+The `weavster` binary is not yet published. From the tool repo, run a command
+during development with `pnpm --filter @weavster/cli dev <command> <path>`.
 :::

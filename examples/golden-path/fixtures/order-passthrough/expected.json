@@ -1,0 +1,8 @@
+{
+  "orderId": "A-1001",
+  "customer": "acme-co",
+  "lines": [
+    { "sku": "WIDGET-1", "qty": 3 },
+    { "sku": "GADGET-9", "qty": 1 }
+  ]
+}
