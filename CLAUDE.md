@@ -76,6 +76,14 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - No roadmap, no "coming soon", no planned APIs (those live in `docs/MVP_PLAN.md`).
 - If a commit changes what the project can do, the README changes with it.
 
+## 6. Testing Requirements
+
+- Cover all acceptance criteria
+- Tests should be clear and straightforward
+- Generated code must reach **90% unit test coverage**
+
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
+
+

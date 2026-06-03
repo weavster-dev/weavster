@@ -7,8 +7,18 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Pin `types: ["node"]` in `cli/tsconfig.json` so editors resolve Node globals
+  (e.g. `process`) through the pnpm symlink.
+
 ### Added
 
+- M2 config validation: `v0alpha1` project schema at `spec/schemas/project.schema.json`.
+- `@weavster/cli` package with the `weavster validate` command (commander + Ajv + yaml),
+  emitting path-aware error messages.
+- Valid and invalid sample configs under `spec/examples/project/` and a vitest suite.
+- `ci` GitHub Actions workflow that builds and tests the CLI on PRs and pushes to main.
 - M0 reboot foundation: top-level folder structure from `MVP_PLAN.md`.
 - `.gitignore`, `.editorconfig`, Prettier config (`.prettierrc.json`, `.prettierignore`).
 - `CONTRIBUTING.md` with small-PR, testing, and docs-update rules.
