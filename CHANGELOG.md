@@ -14,6 +14,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- `cli:link` root script that builds `@weavster/cli` and links `weavster` globally
+  for local use in any folder.
 - M2 config validation: `v0alpha1` project schema at `spec/schemas/project.schema.json`.
 - `@weavster/cli` package with the `weavster validate` command (commander + Ajv + yaml),
   emitting path-aware error messages.
