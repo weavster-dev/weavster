@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Fixed
+
+- Pin `types: ["node"]` in `cli/tsconfig.json` so editors resolve Node globals
+  (e.g. `process`) through the pnpm symlink.
+
 ### Added
 
 - M2 config validation: `v0alpha1` project schema at `spec/schemas/project.schema.json`.
