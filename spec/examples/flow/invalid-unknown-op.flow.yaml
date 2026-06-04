@@ -1,0 +1,4 @@
+steps:
+  - op: frobnicate
+    from: a
+    to: b

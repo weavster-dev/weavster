@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { document, fromValue } from '../src/model.js';
-import { formatPath, get, getValue, parsePath } from '../src/path.js';
+import { document, fromValue, toValue } from '../src/model.js';
+import { PathError, formatPath, get, getValue, parsePath, remove, set } from '../src/path.js';
 
 describe('parsePath', () => {
   it('parses the root as empty', () => {
@@ -61,5 +61,51 @@ describe('get', () => {
     const fromJsonLike = document(fromValue({ item: { id: 7 } }), { sourceFormat: 'json' });
     const fromXmlLike = document(fromValue({ item: { id: 7 } }), { sourceFormat: 'xml' });
     expect(getValue(fromJsonLike, 'item.id')).toBe(getValue(fromXmlLike, 'item.id'));
+  });
+});
+
+describe('set', () => {
+  it('overwrites an existing field', () => {
+    const doc = document(fromValue({ a: 1 }));
+    set(doc, 'a', fromValue(2));
+    expect(toValue(doc.root)).toEqual({ a: 2 });
+  });
+
+  it('creates missing object segments', () => {
+    const doc = document(fromValue({}));
+    set(doc, 'x.y', fromValue('z'));
+    expect(toValue(doc.root)).toEqual({ x: { y: 'z' } });
+  });
+
+  it('overwrites an in-range array index and appends at length', () => {
+    const doc = document(fromValue({ list: ['a'] }));
+    set(doc, 'list[0]', fromValue('A'));
+    set(doc, 'list[1]', fromValue('b'));
+    expect(toValue(doc.root)).toEqual({ list: ['A', 'b'] });
+  });
+
+  it('throws PathError for an out-of-range index and for the root', () => {
+    const doc = document(fromValue({ list: [] }));
+    expect(() => set(doc, 'list[3]', fromValue('x'))).toThrow(PathError);
+    expect(() => set(doc, '', fromValue('x'))).toThrow(PathError);
+  });
+});
+
+describe('remove', () => {
+  it('removes an object field', () => {
+    const doc = document(fromValue({ a: 1, b: 2 }));
+    expect(remove(doc, 'b')).toBe(true);
+    expect(toValue(doc.root)).toEqual({ a: 1 });
+  });
+
+  it('removes an array index by splicing', () => {
+    const doc = document(fromValue({ list: ['a', 'b', 'c'] }));
+    expect(remove(doc, 'list[1]')).toBe(true);
+    expect(toValue(doc.root)).toEqual({ list: ['a', 'c'] });
+  });
+
+  it('returns false when the path is absent', () => {
+    const doc = document(fromValue({ a: 1 }));
+    expect(remove(doc, 'missing')).toBe(false);
   });
 });

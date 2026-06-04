@@ -184,30 +184,33 @@ Use this on every meaningful task before merge.
 
 ## Milestone 7 — Declarative transform DSL
 
+_Delivered as stacked slices: (1) engine + map/rename/default, (2) concat + string/date
+helpers, (3) conditionals, (4) wire golden-path + DSL reference._
+
 ### DSL design
 
-- [ ] Define the first supported transform operations.
-- [ ] Decide YAML shape for each operation.
-- [ ] Decide how errors are reported for bad mappings.
-- [ ] Add failing tests for each operation before implementing.
+- [x] Define the first supported transform operations. _(slice 1: map, rename, default)_
+- [x] Decide YAML shape for each operation. _(op-keyed steps; `flow.schema.json`)_
+- [x] Decide how errors are reported for bad mappings. _(step-scoped `TransformError`)_
+- [x] Add failing tests for each operation before implementing.
 
 ### Implementation
 
-- [ ] Implement `map`.
-- [ ] Implement `rename` or equivalent field remap primitive.
-- [ ] Implement `default`.
-- [ ] Implement `concat`.
-- [ ] Implement conditional logic.
-- [ ] Implement minimal string/date helpers.
-- [ ] Add tests for each operation and at least one combined pipeline.
+- [x] Implement `map`. _(slice 1)_
+- [x] Implement `rename` or equivalent field remap primitive. _(slice 1)_
+- [x] Implement `default`. _(slice 1)_
+- [ ] Implement `concat`. _(slice 2)_
+- [ ] Implement conditional logic. _(slice 3)_
+- [ ] Implement minimal string/date helpers. _(slice 2)_
+- [ ] Add tests for each operation and at least one combined pipeline. _(slice 1: map/rename/default + a pipeline; extended per slice)_
 
 ### Docs and understanding
 
-- [ ] Write DSL reference docs.
-- [ ] Add copy-paste examples.
-- [ ] Add one “when not to use config” note.
-- [ ] Walk through one transform execution path in the debugger or logs.
-- [ ] Add a dev log entry summarizing the execution path.
+- [x] Write DSL reference docs. _(Transform DSL page; extended per slice)_
+- [x] Add copy-paste examples.
+- [x] Add one “when not to use config” note.
+- [ ] Walk through one transform execution path in the debugger or logs. _(slice 1 DEV_LOG traces it; revisit once wired into the cli)_
+- [x] Add a dev log entry summarizing the execution path. _(see DEV_LOG M7 slice 1 entry)_
 
 ## Milestone 8 — TypeScript escape hatch
 
