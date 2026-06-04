@@ -152,17 +152,17 @@ Use this on every meaningful task before merge.
 
 ### JSON support
 
-- [ ] Create JSON format pack structure.
-- [ ] Implement JSON parser.
-- [ ] Implement JSON serializer.
-- [ ] Map JSON into canonical model.
-- [ ] Add round-trip tests.
+- [x] Create JSON format pack structure. _(`core/src/formats/json.ts`, `json` namespace)_
+- [x] Implement JSON parser. _(`json.parse` → `Document`, `JsonParseError` on bad input)_
+- [x] Implement JSON serializer. _(`json.serialize`, 2-space + trailing newline)_
+- [x] Map JSON into canonical model. _(`fromValue`/`toValue` at the value boundary)_
+- [x] Add round-trip tests.
 
 ### Docs and understanding
 
-- [ ] Write JSON format pack docs.
-- [ ] Add one JSON example to the golden path.
-- [ ] Confirm you understand every step from raw JSON to normalized model to output.
+- [x] Write JSON format pack docs. _(Format Packs page)_
+- [x] Add one JSON example to the golden path. _(`fixtures/nested-order`)_
+- [x] Confirm you understand every step from raw JSON to normalized model to output. _(see DEV_LOG M5 entry)_
 
 ## Milestone 6 — XML format pack
 
