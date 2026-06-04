@@ -14,6 +14,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M5 JSON format pack in `@weavster/core` (`json` namespace): `json.parse` (text →
+  canonical `Document` tagged `json`, `JsonParseError` on invalid input) and
+  `json.serialize` (document/node → 2-space JSON with trailing newline). Stable
+  round-trip; a richer nested JSON case added to the golden-path example. Format Packs
+  docs page added.
 - M4 canonical document model in the new `@weavster/core` package: a format-agnostic
   node tree (`scalar`/`object`/`array`) with a `Document` wrapper carrying source format
   and validation messages, `fromValue`/`toValue` normalization, and dotted-path access

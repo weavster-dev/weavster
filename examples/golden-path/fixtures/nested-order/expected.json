@@ -1,0 +1,9 @@
+{
+  "orderId": "A-1002",
+  "customer": { "id": "acme-co", "vip": true, "note": null },
+  "lines": [
+    { "sku": "WIDGET-1", "qty": 3, "tags": ["a", "b"] },
+    { "sku": "GADGET-9", "qty": 1, "tags": [] }
+  ],
+  "total": 42.5
+}

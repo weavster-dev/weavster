@@ -13,6 +13,24 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-04 — M5 JSON format pack
+
+- What changed: Added the JSON format pack at `core/src/formats/json.ts`, exported as the
+  `json` namespace from `@weavster/core`. `json.parse(text)` runs `JSON.parse` then
+  `fromValue` to produce a `Document` tagged `sourceFormat: 'json'`, throwing `JsonParseError`
+  on invalid input. `json.serialize(docOrNode)` runs `toValue` then `JSON.stringify` with a
+  2-space indent and trailing newline. Added round-trip + stability tests, a richer nested
+  JSON case to the golden-path example, and a Format Packs docs page (wired into the sidebar).
+- What I learned: The format pack is deliberately thin — it owns only text⇄value, while the
+  model owns value⇄node (`fromValue`/`toValue`). That split is what lets one transform serve
+  many formats: by the time a transform runs, format is gone. Decisions: the pack lives as a
+  module inside `@weavster/core` (not its own package) to avoid cross-package resolution and
+  build-before-test friction — it can be extracted later if a real need appears. Syntax errors
+  throw (`JsonParseError`); `meta.errors` stays reserved for semantic validation in a later
+  milestone. The cli fixture harness is intentionally NOT rewired to the pack yet — that
+  integration belongs with the engine (M7+), keeping cli↔core decoupled for now.
+- What is next: M6 — XML format pack (parser, serializer, map into the canonical model).
+
 ## 2026-06-03 — M4 canonical document model
 
 - What changed: Created the `@weavster/core` package holding the canonical model.
