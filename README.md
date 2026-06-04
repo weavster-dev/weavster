@@ -21,13 +21,17 @@ them locally, test them with fixtures, and run them through a modular engine.
   lands, so a fixture passes when `expected.json` matches `input.json`.
 - A reference user project at [`examples/golden-path/`](examples/golden-path/) exercised
   by `validate` and `test`.
+- `@weavster/core`: the canonical document model — a format-agnostic node tree
+  (`scalar`/`object`/`array`) with `fromValue`/`toValue` normalization and dotted-path
+  access helpers (`get`/`getValue`). See [Concepts](https://docs.weavster.dev/concepts).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
 - Editor/formatter config (`.editorconfig`, Prettier).
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
-The transform engine and format packs are not implemented yet; `validate` and `test`
-exist of the planned CLI commands.
+Format packs and the transform engine are not implemented yet; `validate` and `test`
+exist of the planned CLI commands, and `@weavster/core` provides the model they will
+build on.
 
 ## Local development
 
@@ -37,7 +41,7 @@ Requires Node 22+ and pnpm.
 pnpm install        # install workspace dependencies
 pnpm docs:start     # run the docs site locally
 pnpm docs:build     # production build of the docs site
-pnpm test           # run the CLI test suite
+pnpm test           # run all package test suites (core + cli)
 pnpm format         # format with Prettier
 
 # run a command against a project during development

@@ -14,6 +14,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M4 canonical document model in the new `@weavster/core` package: a format-agnostic
+  node tree (`scalar`/`object`/`array`) with a `Document` wrapper carrying source format
+  and validation messages, `fromValue`/`toValue` normalization, and dotted-path access
+  helpers (`parsePath`/`formatPath`/`get`/`getValue`). Concepts page documents it.
 - M3 fixture test harness: `weavster test` runs a project's `fixtures/<case>/`
   (`input.json` vs `expected.json`), compares output, and prints a readable diff on
   mismatch. The flow is an identity passthrough until the transform engine lands.

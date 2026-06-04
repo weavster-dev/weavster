@@ -129,24 +129,24 @@ Use this on every meaningful task before merge.
 
 ### Model design
 
-- [ ] Define internal normalized node structure.
-- [ ] Define path addressing rules.
-- [ ] Define metadata fields for source format and validation messages.
-- [ ] Decide what information is preserved from raw input.
+- [x] Define internal normalized node structure. _(tagged union `scalar`/`object`/`array`)_
+- [x] Define path addressing rules. _(segment array canonical; dotted + bracket string form)_
+- [x] Define metadata fields for source format and validation messages. _(`DocumentMeta`)_
+- [x] Decide what information is preserved from raw input. _(scalars, object keys + order, arrays)_
 
 ### Implementation
 
-- [ ] Add canonical model types.
-- [ ] Add path access helpers.
-- [ ] Add tests for nested objects, arrays, and path lookups.
-- [ ] Add tests showing the same transform target can work across formats later.
+- [x] Add canonical model types. _(`@weavster/core` `model.ts`)_
+- [x] Add path access helpers. _(`parsePath`/`formatPath`/`get`/`getValue`)_
+- [x] Add tests for nested objects, arrays, and path lookups.
+- [x] Add tests showing the same transform target can work across formats later.
 
 ### Docs and understanding
 
-- [ ] Write canonical model concept page.
-- [ ] Add one diagram or table explaining the model.
-- [ ] Trace one input document manually through normalization.
-- [ ] Add a dev log entry explaining why this model exists.
+- [x] Write canonical model concept page.
+- [x] Add one diagram or table explaining the model. _(node-kind table + normalization tree)_
+- [x] Trace one input document manually through normalization. _(Concepts page + DEV_LOG)_
+- [x] Add a dev log entry explaining why this model exists. _(see DEV_LOG M4 entry)_
 
 ## Milestone 5 — JSON format pack
 
