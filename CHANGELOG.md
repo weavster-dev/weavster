@@ -14,6 +14,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M6 XML format pack in `@weavster/core` (`xml` namespace), built on fast-xml-parser:
+  `xml.parse` (well-formedness-checked text → canonical `Document` tagged `xml`,
+  `XmlParseError` on malformed input) and `xml.serialize`. Attributes map to `@`-prefixed
+  fields, element text to `#text`, repeated elements to arrays; leaf values stay strings.
+  Includes a pluggable `XmlValidator` interface (default `wellFormedValidator`, room for
+  XSD), round-trip tests, and Format Packs docs with a JSON/XML comparison and limitations.
 - M5 JSON format pack in `@weavster/core` (`json` namespace): `json.parse` (text →
   canonical `Document` tagged `json`, `JsonParseError` on invalid input) and
   `json.serialize` (document/node → 2-space JSON with trailing newline). Stable

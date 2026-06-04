@@ -13,6 +13,26 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-04 — M6 XML format pack
+
+- What changed: Added the XML format pack at `core/src/formats/xml.ts` (`xml` namespace),
+  built on fast-xml-parser. `xml.parse(text, validator?)` runs a validator, then maps via
+  `fromValue` to a `Document` tagged `sourceFormat: 'xml'`. Convention: attributes → `@`-prefixed
+  fields, element text → `#text`, repeated elements → arrays, single elements → objects, and
+  leaf values stay strings (no coercion). `xml.serialize` renders indented XML with a trailing
+  newline. Added the `XmlValidator` interface with a default `wellFormedValidator` (seam for XSD
+  later), 12 tests, and extended the Format Packs docs with a JSON/XML comparison + limitations.
+- What I learned: XML→object mapping is where format quirks try to leak in, so the pack
+  flattens them into ordinary fields the model already understands — a transform addressing
+  `line[0]` cannot tell JSON from XML. Where XML genuinely differs from JSON: leaves are
+  untyped (everything is a string), and a single element is ambiguous between object and
+  one-element array (documented limitation). A concrete round-trip trap: the XMLBuilder
+  default `suppressBooleanAttributes: true` renders `vip="true"` as a valueless `vip`, which
+  is not well-formed XML and fails on reparse — set it to `false`. Validation is a pluggable
+  interface so XSD support can drop in without touching parse/serialize; malformed input
+  throws `XmlParseError`, mirroring the JSON pack.
+- What is next: M7 — declarative transform DSL.
+
 ## 2026-06-04 — M5 JSON format pack
 
 - What changed: Added the JSON format pack at `core/src/formats/json.ts`, exported as the
