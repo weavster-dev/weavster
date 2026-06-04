@@ -168,19 +168,19 @@ Use this on every meaningful task before merge.
 
 ### XML support
 
-- [ ] Create XML format pack structure.
-- [ ] Implement XML parser.
-- [ ] Implement XML serializer.
-- [ ] Map XML into canonical model.
-- [ ] Add validation abstraction for future XSD support.[cite:71][cite:74]
-- [ ] Add round-trip tests.
+- [x] Create XML format pack structure. _(`core/src/formats/xml.ts`, `xml` namespace)_
+- [x] Implement XML parser. _(`xml.parse`, fast-xml-parser, `XmlParseError` on malformed)_
+- [x] Implement XML serializer. _(`xml.serialize`, indented + trailing newline)_
+- [x] Map XML into canonical model. _(`@`/`#text` convention, repeated → array, string leaves)_
+- [x] Add validation abstraction for future XSD support. _(`XmlValidator` + `wellFormedValidator`)_
+- [x] Add round-trip tests.
 
 ### Docs and understanding
 
-- [ ] Write XML format pack docs.
-- [ ] Document current XML limitations.
-- [ ] Compare one JSON example and one XML example side by side in the docs.
-- [ ] Add a dev log entry on where XML handling differs from JSON.
+- [x] Write XML format pack docs. _(Format Packs page, XML section)_
+- [x] Document current XML limitations. _(Limitations subsection)_
+- [x] Compare one JSON example and one XML example side by side in the docs.
+- [x] Add a dev log entry on where XML handling differs from JSON. _(see DEV_LOG M6 entry)_
 
 ## Milestone 7 — Declarative transform DSL
 

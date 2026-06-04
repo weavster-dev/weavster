@@ -24,17 +24,19 @@ them locally, test them with fixtures, and run them through a modular engine.
 - `@weavster/core`: the canonical document model — a format-agnostic node tree
   (`scalar`/`object`/`array`) with `fromValue`/`toValue` normalization and dotted-path
   access helpers (`get`/`getValue`). See [Concepts](https://docs.weavster.dev/concepts).
-- JSON format pack (`@weavster/core` `json` namespace): `json.parse`/`json.serialize`
-  between JSON text and the canonical model, with stable round-tripping. See
+- JSON and XML format packs (`@weavster/core` `json` / `xml` namespaces):
+  `parse`/`serialize` between text and the canonical model with stable round-tripping. The
+  XML pack (fast-xml-parser) maps attributes to `@`-fields, text to `#text`, and repeated
+  elements to arrays, plus a pluggable `XmlValidator`. See
   [Format Packs](https://docs.weavster.dev/formats).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
 - Editor/formatter config (`.editorconfig`, Prettier).
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
-The XML format pack and the transform engine are not implemented yet; `validate` and
-`test` exist of the planned CLI commands, and `@weavster/core` provides the model and
-JSON pack they will build on.
+The transform engine is not implemented yet; `validate` and `test` exist of the planned
+CLI commands, and `@weavster/core` provides the canonical model and JSON/XML format packs
+they will build on.
 
 ## Local development
 
