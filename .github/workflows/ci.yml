@@ -30,3 +30,9 @@ jobs:
         run: |
           node cli/dist/index.js validate examples/golden-path
           node cli/dist/index.js test examples/golden-path
+
+      - name: init smoke
+        run: |
+          node cli/dist/index.js init "$RUNNER_TEMP/wv-init"
+          node cli/dist/index.js validate "$RUNNER_TEMP/wv-init"
+          node cli/dist/index.js test "$RUNNER_TEMP/wv-init"

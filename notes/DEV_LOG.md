@@ -13,6 +13,23 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — M9 slice 2: developer experience (MVP complete)
+
+- What changed: Filled the two placeholder docs pages — a "first 30 minutes" Getting Started
+  guide (install → `init` → `validate` → `test` → edit a flow → re-test) and an Architecture
+  overview (the format-pack → canonical-model → engine → escape-hatch pipeline, package
+  boundaries, and the local-vs-production Rust/WASM note). Added a README quickstart, an `init`
+  smoke step to CI (scaffold a fresh project + validate + test), and a release checklist at
+  `docs/RELEASE.md`. Checked off the remaining M9 tasks. This closes the MVP plan (M0–M9).
+- What I learned: CI already ran the golden-path smoke and a docs build (from M3/M8/M1), so
+  "run X in CI" was mostly verification, not new work; the one real addition was an `init` smoke
+  so a fresh-scaffold regression can't slip through. Used `$RUNNER_TEMP` for the CI scratch dir
+  so it's writable and cleaned by the runner. The docs now read in a deliberate order via the
+  sidebar, and Getting Started ends with "where to go next" links so a new reader has a path.
+- What is next: MVP is feature-complete. Candidate next work (post-MVP backlog): the Rust/WASM
+  production runtime, HL7/X12 packs, more transports, and the macros/reuse layer sketched in
+  RFC 0001.
+
 ## 2026-06-05 — M9 slice 1: weavster init
 
 - What changed: Added `weavster init [dir]`. `cli/src/init.ts` exposes a testable

@@ -24,6 +24,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M9 (slice 2) developer experience: a "first 30 minutes" Getting Started guide, an
+  Architecture overview page, a README quickstart, an `init` smoke step in CI, and a release
+  checklist (`docs/RELEASE.md`). Completes the MVP plan (M0–M9).
 - M9 (slice 1) `weavster init [dir]`: scaffolds a minimal starter project (`weavster.yaml`,
   `flows/main.yaml`, one fixture, `README.md`) that passes `weavster test` immediately. Refuses
   to overwrite an existing project.
