@@ -13,6 +13,23 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — M9 slice 1: weavster init
+
+- What changed: Added `weavster init [dir]`. `cli/src/init.ts` exposes a testable
+  `scaffoldProject(dir)` (and `projectName` deriving a kebab name from the dir, with a
+  `my-project` fallback); `cli/src/commands/init.ts` is the thin command wrapper. It writes a
+  minimal starter — `weavster.yaml` (v0alpha2), a `flows/main.yaml` with one `_set` step, one
+  fixture (`fixtures/main/basic`), and a project `README.md` — and refuses to overwrite an
+  existing `weavster.yaml`. Tests scaffold into a temp dir and assert the result validates and
+  passes `weavster test`.
+- What I learned: Decision — `init` emits a **minimal** starter, not the golden-path; the
+  golden-path stays the richer reference example. The contract test is "init output validates +
+  its fixture passes," which is stronger than a file-equality check and survives template tweaks.
+  Splitting `scaffoldProject` (pure fs writes, returns the file list) from the command keeps it
+  unit-testable without spawning the CLI, mirroring how `flow`/`functions` loading is structured.
+- What is next: M9 slice 2 — README quickstart, a "first 30 minutes" getting-started guide, the
+  architecture page, docs reading order, CI verification, and a release checklist.
+
 ## 2026-06-05 — v0alpha2 slice 3: cutover (CLI on v2, v1 removed)
 
 - What changed: Flipped the switch. `core/src/index.ts` now exports the v0alpha2 engine

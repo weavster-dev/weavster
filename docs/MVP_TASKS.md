@@ -239,13 +239,13 @@ helpers, (3) conditionals, (4) wire golden-path + DSL reference._
 
 ### Example project
 
-- [ ] Generate `examples/golden-path/` via `weavster init` (not hand-built).
-- [ ] Confirm the generated layout matches the user project layout in `MVP_PLAN.md`.
-- [ ] Fill in sample config (`weavster.yaml`, `flows/`).
-- [ ] Add sample fixtures (`fixtures/<case>/input.*`).
-- [ ] Add sample expected outputs (`fixtures/<case>/expected.*`).
-- [ ] Ensure `validate`, `test`, and `run` work against the example.
-- [ ] Treat this example as the contract for `weavster init` output — if it drifts, fix `init` or the layout spec.
+- [x] Generate `examples/golden-path/` via `weavster init` (not hand-built). _(decision: `init` emits a **minimal** starter; golden-path is kept as the richer reference example)_
+- [x] Confirm the generated layout matches the user project layout in `MVP_PLAN.md`. _(weavster.yaml + flows/ + fixtures/)_
+- [x] Fill in sample config (`weavster.yaml`, `flows/`).
+- [x] Add sample fixtures (`fixtures/<case>/input.*`).
+- [x] Add sample expected outputs (`fixtures/<case>/expected.*`).
+- [x] Ensure `validate` and `test` work against the example. _(run/compile are post-MVP)_
+- [x] Treat this example as the contract for `weavster init` output. _(init test: output validates + its fixture passes)_
 
 ### Developer docs
 

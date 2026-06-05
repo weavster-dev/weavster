@@ -13,6 +13,8 @@ them locally, test them with fixtures, and run them through a modular engine.
 - Docusaurus documentation site in [`website/`](website/) with placeholder pages and
   CI to build on PRs and deploy to [docs.weavster.dev](https://docs.weavster.dev) on merge.
 - pnpm workspace at the repo root.
+- `weavster init [dir]`: scaffolds a minimal starter project (config, a flow, a fixture,
+  README) that passes `weavster test` out of the box.
 - `weavster validate`: validates a project's `weavster.yaml` against the `v0alpha2`
   schema ([`spec/schemas/project.schema.json`](spec/schemas/project.schema.json)) and each
   `flows/*.yaml` against the flow schema, with path-aware errors.

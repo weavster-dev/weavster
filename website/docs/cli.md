@@ -8,7 +8,32 @@ title: CLI Reference
 The `weavster` CLI runs against a project directory containing a `weavster.yaml`.
 
 The planned commands are `init`, `validate`, `test`, `compile`, and `run`. Only the
-commands documented below are implemented today.
+commands documented below are implemented today (`init`, `validate`, `test`).
+
+## `init`
+
+Scaffold a new Weavster project into a directory.
+
+```bash
+weavster init [dir]
+```
+
+- `dir` — target directory. Defaults to the current directory (`.`).
+
+It writes a minimal starter — `weavster.yaml`, a `flows/main.yaml`, one fixture, and a
+`README.md` — that passes `weavster test` out of the box. It refuses to overwrite an
+existing project (a directory that already has a `weavster.yaml`).
+
+```text
+✓ scaffolded a Weavster project in my-project
+  weavster.yaml
+  flows/main.yaml
+  fixtures/main/basic/input.json
+  fixtures/main/basic/expected.json
+  README.md
+
+next: weavster validate && weavster test
+```
 
 ## `validate`
 
