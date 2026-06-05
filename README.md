@@ -30,8 +30,9 @@ them locally, test them with fixtures, and run them through a modular engine.
   elements to arrays, plus a pluggable `XmlValidator`. See
   [Format Packs](https://docs.weavster.dev/formats).
 - Transform engine (`@weavster/core` `applyFlow`): runs an op-keyed step list as a
-  mutate-in-place pipeline over the canonical model. First operations: `map`, `rename`,
-  `default`, with step-scoped errors. See [Transform DSL](https://docs.weavster.dev/dsl).
+  mutate-in-place pipeline over the canonical model. Operations: `map`, `rename`, `default`,
+  `concat`, `str` (upper/lower/trim), `date` (toIso), with step-scoped errors. See
+  [Transform DSL](https://docs.weavster.dev/dsl).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
 - Editor/formatter config (`.editorconfig`, Prettier).
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog

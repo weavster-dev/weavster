@@ -14,6 +14,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M7 (slice 2) transform helper ops in `@weavster/core`: `concat` (join `parts` of paths
+  and literals with an optional `sep`), `str` (`upper`/`lower`/`trim`), and `date`
+  (`toIso`). Extends `flow.schema.json` and the Transform DSL docs.
 - M7 (slice 1) transform engine in `@weavster/core`: `applyFlow` runs an op-keyed step
   list as a mutate-in-place pipeline over the canonical model, with the first operations
   `map`, `rename`, and `default`. Bad mappings raise a step-scoped `TransformError`. Adds

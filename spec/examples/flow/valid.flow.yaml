@@ -5,6 +5,19 @@ steps:
   - op: map
     from: order.line
     to: lines
+  - op: str
+    fn: upper
+    from: id
+  - op: concat
+    to: label
+    sep: ' '
+    parts:
+      - value: order
+      - path: id
+  - op: date
+    fn: toIso
+    from: order.createdAt
+    to: createdAt
   - op: default
     at: status
     value: new

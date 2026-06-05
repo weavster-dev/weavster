@@ -52,6 +52,50 @@
             "at": { "$ref": "#/$defs/path" },
             "value": {}
           }
+        },
+        {
+          "description": "Join `parts` (each a path or literal value) into a string at `to`.",
+          "additionalProperties": false,
+          "required": ["op", "to", "parts"],
+          "properties": {
+            "op": { "const": "concat" },
+            "to": { "$ref": "#/$defs/path" },
+            "sep": { "type": "string" },
+            "parts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "path": { "$ref": "#/$defs/path" },
+                  "value": {}
+                },
+                "oneOf": [{ "required": ["path"] }, { "required": ["value"] }]
+              }
+            }
+          }
+        },
+        {
+          "description": "Apply a string function from `from` to `to` (default `from`).",
+          "additionalProperties": false,
+          "required": ["op", "fn", "from"],
+          "properties": {
+            "op": { "const": "str" },
+            "fn": { "enum": ["upper", "lower", "trim"] },
+            "from": { "$ref": "#/$defs/path" },
+            "to": { "$ref": "#/$defs/path" }
+          }
+        },
+        {
+          "description": "Apply a date function from `from` to `to` (default `from`).",
+          "additionalProperties": false,
+          "required": ["op", "fn", "from"],
+          "properties": {
+            "op": { "const": "date" },
+            "fn": { "enum": ["toIso"] },
+            "from": { "$ref": "#/$defs/path" },
+            "to": { "$ref": "#/$defs/path" }
+          }
         }
       ]
     }

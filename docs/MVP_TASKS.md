@@ -199,10 +199,10 @@ helpers, (3) conditionals, (4) wire golden-path + DSL reference._
 - [x] Implement `map`. _(slice 1)_
 - [x] Implement `rename` or equivalent field remap primitive. _(slice 1)_
 - [x] Implement `default`. _(slice 1)_
-- [ ] Implement `concat`. _(slice 2)_
+- [x] Implement `concat`. _(slice 2)_
 - [ ] Implement conditional logic. _(slice 3)_
-- [ ] Implement minimal string/date helpers. _(slice 2)_
-- [ ] Add tests for each operation and at least one combined pipeline. _(slice 1: map/rename/default + a pipeline; extended per slice)_
+- [x] Implement minimal string/date helpers. _(slice 2: `str` upper/lower/trim, `date` toIso)_
+- [ ] Add tests for each operation and at least one combined pipeline. _(slices 1–2 done; conditional in slice 3)_
 
 ### Docs and understanding
 

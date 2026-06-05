@@ -61,6 +61,44 @@ Set `at` to `value` only when nothing is there yet. An existing value is left un
   value: new
 ```
 
+### `concat`
+
+Join `parts` into a string at `to`. Each part is either a `path` (read from the document)
+or a literal `value`. An optional `sep` is placed between parts (default empty). Parts must
+resolve to scalars; `null` contributes an empty string.
+
+```yaml
+- op: concat
+  to: fullName
+  sep: ' '
+  parts:
+    - path: first
+    - path: last
+    - value: '!'
+```
+
+### `str`
+
+Apply a string function — `upper`, `lower`, or `trim` — from `from` to `to`. `to` defaults
+to `from`, so omitting it transforms in place.
+
+```yaml
+- op: str
+  fn: upper
+  from: code # writes back to `code`
+```
+
+### `date`
+
+Apply a date function from `from` to `to` (default `from`). `toIso` parses the source value
+as a date and writes it back as an ISO-8601 UTC string; an unparseable value is an error.
+
+```yaml
+- op: date
+  fn: toIso
+  from: createdAt # '2026-06-04' -> '2026-06-04T00:00:00.000Z'
+```
+
 ## Errors
 
 A step that references a missing source path, or that targets an impossible location (for

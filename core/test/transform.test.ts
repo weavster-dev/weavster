@@ -54,6 +54,74 @@ describe('default', () => {
   });
 });
 
+describe('concat', () => {
+  it('joins paths and literals with a separator', () => {
+    expect(
+      run({ first: 'jane', last: 'doe' }, [
+        { op: 'concat', to: 'name', sep: ' ', parts: [{ path: 'first' }, { path: 'last' }] },
+      ]),
+    ).toMatchObject({ name: 'jane doe' });
+  });
+
+  it('supports literal value parts and defaults the separator to empty', () => {
+    expect(
+      run({ area: '212', num: '5551234' }, [
+        {
+          op: 'concat',
+          to: 'phone',
+          parts: [{ value: '(' }, { path: 'area' }, { value: ') ' }, { path: 'num' }],
+        },
+      ]),
+    ).toMatchObject({ phone: '(212) 5551234' });
+  });
+
+  it('errors on a missing source path', () => {
+    expect(() => run({}, [{ op: 'concat', to: 'x', parts: [{ path: 'nope' }] }])).toThrow(
+      /step 0 \(concat\).*nope/,
+    );
+  });
+
+  it('errors when a part resolves to a non-scalar', () => {
+    expect(() =>
+      run({ obj: { a: 1 } }, [{ op: 'concat', to: 'x', parts: [{ path: 'obj' }] }]),
+    ).toThrow(/must be a scalar/);
+  });
+});
+
+describe('str', () => {
+  it('applies upper/lower/trim', () => {
+    expect(run({ v: 'aB' }, [{ op: 'str', fn: 'upper', from: 'v', to: 'v' }])).toEqual({ v: 'AB' });
+    expect(run({ v: 'aB' }, [{ op: 'str', fn: 'lower', from: 'v', to: 'v' }])).toEqual({ v: 'ab' });
+    expect(run({ v: '  x  ' }, [{ op: 'str', fn: 'trim', from: 'v', to: 'v' }])).toEqual({
+      v: 'x',
+    });
+  });
+
+  it('defaults the target to the source (in place)', () => {
+    expect(run({ code: 'ab' }, [{ op: 'str', fn: 'upper', from: 'code' }])).toEqual({ code: 'AB' });
+  });
+
+  it('errors on an unknown fn', () => {
+    expect(() => run({ v: 'x' }, [{ op: 'str', fn: 'reverse', from: 'v' }])).toThrow(
+      /unknown str fn/,
+    );
+  });
+});
+
+describe('date', () => {
+  it('converts a parseable date string to ISO 8601', () => {
+    expect(run({ ts: '2026-06-04' }, [{ op: 'date', fn: 'toIso', from: 'ts' }])).toEqual({
+      ts: '2026-06-04T00:00:00.000Z',
+    });
+  });
+
+  it('errors on an unparseable date', () => {
+    expect(() => run({ ts: 'not-a-date' }, [{ op: 'date', fn: 'toIso', from: 'ts' }])).toThrow(
+      /cannot parse date/,
+    );
+  });
+});
+
 describe('applyFlow', () => {
   it('runs steps in order as a pipeline', () => {
     const flow: Flow = {
@@ -67,6 +135,24 @@ describe('applyFlow', () => {
       order: { line: ['w', 'g'] },
       id: 'A-1',
       lines: ['w', 'g'],
+      status: 'new',
+    });
+  });
+
+  it('runs a combined pipeline using helper ops', () => {
+    expect(
+      run({ first: 'jane', last: 'DOE', ts: '2026-06-04' }, [
+        { op: 'str', fn: 'lower', from: 'last', to: 'last' },
+        { op: 'concat', to: 'name', sep: ' ', parts: [{ path: 'first' }, { path: 'last' }] },
+        { op: 'date', fn: 'toIso', from: 'ts', to: 'createdAt' },
+        { op: 'default', at: 'status', value: 'new' },
+      ]),
+    ).toEqual({
+      first: 'jane',
+      last: 'doe',
+      ts: '2026-06-04',
+      name: 'jane doe',
+      createdAt: '2026-06-04T00:00:00.000Z',
       status: 'new',
     });
   });

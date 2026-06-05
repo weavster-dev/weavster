@@ -13,6 +13,24 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-04 — M7 slice 2: concat + string/date helpers
+
+- What changed: Added three ops to the engine. `concat` joins a `parts` list — each part a
+  `path` to read or a literal `value` — into a string at `to`, with an optional `sep`. `str`
+  applies `upper`/`lower`/`trim` from `from` to `to` (default `from`, so in-place). `date`
+  applies `toIso`, parsing the source with `new Date(...)` and writing `.toISOString()`.
+  Extended `flow.schema.json` with the three variants + a richer valid sample, the DSL docs,
+  and added a combined-pipeline test using the helpers.
+- What I learned: A real JSON Schema trap — `additionalProperties: false` only sees
+  `properties` declared in the _same_ schema object, not ones nested inside `oneOf`. The first
+  cut put each concat part's `path`/`value` only inside `oneOf` branches, so `false` treated
+  both as unknown and rejected every part. Fix: declare `path` and `value` at the item level,
+  use `oneOf` only to require exactly one. Determinism mattered for `date`: `toIso` is pure
+  given its input (no `now`), so it is safe for fixtures; `new Date('2026-06-04')` yields a
+  fixed UTC instant. Scalar coercion lives in one helper (`scalarToString`) so concat/str/date
+  share the same "null → empty, structured → error" rule.
+- What is next: M7 slice 3 — conditional logic.
+
 ## 2026-06-04 — M7 slice 1: transform engine + map/rename/default
 
 - What changed: Added the transform engine at `core/src/transform.ts`. `applyFlow(doc, flow)`
