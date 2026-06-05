@@ -6,148 +6,92 @@ title: Transform DSL
 # Transform DSL
 
 A **flow** transforms a document with a list of declarative steps — no code. Steps run in
-order as a **mutate-in-place pipeline**: the input document is cloned into a working
-document, each step edits it, and the result is the transformed document. Steps operate on
-the [canonical model](./concepts.md) and address values by [path](./concepts.md#paths), so
-the same flow runs whether the input arrived as JSON or XML.
+order as a **patch-by-default pipeline**: each step changes only what it names and leaves the
+rest of the document intact. Values are **expressions**, so you can read fields, compose, and
+branch inline.
 
 ```yaml
 # flows/order.yaml
 steps:
-  - op: rename
-    from: order.@id
-    to: id
-  - op: map
-    from: order.line
-    to: lines
-  - op: default
-    at: status
-    value: new
+  - _set:
+      id: { _upper: $id }
+      name: { _concat: { parts: [$first, $last], sep: ' ' } }
+  - _when:
+      cond: { _eq: [$status, new] }
+      then:
+        - _set: { priority: high }
+      else:
+        - _set: { priority: normal }
 ```
 
-Each step is **op-keyed**: the `op` field names the operation, and the remaining fields are
-its arguments. Paths use the dotted/bracket form (`order.line[0].sku`).
+## Sigils
 
-## Operations
+One rule: **`_` runs an operator, `$` reads a path, plain is literal data.**
 
-### `map`
+| Sigil  | Where     | Meaning                                            | Example               |
+| ------ | --------- | -------------------------------------------------- | --------------------- |
+| `$`    | a value   | read a [path](./concepts.md#paths) from the doc    | `$order.line[0].sku`  |
+| `_`    | a map key | invoke an operator (a step, or inside a value)     | `{ _concat: [...] }`  |
+| `$$`   | a value   | an escaped literal `$` (so `$$x` is the text `$x`) | `$$rate`              |
+| `_lit` | a value   | return the argument verbatim (escape an operator)  | `{ _lit: { _x: 1 } }` |
+| (none) | a map key | a literal field name / data                        | `status: new`         |
 
-Copy the value at `from` to `to`. Missing object segments in `to` are created.
+Plain arrays and objects are evaluated deeply, so references and operators nest anywhere
+inside a value. A `$path` that doesn't exist evaluates to nothing (missing), which `_set`
+skips — so copying an optional field is a no-op, not a null write.
 
-```yaml
-- op: map
-  from: order.id
-  to: id
-```
+## Structural steps
 
-### `rename`
+Each step is exactly one `_`-prefixed operator. They are **patch** operators (keep the rest
+of the document) except `_select`, which reshapes.
 
-Move the value at `from` to `to` — copy, then remove the source.
+| Step       | Shape                                            | Does                                            |
+| ---------- | ------------------------------------------------ | ----------------------------------------------- |
+| `_set`     | `{ <path>: <expr>, ... }`                        | set each path; keep everything else             |
+| `_default` | `{ <path>: <expr>, ... }`                        | set each path only where it is currently absent |
+| `_unset`   | `[<path>, ...]`                                  | remove paths                                    |
+| `_rename`  | `{ <from>: <to>, ... }`                          | move paths (missing sources are skipped)        |
+| `_append`  | `{ to: <path>, value: <expr> }`                  | append to an array (created if absent)          |
+| `_select`  | `{ <path>: <expr>, ... }`                        | **reshape**: output only the named paths        |
+| `_when`    | `{ cond: <expr>, then: [steps], else: [steps] }` | run a branch by condition (`else` optional)     |
+| `_ts`      | `{ module, from?, to? }`                         | run a [custom function](./typescript.md)        |
 
-```yaml
-- op: rename
-  from: order.@id
-  to: id
-```
+`_set`/`_default`/`_rename` take maps (many paths per step). `_set` evaluates all its values
+against the document as it was at the start of the step, so sibling keys are independent.
 
-### `default`
+## Value operators
 
-Set `at` to `value` only when nothing is there yet. An existing value is left untouched.
-`value` can be any literal — scalar, object, or array.
+Usable anywhere a value is expected (inside `_set`/`_select`/`_append`/… and in `_when.cond`).
 
-```yaml
-- op: default
-  at: status
-  value: new
-```
+| Operator                      | Shape                                        | Result                        |
+| ----------------------------- | -------------------------------------------- | ----------------------------- |
+| reference                     | `$a.b[0]`                                    | the value at that path        |
+| `_concat`                     | `[<expr>, ...]` or `{ parts, sep }`          | joined string                 |
+| `_upper` / `_lower` / `_trim` | `<expr>`                                     | transformed string            |
+| `_toIso`                      | `<expr>`                                     | date string → ISO-8601 UTC    |
+| `_coalesce`                   | `[<expr>, ...]`                              | first non-null                |
+| `_eq` / `_gt` / `_lt`         | `[<expr>, <expr>]`                           | boolean comparison            |
+| `_in`                         | `[<needle>, <arrayExpr>]`                    | membership boolean            |
+| `_exists`                     | `<expr>`                                     | true if the value is present  |
+| `_and` / `_or`                | `[<expr>, ...]`                              | boolean over the list         |
+| `_not`                        | `<expr>`                                     | boolean negation              |
+| `_cond`                       | `{ if: <expr>, then: <expr>, else: <expr> }` | a value chosen by a condition |
 
-### `concat`
-
-Join `parts` into a string at `to`. Each part is either a `path` (read from the document)
-or a literal `value`. An optional `sep` is placed between parts (default empty). Parts must
-resolve to scalars; `null` contributes an empty string.
-
-```yaml
-- op: concat
-  to: fullName
-  sep: ' '
-  parts:
-    - path: first
-    - path: last
-    - value: '!'
-```
-
-### `str`
-
-Apply a string function — `upper`, `lower`, or `trim` — from `from` to `to`. `to` defaults
-to `from`, so omitting it transforms in place.
-
-```yaml
-- op: str
-  fn: upper
-  from: code # writes back to `code`
-```
-
-### `date`
-
-Apply a date function from `from` to `to` (default `from`). `toIso` parses the source value
-as a date and writes it back as an ISO-8601 UTC string; an unparseable value is an error.
-
-```yaml
-- op: date
-  fn: toIso
-  from: createdAt # '2026-06-04' -> '2026-06-04T00:00:00.000Z'
-```
-
-### `when`
-
-Run a nested list of steps conditionally. `cond` is a single predicate — a `path` tested
-with either `equals` (matches a literal) or `exists` (`true`/`false` for presence). Steps in
-`then` run when the condition holds; `else` (optional) runs otherwise. Branches are full
-sub-pipelines, so `when` can nest.
-
-```yaml
-- op: when
-  cond:
-    path: status
-    equals: new
-  then:
-    - op: default
-      at: priority
-      value: high
-  else:
-    - op: default
-      at: priority
-      value: normal
-```
-
-A missing path, or a value that is not a scalar, makes `equals` false. Combine conditions by
-nesting `when` inside `then`; negate by using `else`.
+Operators compose: `{ _cond: { if: { _gt: [$total, 100] }, then: gold, else: standard } }`.
 
 ## Errors
 
-A step that references a missing source path, or that targets an impossible location (for
-example writing through an array index that does not exist), fails with a `TransformError`
-naming the step index and op:
+A malformed step or a bad reference fails with a `TransformError` naming the step and
+operator; nested `_when` branches carry their context:
 
 ```text
-step 1 (map): no value at "order.missing"
+step 1 (_set): "_concat" expects a list or { parts, sep }
+step 0 (_when): step 0 (_ts): no function "enrich"
 ```
-
-The flow stops at the first failing step — later steps do not run.
-
-## Running a flow
-
-Flows live in a project's `flows/` directory, one file per concept. `weavster validate`
-checks every flow against the flow schema, and `weavster test` runs a flow over its
-fixtures and compares the output — see the [Testing Guide](./testing.md). The
-[golden-path example](https://github.com/weavster-dev/weavster/tree/main/examples/golden-path)
-ships `flows/order.yaml` exercised end to end.
 
 ## When not to use config
 
-The DSL is for straightforward field-level reshaping. Reach for the
-[TypeScript escape hatch](./typescript.md) instead when a transform needs real logic —
-lookups against external data, non-trivial branching, or computation the step list cannot
-express clearly. If a flow grows a long tail of conditional steps to fake control flow, that
-is the signal to drop to code.
+The DSL is for declarative reshaping. Reach for the
+[TypeScript escape hatch](./typescript.md) (`_ts`) when a transform needs real logic the
+operators can't express clearly. If a flow grows a long tail of `_when` steps faking control
+flow, that is the signal to drop to code.

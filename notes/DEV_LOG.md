@@ -13,6 +13,26 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — v0alpha2 slice 3: cutover (CLI on v2, v1 removed)
+
+- What changed: Flipped the switch. `core/src/index.ts` now exports the v0alpha2 engine
+  (`dsl/engine.js`) and `core/src/transform.ts` (+ its test) are deleted. Ported the escape
+  hatch to v2 as `_ts` (threading the injected `functions` through `Ctx`), and added `_default`
+  for RFC parity. Rewrote `flow.schema.json` to the single-key `_op` form (validated via
+  `propertyNames` enum + `maxProperties: 1` → clean errors), bumped `project.schema.json`
+  `apiVersion` to `weavster/v0alpha2`, and migrated all samples (project + flow), the golden-path
+  flow, and the harness fixtures. Rewrote the DSL docs and updated Config/CLI/TypeScript pages.
+- What I learned: The cutover was small because the CLI only ever called `applyFlow(doc, flow,
+{ functions })` — identical signature between v1 and v2 — so swapping the `index.ts` export and
+  updating `functions.ts`'s step-scan (`op: 'ts'` → the `_ts` key, `_when` branches) was nearly
+  all of it. Migrating `flows/order.yaml` showed the model paying off: v1's `str`+`concat`+`when` +`ts` (four step types) collapse into one `_set` with `_upper`/`_concat` value operators, a
+  `_when`, and `_ts` — fewer step kinds, logic moved into values. The golden-path output is
+  byte-identical, so the fixtures' `expected.json` were untouched — a good signal the migration
+  preserved behavior. Bumping the project `apiVersion` const meant updating every sample
+  `weavster.yaml`, including the "valid" one the CLI test loads.
+- What is next: M9 — golden-path example, quickstart, and a docs walkthrough, written against
+  the final v0alpha2 syntax.
+
 ## 2026-06-05 — v0alpha2 slice 2: value operators + rest of structural ops
 
 - What changed: Filled in `VALUE_OPS` (`dsl/expr.ts`) and the structural op table (`dsl/engine.ts`).

@@ -1,4 +1,3 @@
 steps:
-  - op: frobnicate
-    from: a
-    to: b
+  - _frobnicate:
+      from: a

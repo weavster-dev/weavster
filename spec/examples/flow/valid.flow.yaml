@@ -1,35 +1,15 @@
 steps:
-  - op: rename
-    from: order.@id
-    to: id
-  - op: map
-    from: order.line
-    to: lines
-  - op: str
-    fn: upper
-    from: id
-  - op: concat
-    to: label
-    sep: ' '
-    parts:
-      - value: order
-      - path: id
-  - op: date
-    fn: toIso
-    from: order.createdAt
-    to: createdAt
-  - op: default
-    at: status
-    value: new
-  - op: when
-    cond:
-      path: status
-      equals: new
-    then:
-      - op: default
-        at: priority
-        value: high
-    else:
-      - op: default
-        at: priority
-        value: normal
+  - _rename:
+      order.@id: id
+  - _set:
+      id: { _upper: $id }
+      name: { _concat: { parts: [$first, $last], sep: ' ' } }
+      createdAt: { _toIso: $order.createdAt }
+  - _when:
+      cond: { _eq: [$status, new] }
+      then:
+        - _set: { priority: high }
+      else:
+        - _set: { priority: normal }
+  - _ts:
+      module: enrich

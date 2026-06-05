@@ -1,26 +1,14 @@
-# Normalize an incoming order: uppercase the id, build a display name, and
-# set priority from status. Demonstrates str, concat, and a when branch.
+# Normalize an incoming order: uppercase the id, build a display name, set
+# priority from status, then enrich with a custom function.
 steps:
-  - op: str
-    fn: upper
-    from: id
-  - op: concat
-    to: name
-    sep: ' '
-    parts:
-      - path: first
-      - path: last
-  - op: when
-    cond:
-      path: status
-      equals: new
-    then:
-      - op: default
-        at: priority
-        value: high
-    else:
-      - op: default
-        at: priority
-        value: normal
-  - op: ts
-    module: initials
+  - _set:
+      id: { _upper: $id }
+      name: { _concat: { parts: [$first, $last], sep: ' ' } }
+  - _when:
+      cond: { _eq: [$status, new] }
+      then:
+        - _set: { priority: high }
+      else:
+        - _set: { priority: normal }
+  - _ts:
+      module: initials

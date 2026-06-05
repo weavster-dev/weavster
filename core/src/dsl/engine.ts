@@ -6,12 +6,13 @@
  * change only the paths they name and leave the rest of the document intact.
  * Values are expressions (see `expr.ts`).
  */
-import { type Document, type Node, fromValue } from '../model.js';
+import { type Document, type Node, fromValue, toValue } from '../model.js';
 import { get, remove, set } from '../path.js';
-import { type Ctx, evalExpr } from './expr.js';
+import { type Ctx, type TransformFn, evalExpr } from './expr.js';
 import { TransformError } from './errors.js';
 
 export { TransformError } from './errors.js';
+export type { TransformFn } from './expr.js';
 
 /** A single transform step: one `_`-prefixed operator key mapped to its argument. */
 export type Step = Record<string, unknown>;
@@ -21,7 +22,17 @@ export interface Flow {
 }
 
 export interface RunOptions {
-  functions?: Record<string, (value: unknown) => unknown>;
+  /** Functions referenced by `_ts` steps, keyed by module name. */
+  functions?: Record<string, TransformFn>;
+}
+
+/** Coerce a custom function's result through the JSON boundary (matches WASM I/O). */
+function toJson(value: unknown): unknown {
+  try {
+    return JSON.parse(JSON.stringify(value === undefined ? null : value));
+  } catch {
+    throw new TransformError('result is not JSON-serializable');
+  }
 }
 
 type StructuralOp = (working: Document, arg: unknown, ctx: Ctx) => void;
@@ -40,6 +51,15 @@ const STRUCTURAL: Record<string, StructuralOp> = {
       ([path, expr]) => [path, evalExpr(expr, ctx)] as const,
     );
     for (const [path, value] of entries) {
+      if (value !== undefined) set(working, path, fromValue(value) as Node);
+    }
+  },
+
+  /** Patch, but only where the path is currently absent. */
+  _default(working, arg, ctx) {
+    for (const [path, expr] of Object.entries(asRecord(arg, '_default'))) {
+      if (get(working, path) !== undefined) continue;
+      const value = evalExpr(expr, ctx);
       if (value !== undefined) set(working, path, fromValue(value) as Node);
     }
   },
@@ -104,6 +124,37 @@ const STRUCTURAL: Record<string, StructuralOp> = {
       : ((spec.else as Step[] | undefined) ?? []);
     runSteps(working, branch, ctx);
   },
+
+  /**
+   * Escape hatch: run a custom function on a JSON value. Reads `from` (default
+   * the whole document), calls the named function, and writes the JSON result
+   * to `to` (default the root). `from`/`to` are literal path strings.
+   */
+  _ts(working, arg, ctx) {
+    const spec = asRecord(arg, '_ts');
+    if (typeof spec.module !== 'string') throw new TransformError('"_ts" needs a "module" string');
+    const fn = ctx.functions[spec.module];
+    if (fn === undefined) throw new TransformError(`no function "${spec.module}"`);
+
+    let input: unknown;
+    if (spec.from === undefined) {
+      input = toValue(working.root);
+    } else {
+      if (typeof spec.from !== 'string')
+        throw new TransformError('"_ts" "from" must be a path string');
+      const node = get(working, spec.from);
+      if (node === undefined) throw new TransformError(`no value at "${spec.from}"`);
+      input = toValue(node);
+    }
+
+    const node = fromValue(toJson(fn(input))) as Node;
+    if (spec.to === undefined) {
+      working.root = node;
+    } else {
+      if (typeof spec.to !== 'string') throw new TransformError('"_ts" "to" must be a path string');
+      set(working, spec.to, node);
+    }
+  },
 };
 
 function runSteps(working: Document, steps: Step[], ctx: Ctx): void {
@@ -125,11 +176,11 @@ function runSteps(working: Document, steps: Step[], ctx: Ctx): void {
 }
 
 /** Run a flow against a document, returning a new transformed document. */
-export function applyFlow(doc: Document, flow: Flow, _options: RunOptions = {}): Document {
+export function applyFlow(doc: Document, flow: Flow, options: RunOptions = {}): Document {
   const working: Document = {
     root: structuredClone(doc.root),
     meta: { ...doc.meta, errors: [...doc.meta.errors] },
   };
-  runSteps(working, flow.steps, { working });
+  runSteps(working, flow.steps, { working, functions: options.functions ?? {} });
   return working;
 }

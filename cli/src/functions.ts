@@ -5,14 +5,18 @@ import type { Flow, Step, TransformFn } from '@weavster/core';
 
 const FUNCTIONS_DIR = 'functions';
 
-/** Collect the module names referenced by `ts` steps, recursing into branches. */
+/** Collect the module names referenced by `_ts` steps, recursing into `_when` branches. */
 function collectModules(steps: Step[]): string[] {
   const names = new Set<string>();
   const walk = (list: Step[]) => {
     for (const step of list) {
-      if (step.op === 'ts' && typeof step.module === 'string') names.add(step.module);
-      if (Array.isArray(step.then)) walk(step.then as Step[]);
-      if (Array.isArray(step.else)) walk(step.else as Step[]);
+      const ts = step._ts as { module?: unknown } | undefined;
+      if (ts && typeof ts.module === 'string') names.add(ts.module);
+      const when = step._when as { then?: unknown; else?: unknown } | undefined;
+      if (when) {
+        if (Array.isArray(when.then)) walk(when.then as Step[]);
+        if (Array.isArray(when.else)) walk(when.else as Step[]);
+      }
     }
   };
   walk(steps);

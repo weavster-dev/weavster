@@ -1,3 +1,3 @@
-apiVersion: weavster/v0alpha1
+apiVersion: weavster/v0alpha2
 name: golden-path
 description: Reference user project exercised by weavster validate and test.

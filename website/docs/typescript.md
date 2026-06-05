@@ -40,14 +40,14 @@ Keep it **pure JSON → JSON**. The local CLI runs your function as ordinary Jav
 production runtime executes transforms as WASM — a function that stays pure JSON in/out is
 portable to both. Reaching for Node-only APIs works locally but will not port.
 
-## The `ts` step
+## The `_ts` step
 
 ```yaml
 steps:
-  - op: ts
-    module: initials # functions/initials.ts
-    # from: order    # optional: operate on a subpath (default: whole document)
-    # to: order      # optional: where to write (default: the root)
+  - _ts:
+      module: initials # functions/initials.ts
+      # from: order    # optional: operate on a subpath (default: whole document)
+      # to: order      # optional: where to write (default: the root)
 ```
 
 - `module` — the file `functions/<module>.ts` in your project; its default export is called.
@@ -60,8 +60,8 @@ A missing function file, a module without a default-export function, or an error
 inside the function all surface as a `TransformError` naming the step and module:
 
 ```text
-step 3 (ts): no function "initials" at .../functions/initials.ts
-step 3 (ts): boom
+step 3 (_ts): no function "initials" at .../functions/initials.ts
+step 3 (_ts): boom
 ```
 
 The function is loaded on demand when `weavster test` runs the flow; no build step is needed.

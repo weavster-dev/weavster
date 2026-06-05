@@ -12,6 +12,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Pin `types: ["node"]` in `cli/tsconfig.json` so editors resolve Node globals
   (e.g. `process`) through the pnpm symlink.
 
+### Changed
+
+- **Breaking — v0alpha2 DSL cutover.** The CLI now runs flows on the v0alpha2 engine; v0alpha1
+  is removed. Flows are single-key `_op` steps with expression values (`$path` refs, `_op`
+  operators), patch by default. `weavster.yaml` `apiVersion` is now `weavster/v0alpha2`. Ops:
+  `_set`/`_default`/`_unset`/`_rename`/`_append`/`_select`/`_when`/`_ts` plus value operators
+  (`_concat`, `_upper`/`_lower`/`_trim`, `_toIso`, `_coalesce`, `_eq`/`_gt`/`_lt`/`_in`,
+  `_and`/`_or`/`_not`, `_cond`). The flow schema, golden-path flow, and DSL/Config/TypeScript
+  docs are migrated. The single-key step form gives clean validation errors.
+
 ### Added
 
 - v0alpha2 DSL (slice 2, internal): value operators (`_concat`, `_upper`/`_lower`/`_trim`,

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://weavster.dev/schemas/project.schema.json",
-  "title": "Weavster project (v0alpha1)",
+  "title": "Weavster project (v0alpha2)",
   "description": "Schema for a Weavster project's weavster.yaml file.",
   "type": "object",
   "required": ["apiVersion", "name"],
@@ -9,7 +9,7 @@
   "properties": {
     "apiVersion": {
       "description": "Schema version of this project file.",
-      "const": "weavster/v0alpha1"
+      "const": "weavster/v0alpha2"
     },
     "name": {
       "description": "Project name: lowercase letters, digits, and hyphens.",
