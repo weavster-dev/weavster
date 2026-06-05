@@ -14,6 +14,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- v0alpha2 DSL (slice 1, internal): expression evaluator (`core/src/dsl/expr.ts`) with `$path`
+  references, `$$` escape, deep array/object evaluation, and `_lit`; plus a patch-by-default
+  engine (`core/src/dsl/engine.ts`) with the first structural ops `_set` and `_unset`. Not yet
+  wired into the CLI — v0alpha1 still runs flows until the cutover slice.
 - M8 TypeScript escape hatch: a `ts` transform step runs a custom function from the project's
   `functions/<module>.ts`. The contract is pure JSON in / JSON out (WASM-portable); the core
   engine takes injected functions (`applyFlow(doc, flow, { functions })`) and the CLI loads
