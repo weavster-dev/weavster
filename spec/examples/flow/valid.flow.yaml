@@ -1,0 +1,10 @@
+steps:
+  - op: rename
+    from: order.@id
+    to: id
+  - op: map
+    from: order.line
+    to: lines
+  - op: default
+    at: status
+    value: new

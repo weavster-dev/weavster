@@ -8,6 +8,7 @@ const sidebars: SidebarsConfig = {
     'cli',
     'config',
     'formats',
+    'dsl',
     'testing',
     'architecture',
     'contributing',

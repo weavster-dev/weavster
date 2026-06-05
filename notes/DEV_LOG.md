@@ -13,6 +13,26 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-04 — M7 slice 1: transform engine + map/rename/default
+
+- What changed: Added the transform engine at `core/src/transform.ts`. `applyFlow(doc, flow)`
+  clones the input document, then runs an op-keyed `steps` list as a mutate-in-place pipeline,
+  returning a new document (input is never mutated). First ops: `map` (copy `from`→`to`),
+  `rename` (move), `default` (fill `at` only if absent; literal `value` via `fromValue`).
+  Added `set`/`remove`/`PathError` to `core/src/path.ts` (set auto-creates missing object
+  segments, refuses to grow arrays). Defined the `flow.schema.json` contract + valid/invalid
+  sample flows, and started the Transform DSL docs page. This slice is core-only; wiring the
+  cli fixture harness to load `flows/` and run the engine comes in slice 4.
+- What I learned: Execution-path trace — `applyFlow` deep-clones `doc.root` into a working
+  document, then for each step looks up the op in a registry and calls it; the op reads via
+  `get` and writes via `set`/`remove` against the working tree; any throw is re-wrapped as a
+  `TransformError` tagged with the step index + op, and the pipeline stops. Keeping the engine
+  in core with no ajv dependency means flow _loading + schema validation_ will live in the cli
+  (slice 4) where ajv already is — the engine only ever sees an already-parsed `Flow`. The
+  mutate-in-place model makes `rename` literally copy-then-`remove`, and `default` a guarded
+  `set`, which is why the path helpers (not the ops) own the structural rules.
+- What is next: M7 slice 2 — `concat` + string/date helpers.
+
 ## 2026-06-04 — M6 XML format pack
 
 - What changed: Added the XML format pack at `core/src/formats/xml.ts` (`xml` namespace),

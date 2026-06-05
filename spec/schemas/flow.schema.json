@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://weavster.dev/schemas/flow.schema.json",
+  "title": "Weavster flow",
+  "description": "Schema for a Weavster flow file: an ordered list of transform steps.",
+  "type": "object",
+  "required": ["steps"],
+  "additionalProperties": false,
+  "properties": {
+    "steps": {
+      "description": "Transform steps, run in order as a mutate-in-place pipeline.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "$defs": {
+    "path": {
+      "description": "A dotted/bracketed path into the canonical model, e.g. order.line[0].sku.",
+      "type": "string",
+      "minLength": 1
+    },
+    "step": {
+      "type": "object",
+      "required": ["op"],
+      "oneOf": [
+        {
+          "description": "Copy the value at `from` to `to`.",
+          "additionalProperties": false,
+          "required": ["op", "from", "to"],
+          "properties": {
+            "op": { "const": "map" },
+            "from": { "$ref": "#/$defs/path" },
+            "to": { "$ref": "#/$defs/path" }
+          }
+        },
+        {
+          "description": "Move the value at `from` to `to`.",
+          "additionalProperties": false,
+          "required": ["op", "from", "to"],
+          "properties": {
+            "op": { "const": "rename" },
+            "from": { "$ref": "#/$defs/path" },
+            "to": { "$ref": "#/$defs/path" }
+          }
+        },
+        {
+          "description": "Set `at` to `value` only when nothing is there yet.",
+          "additionalProperties": false,
+          "required": ["op", "at", "value"],
+          "properties": {
+            "op": { "const": "default" },
+            "at": { "$ref": "#/$defs/path" },
+            "value": {}
+          }
+        }
+      ]
+    }
+  }
+}

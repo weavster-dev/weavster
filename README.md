@@ -29,14 +29,17 @@ them locally, test them with fixtures, and run them through a modular engine.
   XML pack (fast-xml-parser) maps attributes to `@`-fields, text to `#text`, and repeated
   elements to arrays, plus a pluggable `XmlValidator`. See
   [Format Packs](https://docs.weavster.dev/formats).
+- Transform engine (`@weavster/core` `applyFlow`): runs an op-keyed step list as a
+  mutate-in-place pipeline over the canonical model. First operations: `map`, `rename`,
+  `default`, with step-scoped errors. See [Transform DSL](https://docs.weavster.dev/dsl).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
 - Editor/formatter config (`.editorconfig`, Prettier).
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
-The transform engine is not implemented yet; `validate` and `test` exist of the planned
-CLI commands, and `@weavster/core` provides the canonical model and JSON/XML format packs
-they will build on.
+The engine's first transform operations exist in `@weavster/core`, but flows are not yet
+wired into the CLI — `validate` and `test` are the working CLI commands so far. More
+transform operations and CLI integration are landing in stacked slices.
 
 ## Local development
 

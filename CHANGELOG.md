@@ -14,6 +14,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M7 (slice 1) transform engine in `@weavster/core`: `applyFlow` runs an op-keyed step
+  list as a mutate-in-place pipeline over the canonical model, with the first operations
+  `map`, `rename`, and `default`. Bad mappings raise a step-scoped `TransformError`. Adds
+  `set`/`remove` path helpers, a `flow.schema.json` contract with sample flows, and a
+  Transform DSL docs page.
 - M6 XML format pack in `@weavster/core` (`xml` namespace), built on fast-xml-parser:
   `xml.parse` (well-formedness-checked text → canonical `Document` tagged `xml`,
   `XmlParseError` on malformed input) and `xml.serialize`. Attributes map to `@`-prefixed
