@@ -249,17 +249,17 @@ helpers, (3) conditionals, (4) wire golden-path + DSL reference._
 
 ### Developer docs
 
-- [ ] Update README quickstart.
-- [ ] Add “first 30 minutes with Weavster” guide.
-- [ ] Add architecture overview page.
-- [ ] Link docs sections in the intended reading order.
+- [x] Update README quickstart. _(init → validate → test)_
+- [x] Add “first 30 minutes with Weavster” guide. _(Getting Started page)_
+- [x] Add architecture overview page.
+- [x] Link docs sections in the intended reading order. _(sidebar + "where to go next" links)_
 
 ### CI and release readiness
 
-- [ ] Run golden-path example in CI.
-- [ ] Run docs build in CI.
-- [ ] Confirm repo can be cloned and used from a clean machine.
-- [ ] Write a release checklist for the first MVP tag.
+- [x] Run golden-path example in CI. _(`ci` golden-path smoke)_
+- [x] Run docs build in CI. _(`docs-build` workflow)_
+- [x] Confirm repo can be cloned and used from a clean machine. _(documented as a step in `docs/RELEASE.md`)_
+- [x] Write a release checklist for the first MVP tag. _(`docs/RELEASE.md`)_
 
 ## After-MVP backlog parking lot
 

@@ -7,6 +7,23 @@ them locally, test them with fixtures, and run them through a modular engine.
 > [`docs/MVP_PLAN.md`](docs/MVP_PLAN.md); active tasks in
 > [`docs/MVP_TASKS.md`](docs/MVP_TASKS.md).
 
+## Quickstart
+
+Weavster is not published yet — use it from a clone of this repo:
+
+```bash
+pnpm install
+pnpm cli:link                 # builds the CLI and links `weavster` globally
+
+weavster init my-integration  # scaffold a project
+cd my-integration
+weavster validate             # check config + flows
+weavster test                 # run fixtures through flows
+```
+
+See the [Getting Started guide](https://docs.weavster.dev/getting-started) for the first
+30 minutes, including editing a transform.
+
 ## What exists today
 
 - Repository scaffold and folder structure.
@@ -44,8 +61,8 @@ them locally, test them with fixtures, and run them through a modular engine.
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
 The transform engine is wired into the CLI: `weavster test` runs project flows over their
-fixtures. `validate` and `test` are the working CLI commands so far; `init`, `compile`, and
-`run` are still planned.
+fixtures. `init`, `validate`, and `test` are the working CLI commands; `compile` and `run`
+are still planned.
 
 ## Local development
 
