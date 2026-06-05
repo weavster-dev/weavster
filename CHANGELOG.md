@@ -24,6 +24,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M9 (slice 1) `weavster init [dir]`: scaffolds a minimal starter project (`weavster.yaml`,
+  `flows/main.yaml`, one fixture, `README.md`) that passes `weavster test` immediately. Refuses
+  to overwrite an existing project.
 - v0alpha2 DSL (slice 2, internal): value operators (`_concat`, `_upper`/`_lower`/`_trim`,
   `_toIso`, `_coalesce`, `_eq`, `_exists`, `_gt`/`_lt`/`_in`, `_and`/`_or`/`_not`, `_cond`) and
   the remaining structural ops (`_rename`, `_append`, `_select` strict projection, `_when` with
