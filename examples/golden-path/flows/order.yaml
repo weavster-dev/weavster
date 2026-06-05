@@ -1,0 +1,24 @@
+# Normalize an incoming order: uppercase the id, build a display name, and
+# set priority from status. Demonstrates str, concat, and a when branch.
+steps:
+  - op: str
+    fn: upper
+    from: id
+  - op: concat
+    to: name
+    sep: ' '
+    parts:
+      - path: first
+      - path: last
+  - op: when
+    cond:
+      path: status
+      equals: new
+    then:
+      - op: default
+        at: priority
+        value: high
+    else:
+      - op: default
+        at: priority
+        value: normal

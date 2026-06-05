@@ -14,11 +14,10 @@ them locally, test them with fixtures, and run them through a modular engine.
   CI to build on PRs and deploy to [docs.weavster.dev](https://docs.weavster.dev) on merge.
 - pnpm workspace at the repo root.
 - `weavster validate`: validates a project's `weavster.yaml` against the `v0alpha1`
-  schema ([`spec/schemas/project.schema.json`](spec/schemas/project.schema.json)) with
-  path-aware errors.
-- `weavster test`: runs a project's `fixtures/` (input vs expected JSON) and prints a
-  diff for any mismatch. The flow is an identity passthrough until the transform engine
-  lands, so a fixture passes when `expected.json` matches `input.json`.
+  schema ([`spec/schemas/project.schema.json`](spec/schemas/project.schema.json)) and each
+  `flows/*.yaml` against the flow schema, with path-aware errors.
+- `weavster test`: runs each fixture (`fixtures/<flow>/<case>/`) through its
+  `flows/<flow>.yaml` and prints a diff for any mismatch against `expected.json`.
 - A reference user project at [`examples/golden-path/`](examples/golden-path/) exercised
   by `validate` and `test`.
 - `@weavster/core`: the canonical document model — a format-agnostic node tree
@@ -32,15 +31,16 @@ them locally, test them with fixtures, and run them through a modular engine.
 - Transform engine (`@weavster/core` `applyFlow`): runs an op-keyed step list as a
   mutate-in-place pipeline over the canonical model. Operations: `map`, `rename`, `default`,
   `concat`, `str` (upper/lower/trim), `date` (toIso), and `when` (conditional then/else), with
-  step-scoped errors. See [Transform DSL](https://docs.weavster.dev/dsl).
+  step-scoped errors. Driven from `flows/*.yaml` via `weavster test`. See
+  [Transform DSL](https://docs.weavster.dev/dsl).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
 - Editor/formatter config (`.editorconfig`, Prettier).
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
-The engine's first transform operations exist in `@weavster/core`, but flows are not yet
-wired into the CLI — `validate` and `test` are the working CLI commands so far. More
-transform operations and CLI integration are landing in stacked slices.
+The transform engine is wired into the CLI: `weavster test` runs project flows over their
+fixtures. `validate` and `test` are the working CLI commands so far; `init`, `compile`, and
+`run` are still planned.
 
 ## Local development
 

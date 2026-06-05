@@ -14,6 +14,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M7 (slice 4) flows wired into the CLI: `weavster test` now parses each fixture's input,
+  runs it through `flows/<flow>.yaml`, and compares the output (fixtures are grouped by flow
+  under `fixtures/<flow>/<case>/`). `weavster validate` now also validates every `flows/*.yaml`
+  against the flow schema. The golden-path example ships a real `flows/order.yaml`. `@weavster/cli`
+  now depends on `@weavster/core`.
 - M7 (slice 3) conditional op `when` in `@weavster/core`: a `cond` predicate (`path` tested
   with `equals` or `exists`) runs nested `then`/`else` sub-step lists. The pipeline recurses,
   so `when` can nest and nested errors carry the `when` context. Extends `flow.schema.json`

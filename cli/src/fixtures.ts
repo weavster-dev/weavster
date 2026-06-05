@@ -1,16 +1,19 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { type Flow, applyFlow, json, toValue } from '@weavster/core';
+import { loadFlow } from './flow.js';
 
 const FIXTURES_DIR = 'fixtures';
 const INPUT_FILE = 'input.json';
 const EXPECTED_FILE = 'expected.json';
 
 export interface FixtureResult {
+  /** `<flow>/<case>` label. */
   name: string;
   ok: boolean;
   /** Readable expected-vs-actual diff, present when a fixture fails on output. */
   diff?: string;
-  /** Load or parse failure for this fixture case. */
+  /** Load, parse, or transform failure for this fixture case. */
   error?: string;
 }
 
@@ -21,26 +24,23 @@ export interface TestRunResult {
   errors: string[];
 }
 
-/**
- * Run the project's transform flow over a single input document.
- *
- * M3 has no transform engine yet, so this is an identity passthrough: the
- * input is returned unchanged. The transform DSL and format packs (M4–M6)
- * replace the body here without changing the harness around it.
- */
-export function runFlow(input: unknown): unknown {
-  return input;
-}
-
 /** Resolve a CLI path argument to the project directory holding `fixtures/`. */
 function resolveProjectDir(path: string): string {
-  if (existsSync(path) && statSync(path).isFile()) {
-    return join(path, '..');
-  }
+  if (existsSync(path) && statSync(path).isFile()) return join(path, '..');
   return path;
 }
 
-/** Load every fixture case, run the flow, and compare output to expected. */
+const subdirs = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+
+/**
+ * Run every fixture case. Fixtures are grouped by flow:
+ * `fixtures/<flow>/<case>/{input,expected}.json`. Each case's input is parsed,
+ * run through `flows/<flow>.yaml`, and compared to the expected output.
+ */
 export function runFixtures(path: string): TestRunResult {
   const dir = resolveProjectDir(path);
   const fixturesDir = join(dir, FIXTURES_DIR);
@@ -53,20 +53,29 @@ export function runFixtures(path: string): TestRunResult {
     };
   }
 
-  const cases = readdirSync(fixturesDir, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory())
-    .map((entry) => entry.name)
-    .sort();
-
-  if (cases.length === 0) {
-    return { ok: false, results: [], errors: [`no fixture cases found in ${fixturesDir}`] };
+  const flows = subdirs(fixturesDir);
+  if (flows.length === 0) {
+    return { ok: false, results: [], errors: [`no fixture flows found in ${fixturesDir}`] };
   }
 
-  const results = cases.map((name) => runCase(join(fixturesDir, name), name));
+  const results: FixtureResult[] = [];
+  for (const flowName of flows) {
+    const { flow, errors } = loadFlow(dir, flowName);
+    const cases = subdirs(join(fixturesDir, flowName));
+    for (const caseName of cases) {
+      const name = `${flowName}/${caseName}`;
+      if (flow === null) {
+        results.push({ name, ok: false, error: `flow "${flowName}": ${errors.join('; ')}` });
+        continue;
+      }
+      results.push(runCase(join(fixturesDir, flowName, caseName), name, flow));
+    }
+  }
+
   return { ok: results.every((r) => r.ok), results, errors: [] };
 }
 
-function runCase(caseDir: string, name: string): FixtureResult {
+function runCase(caseDir: string, name: string, flow: Flow): FixtureResult {
   const inputPath = join(caseDir, INPUT_FILE);
   const expectedPath = join(caseDir, EXPECTED_FILE);
 
@@ -77,12 +86,13 @@ function runCase(caseDir: string, name: string): FixtureResult {
     if (!existsSync(file)) return { name, ok: false, error: `missing ${label} file ${file}` };
   }
 
-  let input: unknown;
+  let actual: unknown;
   let expected: unknown;
   try {
-    input = JSON.parse(readFileSync(inputPath, 'utf8'));
+    const doc = json.parse(readFileSync(inputPath, 'utf8'));
+    actual = toValue(applyFlow(doc, flow).root);
   } catch (err) {
-    return { name, ok: false, error: `invalid JSON in ${INPUT_FILE}: ${String(err)}` };
+    return { name, ok: false, error: `${INPUT_FILE}: ${String(err)}` };
   }
   try {
     expected = JSON.parse(readFileSync(expectedPath, 'utf8'));
@@ -90,7 +100,6 @@ function runCase(caseDir: string, name: string): FixtureResult {
     return { name, ok: false, error: `invalid JSON in ${EXPECTED_FILE}: ${String(err)}` };
   }
 
-  const actual = runFlow(input);
   if (deepEqual(actual, expected)) return { name, ok: true };
   return { name, ok: false, diff: diffJson(expected, actual) };
 }
