@@ -5,6 +5,7 @@ import { type Ctx, evalExpr } from '../src/dsl/expr.js';
 
 const ctxOf = (value: unknown): Ctx => ({
   working: document(fromValue(value), { sourceFormat: 'json' }),
+  functions: {},
 });
 
 describe('evalExpr', () => {

@@ -44,6 +44,12 @@ describe('_set', () => {
   });
 });
 
+describe('_default', () => {
+  it('fills only absent paths and leaves existing values', () => {
+    expect(run({ a: 1 }, [{ _default: { a: 9, b: 2 } }])).toEqual({ a: 1, b: 2 });
+  });
+});
+
 describe('_unset', () => {
   it('removes listed paths', () => {
     expect(run({ a: 1, b: 2, c: 3 }, [{ _unset: ['b', 'c'] }])).toEqual({ a: 1 });
@@ -106,6 +112,39 @@ describe('_when', () => {
     expect(() => run({}, [{ _when: { cond: true, then: [{ _frob: 1 }] } }])).toThrow(
       /step 0 \(_when\): step 0: unknown operator "_frob"/,
     );
+  });
+});
+
+describe('_ts', () => {
+  const functions = {
+    addName: (o: any) => ({ ...o, name: `${o.first} ${o.last}` }),
+    up: (s: any) => String(s).toUpperCase(),
+    boom: () => {
+      throw new Error('boom');
+    },
+  };
+  const runTs = (value: unknown, steps: Flow['steps']) =>
+    toValue(applyFlow(docOf(value), { steps }, { functions }).root);
+
+  it('runs a function on the whole document by default', () => {
+    expect(runTs({ first: 'jane', last: 'doe' }, [{ _ts: { module: 'addName' } }])).toEqual({
+      first: 'jane',
+      last: 'doe',
+      name: 'jane doe',
+    });
+  });
+
+  it('runs a function on a from/to subpath', () => {
+    expect(
+      runTs({ code: 'ab', keep: 1 }, [{ _ts: { module: 'up', from: 'code', to: 'code' } }]),
+    ).toEqual({ code: 'AB', keep: 1 });
+  });
+
+  it('errors on a missing function and wraps a thrown error', () => {
+    expect(() => runTs({}, [{ _ts: { module: 'nope' } }])).toThrow(
+      /step 0 \(_ts\).*no function "nope"/,
+    );
+    expect(() => runTs({}, [{ _ts: { module: 'boom' } }])).toThrow(/step 0 \(_ts\): boom/);
   });
 });
 

@@ -1,3 +1,2 @@
 steps:
-  - op: ts
-    module: stamp
+  - _ts: { module: stamp }

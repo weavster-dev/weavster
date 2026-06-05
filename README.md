@@ -13,7 +13,7 @@ them locally, test them with fixtures, and run them through a modular engine.
 - Docusaurus documentation site in [`website/`](website/) with placeholder pages and
   CI to build on PRs and deploy to [docs.weavster.dev](https://docs.weavster.dev) on merge.
 - pnpm workspace at the repo root.
-- `weavster validate`: validates a project's `weavster.yaml` against the `v0alpha1`
+- `weavster validate`: validates a project's `weavster.yaml` against the `v0alpha2`
   schema ([`spec/schemas/project.schema.json`](spec/schemas/project.schema.json)) and each
   `flows/*.yaml` against the flow schema, with path-aware errors.
 - `weavster test`: runs each fixture (`fixtures/<flow>/<case>/`) through its
@@ -28,12 +28,12 @@ them locally, test them with fixtures, and run them through a modular engine.
   XML pack (fast-xml-parser) maps attributes to `@`-fields, text to `#text`, and repeated
   elements to arrays, plus a pluggable `XmlValidator`. See
   [Format Packs](https://docs.weavster.dev/formats).
-- Transform engine (`@weavster/core` `applyFlow`): runs an op-keyed step list as a
-  mutate-in-place pipeline over the canonical model. Operations: `map`, `rename`, `default`,
-  `concat`, `str` (upper/lower/trim), `date` (toIso), and `when` (conditional then/else), with
-  step-scoped errors. Driven from `flows/*.yaml` via `weavster test`. See
-  [Transform DSL](https://docs.weavster.dev/dsl).
-- TypeScript escape hatch (`ts` step): runs a custom `functions/<module>.ts` (pure JSON in/out,
+- Transform engine (`@weavster/core` `applyFlow`): a `v0alpha2` patch-by-default pipeline over
+  the canonical model. Steps are single-key `_op` operators (`_set`/`_default`/`_unset`/
+  `_rename`/`_append`/`_select`/`_when`/`_ts`); values are expressions with `$path` references
+  and `_op` operators (`_concat`, `_upper`, `_toIso`, `_eq`, `_cond`, …). Driven from
+  `flows/*.yaml` via `weavster test`. See [Transform DSL](https://docs.weavster.dev/dsl).
+- TypeScript escape hatch (`_ts` step): runs a custom `functions/<module>.ts` (pure JSON in/out,
   loaded via jiti) when the declarative DSL isn't enough. See
   [TypeScript Transforms](https://docs.weavster.dev/typescript).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.

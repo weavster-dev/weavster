@@ -35,7 +35,7 @@ On failure it prints one path-aware message per problem and exits `1`:
 ✗ weavster.yaml
   (root): missing required property "name"
 ✗ flows/order.yaml
-  /steps/0: unknown op "renam"
+  /steps/0: property name must be valid
 ```
 
 ## `test`

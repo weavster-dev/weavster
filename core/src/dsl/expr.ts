@@ -14,8 +14,15 @@ import type { Document } from '../model.js';
 import { getValue } from '../path.js';
 import { TransformError } from './errors.js';
 
+/**
+ * A custom transform function (the TypeScript escape hatch). The contract is
+ * pure JSON in, JSON out — the shape that crosses a WASM boundary in production.
+ */
+export type TransformFn = (value: unknown) => unknown;
+
 export interface Ctx {
   working: Document;
+  functions: Record<string, TransformFn>;
 }
 
 export type ValueOp = (arg: unknown, ctx: Ctx) => unknown;

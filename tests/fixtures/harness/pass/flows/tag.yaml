@@ -1,4 +1,2 @@
 steps:
-  - op: default
-    at: tag
-    value: ok
+  - _set: { tag: ok }

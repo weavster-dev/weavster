@@ -1,135 +1,27 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://weavster.dev/schemas/flow.schema.json",
-  "title": "Weavster flow",
-  "description": "Schema for a Weavster flow file: an ordered list of transform steps.",
+  "title": "Weavster flow (v0alpha2)",
+  "description": "Schema for a Weavster flow file: an ordered list of single-operator steps.",
   "type": "object",
   "required": ["steps"],
   "additionalProperties": false,
   "properties": {
     "steps": {
-      "description": "Transform steps, run in order as a mutate-in-place pipeline.",
+      "description": "Transform steps, run in order as a patch-by-default pipeline.",
       "type": "array",
       "items": { "$ref": "#/$defs/step" }
     }
   },
   "$defs": {
-    "path": {
-      "description": "A dotted/bracketed path into the canonical model, e.g. order.line[0].sku.",
-      "type": "string",
-      "minLength": 1
-    },
     "step": {
+      "description": "Exactly one operator key (e.g. _set) mapped to its argument.",
       "type": "object",
-      "required": ["op"],
-      "oneOf": [
-        {
-          "description": "Copy the value at `from` to `to`.",
-          "additionalProperties": false,
-          "required": ["op", "from", "to"],
-          "properties": {
-            "op": { "const": "map" },
-            "from": { "$ref": "#/$defs/path" },
-            "to": { "$ref": "#/$defs/path" }
-          }
-        },
-        {
-          "description": "Move the value at `from` to `to`.",
-          "additionalProperties": false,
-          "required": ["op", "from", "to"],
-          "properties": {
-            "op": { "const": "rename" },
-            "from": { "$ref": "#/$defs/path" },
-            "to": { "$ref": "#/$defs/path" }
-          }
-        },
-        {
-          "description": "Set `at` to `value` only when nothing is there yet.",
-          "additionalProperties": false,
-          "required": ["op", "at", "value"],
-          "properties": {
-            "op": { "const": "default" },
-            "at": { "$ref": "#/$defs/path" },
-            "value": {}
-          }
-        },
-        {
-          "description": "Join `parts` (each a path or literal value) into a string at `to`.",
-          "additionalProperties": false,
-          "required": ["op", "to", "parts"],
-          "properties": {
-            "op": { "const": "concat" },
-            "to": { "$ref": "#/$defs/path" },
-            "sep": { "type": "string" },
-            "parts": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "additionalProperties": false,
-                "properties": {
-                  "path": { "$ref": "#/$defs/path" },
-                  "value": {}
-                },
-                "oneOf": [{ "required": ["path"] }, { "required": ["value"] }]
-              }
-            }
-          }
-        },
-        {
-          "description": "Apply a string function from `from` to `to` (default `from`).",
-          "additionalProperties": false,
-          "required": ["op", "fn", "from"],
-          "properties": {
-            "op": { "const": "str" },
-            "fn": { "enum": ["upper", "lower", "trim"] },
-            "from": { "$ref": "#/$defs/path" },
-            "to": { "$ref": "#/$defs/path" }
-          }
-        },
-        {
-          "description": "Apply a date function from `from` to `to` (default `from`).",
-          "additionalProperties": false,
-          "required": ["op", "fn", "from"],
-          "properties": {
-            "op": { "const": "date" },
-            "fn": { "enum": ["toIso"] },
-            "from": { "$ref": "#/$defs/path" },
-            "to": { "$ref": "#/$defs/path" }
-          }
-        },
-        {
-          "description": "Run `then` when `cond` holds, otherwise `else`.",
-          "additionalProperties": false,
-          "required": ["op", "cond", "then"],
-          "properties": {
-            "op": { "const": "when" },
-            "cond": {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["path"],
-              "properties": {
-                "path": { "$ref": "#/$defs/path" },
-                "equals": {},
-                "exists": { "type": "boolean" }
-              },
-              "oneOf": [{ "required": ["equals"] }, { "required": ["exists"] }]
-            },
-            "then": { "type": "array", "items": { "$ref": "#/$defs/step" } },
-            "else": { "type": "array", "items": { "$ref": "#/$defs/step" } }
-          }
-        },
-        {
-          "description": "Run a custom TypeScript function on a JSON value (escape hatch).",
-          "additionalProperties": false,
-          "required": ["op", "module"],
-          "properties": {
-            "op": { "const": "ts" },
-            "module": { "type": "string", "minLength": 1 },
-            "from": { "$ref": "#/$defs/path" },
-            "to": { "$ref": "#/$defs/path" }
-          }
-        }
-      ]
+      "minProperties": 1,
+      "maxProperties": 1,
+      "propertyNames": {
+        "enum": ["_set", "_default", "_unset", "_rename", "_append", "_select", "_when", "_ts"]
+      }
     }
   }
 }

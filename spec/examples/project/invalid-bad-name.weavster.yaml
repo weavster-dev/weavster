@@ -1,2 +1,2 @@
-apiVersion: weavster/v0alpha1
+apiVersion: weavster/v0alpha2
 name: Orders To Warehouse

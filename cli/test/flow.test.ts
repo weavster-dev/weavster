@@ -11,7 +11,7 @@ describe('loadFlow', () => {
   it('loads and validates a real flow', () => {
     const { flow, errors } = loadFlow(goldenPath, 'order');
     expect(errors).toEqual([]);
-    expect(flow?.steps[0]).toEqual({ op: 'str', fn: 'upper', from: 'id' });
+    expect(Object.keys(flow?.steps[0] ?? {})).toEqual(['_set']);
   });
 
   it('reports a missing flow', () => {
