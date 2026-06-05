@@ -24,6 +24,8 @@ jobs:
 
       - run: pnpm cli:build
 
+      - run: pnpm --filter @weavster/cli typecheck
+
       - run: pnpm test
 
       - name: golden-path smoke

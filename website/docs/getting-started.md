@@ -9,15 +9,13 @@ Your first 30 minutes with Weavster: scaffold a project, run it, and change a tr
 
 ## Install
 
-Weavster is not published yet. From a clone of the [tool repo](https://github.com/weavster-dev/weavster):
-
 ```bash
-pnpm install
-pnpm cli:link        # builds the CLI and links `weavster` globally
+npm install -g @weavster/cli
 ```
 
-Now `weavster` is on your PATH. (Prefer not to link? Run any command with
-`pnpm --filter @weavster/cli dev <command>` instead.)
+Now `weavster` is on your PATH. Working from a clone of the
+[tool repo](https://github.com/weavster-dev/weavster) instead? Run `pnpm install` then
+`pnpm cli:link` to build and link the CLI locally.
 
 ## 1. Scaffold a project
 

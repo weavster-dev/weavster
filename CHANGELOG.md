@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.0.1] - 2026-06-05
+
+First published release. `@weavster/cli` ships to npm (init / validate / test); the engine,
+canonical model, JSON + XML packs, the v0alpha2 transform DSL, and the TypeScript escape hatch
+are bundled in.
+
+### Added
+
+- npm release tooling: `@weavster/cli` is published to npm by a tag-triggered (`v*`) GitHub
+  Actions release workflow. The CLI is bundled with tsup — `@weavster/core` and the JSON
+  schemas are inlined — so it installs as a single package; runtime deps (ajv, commander, yaml,
+  jiti, fast-xml-parser) stay external. CI also typechecks the CLI (tsup does not).
+
 ### Fixed
 
 - Pin `types: ["node"]` in `cli/tsconfig.json` so editors resolve Node globals

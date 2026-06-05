@@ -1,17 +1,12 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
 import { Ajv, type ErrorObject } from 'ajv';
-
-// The schema is the source of truth in spec/schemas/. Resolve it relative to
-// this module so it loads the same whether run from src (tsx) or dist (node).
-const here = dirname(fileURLToPath(import.meta.url));
-const loadSchema = (name: string) =>
-  JSON.parse(readFileSync(resolve(here, `../../spec/schemas/${name}`), 'utf8'));
+// The schemas are the source of truth in spec/schemas/. Importing them inlines
+// the JSON into the build, so they ship inside the published bundle.
+import projectSchema from '../../spec/schemas/project.schema.json' with { type: 'json' };
+import flowSchema from '../../spec/schemas/flow.schema.json' with { type: 'json' };
 
 const ajv = new Ajv({ allErrors: true });
-const validate = ajv.compile(loadSchema('project.schema.json'));
-const validateFlowSchema = ajv.compile(loadSchema('flow.schema.json'));
+const validate = ajv.compile(projectSchema);
+const validateFlowSchema = ajv.compile(flowSchema);
 
 export interface ValidationResult {
   valid: boolean;

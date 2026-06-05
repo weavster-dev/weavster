@@ -9,16 +9,22 @@ them locally, test them with fixtures, and run them through a modular engine.
 
 ## Quickstart
 
-Weavster is not published yet — use it from a clone of this repo:
+Install the CLI from npm:
 
 ```bash
-pnpm install
-pnpm cli:link                 # builds the CLI and links `weavster` globally
+npm install -g @weavster/cli
 
 weavster init my-integration  # scaffold a project
 cd my-integration
 weavster validate             # check config + flows
 weavster test                 # run fixtures through flows
+```
+
+Or work from a clone of this repo (for development):
+
+```bash
+pnpm install
+pnpm cli:link                 # builds the CLI and links `weavster` globally
 ```
 
 See the [Getting Started guide](https://docs.weavster.dev/getting-started) for the first
