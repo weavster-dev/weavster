@@ -14,6 +14,9 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- RFC 0001 (`docs/rfcs/0001-v0alpha2-dsl.md`): design for the v0alpha2 transform DSL — a
+  MongoDB-flavored expression model on a patch-by-default pipeline (`$path` refs, `_op`
+  operators), folding in the M7 cleanup. Draft only; targeted post-M8.
 - M7 (slice 4) flows wired into the CLI: `weavster test` now parses each fixture's input,
   runs it through `flows/<flow>.yaml`, and compares the output (fixtures are grouped by flow
   under `fixtures/<flow>/<case>/`). `weavster validate` now also validates every `flows/*.yaml`

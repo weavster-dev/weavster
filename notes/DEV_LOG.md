@@ -13,6 +13,25 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — RFC 0001: v0alpha2 DSL (design)
+
+- What changed: Wrote `docs/rfcs/0001-v0alpha2-dsl.md` capturing the next-gen transform DSL
+  decided in discussion. Core idea: a MongoDB-flavored expression language on a mutate-in-place
+  pipeline. Two sigils — `$path` reads a reference, `_op` invokes an operator (as a step or a
+  value). Patch by default (`_set`/`_default`/`_unset`/`_rename`/`_append` keep the rest of the
+  document); reshape (`_select`) is the explicit opt-in. The M7 cleanup folds in: maps remove the
+  `at`/`to` split, `map` becomes `_set: { to: $from }`, str/date/concat become value operators,
+  and single-key `_op` dispatch fixes the noisy validation.
+- What I learned: The decisive constraint was partial edits — the HL7 case ("set MSH-4, reformat
+  one date, append one PID, leave the rest") rules out pure projection. Mongo's split (`$set`
+  patch vs `$project` reshape) is the resolution, so v0alpha2 is patch-first with reshape opt-in,
+  not projection-first. Expressions-as-values are what unlock composition and future macros (the
+  reuse goal); the structural op surface actually shrinks because transforms move into the
+  expression namespace. Design only — implementation waits until after M8 so the escape hatch
+  lands on the stable v0alpha1 DSL first.
+- What is next: M8 — TypeScript escape hatch (still on v0alpha1); resolve RFC open questions, then
+  implement v0alpha2.
+
 ## 2026-06-05 — M7 slice 4: wire flows into the cli
 
 - What changed: Connected the engine to the CLI (the cli↔core integration deferred since M3).
