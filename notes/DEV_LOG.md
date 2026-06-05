@@ -13,6 +13,27 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — Release tooling: npm publish for the CLI (0.0.1)
+
+- What changed: Set up the first release. Chose to publish **only `@weavster/cli`** with
+  `@weavster/core` bundled in (tsup). `@weavster/core` moved to the CLI's devDependencies so it
+  resolves at build/test but isn't a runtime dep; tsup inlines it and the JSON schemas, keeping
+  the third-party deps (ajv/commander/yaml/jiti/fast-xml-parser) external. Switched the CLI build
+  from `tsc` to `tsup` and added a `tsc --noEmit` typecheck (run in CI + the release workflow).
+  Reworked `schema.ts` to **import** the schema JSON (so it's bundled) instead of reading from
+  `spec/` at runtime. Added publish metadata (version 0.0.1, `publishConfig.access: public`,
+  license `BUSL-1.1`, repo/homepage), a `release.yml` workflow that publishes on a `v*` tag using
+  an `NPM_TOKEN` secret, and cut the `0.0.1` CHANGELOG section.
+- What I learned: The published-package trap was the schemas — `files: [dist]` meant the old
+  `readFileSync('../../spec/...')` would vanish for npm consumers; importing the JSON makes tsup
+  inline it (and needs the Node `with { type: 'json' }` import attribute so `tsx` dev still runs).
+  Bundling means `@weavster/core` must be a devDep (tsup externalizes `dependencies`, bundles the
+  rest), and `fast-xml-parser` had to move from core into the CLI's runtime deps since core is no
+  longer installed separately. Verified the bundle has zero `@weavster/core` references, keeps its
+  shebang, and runs init/validate/test green.
+- What is next: add the `NPM_TOKEN` repo secret and push the `v0.0.1` tag to trigger the publish
+  (see `docs/RELEASE.md`).
+
 ## 2026-06-05 — M9 slice 2: developer experience (MVP complete)
 
 - What changed: Filled the two placeholder docs pages — a "first 30 minutes" Getting Started
