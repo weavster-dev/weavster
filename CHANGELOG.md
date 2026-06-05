@@ -14,6 +14,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M8 TypeScript escape hatch: a `ts` transform step runs a custom function from the project's
+  `functions/<module>.ts`. The contract is pure JSON in / JSON out (WASM-portable); the core
+  engine takes injected functions (`applyFlow(doc, flow, { functions })`) and the CLI loads
+  them on demand via jiti. `from`/`to` operate on a subpath (default the whole document).
+  Added a golden-path example function, a TypeScript Transforms docs page, and tests.
 - RFC 0001 (`docs/rfcs/0001-v0alpha2-dsl.md`): design for the v0alpha2 transform DSL — a
   MongoDB-flavored expression model on a patch-by-default pipeline (`$path` refs, `_op`
   operators), folding in the M7 cleanup. Draft only; targeted post-M8.

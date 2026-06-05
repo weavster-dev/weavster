@@ -212,6 +212,47 @@ describe('when', () => {
   });
 });
 
+describe('ts', () => {
+  const functions = {
+    addName: (o: any) => ({ ...o, name: `${o.first} ${o.last}` }),
+    up: (s: any) => String(s).toUpperCase(),
+    boom: () => {
+      throw new Error('boom');
+    },
+    withFn: () => ({ a: 1, f: () => 0 }),
+  };
+  const runTs = (value: unknown, steps: Flow['steps']) =>
+    toValue(applyFlow(docOf(value), { steps }, { functions }).root);
+
+  it('runs a function on the whole document by default', () => {
+    expect(runTs({ first: 'jane', last: 'doe' }, [{ op: 'ts', module: 'addName' }])).toEqual({
+      first: 'jane',
+      last: 'doe',
+      name: 'jane doe',
+    });
+  });
+
+  it('runs a function on a from/to subpath', () => {
+    expect(
+      runTs({ code: 'ab', keep: 1 }, [{ op: 'ts', module: 'up', from: 'code', to: 'code' }]),
+    ).toEqual({ code: 'AB', keep: 1 });
+  });
+
+  it('errors on a missing function', () => {
+    expect(() => runTs({}, [{ op: 'ts', module: 'nope' }])).toThrow(
+      /step 0 \(ts\).*no function "nope"/,
+    );
+  });
+
+  it('wraps a thrown error with step context', () => {
+    expect(() => runTs({}, [{ op: 'ts', module: 'boom' }])).toThrow(/step 0 \(ts\): boom/);
+  });
+
+  it('drops non-JSON output through the JSON boundary', () => {
+    expect(runTs({}, [{ op: 'ts', module: 'withFn' }])).toEqual({ a: 1 });
+  });
+});
+
 describe('applyFlow', () => {
   it('runs steps in order as a pipeline', () => {
     const flow: Flow = {

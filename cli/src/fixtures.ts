@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { type Flow, applyFlow, json, toValue } from '@weavster/core';
+import { type Flow, type TransformFn, applyFlow, json, toValue } from '@weavster/core';
 import { loadFlow } from './flow.js';
+import { loadFunctions } from './functions.js';
 
 const FIXTURES_DIR = 'fixtures';
 const INPUT_FILE = 'input.json';
@@ -41,7 +42,7 @@ const subdirs = (dir: string): string[] =>
  * `fixtures/<flow>/<case>/{input,expected}.json`. Each case's input is parsed,
  * run through `flows/<flow>.yaml`, and compared to the expected output.
  */
-export function runFixtures(path: string): TestRunResult {
+export async function runFixtures(path: string): Promise<TestRunResult> {
   const dir = resolveProjectDir(path);
   const fixturesDir = join(dir, FIXTURES_DIR);
 
@@ -61,21 +62,27 @@ export function runFixtures(path: string): TestRunResult {
   const results: FixtureResult[] = [];
   for (const flowName of flows) {
     const { flow, errors } = loadFlow(dir, flowName);
+    const load = flow === null ? { functions: {}, errors } : await loadFunctions(dir, flow);
     const cases = subdirs(join(fixturesDir, flowName));
     for (const caseName of cases) {
       const name = `${flowName}/${caseName}`;
-      if (flow === null) {
-        results.push({ name, ok: false, error: `flow "${flowName}": ${errors.join('; ')}` });
+      if (flow === null || load.errors.length > 0) {
+        results.push({ name, ok: false, error: `flow "${flowName}": ${load.errors.join('; ')}` });
         continue;
       }
-      results.push(runCase(join(fixturesDir, flowName, caseName), name, flow));
+      results.push(runCase(join(fixturesDir, flowName, caseName), name, flow, load.functions));
     }
   }
 
   return { ok: results.every((r) => r.ok), results, errors: [] };
 }
 
-function runCase(caseDir: string, name: string, flow: Flow): FixtureResult {
+function runCase(
+  caseDir: string,
+  name: string,
+  flow: Flow,
+  functions: Record<string, TransformFn>,
+): FixtureResult {
   const inputPath = join(caseDir, INPUT_FILE);
   const expectedPath = join(caseDir, EXPECTED_FILE);
 
@@ -90,7 +97,7 @@ function runCase(caseDir: string, name: string, flow: Flow): FixtureResult {
   let expected: unknown;
   try {
     const doc = json.parse(readFileSync(inputPath, 'utf8'));
-    actual = toValue(applyFlow(doc, flow).root);
+    actual = toValue(applyFlow(doc, flow, { functions }).root);
   } catch (err) {
     return { name, ok: false, error: `${INPUT_FILE}: ${String(err)}` };
   }

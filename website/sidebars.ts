@@ -9,6 +9,7 @@ const sidebars: SidebarsConfig = {
     'config',
     'formats',
     'dsl',
+    'typescript',
     'testing',
     'architecture',
     'contributing',

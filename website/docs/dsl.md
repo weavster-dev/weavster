@@ -146,7 +146,8 @@ ships `flows/order.yaml` exercised end to end.
 
 ## When not to use config
 
-The DSL is for straightforward field-level reshaping. Reach for the (future) TypeScript
-escape hatch instead when a transform needs real logic — lookups against external data,
-non-trivial branching, or computation the step list cannot express clearly. If a flow grows
-a long tail of conditional steps to fake control flow, that is the signal to drop to code.
+The DSL is for straightforward field-level reshaping. Reach for the
+[TypeScript escape hatch](./typescript.md) instead when a transform needs real logic —
+lookups against external data, non-trivial branching, or computation the step list cannot
+express clearly. If a flow grows a long tail of conditional steps to fake control flow, that
+is the signal to drop to code.

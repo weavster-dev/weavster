@@ -7,7 +7,7 @@
  * returned. Steps operate only on the canonical model, so the same flow runs
  * regardless of whether the input arrived as JSON or XML.
  */
-import { type Document, type Node, type Scalar, fromValue, isScalar } from './model.js';
+import { type Document, type Node, type Scalar, fromValue, isScalar, toValue } from './model.js';
 import { type Segment, get, remove, set } from './path.js';
 
 /** A single transform step. The `op` field selects the operation. */
@@ -20,6 +20,22 @@ export interface Flow {
   steps: Step[];
 }
 
+/**
+ * A custom transform function (the TypeScript escape hatch). The contract is
+ * pure JSON in, JSON out — the same shape that crosses a WASM boundary in
+ * production — so a function authored here stays portable.
+ */
+export type TransformFn = (value: unknown) => unknown;
+
+export interface RunOptions {
+  /** Functions referenced by `ts` steps, keyed by module name. */
+  functions?: Record<string, TransformFn>;
+}
+
+interface Context {
+  functions: Record<string, TransformFn>;
+}
+
 /** Thrown when a step references a bad path or is otherwise malformed. */
 export class TransformError extends Error {
   constructor(message: string) {
@@ -28,7 +44,7 @@ export class TransformError extends Error {
   }
 }
 
-type OpFn = (working: Document, step: Step) => void;
+type OpFn = (working: Document, step: Step, ctx: Context) => void;
 
 function requirePath(step: Step, key: string): string | Segment[] {
   const value = step[key];
@@ -143,7 +159,7 @@ const OPS: Record<string, OpFn> = {
   },
 
   /** Run `then` when `cond` holds, otherwise `else` (if present). */
-  when(working, step) {
+  when(working, step, ctx) {
     if (!Array.isArray(step.then)) throw new TransformError('"then" must be a list of steps');
     if (step.else !== undefined && !Array.isArray(step.else)) {
       throw new TransformError('"else" must be a list of steps');
@@ -151,17 +167,49 @@ const OPS: Record<string, OpFn> = {
     const branch = evalCond(working, step.cond as Cond | undefined)
       ? (step.then as Step[])
       : ((step.else as Step[] | undefined) ?? []);
-    runSteps(working, branch);
+    runSteps(working, branch, ctx);
+  },
+
+  /**
+   * Run a custom TypeScript function (escape hatch) on a JSON value. Reads
+   * `from` (default the whole document), passes the value to the named
+   * function, and writes the JSON-serialized result to `to` (default the root).
+   */
+  ts(working, step, ctx) {
+    if (typeof step.module !== 'string') throw new TransformError('"module" must be a string');
+    const fn = ctx.functions[step.module];
+    if (fn === undefined) throw new TransformError(`no function "${step.module}"`);
+
+    const input =
+      step.from === undefined
+        ? toValue(working.root)
+        : toValue(requireNode(working, requirePath(step, 'from')));
+
+    const node = fromValue(toJson(fn(input)));
+    if (step.to === undefined) {
+      working.root = node;
+    } else {
+      set(working, requirePath(step, 'to'), node);
+    }
   },
 };
 
+/** Coerce a function's result through the JSON boundary (matches WASM I/O). */
+function toJson(value: unknown): unknown {
+  try {
+    return JSON.parse(JSON.stringify(value === undefined ? null : value));
+  } catch {
+    throw new TransformError('result is not JSON-serializable');
+  }
+}
+
 /** Run a list of steps against the working document. Recurses for nested branches. */
-function runSteps(working: Document, steps: Step[]): void {
+function runSteps(working: Document, steps: Step[], ctx: Context): void {
   steps.forEach((step, index) => {
     const op = OPS[step.op];
     if (op === undefined) throw new TransformError(`step ${index}: unknown op "${step.op}"`);
     try {
-      op(working, step);
+      op(working, step, ctx);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       throw new TransformError(`step ${index} (${step.op}): ${message}`);
@@ -170,11 +218,11 @@ function runSteps(working: Document, steps: Step[]): void {
 }
 
 /** Run a flow against a document, returning a new transformed document. */
-export function applyFlow(doc: Document, flow: Flow): Document {
+export function applyFlow(doc: Document, flow: Flow, options: RunOptions = {}): Document {
   const working: Document = {
     root: structuredClone(doc.root),
     meta: { ...doc.meta, errors: [...doc.meta.errors] },
   };
-  runSteps(working, flow.steps);
+  runSteps(working, flow.steps, { functions: options.functions ?? {} });
   return working;
 }
