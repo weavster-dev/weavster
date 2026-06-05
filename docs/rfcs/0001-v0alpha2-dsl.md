@@ -188,7 +188,17 @@ become the expression namespace, validation noise fixed.
 
 ## Sequencing
 
-1. Finish M8 (TypeScript escape hatch) on the v0alpha1 DSL.
+Agreed order: **M8 → v0alpha2 → M9** (a deliberate reorder of the MVP plan's M8 → M9).
+Rationale: M8 (the TypeScript escape hatch) is largely orthogonal to DSL syntax — it rides on
+the canonical model, and its only touchpoint is the step keyword — so it lands cleanly on
+v0alpha1. M9 (golden-path example, quickstart, full DSL reference) is the most user-facing,
+most-copied surface, so it should be written **once** against the final v0alpha2 syntax rather
+than written on v0alpha1 and redone. The project is pre-release (`v0alpha`), so breaking the
+DSL before M9 is cheap; breaking it after M9 ships examples people copy is not.
+
+1. Finish M8 (TypeScript escape hatch) on the v0alpha1 DSL (only the step keyword needs later
+   migration).
 2. Resolve the open questions on this RFC.
-3. Implement v0alpha2 in core (expression evaluator + structural ops), bump the schema,
-   update the CLI loader, migrate the golden-path flow, rewrite the DSL docs.
+3. Implement v0alpha2 in core (expression evaluator + structural ops), bump the schema, update
+   the CLI loader, and migrate any flows.
+4. Then M9 — write the golden-path example, quickstart, and DSL reference against v0alpha2.
