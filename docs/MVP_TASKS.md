@@ -216,24 +216,24 @@ helpers, (3) conditionals, (4) wire golden-path + DSL reference._
 
 ### Contract design
 
-- [ ] Define custom TypeScript step contract.
-- [ ] Define input and output boundaries.
-- [ ] Decide how TypeScript code is loaded and executed.[cite:53][cite:56]
-- [ ] Decide how safety and validation errors are surfaced.
+- [x] Define custom TypeScript step contract. _(`ts` op; default export `(json) => json`)_
+- [x] Define input and output boundaries. _(pure JSON in/out via a JSON boundary; WASM-portable)_
+- [x] Decide how TypeScript code is loaded and executed. _(CLI loads `functions/<m>.ts` via jiti, injects into core; local in-process)_
+- [x] Decide how safety and validation errors are surfaced. _(step-scoped `TransformError`; non-JSON output dropped)_
 
 ### Implementation
 
-- [ ] Add runtime support for custom TypeScript step.
-- [ ] Add contract validation around custom step input/output.
-- [ ] Add tests for successful custom steps.
-- [ ] Add tests for failing custom steps.
+- [x] Add runtime support for custom TypeScript step. _(`ts` op + injected `functions`)_
+- [x] Add contract validation around custom step input/output. _(JSON boundary on the result)_
+- [x] Add tests for successful custom steps.
+- [x] Add tests for failing custom steps. _(missing module, thrown error, non-JSON output)_
 
 ### Docs and understanding
 
-- [ ] Write TypeScript transforms docs.
-- [ ] Add one minimal custom transform example.
-- [ ] Add one rule-of-thumb section: config first, TypeScript second.
-- [ ] Add a dev log entry on where custom code enters and leaves the system.
+- [x] Write TypeScript transforms docs. _(TypeScript Transforms page)_
+- [x] Add one minimal custom transform example. _(golden-path `functions/initials.ts`)_
+- [x] Add one rule-of-thumb section: config first, TypeScript second.
+- [x] Add a dev log entry on where custom code enters and leaves the system. _(see DEV_LOG M8 entry)_
 
 ## Milestone 9 — Golden-path example and developer experience
 

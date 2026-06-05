@@ -13,6 +13,29 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — M8 TypeScript escape hatch
+
+- What changed: Added the `ts` op — a custom-code escape hatch. Where custom code enters and
+  leaves the system: the CLI's `cli/src/functions.ts` scans a flow (recursing into `when`
+  branches) for `ts` steps, loads each `functions/<module>.ts` via jiti (runtime TS import, no
+  build step), and passes a `{ name: fn }` registry to `applyFlow(doc, flow, { functions })`.
+  In core, the `ts` op reads `from` (default the whole document) as a native JS value, calls the
+  function, takes the result through a JSON boundary (`JSON.parse(JSON.stringify(...))`), and
+  writes it to `to` (default the root). Engine stays pure — it never touches the filesystem or
+  jiti; functions are injected. Added the `ts` schema variant, a golden-path example function
+  (`initials.ts`) wired into the order flow, a harness project, the TypeScript Transforms docs,
+  and tests.
+- What I learned: The JSON boundary is doing real work — it both enforces the portability
+  contract (anything non-JSON, e.g. a function value, is dropped) and mirrors exactly what will
+  cross the WASM boundary in production, so a function authored here ports unchanged. Keeping
+  function loading in the CLI (not core) preserved core's purity and unit-testability — core
+  tests inject fake functions; only the CLI depends on jiti + the filesystem. A real bug:
+  `jiti.import` resolves a relative path against jiti's own base, not the cwd, so the module path
+  must be absolutized (`resolve(...)`) before import — the `existsSync` check passed on a
+  cwd-relative path while jiti failed on the same string. `runFixtures` went async because jiti
+  loads are async; the test command already used `parseAsync`.
+- What is next: v0alpha2 DSL (RFC 0001) — resolve open questions, then implement; M9 after.
+
 ## 2026-06-05 — RFC 0001: v0alpha2 DSL (design)
 
 - What changed: Wrote `docs/rfcs/0001-v0alpha2-dsl.md` capturing the next-gen transform DSL

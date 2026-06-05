@@ -22,3 +22,5 @@ steps:
       - op: default
         at: priority
         value: normal
+  - op: ts
+    module: initials

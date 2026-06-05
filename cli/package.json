@@ -19,6 +19,7 @@
     "@weavster/core": "workspace:*",
     "ajv": "^8.17.1",
     "commander": "^13.1.0",
+    "jiti": "^2.7.0",
     "yaml": "^2.7.0"
   },
   "devDependencies": {

@@ -6,8 +6,8 @@ export function registerTest(program: Command): void {
     .command('test')
     .description("Run a project's fixtures and compare output against expected")
     .argument('[path]', 'project directory', '.')
-    .action((path: string) => {
-      const run = runFixtures(path);
+    .action(async (path: string) => {
+      const run = await runFixtures(path);
 
       for (const error of run.errors) {
         console.error(`✗ ${error}`);

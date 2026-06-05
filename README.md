@@ -33,6 +33,9 @@ them locally, test them with fixtures, and run them through a modular engine.
   `concat`, `str` (upper/lower/trim), `date` (toIso), and `when` (conditional then/else), with
   step-scoped errors. Driven from `flows/*.yaml` via `weavster test`. See
   [Transform DSL](https://docs.weavster.dev/dsl).
+- TypeScript escape hatch (`ts` step): runs a custom `functions/<module>.ts` (pure JSON in/out,
+  loaded via jiti) when the declarative DSL isn't enough. See
+  [TypeScript Transforms](https://docs.weavster.dev/typescript).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
 - Editor/formatter config (`.editorconfig`, Prettier).
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog

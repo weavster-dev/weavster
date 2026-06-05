@@ -117,6 +117,17 @@
             "then": { "type": "array", "items": { "$ref": "#/$defs/step" } },
             "else": { "type": "array", "items": { "$ref": "#/$defs/step" } }
           }
+        },
+        {
+          "description": "Run a custom TypeScript function on a JSON value (escape hatch).",
+          "additionalProperties": false,
+          "required": ["op", "module"],
+          "properties": {
+            "op": { "const": "ts" },
+            "module": { "type": "string", "minLength": 1 },
+            "from": { "$ref": "#/$defs/path" },
+            "to": { "$ref": "#/$defs/path" }
+          }
         }
       ]
     }

@@ -4,5 +4,6 @@
   "first": "jane",
   "last": "doe",
   "name": "jane doe",
-  "priority": "high"
+  "priority": "high",
+  "initials": "JD"
 }

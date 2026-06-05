@@ -4,5 +4,6 @@
   "first": "john",
   "last": "roe",
   "name": "john roe",
-  "priority": "normal"
+  "priority": "normal",
+  "initials": "JR"
 }
