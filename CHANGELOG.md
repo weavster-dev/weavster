@@ -14,6 +14,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- v0alpha2 DSL (slice 2, internal): value operators (`_concat`, `_upper`/`_lower`/`_trim`,
+  `_toIso`, `_coalesce`, `_eq`, `_exists`, `_gt`/`_lt`/`_in`, `_and`/`_or`/`_not`, `_cond`) and
+  the remaining structural ops (`_rename`, `_append`, `_select` strict projection, `_when` with
+  an expression condition). Still internal — not wired into the CLI.
 - v0alpha2 DSL (slice 1, internal): expression evaluator (`core/src/dsl/expr.ts`) with `$path`
   references, `$$` escape, deep array/object evaluation, and `_lit`; plus a patch-by-default
   engine (`core/src/dsl/engine.ts`) with the first structural ops `_set` and `_unset`. Not yet

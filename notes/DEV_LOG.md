@@ -13,6 +13,26 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — v0alpha2 slice 2: value operators + rest of structural ops
+
+- What changed: Filled in `VALUE_OPS` (`dsl/expr.ts`) and the structural op table (`dsl/engine.ts`).
+  Value operators: `_concat` (array or `{ parts, sep }`), `_upper`/`_lower`/`_trim`, `_toIso`,
+  `_coalesce`, `_eq`, `_exists`, `_gt`/`_lt`/`_in`, `_and`/`_or`/`_not`, `_cond`. Structural ops:
+  `_rename` (move, skip missing source), `_append` (push to an array, create if absent, error if
+  the target is a non-array), `_select` (strict projection — build a fresh root from only the
+  named paths), `_when` (run then/else by an expression condition; recurses, nests error context).
+  Still internal; the CLI runs v0alpha1 until slice 3.
+- What I learned: Operators compose because each calls `evalExpr` on its own sub-args — `_cond`
+  evaluates only the taken branch, `_when` is just `_cond` at the step level over sub-pipelines,
+  and `_select` is `_set` into an empty root. Predicate truthiness is plain JS `Boolean(...)`, and
+  the comparison ops return real booleans, so conditions read naturally. Two coercion rules kept
+  consistent via one helper: `_concat`/string ops treat null/undefined as `''`; `_coalesce` skips
+  both null and undefined. A test trap to remember: putting `key: undefined` in a fixture input
+  object is not "absent" — `fromValue` turns it into a `null`, so test missing-ness with a path
+  that genuinely isn't there.
+- What is next: v0alpha2 slice 3 — bump the schema to a single-key `_op` form, cut the CLI over
+  to the v0alpha2 engine, remove v0alpha1, migrate the golden-path flow, and rewrite the DSL docs.
+
 ## 2026-06-05 — v0alpha2 slice 1: expression evaluator + \_set/\_unset
 
 - What changed: Started the v0alpha2 DSL (RFC 0001) as new modules under `core/src/dsl/` so it

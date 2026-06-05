@@ -20,8 +20,80 @@ export interface Ctx {
 
 export type ValueOp = (arg: unknown, ctx: Ctx) => unknown;
 
-/** Value operators (`_concat`, comparisons, …). Populated as the DSL grows. */
-export const VALUE_OPS: Record<string, ValueOp> = {};
+const toStr = (value: unknown): string =>
+  value === null || value === undefined ? '' : String(value);
+const deepEqual = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
+
+function pair(arg: unknown, op: string): [unknown, unknown] {
+  if (!Array.isArray(arg) || arg.length !== 2) {
+    throw new TransformError(`"${op}" expects a list of two expressions`);
+  }
+  return [arg[0], arg[1]];
+}
+
+function list(arg: unknown, op: string): unknown[] {
+  if (!Array.isArray(arg)) throw new TransformError(`"${op}" expects a list`);
+  return arg;
+}
+
+function record(arg: unknown, op: string): Record<string, unknown> {
+  if (arg === null || typeof arg !== 'object' || Array.isArray(arg)) {
+    throw new TransformError(`"${op}" expects a map`);
+  }
+  return arg as Record<string, unknown>;
+}
+
+/** Value operators usable in any value position. */
+export const VALUE_OPS: Record<string, ValueOp> = {
+  _concat(arg, ctx) {
+    const parts = Array.isArray(arg) ? arg : list(record(arg, '_concat').parts, '_concat');
+    const sep = Array.isArray(arg) ? '' : toStr(record(arg, '_concat').sep);
+    return parts.map((p) => toStr(evalExpr(p, ctx))).join(sep);
+  },
+  _upper: (arg, ctx) => toStr(evalExpr(arg, ctx)).toUpperCase(),
+  _lower: (arg, ctx) => toStr(evalExpr(arg, ctx)).toLowerCase(),
+  _trim: (arg, ctx) => toStr(evalExpr(arg, ctx)).trim(),
+  _toIso(arg, ctx) {
+    const date = new Date(toStr(evalExpr(arg, ctx)));
+    if (Number.isNaN(date.getTime())) throw new TransformError('"_toIso" got an unparseable date');
+    return date.toISOString();
+  },
+  _coalesce(arg, ctx) {
+    for (const expr of list(arg, '_coalesce')) {
+      const value = evalExpr(expr, ctx);
+      if (value !== null && value !== undefined) return value;
+    }
+    return null;
+  },
+  _eq(arg, ctx) {
+    const [a, b] = pair(arg, '_eq');
+    return deepEqual(evalExpr(a, ctx), evalExpr(b, ctx));
+  },
+  _exists: (arg, ctx) => evalExpr(arg, ctx) !== undefined,
+  _gt(arg, ctx) {
+    const [a, b] = pair(arg, '_gt');
+    return (evalExpr(a, ctx) as number) > (evalExpr(b, ctx) as number);
+  },
+  _lt(arg, ctx) {
+    const [a, b] = pair(arg, '_lt');
+    return (evalExpr(a, ctx) as number) < (evalExpr(b, ctx) as number);
+  },
+  _in(arg, ctx) {
+    const [needle, haystack] = pair(arg, '_in');
+    const items = evalExpr(haystack, ctx);
+    if (!Array.isArray(items))
+      throw new TransformError('"_in" expects an array as its second argument');
+    const value = evalExpr(needle, ctx);
+    return items.some((item) => deepEqual(item, value));
+  },
+  _and: (arg, ctx) => list(arg, '_and').every((e) => Boolean(evalExpr(e, ctx))),
+  _or: (arg, ctx) => list(arg, '_or').some((e) => Boolean(evalExpr(e, ctx))),
+  _not: (arg, ctx) => !evalExpr(arg, ctx),
+  _cond(arg, ctx) {
+    const o = record(arg, '_cond');
+    return Boolean(evalExpr(o.if, ctx)) ? evalExpr(o.then, ctx) : evalExpr(o.else, ctx);
+  },
+};
 
 function isOperator(keys: string[]): boolean {
   return keys.length === 1 && keys[0].startsWith('_');

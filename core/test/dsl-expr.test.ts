@@ -45,3 +45,57 @@ describe('evalExpr', () => {
     expect(() => evalExpr({ _nope: 1 }, ctxOf({}))).toThrow(TransformError);
   });
 });
+
+describe('value operators', () => {
+  const ctx = ctxOf({ first: 'jane', last: 'doe', n: 5, tags: ['a', 'b'], when: '2026-06-04' });
+
+  it('_concat joins, in array or { parts, sep } form', () => {
+    expect(evalExpr({ _concat: ['$first', '!'] }, ctx)).toBe('jane!');
+    expect(evalExpr({ _concat: { parts: ['$first', '$last'], sep: ' ' } }, ctx)).toBe('jane doe');
+  });
+
+  it('_upper / _lower / _trim', () => {
+    expect(evalExpr({ _upper: '$first' }, ctx)).toBe('JANE');
+    expect(evalExpr({ _lower: 'AB' }, ctx)).toBe('ab');
+    expect(evalExpr({ _trim: '  x ' }, ctx)).toBe('x');
+  });
+
+  it('_toIso converts a date, or throws on an unparseable one', () => {
+    expect(evalExpr({ _toIso: '$when' }, ctx)).toBe('2026-06-04T00:00:00.000Z');
+    expect(() => evalExpr({ _toIso: 'nope' }, ctx)).toThrow(TransformError);
+  });
+
+  it('_coalesce returns the first non-null', () => {
+    expect(evalExpr({ _coalesce: ['$missing', '$first'] }, ctx)).toBe('jane');
+    expect(evalExpr({ _coalesce: ['$missing', null] }, ctx)).toBeNull();
+  });
+
+  it('_eq and _exists', () => {
+    expect(evalExpr({ _eq: ['$first', 'jane'] }, ctx)).toBe(true);
+    expect(evalExpr({ _eq: ['$first', 'x'] }, ctx)).toBe(false);
+    expect(evalExpr({ _exists: '$first' }, ctx)).toBe(true);
+    expect(evalExpr({ _exists: '$missing' }, ctx)).toBe(false);
+  });
+
+  it('_gt / _lt / _in', () => {
+    expect(evalExpr({ _gt: ['$n', 3] }, ctx)).toBe(true);
+    expect(evalExpr({ _lt: ['$n', 3] }, ctx)).toBe(false);
+    expect(evalExpr({ _in: ['$last', ['doe', 'roe']] }, ctx)).toBe(true);
+    expect(evalExpr({ _in: ['b', '$tags'] }, ctx)).toBe(true);
+  });
+
+  it('_and / _or / _not', () => {
+    expect(evalExpr({ _and: [{ _eq: ['$first', 'jane'] }, { _gt: ['$n', 1] }] }, ctx)).toBe(true);
+    expect(evalExpr({ _or: [{ _eq: ['$first', 'x'] }, { _gt: ['$n', 1] }] }, ctx)).toBe(true);
+    expect(evalExpr({ _not: { _eq: ['$first', 'x'] } }, ctx)).toBe(true);
+  });
+
+  it('_cond chooses a branch and evaluates only the taken one', () => {
+    expect(evalExpr({ _cond: { if: { _gt: ['$n', 3] }, then: 'big', else: 'small' } }, ctx)).toBe(
+      'big',
+    );
+    expect(evalExpr({ _cond: { if: { _lt: ['$n', 3] }, then: 'big', else: 'small' } }, ctx)).toBe(
+      'small',
+    );
+  });
+});
