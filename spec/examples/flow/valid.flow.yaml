@@ -21,3 +21,15 @@ steps:
   - op: default
     at: status
     value: new
+  - op: when
+    cond:
+      path: status
+      equals: new
+    then:
+      - op: default
+        at: priority
+        value: high
+    else:
+      - op: default
+        at: priority
+        value: normal

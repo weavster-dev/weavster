@@ -96,6 +96,27 @@
             "from": { "$ref": "#/$defs/path" },
             "to": { "$ref": "#/$defs/path" }
           }
+        },
+        {
+          "description": "Run `then` when `cond` holds, otherwise `else`.",
+          "additionalProperties": false,
+          "required": ["op", "cond", "then"],
+          "properties": {
+            "op": { "const": "when" },
+            "cond": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["path"],
+              "properties": {
+                "path": { "$ref": "#/$defs/path" },
+                "equals": {},
+                "exists": { "type": "boolean" }
+              },
+              "oneOf": [{ "required": ["equals"] }, { "required": ["exists"] }]
+            },
+            "then": { "type": "array", "items": { "$ref": "#/$defs/step" } },
+            "else": { "type": "array", "items": { "$ref": "#/$defs/step" } }
+          }
         }
       ]
     }

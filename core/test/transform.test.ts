@@ -122,6 +122,96 @@ describe('date', () => {
   });
 });
 
+describe('when', () => {
+  it('runs the then branch when equals matches', () => {
+    expect(
+      run({ status: 'new' }, [
+        {
+          op: 'when',
+          cond: { path: 'status', equals: 'new' },
+          then: [{ op: 'default', at: 'priority', value: 'high' }],
+        },
+      ]),
+    ).toEqual({ status: 'new', priority: 'high' });
+  });
+
+  it('runs the else branch when the condition is false', () => {
+    expect(
+      run({ status: 'done' }, [
+        {
+          op: 'when',
+          cond: { path: 'status', equals: 'new' },
+          then: [{ op: 'default', at: 'priority', value: 'high' }],
+          else: [{ op: 'default', at: 'priority', value: 'low' }],
+        },
+      ]),
+    ).toEqual({ status: 'done', priority: 'low' });
+  });
+
+  it('does nothing when false and there is no else', () => {
+    expect(
+      run({ status: 'done' }, [
+        {
+          op: 'when',
+          cond: { path: 'status', equals: 'new' },
+          then: [{ op: 'default', at: 'priority', value: 'high' }],
+        },
+      ]),
+    ).toEqual({ status: 'done' });
+  });
+
+  it('tests presence with exists', () => {
+    expect(
+      run({}, [
+        {
+          op: 'when',
+          cond: { path: 'x', exists: false },
+          then: [{ op: 'default', at: 'x', value: 1 }],
+        },
+      ]),
+    ).toEqual({ x: 1 });
+    expect(
+      run({ x: 9 }, [
+        {
+          op: 'when',
+          cond: { path: 'x', exists: true },
+          then: [{ op: 'default', at: 'seen', value: true }],
+        },
+      ]),
+    ).toEqual({ x: 9, seen: true });
+  });
+
+  it('treats equals against a missing or non-scalar value as false', () => {
+    expect(
+      run({}, [
+        {
+          op: 'when',
+          cond: { path: 'k', equals: 'v' },
+          then: [{ op: 'default', at: 'hit', value: 1 }],
+        },
+      ]),
+    ).toEqual({});
+  });
+
+  it('reports nested step errors with the when context', () => {
+    expect(() =>
+      run({ a: 1 }, [
+        {
+          op: 'when',
+          cond: { path: 'a', equals: 1 },
+          then: [{ op: 'map', from: 'missing', to: 'y' }],
+        },
+      ]),
+    ).toThrow(/step 0 \(when\): step 0 \(map\).*missing/);
+  });
+
+  it('errors on a malformed condition', () => {
+    expect(() => run({}, [{ op: 'when', cond: { path: 'a' }, then: [] }])).toThrow(
+      /equals.*exists/,
+    );
+  });
+});
+
 describe('applyFlow', () => {
   it('runs steps in order as a pipeline', () => {
     const flow: Flow = {

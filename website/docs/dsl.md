@@ -99,6 +99,31 @@ as a date and writes it back as an ISO-8601 UTC string; an unparseable value is 
   from: createdAt # '2026-06-04' -> '2026-06-04T00:00:00.000Z'
 ```
 
+### `when`
+
+Run a nested list of steps conditionally. `cond` is a single predicate — a `path` tested
+with either `equals` (matches a literal) or `exists` (`true`/`false` for presence). Steps in
+`then` run when the condition holds; `else` (optional) runs otherwise. Branches are full
+sub-pipelines, so `when` can nest.
+
+```yaml
+- op: when
+  cond:
+    path: status
+    equals: new
+  then:
+    - op: default
+      at: priority
+      value: high
+  else:
+    - op: default
+      at: priority
+      value: normal
+```
+
+A missing path, or a value that is not a scalar, makes `equals` false. Combine conditions by
+nesting `when` inside `then`; negate by using `else`.
+
 ## Errors
 
 A step that references a missing source path, or that targets an impossible location (for
