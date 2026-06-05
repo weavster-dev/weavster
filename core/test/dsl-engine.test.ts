@@ -50,6 +50,65 @@ describe('_unset', () => {
   });
 });
 
+describe('_rename', () => {
+  it('moves a path and skips missing sources', () => {
+    expect(
+      run({ order: { '@id': 'A1' } }, [{ _rename: { 'order.@id': 'id', 'order.nope': 'x' } }]),
+    ).toEqual({ order: {}, id: 'A1' });
+  });
+});
+
+describe('_append', () => {
+  it('creates the array when absent', () => {
+    expect(run({}, [{ _append: { to: 'ids', value: 'x' } }])).toEqual({ ids: ['x'] });
+  });
+
+  it('appends to an existing array', () => {
+    expect(
+      run({ ids: ['a'] }, [{ _append: { to: 'ids', value: '$seed' } }, { _set: { seed: 'b' } }]),
+    ).toEqual({ ids: ['a', null], seed: 'b' });
+  });
+
+  it('errors when the target is not an array', () => {
+    expect(() => run({ ids: 1 }, [{ _append: { to: 'ids', value: 'x' } }])).toThrow(/not an array/);
+  });
+});
+
+describe('_select', () => {
+  it('keeps only the named paths (strict projection)', () => {
+    expect(
+      run({ a: 1, b: 2, c: 3 }, [{ _select: { x: '$a', y: { _concat: ['$b', '-', '$c'] } } }]),
+    ).toEqual({ x: 1, y: '2-3' });
+  });
+
+  it('skips a projected key whose value is undefined', () => {
+    expect(run({ a: 1 }, [{ _select: { x: '$a', y: '$missing' } }])).toEqual({ x: 1 });
+  });
+});
+
+describe('_when', () => {
+  it('runs then/else by an expression condition', () => {
+    const steps = (status: string) =>
+      run({ status }, [
+        {
+          _when: {
+            cond: { _eq: ['$status', 'new'] },
+            then: [{ _set: { priority: 'high' } }],
+            else: [{ _set: { priority: 'normal' } }],
+          },
+        },
+      ]);
+    expect(steps('new')).toEqual({ status: 'new', priority: 'high' });
+    expect(steps('done')).toEqual({ status: 'done', priority: 'normal' });
+  });
+
+  it('reports nested step errors with the when context', () => {
+    expect(() => run({}, [{ _when: { cond: true, then: [{ _frob: 1 }] } }])).toThrow(
+      /step 0 \(_when\): step 0: unknown operator "_frob"/,
+    );
+  });
+});
+
 describe('applyFlow', () => {
   it('does not mutate the input document', () => {
     const input = docOf({ a: 1 });
