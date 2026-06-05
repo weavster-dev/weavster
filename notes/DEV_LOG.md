@@ -13,6 +13,27 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — v0alpha2 slice 1: expression evaluator + \_set/\_unset
+
+- What changed: Started the v0alpha2 DSL (RFC 0001) as new modules under `core/src/dsl/` so it
+  can land in stacked slices while v0alpha1 keeps powering the CLI; the cutover (CLI adopts v2,
+  v1 removed) is the final slice. `dsl/expr.ts` is the evaluator: a value position is an
+  expression — `$path` reads from the working doc, `$$x` is the literal `$x`, a single
+  `_`-prefixed key is an operator, and plain arrays/objects evaluate deeply so refs/operators
+  nest anywhere. `_lit` returns its arg verbatim (the escape). `dsl/engine.ts` runs a pipeline
+  of single-key `_op` steps, patch-by-default; slice 1 ships `_set` (set named paths, keep the
+  rest) and `_unset` (remove paths). `dsl/errors.ts` holds `TransformError`.
+- What I learned: Two deliberate semantics. (1) A missing reference evaluates to `undefined` and
+  `_set` _skips_ that key — so copying a maybe-absent field is a no-op, not a null write; an
+  explicit `null` literal still writes. (2) `_set` evaluates all its values against the
+  step-start document before applying any, so sibling keys are independent (`{ a: 2, b: $a }`
+  reads the original `a`) — predictable, matches Mongo `$set`. The `$`/`_`/plain trichotomy
+  lives entirely in the evaluator, so structural ops just call `evalExpr` and never parse sigils
+  themselves. Confirmed decisions: fuller operator set, version implied by project, replace-in-
+  place via a final cutover slice, stacked delivery.
+- What is next: v0alpha2 slice 2 — remaining structural ops (`_rename`/`_append`/`_select`/
+  `_when`) and the value operators (`_concat`, string/date, `_eq`/`_gt`/`_in`/`_and`/…, `_cond`).
+
 ## 2026-06-05 — M8 TypeScript escape hatch
 
 - What changed: Added the `ts` op — a custom-code escape hatch. Where custom code enters and
