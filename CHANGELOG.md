@@ -16,9 +16,10 @@ are bundled in.
 ### Added
 
 - npm release tooling: `@weavster/cli` is published to npm by a tag-triggered (`v*`) GitHub
-  Actions release workflow. The CLI is bundled with tsup — `@weavster/core` and the JSON
-  schemas are inlined — so it installs as a single package; runtime deps (ajv, commander, yaml,
-  jiti, fast-xml-parser) stay external. CI also typechecks the CLI (tsup does not).
+  Actions release workflow, which also creates a GitHub Release with notes pulled from this
+  changelog. The CLI is bundled with tsup — `@weavster/core` and the JSON schemas are inlined —
+  so it installs as a single package; runtime deps (ajv, commander, yaml, jiti, fast-xml-parser)
+  stay external. CI also typechecks the CLI (tsup does not).
 
 ### Fixed
 
