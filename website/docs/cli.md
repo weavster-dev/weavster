@@ -12,7 +12,8 @@ commands documented below are implemented today.
 
 ## `validate`
 
-Validate a project's `weavster.yaml` against the [config schema](./config.md).
+Validate a project's `weavster.yaml` against the [config schema](./config.md), and each
+`flows/*.yaml` against the [flow schema](./dsl.md).
 
 ```bash
 weavster validate [path]
@@ -21,10 +22,11 @@ weavster validate [path]
 - `path` — a project directory or a path to a `weavster.yaml`. Defaults to the
   current directory (`.`).
 
-On success it prints the validated file and exits `0`:
+On success it prints each validated file and exits `0`:
 
 ```text
 ✓ weavster.yaml is valid
+✓ flows/order.yaml is valid
 ```
 
 On failure it prints one path-aware message per problem and exits `1`:
@@ -32,7 +34,8 @@ On failure it prints one path-aware message per problem and exits `1`:
 ```text
 ✗ weavster.yaml
   (root): missing required property "name"
-  /apiVersion: must equal "weavster/v0alpha1"
+✗ flows/order.yaml
+  /steps/0: unknown op "renam"
 ```
 
 ## `test`
@@ -46,32 +49,28 @@ weavster test [path]
 
 - `path` — a project directory. Defaults to the current directory (`.`).
 
-Each fixture case under `fixtures/<case-name>/` is read, run through the project's
-flow, and compared to `expected.json`. On success:
+Each case under `fixtures/<flow>/<case>/` is parsed, run through `flows/<flow>.yaml`, and
+compared to `expected.json`. See the [Testing Guide](./testing.md) for the layout. On
+success:
 
 ```text
-✓ order-passthrough
+✓ order/existing-order
+✓ order/new-order
 
-1/1 fixtures passed
+2/2 fixtures passed
 ```
 
 A failing case prints a diff (`-` expected, `+` actual) and the command exits `1`:
 
 ```text
-✗ changed
+✗ order/new-order
     {
-  -   "a": 2
-  +   "a": 1
+  -   "priority": "normal"
+  +   "priority": "high"
     }
 
-0/1 fixtures passed
+1/2 fixtures passed
 ```
-
-:::note
-M3 runs an identity passthrough: with no transform engine yet, output equals input,
-so a fixture passes when `expected.json` matches `input.json`. The transform DSL
-(later milestones) changes what the flow produces, not how `weavster test` works.
-:::
 
 :::note
 The `weavster` binary is not yet published. From the tool repo, run a command

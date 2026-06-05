@@ -13,6 +13,27 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — M7 slice 4: wire flows into the cli
+
+- What changed: Connected the engine to the CLI (the cli↔core integration deferred since M3).
+  `@weavster/cli` now depends on `@weavster/core`. New `cli/src/flow.ts` loads + schema-validates
+  a flow by name (`flows/<name>.yaml`) and lists/validates all flows. `weavster test` was rewritten:
+  fixtures are now grouped by flow under `fixtures/<flow>/<case>/`; each case's `input.json` is
+  `json.parse`d, run through `applyFlow(doc, flow)`, and `toValue`d for comparison against
+  `expected.json`. `weavster validate` also validates every `flows/*.yaml`. The golden-path example
+  gained a real `flows/order.yaml` (str/concat/when) with transformed fixtures; harness tool-test
+  fixtures were restructured (pass/fail/badflow). Added a vitest alias so cli tests resolve
+  `@weavster/core` from source without a build; `cli:build` now builds core first.
+- What I learned: vitest resolves `@weavster/core` to `core/src` via an alias, but runtime
+  (tsx dev, built dist) resolves the package's `dist` entry — so `cli:build` must build core
+  before cli, and CI already does. The fixture layout encodes the flow mapping in the path
+  (`fixtures/<flow>/<case>`), so no per-case pointer file is needed. Rough edge: a bad `op`
+  produces a noisy ajv error list because the step schema is a `oneOf` over op variants — every
+  branch reports why it failed. Acceptable for now; a future improvement is to discriminate on
+  `op` first and validate against just that variant. The golden path now proves the whole
+  thesis end to end: parse → canonical model → declarative flow → emit → compare.
+- What is next: M8 — TypeScript escape hatch.
+
 ## 2026-06-05 — M7 slice 3: conditional logic
 
 - What changed: Added the `when` op. `cond` is a single predicate — a `path` tested with

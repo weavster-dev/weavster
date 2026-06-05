@@ -136,6 +136,14 @@ step 1 (map): no value at "order.missing"
 
 The flow stops at the first failing step — later steps do not run.
 
+## Running a flow
+
+Flows live in a project's `flows/` directory, one file per concept. `weavster validate`
+checks every flow against the flow schema, and `weavster test` runs a flow over its
+fixtures and compares the output — see the [Testing Guide](./testing.md). The
+[golden-path example](https://github.com/weavster-dev/weavster/tree/main/examples/golden-path)
+ships `flows/order.yaml` exercised end to end.
+
 ## When not to use config
 
 The DSL is for straightforward field-level reshaping. Reach for the (future) TypeScript

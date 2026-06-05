@@ -209,7 +209,7 @@ helpers, (3) conditionals, (4) wire golden-path + DSL reference._
 - [x] Write DSL reference docs. _(Transform DSL page; extended per slice)_
 - [x] Add copy-paste examples.
 - [x] Add one “when not to use config” note.
-- [ ] Walk through one transform execution path in the debugger or logs. _(slice 1 DEV_LOG traces it; revisit once wired into the cli)_
+- [x] Walk through one transform execution path in the debugger or logs. _(slice 4: `weavster test` runs golden-path through the engine; trace in DEV_LOG slice 1)_
 - [x] Add a dev log entry summarizing the execution path. _(see DEV_LOG M7 slice 1 entry)_
 
 ## Milestone 8 — TypeScript escape hatch

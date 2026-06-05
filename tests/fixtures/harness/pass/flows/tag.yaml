@@ -1,0 +1,4 @@
+steps:
+  - op: default
+    at: tag
+    value: ok

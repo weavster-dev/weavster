@@ -6,11 +6,12 @@ import { Ajv, type ErrorObject } from 'ajv';
 // The schema is the source of truth in spec/schemas/. Resolve it relative to
 // this module so it loads the same whether run from src (tsx) or dist (node).
 const here = dirname(fileURLToPath(import.meta.url));
-const schemaPath = resolve(here, '../../spec/schemas/project.schema.json');
-const projectSchema = JSON.parse(readFileSync(schemaPath, 'utf8'));
+const loadSchema = (name: string) =>
+  JSON.parse(readFileSync(resolve(here, `../../spec/schemas/${name}`), 'utf8'));
 
 const ajv = new Ajv({ allErrors: true });
-const validate = ajv.compile(projectSchema);
+const validate = ajv.compile(loadSchema('project.schema.json'));
+const validateFlowSchema = ajv.compile(loadSchema('flow.schema.json'));
 
 export interface ValidationResult {
   valid: boolean;
@@ -22,6 +23,13 @@ export function validateProject(data: unknown): ValidationResult {
   const valid = validate(data) as boolean;
   if (valid) return { valid: true, errors: [] };
   return { valid: false, errors: (validate.errors ?? []).map(formatError) };
+}
+
+/** Validate already-parsed flow data against the flow schema. */
+export function validateFlow(data: unknown): ValidationResult {
+  const valid = validateFlowSchema(data) as boolean;
+  if (valid) return { valid: true, errors: [] };
+  return { valid: false, errors: (validateFlowSchema.errors ?? []).map(formatError) };
 }
 
 /** Turn one Ajv error into a path-aware, human-readable line. */
