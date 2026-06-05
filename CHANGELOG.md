@@ -14,6 +14,10 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- M7 (slice 3) conditional op `when` in `@weavster/core`: a `cond` predicate (`path` tested
+  with `equals` or `exists`) runs nested `then`/`else` sub-step lists. The pipeline recurses,
+  so `when` can nest and nested errors carry the `when` context. Extends `flow.schema.json`
+  and the Transform DSL docs.
 - M7 (slice 2) transform helper ops in `@weavster/core`: `concat` (join `parts` of paths
   and literals with an optional `sep`), `str` (`upper`/`lower`/`trim`), and `date`
   (`toIso`). Extends `flow.schema.json` and the Transform DSL docs.

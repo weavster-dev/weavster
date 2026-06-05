@@ -13,6 +13,25 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — M7 slice 3: conditional logic
+
+- What changed: Added the `when` op. `cond` is a single predicate — a `path` tested with
+  `equals` (literal match) or `exists` (boolean presence). `then` runs when it holds, `else`
+  (optional) otherwise. To support nested branches, the engine's step loop was extracted into
+  `runSteps(working, steps)`, which `applyFlow` and `when` both call; branches are full
+  sub-pipelines. Extended `flow.schema.json` (recursive `then`/`else` via `$ref` to the step
+  def), the valid sample, the DSL docs, and added `when` tests.
+- What I learned: Recursion fell out cleanly once the per-step try/catch lived in `runSteps`
+  rather than `applyFlow` — a failure inside a branch throws a `TransformError` tagged with its
+  own index, and the enclosing `when` step re-wraps it, so the message nests:
+  `step 0 (when): step 0 (map): no value at "missing"`. Predicate semantics chosen for
+  least surprise: `equals` against a missing path or a non-scalar is simply false (not an
+  error), so authors branch on shape without guarding first; only a malformed `cond` (no
+  `equals`/`exists`) throws. Kept the predicate to one comparison — AND is nesting, NOT is the
+  `else` branch — to avoid growing a boolean expression language this slice.
+- What is next: M7 slice 4 — wire flows into the cli (load `flows/`, run via the fixture
+  harness) and finish the golden-path + DSL reference.
+
 ## 2026-06-04 — M7 slice 2: concat + string/date helpers
 
 - What changed: Added three ops to the engine. `concat` joins a `parts` list — each part a

@@ -58,6 +58,25 @@ interface ConcatPart {
   value?: unknown;
 }
 
+/** A `when` predicate: a path tested with `equals` (literal) or `exists` (boolean). */
+interface Cond {
+  path?: unknown;
+  equals?: unknown;
+  exists?: unknown;
+}
+
+/** Evaluate a `when` condition against the working document. */
+function evalCond(working: Document, cond: Cond | undefined): boolean {
+  if (typeof cond?.path !== 'string') throw new TransformError('"cond.path" must be a path string');
+  const node = get(working, cond.path);
+  if ('exists' in cond) return (node !== undefined) === Boolean(cond.exists);
+  if ('equals' in cond) {
+    if (node === undefined || !isScalar(node)) return false;
+    return node.value === cond.equals;
+  }
+  throw new TransformError('"cond" needs an "equals" or "exists"');
+}
+
 const OPS: Record<string, OpFn> = {
   /** Copy the value at `from` to `to`. */
   map(working, step) {
@@ -122,16 +141,23 @@ const OPS: Record<string, OpFn> = {
     if (Number.isNaN(date.getTime())) throw new TransformError(`cannot parse date "${input}"`);
     set(working, to, scalarNode(date.toISOString()));
   },
+
+  /** Run `then` when `cond` holds, otherwise `else` (if present). */
+  when(working, step) {
+    if (!Array.isArray(step.then)) throw new TransformError('"then" must be a list of steps');
+    if (step.else !== undefined && !Array.isArray(step.else)) {
+      throw new TransformError('"else" must be a list of steps');
+    }
+    const branch = evalCond(working, step.cond as Cond | undefined)
+      ? (step.then as Step[])
+      : ((step.else as Step[] | undefined) ?? []);
+    runSteps(working, branch);
+  },
 };
 
-/** Run a flow against a document, returning a new transformed document. */
-export function applyFlow(doc: Document, flow: Flow): Document {
-  const working: Document = {
-    root: structuredClone(doc.root),
-    meta: { ...doc.meta, errors: [...doc.meta.errors] },
-  };
-
-  flow.steps.forEach((step, index) => {
+/** Run a list of steps against the working document. Recurses for nested branches. */
+function runSteps(working: Document, steps: Step[]): void {
+  steps.forEach((step, index) => {
     const op = OPS[step.op];
     if (op === undefined) throw new TransformError(`step ${index}: unknown op "${step.op}"`);
     try {
@@ -141,6 +167,14 @@ export function applyFlow(doc: Document, flow: Flow): Document {
       throw new TransformError(`step ${index} (${step.op}): ${message}`);
     }
   });
+}
 
+/** Run a flow against a document, returning a new transformed document. */
+export function applyFlow(doc: Document, flow: Flow): Document {
+  const working: Document = {
+    root: structuredClone(doc.root),
+    meta: { ...doc.meta, errors: [...doc.meta.errors] },
+  };
+  runSteps(working, flow.steps);
   return working;
 }
