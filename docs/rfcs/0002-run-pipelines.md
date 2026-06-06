@@ -36,14 +36,23 @@ Run it:
 
 ```bash
 weavster run orders     # runs pipelines/orders.yaml
-weavster run            # runs every pipeline in pipelines/
+weavster run            # runs every pipeline in pipelines/ (no flag needed)
 ```
 
-Data flow:
+`run` with no name **always** runs every pipeline in `pipelines/`. There is no `--all` flag —
+running everything is the default, and naming a pipeline narrows to that one.
+
+Data flow — the source yields a stream of documents and the run loop processes each one as it
+arrives, staying live until the source closes:
 
 ```text
-source.read() ──▶ format pack parse ──▶ flow (applyFlow + functions) ──▶ format pack serialize ──▶ sink.write()
+for each document from source:
+  source ──▶ format pack parse ──▶ flow (applyFlow + functions) ──▶ format pack serialize ──▶ sink.write()
 ```
+
+A bounded source (a `file`) yields one document, then closes — the loop runs once and `run`
+exits. An unbounded source (`stdin`, and later REST/SFTP/queues) keeps yielding; `run` blocks
+waiting for the next document and exits only when the source signals end-of-stream.
 
 This reuses everything already built: the JSON/XML packs, the v0alpha2 engine, and the `_ts`
 function loader. Only the source/sink I/O is new — and it lives in the CLI, keeping
@@ -66,11 +75,12 @@ sink: { type: stdout, format: json }
 ```
 
 The connector interface is small and pluggable, so REST/SFTP/etc. slot in later without
-touching the run loop:
+touching the run loop. A source is an async iterable of documents, so the same loop drives both
+a one-shot file and an always-on stream:
 
 ```ts
 interface Source {
-  read(): Promise<string>;
+  documents(): AsyncIterable<string>; // yields once for file; many for stdin/streams
 }
 interface Sink {
   write(text: string): Promise<void>;
@@ -96,15 +106,24 @@ connector types, valid format). `weavster validate` is extended to check every
 
 ## Errors
 
-Each stage surfaces a clear, contextual error and a non-zero exit:
+Errors split by when they happen, because the loop is continuous:
+
+**Startup errors** abort before the loop and exit non-zero:
 
 - pipeline not found / schema-invalid;
-- source read failure (missing file, empty stdin);
+- source open failure (missing file, unreachable endpoint).
+
+**Per-document errors** are scoped to one document and, by default, do **not** kill a live
+pipeline — the document is reported and the loop continues to the next:
+
 - parse failure (`JsonParseError`/`XmlParseError`);
 - transform failure (`TransformError`, already step-scoped);
 - sink write failure (permissions, etc.).
 
-`run` reports which pipeline and which stage failed.
+End-of-stream is not an error: an empty/closed `stdin` or an exhausted `file` ends the loop
+cleanly. For a bounded (one-shot) source, a per-document failure is the only document's failure,
+so `run` exits non-zero; for an unbounded source it logs and keeps running. `run` reports which
+pipeline, which document, and which stage failed.
 
 ## Slices
 
@@ -120,7 +139,10 @@ Each stage surfaces a clear, contextual error and a non-zero exit:
 ## Non-goals (this phase)
 
 - Network connectors (REST, SFTP, TCP) — a later slice, on the same connector interface.
-- Long-running / scheduled / watch execution — `run` is one-shot.
+- Scheduled / cron execution — out of scope for this phase. (`run` itself is **continuous**:
+  like other ESBs, a pipeline stays live and keeps moving data from its source rather than
+  exiting after one document. One-shot processing of a single fixed input is a degenerate case
+  of the continuous loop, not the default.)
 - The `compile` command — deferred until there's a concrete need (e.g. bundling for the
   Rust/WASM runtime).
 - The Rust/WASM production runtime itself.
@@ -129,11 +151,9 @@ Each stage surfaces a clear, contextual error and a non-zero exit:
 ## Open questions
 
 1. **stdio default format** — require `format:` explicitly, or default to `json`?
-2. **`run` default target** — `run` with no name runs all pipelines (proposed); or should it
-   require a name and treat "all" as `run --all`?
-3. **File sink overwrite** — always overwrite, or refuse without `--force`?
-4. **Multiple sources/sinks** — one each for now; is fan-in/fan-out ever needed here?
-5. **Where does a pipeline's flow get its `_ts` functions** — same `functions/` dir as today
+2. **File sink overwrite** — always overwrite, or refuse without `--force`?
+3. **Multiple sources/sinks** — one each for now; is fan-in/fan-out ever needed here?
+4. **Where does a pipeline's flow get its `_ts` functions** — same `functions/` dir as today
    (yes, proposed; the function loader is unchanged).
-6. **Cross-format edge cases** — XML requires a single root element; a JSON→XML pipeline whose
+5. **Cross-format edge cases** — XML requires a single root element; a JSON→XML pipeline whose
    document isn't a single-root object errors at serialize. Document as a limitation.
