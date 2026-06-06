@@ -12,12 +12,14 @@ export function registerRun(program: Command): void {
       // Status goes to stderr so a stdout sink stays pipeable.
       for (const error of report.errors) console.error(`✗ ${error}`);
       for (const result of report.results) {
+        const docs = `${result.documents} document${result.documents === 1 ? '' : 's'}`;
         if (result.ok) {
-          console.error(`✓ ${result.name}`);
-          continue;
+          console.error(`✓ ${result.name} (${docs})`);
+        } else {
+          console.error(`✗ ${result.name}`);
+          if (result.error) console.error(`  ${result.error}`);
         }
-        console.error(`✗ ${result.name}`);
-        if (result.error) console.error(`  ${result.error}`);
+        for (const docError of result.docErrors ?? []) console.error(`  ${docError}`);
       }
       if (report.results.length > 0) {
         const ran = report.results.filter((r) => r.ok).length;

@@ -107,16 +107,18 @@ weavster run [name]
 
 - `name` — a pipeline in `pipelines/`. Omit it to run every pipeline.
 
-Operates on the current directory. Each pipeline reads its `source`, runs its `flow`, and
-writes its `sink`; progress goes to stderr so a `stdout` sink stays pipeable:
+Operates on the current directory. A source yields a stream of documents and each is run
+through the flow and written to the sink (a `file` is one document; `stdin` is line-delimited
+and streams). Progress goes to stderr so a `stdout` sink stays pipeable:
 
 ```text
-✓ order
+✓ order (1 document)
 
 1/1 pipelines ran
 ```
 
-A failing pipeline prints which stage failed and exits `1`:
+A startup failure (bad pipeline, source won't open) — or, on a bounded `file` source, the
+document's own failure — exits `1`:
 
 ```text
 ✗ order

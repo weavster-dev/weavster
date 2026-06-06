@@ -81,20 +81,23 @@ function extFormat(path: string): Format | undefined {
   return undefined;
 }
 
-/** Resolve a source spec to a connector and the format to parse with. */
+/**
+ * Resolve a source spec to a connector, the format to parse with, and whether it is bounded.
+ * A bounded source (file) yields once; an unbounded source (stdin) streams until end-of-stream.
+ */
 export function resolveSource(
   spec: ConnectorSpec,
   projectDir: string,
-): { source: Source; format: Format } {
+): { source: Source; format: Format; bounded: boolean } {
   if (spec.type === 'stdin') {
-    return { source: stdinSource(), format: spec.format as Format };
+    return { source: stdinSource(), format: spec.format as Format, bounded: false };
   }
   const path = join(projectDir, spec.path as string);
   const format = spec.format ?? extFormat(spec.path as string);
   if (format === undefined) {
     throw new Error(`cannot determine source format for "${spec.path}" — add a format`);
   }
-  return { source: fileSource(path), format };
+  return { source: fileSource(path), format, bounded: true };
 }
 
 /** Resolve a sink spec to a connector and format (defaults to the source format). */

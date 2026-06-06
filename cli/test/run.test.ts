@@ -45,7 +45,18 @@ describe('runPipelines', () => {
     );
     const report = await runPipelines(dir);
     expect(report.ok).toBe(true);
-    expect(report.results).toEqual([{ name: 'p', ok: true }]);
+    expect(report.results).toEqual([{ name: 'p', ok: true, documents: 1 }]);
+  });
+
+  it('fails a bounded pipeline whose only document fails to parse', async () => {
+    writeFileSync(join(dir, 'in', 'bad.json'), '{ not json');
+    writePipeline(
+      'p',
+      'source: { type: file, path: in/bad.json }\nflow: main\nsink: { type: file, path: out/x.json }\n',
+    );
+    const report = await runPipelines(dir, 'p');
+    expect(report.ok).toBe(false);
+    expect(report.results[0].error).toMatch(/document 1: invalid JSON/);
   });
 
   it('errors on a missing pipeline', async () => {

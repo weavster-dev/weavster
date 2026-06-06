@@ -1,31 +1,35 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { createInterface } from 'node:readline';
 
-/** A pipeline input: produces the raw text to parse. */
+/** A pipeline input: yields a stream of raw document texts (once for a file, many for a stream). */
 export interface Source {
-  read(): Promise<string>;
+  documents(): AsyncIterable<string>;
 }
 
-/** A pipeline output: consumes the serialized text. */
+/** A pipeline output: consumes each serialized document. */
 export interface Sink {
   write(text: string): Promise<void>;
 }
 
 export function fileSource(path: string): Source {
   return {
-    async read() {
+    async *documents() {
       if (!existsSync(path)) throw new Error(`no input file "${path}"`);
-      return readFileSync(path, 'utf8');
+      yield readFileSync(path, 'utf8');
     },
   };
 }
 
 export function stdinSource(): Source {
   return {
-    async read() {
-      const chunks: Buffer[] = [];
-      for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
-      return Buffer.concat(chunks).toString('utf8');
+    async *documents() {
+      // Line-delimited: each non-empty line is one document, yielded as it arrives.
+      const lines = createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
+      for await (const line of lines) {
+        const text = line.trim();
+        if (text) yield text;
+      }
     },
   };
 }
