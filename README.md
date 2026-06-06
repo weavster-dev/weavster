@@ -63,9 +63,9 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   [TypeScript Transforms](https://docs.weavster.dev/typescript).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
 - Editor/formatter config (`.editorconfig`, Prettier) and Biome linter (`biome.json`).
-- CodeRabbit reviews: the PR template ends with an `@coderabbitai summary` placeholder under a
-  `---`, which CodeRabbit replaces with a high-level summary of the PR (default behavior, no
-  `.coderabbit.yaml` required).
+- CodeRabbit reviews configured in `.coderabbit.yaml`: the high-level summary is written into the
+  PR description, replacing the `@coderabbitai summary` placeholder the PR template ends with
+  (under a `---`). The config also enables the Biome linter and other tools relevant to this repo.
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 

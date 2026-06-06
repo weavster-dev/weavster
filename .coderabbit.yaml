@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  request_changes_workflow: false
+
+  # High-level summary lands in the PR description (not a walkthrough comment),
+  # replacing the `@coderabbitai summary` placeholder in PULL_REQUEST_TEMPLATE.md.
+  high_level_summary: true
+  high_level_summary_placeholder: '@coderabbitai summary'
+  high_level_summary_in_walkthrough: false
+
+  # `@coderabbitai` in a title gets replaced with a generated title.
+  auto_title_placeholder: '@coderabbitai'
+
+  review_status: true
+  commit_status: true
+  collapse_walkthrough: true
+  changed_files_summary: true
+  sequence_diagrams: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  suggested_reviewers: true
+  poem: false
+  abort_on_close: true
+
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+
+  finishing_touches:
+    docstrings:
+      enabled: true
+    unit_tests:
+      enabled: true
+
+  # Linters relevant to a TypeScript/JS pnpm monorepo with Docusaurus docs.
+  # CodeRabbit auto-skips a tool when its config/target files are absent, so the
+  # rest are left at their defaults rather than enumerated here.
+  tools:
+    biome:
+      enabled: true
+    markdownlint:
+      enabled: true
+    yamllint:
+      enabled: true
+    actionlint:
+      enabled: true
+    gitleaks:
+      enabled: true
+    languagetool:
+      enabled: true
+      level: default
+    github-checks:
+      enabled: true
+
+chat:
+  auto_reply: true
+
+knowledge_base:
+  web_search:
+    enabled: true
+  code_guidelines:
+    enabled: true
