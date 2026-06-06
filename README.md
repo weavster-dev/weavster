@@ -62,7 +62,7 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   loaded via jiti) when the declarative DSL isn't enough. See
   [TypeScript Transforms](https://docs.weavster.dev/typescript).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
-- Editor/formatter config (`.editorconfig`, Prettier).
+- Editor/formatter config (`.editorconfig`, Prettier) and Biome linter (`biome.json`).
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
@@ -80,6 +80,7 @@ pnpm docs:start     # run the docs site locally
 pnpm docs:build     # production build of the docs site
 pnpm test           # run all package test suites (core + cli)
 pnpm format         # format with Prettier
+pnpm lint           # lint with Biome
 
 # run a command against a project during development
 pnpm --filter @weavster/cli dev validate ./path/to/project

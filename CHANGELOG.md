@@ -7,6 +7,12 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Biome linter config (`biome.json`) plus `lint` / `lint:fix` scripts. Linter only — Prettier
+  still owns formatting (Biome's formatter and assist are disabled). CodeRabbit auto-detects the
+  config and runs Biome on reviews.
+
 ## [0.0.3] - 2026-06-06
 
 ### Fixed

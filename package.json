@@ -14,9 +14,12 @@
     "cli:link": "pnpm cli:build && cd cli && pnpm link --global",
     "test": "pnpm -r test",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write ."
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.16",
     "prettier": "^3.3.3"
   }
 }
