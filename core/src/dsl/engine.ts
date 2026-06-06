@@ -119,7 +119,7 @@ const STRUCTURAL: Record<string, StructuralOp> = {
     if (spec.else !== undefined && !Array.isArray(spec.else)) {
       throw new TransformError('"_when" "else" must be a step list');
     }
-    const branch = Boolean(evalExpr(spec.cond, ctx))
+    const branch = evalExpr(spec.cond, ctx)
       ? (spec.then as Step[])
       : ((spec.else as Step[] | undefined) ?? []);
     runSteps(working, branch, ctx);

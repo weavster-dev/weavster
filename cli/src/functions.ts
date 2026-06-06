@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import { createJiti } from 'jiti';
 import type { Flow, Step, TransformFn } from '@weavster/core';
 

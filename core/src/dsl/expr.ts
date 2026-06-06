@@ -98,7 +98,7 @@ export const VALUE_OPS: Record<string, ValueOp> = {
   _not: (arg, ctx) => !evalExpr(arg, ctx),
   _cond(arg, ctx) {
     const o = record(arg, '_cond');
-    return Boolean(evalExpr(o.if, ctx)) ? evalExpr(o.then, ctx) : evalExpr(o.else, ctx);
+    return evalExpr(o.if, ctx) ? evalExpr(o.then, ctx) : evalExpr(o.else, ctx);
   },
 };
 
