@@ -43,8 +43,11 @@ Run from a clean checkout:
 
 ## Tag
 
-- [ ] Move the `[Unreleased]` CHANGELOG section under the new version with a date.
-- [ ] Confirm the `NPM_TOKEN` repo secret is set and can publish to the `@weavster` scope.
+- [ ] Move the `[Unreleased]` CHANGELOG section under the new version with a date, and set the
+      new version in `cli/package.json` (and `core/package.json`).
+- [ ] Confirm npm **trusted publishing** is configured for `@weavster/cli` (npmjs.com → package
+      Settings → Trusted Publisher → GitHub `weavster-dev/weavster`, workflow `release.yml`). No
+      npm token is used — publishing is OIDC-based.
 - [ ] Create the version tag on `main` and push it: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-      The `release` workflow then builds, tests, publishes `@weavster/cli` to npm, and creates a
-      GitHub Release with notes from the matching `CHANGELOG.md` section.
+      The `release` workflow then builds, tests, publishes `@weavster/cli` to npm via OIDC, and
+      creates a GitHub Release with notes from the matching `CHANGELOG.md` section.

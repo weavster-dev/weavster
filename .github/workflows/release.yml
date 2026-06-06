@@ -8,7 +8,8 @@ jobs:
   npm:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # create the GitHub Release
+      id-token: write # OIDC for npm trusted publishing
     steps:
       - uses: actions/checkout@v4
 
@@ -20,6 +21,9 @@ jobs:
           cache: pnpm
           registry-url: 'https://registry.npmjs.org'
 
+      # npm trusted publishing (OIDC) needs npm >= 11.5.1.
+      - run: npm install -g npm@latest
+
       - run: pnpm install --frozen-lockfile
 
       - run: pnpm cli:build
@@ -28,10 +32,13 @@ jobs:
 
       - run: pnpm test
 
-      - name: Publish @weavster/cli to npm
-        run: pnpm --filter @weavster/cli publish --no-git-checks --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      # pnpm pack rewrites the workspace: protocol in the manifest; npm publish
+      # (which does the OIDC exchange — pnpm does not) ships the prepared tarball.
+      - name: Pack
+        run: pnpm --filter @weavster/cli pack --pack-destination "$RUNNER_TEMP"
+
+      - name: Publish to npm (trusted publisher)
+        run: npm publish "$RUNNER_TEMP"/weavster-cli-*.tgz --access public
 
       - name: Create GitHub Release
         env:

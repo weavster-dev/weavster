@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- `cli/README.md` — the package page shown on npm.
+
+### Changed
+
+- Release workflow now uses **npm trusted publishing (OIDC)** instead of an `NPM_TOKEN` secret:
+  it packs with `pnpm pack` and publishes the tarball with `npm publish` under
+  `permissions: id-token: write` (no long-lived token).
+
 ## [0.0.1] - 2026-06-05
 
 First published release. `@weavster/cli` ships to npm (init / validate / test); the engine,
