@@ -15,11 +15,12 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
+      # No registry-url: it would write an _authToken to .npmrc and force token
+      # auth, which shadows OIDC trusted publishing. The default registry is npm.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
 
       # npm trusted publishing (OIDC) needs npm >= 11.5.1.
       - run: npm install -g npm@latest
@@ -32,13 +33,20 @@ jobs:
 
       - run: pnpm test
 
-      # pnpm pack rewrites the workspace: protocol in the manifest; npm publish
-      # (which does the OIDC exchange — pnpm does not) ships the prepared tarball.
-      - name: Pack
-        run: pnpm --filter @weavster/cli pack --pack-destination "$RUNNER_TEMP"
+      # Assemble a clean publish directory: built dist + README + LICENSE and a
+      # manifest with the workspace devDependency and scripts stripped. Publishing
+      # from a directory (not a tarball) lets npm populate the per-version readme
+      # that npmjs.com renders.
+      - name: Prepare publish directory
+        run: |
+          mkdir -p "$RUNNER_TEMP/pub/dist"
+          cp -r cli/dist/. "$RUNNER_TEMP/pub/dist/"
+          cp cli/README.md LICENSE "$RUNNER_TEMP/pub/"
+          node -e "const p=require('./cli/package.json'); delete p.devDependencies; delete p.scripts; require('fs').writeFileSync(process.env.RUNNER_TEMP + '/pub/package.json', JSON.stringify(p, null, 2) + '\n')"
 
       - name: Publish to npm (trusted publisher)
-        run: npm publish "$RUNNER_TEMP"/weavster-cli-*.tgz --access public
+        run: npm publish --access public
+        working-directory: ${{ runner.temp }}/pub
 
       - name: Create GitHub Release
         env:

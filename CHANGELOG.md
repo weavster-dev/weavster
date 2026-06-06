@@ -7,6 +7,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+## [0.0.3] - 2026-06-06
+
+### Fixed
+
+- The npm package README now renders on npmjs.com. The release workflow publishes from a
+  prepared directory (built `dist` + `README.md` + `LICENSE` + a manifest with the workspace
+  devDependency and scripts stripped) instead of a pre-packed tarball, so npm populates the
+  per-version readme. Also dropped `setup-node`'s `registry-url`, which had forced empty-token
+  auth and blocked OIDC trusted publishing.
+
 ## [0.0.2] - 2026-06-05
 
 ### Added

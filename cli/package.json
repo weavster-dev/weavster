@@ -1,6 +1,6 @@
 {
   "name": "@weavster/cli",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Weavster CLI: scaffold, validate, and test config-driven data transformation projects.",
   "license": "BUSL-1.1",
   "type": "module",
