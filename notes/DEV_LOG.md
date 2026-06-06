@@ -13,6 +13,21 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-05 — Trusted publishing (OIDC) + npm README
+
+- What changed: After the manual `0.0.1` publish, converted `release.yml` to npm **trusted
+  publishing**: dropped the `NPM_TOKEN` secret, added `permissions: id-token: write`, upgraded npm
+  to `>= 11.5.1` in the job, and switched the publish step to `pnpm pack` → `npm publish <tarball>`.
+  Added `cli/README.md` for the npm package page.
+- What I learned: Two constraints forced the pack-then-publish shape. (1) OIDC trusted publishing
+  is an `npm publish` feature; `pnpm publish` does not do the token exchange. (2) Plain `npm publish`
+  of our package would choke on the `@weavster/core` `workspace:*` devDependency. `pnpm pack` rewrites
+  the workspace protocol in the tarball's manifest, and `npm publish <tarball>` then ships that prepared
+  artifact with OIDC — satisfying both. npm always includes `README.md` in the tarball even with
+  `files: ["dist"]`, and `pnpm pack` also pulls the workspace-root `LICENSE` into the package.
+- What is next: register the trusted publisher on npmjs.com for `@weavster/cli`, then future releases
+  are just a `vX.Y.Z` tag — no token.
+
 ## 2026-06-05 — Release tooling: npm publish for the CLI (0.0.1)
 
 - What changed: Set up the first release. Chose to publish **only `@weavster/cli`** with
