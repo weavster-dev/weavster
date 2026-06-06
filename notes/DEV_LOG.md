@@ -28,6 +28,18 @@ Newest entries on top. One entry per merged slice.
   running in a dir without sources), then `npm publish` from that directory — which populates the
   per-version readme and still does OIDC.
 - What is next: tag `v0.0.3` to publish and confirm the README renders on npmjs.com.
+## 2026-06-06 — Fix OIDC publish (drop registry-url)
+
+- What changed: Removed `registry-url` from the `setup-node` step in `release.yml`. The first
+  `v0.0.2` release run failed at publish with `E404 / you do not have permission`.
+- What I learned: `setup-node`'s `registry-url` writes `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`
+  into `.npmrc`. With no `NODE_AUTH_TOKEN` set (we use OIDC, not a token), that expands to an empty
+  token, so npm attempted (empty) **token auth** and never took the OIDC path — the registry returned
+  404 (its masked "unauthorized" for a scoped package). Trusted publishing only triggers when **no**
+  `_authToken` is configured. Dropping `registry-url` leaves the default registry and no token line,
+  so `npm publish` with `id-token: write` uses OIDC. The tag must be recreated on the fixed commit
+  (a re-run uses the workflow file from the tag's tree).
+- What is next: re-tag `v0.0.2` on the fixed `main` and push to publish.
 
 ## 2026-06-05 — Trusted publishing (OIDC) + npm README
 
