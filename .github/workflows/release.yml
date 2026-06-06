@@ -15,11 +15,12 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
+      # No registry-url: it would write an _authToken to .npmrc and force token
+      # auth, which shadows OIDC trusted publishing. The default registry is npm.
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
-          registry-url: 'https://registry.npmjs.org'
 
       # npm trusted publishing (OIDC) needs npm >= 11.5.1.
       - run: npm install -g npm@latest
