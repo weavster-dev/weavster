@@ -13,6 +13,22 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-06 — RFC 0002: run + pipelines (next phase design)
+
+- What changed: With the MVP shipped, picked the next phase — "make it move data" — and wrote
+  `docs/rfcs/0002-run-pipelines.md`. `weavster run` reads from a source, transforms with a flow,
+  and writes to a sink; pipelines are declared one-per-file in a `pipelines/` directory (mirroring
+  `flows/`/`fixtures/`). First connectors: local `file` and `stdin`/`stdout`. Decisions from
+  discussion: config-driven via a pipelines dir (not CLI flags or inline config), file+stdio first,
+  `compile` deferred.
+- What I learned: The run path reuses everything — JSON/XML packs, the v0alpha2 engine, the `_ts`
+  loader — so the only new surface is source/sink I/O, which stays in the CLI to keep
+  `@weavster/core` pure. A nice property falls out: because source format picks the parser and sink
+  format picks the serializer, a pipeline can convert formats (XML in, JSON out). Connectors are a
+  tiny `read()`/`write()` interface so REST/SFTP slot in later without touching the run loop.
+- What is next: implement RFC 0002 slice 1 — pipeline schema + loader, file/stdio connectors, the
+  `weavster run` command, `validate` extended to pipelines, and tests.
+
 ## 2026-06-06 — run + pipelines (RFC 0002 slice 1)
 
 - What changed: Implemented `weavster run`. New CLI modules: `connectors.ts` (`Source`/`Sink`
@@ -49,7 +65,6 @@ Newest entries on top. One entry per merged slice.
   running in a dir without sources), then `npm publish` from that directory — which populates the
   per-version readme and still does OIDC.
 - What is next: tag `v0.0.3` to publish and confirm the README renders on npmjs.com.
-
 ## 2026-06-06 — Fix OIDC publish (drop registry-url)
 
 - What changed: Removed `registry-url` from the `setup-node` step in `release.yml`. The first

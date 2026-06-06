@@ -22,3 +22,7 @@
 ## Dev log
 
 - [ ] `notes/DEV_LOG.md` updated
+
+---
+
+@coderabbitai summary
