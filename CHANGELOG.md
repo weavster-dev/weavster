@@ -7,6 +7,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Biome linter config (`biome.json`) plus `lint` / `lint:fix` scripts. Linter only — Prettier
+  still owns formatting (Biome's formatter and assist are disabled). CodeRabbit auto-detects the
+  config and runs Biome on reviews.
+- `@coderabbitai summary` placeholder at the bottom of the PR template (under a `---`), which
+  CodeRabbit replaces with a high-level summary in the PR description.
+- `.coderabbit.yaml` configuring CodeRabbit reviews: high-level summary in the PR description
+  (`high_level_summary_in_walkthrough: false`), `chill` profile, and the linters relevant to this
+  repo (Biome, markdownlint, yamllint, actionlint, gitleaks, languagetool).
+
 ## [0.0.3] - 2026-06-06
 
 ### Fixed
