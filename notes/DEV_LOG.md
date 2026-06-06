@@ -13,6 +13,21 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-06 — Fix npm README + finalize release workflow (0.0.3)
+
+- What changed: The npm page for `@weavster/cli` showed no README even though the tarball
+  contained one. Switched the release workflow to publish from a **prepared directory** instead
+  of a pre-packed tarball, and bumped to 0.0.3. Also dropped `setup-node`'s `registry-url` (it
+  forced empty-token auth and blocked OIDC).
+- What I learned: Registry data told the story — the packument top-level `readme` was set (1822
+  chars) but the **per-version** `readme` was `0`. npmjs.com renders the per-version readme, and
+  `npm publish <tarball.tgz>` does not populate it (npm only extracts the README into the version
+  manifest when publishing from a directory). The fix: in CI, assemble `$RUNNER_TEMP/pub` with the
+  built `dist`, `README.md`, `LICENSE`, and a `package.json` that has `devDependencies` and
+  `scripts` stripped (no `workspace:*` ref for `npm publish` to choke on, no `prepublishOnly`
+  running in a dir without sources), then `npm publish` from that directory — which populates the
+  per-version readme and still does OIDC.
+- What is next: tag `v0.0.3` to publish and confirm the README renders on npmjs.com.
 ## 2026-06-06 — Fix OIDC publish (drop registry-url)
 
 - What changed: Removed `registry-url` from the `setup-node` step in `release.yml`. The first
