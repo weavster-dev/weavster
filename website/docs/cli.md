@@ -7,8 +7,8 @@ title: CLI Reference
 
 The `weavster` CLI runs against a project directory containing a `weavster.yaml`.
 
-The planned commands are `init`, `validate`, `test`, `compile`, and `run`. Only the
-commands documented below are implemented today (`init`, `validate`, `test`).
+The planned commands are `init`, `validate`, `test`, `compile`, and `run`. Implemented
+today: `init`, `validate`, `test`, `run` (`compile` is still planned).
 
 ## `init`
 
@@ -97,7 +97,33 @@ A failing case prints a diff (`-` expected, `+` actual) and the command exits `1
 1/2 fixtures passed
 ```
 
+## `run`
+
+Run [pipelines](./pipelines.md) — read a source, transform with a flow, write a sink.
+
+```bash
+weavster run [name]
+```
+
+- `name` — a pipeline in `pipelines/`. Omit it to run every pipeline.
+
+Operates on the current directory. Each pipeline reads its `source`, runs its `flow`, and
+writes its `sink`; progress goes to stderr so a `stdout` sink stays pipeable:
+
+```text
+✓ order
+
+1/1 pipelines ran
+```
+
+A failing pipeline prints which stage failed and exits `1`:
+
+```text
+✗ order
+  no input file "in/order.json"
+```
+
 :::note
-The `weavster` binary is not yet published. From the tool repo, run a command
-during development with `pnpm --filter @weavster/cli dev <command> <path>`.
+Install the published CLI with `npm install -g @weavster/cli`. From the tool repo during
+development, run a command with `pnpm --filter @weavster/cli dev <command>`.
 :::

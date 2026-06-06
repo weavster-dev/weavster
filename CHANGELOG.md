@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- `weavster run [name]`: execute pipelines that move real data — read a **source**, transform
+  with a **flow**, write a **sink**. Pipelines are declared one-per-file in `pipelines/`
+  (`source` + `flow` + `sink`); first connectors are `file` and `stdin`/`stdout`. The source
+  format picks the parser and the sink format (defaulting to the source's) picks the serializer,
+  so a pipeline can convert formats. `weavster validate` now also checks `pipelines/*.yaml`. Adds
+  a golden-path pipeline, a Pipelines docs page, and a CI run smoke. (RFC 0002, slice 1)
+
 ## [0.0.3] - 2026-06-06
 
 ### Fixed

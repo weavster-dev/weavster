@@ -11,6 +11,7 @@ const sidebars: SidebarsConfig = {
     'dsl',
     'typescript',
     'testing',
+    'pipelines',
     'architecture',
     'contributing',
   ],

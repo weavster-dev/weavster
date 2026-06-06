@@ -1,0 +1,8 @@
+# Read an order, normalize it with the order flow, write the result.
+source:
+  type: file
+  path: in/order.json
+flow: order
+sink:
+  type: file
+  path: out/order.json

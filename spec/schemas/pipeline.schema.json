@@ -1,0 +1,67 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://weavster.dev/schemas/pipeline.schema.json",
+  "title": "Weavster pipeline",
+  "description": "Schema for a Weavster pipeline file: a source, a flow, and a sink.",
+  "type": "object",
+  "required": ["source", "flow", "sink"],
+  "additionalProperties": false,
+  "properties": {
+    "source": { "$ref": "#/$defs/source" },
+    "flow": { "description": "Name of the flow in flows/.", "type": "string", "minLength": 1 },
+    "sink": { "$ref": "#/$defs/sink" }
+  },
+  "$defs": {
+    "format": { "enum": ["json", "xml"] },
+    "source": {
+      "oneOf": [
+        {
+          "description": "Read a local file (format inferred from the extension).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path"],
+          "properties": {
+            "type": { "const": "file" },
+            "path": { "type": "string", "minLength": 1 },
+            "format": { "$ref": "#/$defs/format" }
+          }
+        },
+        {
+          "description": "Read process stdin (format required — no extension to infer).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "format"],
+          "properties": {
+            "type": { "const": "stdin" },
+            "format": { "$ref": "#/$defs/format" }
+          }
+        }
+      ]
+    },
+    "sink": {
+      "oneOf": [
+        {
+          "description": "Write a local file (format: extension, else the source format).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "path"],
+          "properties": {
+            "type": { "const": "file" },
+            "path": { "type": "string", "minLength": 1 },
+            "format": { "$ref": "#/$defs/format" }
+          }
+        },
+        {
+          "description": "Write process stdout (format defaults to the source format).",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type"],
+          "properties": {
+            "type": { "const": "stdout" },
+            "format": { "$ref": "#/$defs/format" }
+          }
+        }
+      ]
+    }
+  }
+}

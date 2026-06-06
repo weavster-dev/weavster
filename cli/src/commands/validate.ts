@@ -2,6 +2,7 @@ import { dirname } from 'node:path';
 import type { Command } from 'commander';
 import { checkProject } from '../project.js';
 import { checkFlows } from '../flow.js';
+import { checkPipelines } from '../pipeline.js';
 
 export function registerValidate(program: Command): void {
   program
@@ -19,13 +20,13 @@ export function registerValidate(program: Command): void {
       }
 
       const projectDir = result.file ? dirname(result.file) : path;
-      for (const flow of checkFlows(projectDir)) {
-        if (flow.ok) {
-          console.log(`✓ ${flow.file} is valid`);
+      for (const file of [...checkFlows(projectDir), ...checkPipelines(projectDir)]) {
+        if (file.ok) {
+          console.log(`✓ ${file.file} is valid`);
           continue;
         }
-        console.error(`✗ ${flow.file}`);
-        for (const error of flow.errors) console.error(`  ${error}`);
+        console.error(`✗ ${file.file}`);
+        for (const error of file.errors) console.error(`  ${error}`);
         process.exitCode = 1;
       }
     });

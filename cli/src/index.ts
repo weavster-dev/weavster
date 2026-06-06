@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { registerValidate } from './commands/validate.js';
 import { registerTest } from './commands/test.js';
 import { registerInit } from './commands/init.js';
+import { registerRun } from './commands/run.js';
 
 const program = new Command();
 
@@ -14,5 +15,6 @@ program
 registerInit(program);
 registerValidate(program);
 registerTest(program);
+registerRun(program);
 
 program.parseAsync();
