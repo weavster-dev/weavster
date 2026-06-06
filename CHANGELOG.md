@@ -9,6 +9,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Biome linter config (`biome.json`) plus `lint` / `lint:fix` scripts. Linter only — Prettier
+  still owns formatting (Biome's formatter and assist are disabled). CodeRabbit auto-detects the
+  config and runs Biome on reviews.
+- `@coderabbitai summary` placeholder at the bottom of the PR template (under a `---`), which
+  CodeRabbit replaces with a high-level summary in the PR description.
+- `.coderabbit.yaml` configuring CodeRabbit reviews: high-level summary in the PR description
+  (`high_level_summary_in_walkthrough: false`), `chill` profile, and the linters relevant to this
+  repo (Biome, markdownlint, yamllint, actionlint, gitleaks, languagetool).
 - RFC 0002 (`docs/rfcs/0002-run-pipelines.md`): design for `weavster run` and config-driven
   pipelines (`pipelines/<name>.yaml` = source + flow + sink), with file and stdin/stdout
   connectors. Draft only — the first "make it move data" phase.
