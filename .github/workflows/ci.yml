@@ -50,7 +50,8 @@ jobs:
 
       # Runs `coverage` in every workspace package that defines it. New JS/TS
       # packages (e.g. the UI) are picked up automatically once they add a
-      # `coverage` script — no change needed here.
+      # `coverage` script — no change needed here. (Lint runs in the `quality`
+      # job; coverage runs the tests, so no separate lint/test step here.)
       - name: test with coverage
         run: pnpm -r coverage
 
@@ -66,6 +67,12 @@ jobs:
         run: |
           node cli/dist/index.js validate examples/golden-path
           node cli/dist/index.js test examples/golden-path
+
+      - name: run smoke
+        run: |
+          cd examples/golden-path
+          node "$GITHUB_WORKSPACE/cli/dist/index.js" run order
+          test -f out/order.json
 
       - name: init smoke
         run: |

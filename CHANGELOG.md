@@ -7,6 +7,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Add `@biomejs/biome` as a dev dependency so `pnpm lint` runs locally, wire it into CI, and
+  clear the findings: drop unused imports, simplify redundant boolean casts, give the escape-hatch
+  test functions real types, use a stable React key in the docs homepage, and disable
+  `noThenProperty` (the DSL legitimately uses `then`/`else`).
+
 ### Added
 
 - Codecov coverage reporting in CI. Each package exposes a `coverage` script; CI runs
@@ -21,8 +28,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Pre-commit autofix via husky + lint-staged: staged files run Biome (`--write`) and Prettier
   (`--write`) before commit, so style is fixed locally and CI just verifies.
 - `.vscode/` workspace settings + recommended extensions (Biome, Prettier) for format-on-save.
-- Biome `overrides`: `noExplicitAny`/`noThenProperty` off in `*.test.ts(x)` (test fixtures and the
-  DSL `then` keyword); `noArrayIndexKey` off under `website/**`.
+- `weavster run [name]`: execute pipelines that move real data — read a **source**, transform
+  with a **flow**, write a **sink**. Pipelines are declared one-per-file in `pipelines/`
+  (`source` + `flow` + `sink`); first connectors are `file` and `stdin`/`stdout`. The source
+  yields a **stream of documents** and the run loop processes each (a `file` is one document;
+  `stdin` is line-delimited and streams). Startup failures abort; per-document failures fail a
+  bounded source and are logged on a stream. The source format picks the parser and the sink
+  format (defaulting to the source's) picks the serializer, so a pipeline can convert formats.
+  `weavster validate` now also checks `pipelines/*.yaml`. Adds a golden-path pipeline, a
+  Pipelines docs page, and a CI run smoke. (RFC 0002, slice 1)
 - Biome linter config (`biome.json`) plus `lint` / `lint:fix` scripts. Linter only — Prettier
   still owns formatting (Biome's formatter and assist are disabled). CodeRabbit auto-detects the
   config and runs Biome on reviews.

@@ -17,30 +17,10 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
-    }
-  },
-  "overrides": [
-    {
-      "includes": ["**/*.test.ts", "**/*.test.tsx"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noExplicitAny": "off",
-            "noThenProperty": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["website/**"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noArrayIndexKey": "off"
-          }
-        }
+      "recommended": true,
+      "suspicious": {
+        "noThenProperty": "off"
       }
     }
-  ]
+  }
 }

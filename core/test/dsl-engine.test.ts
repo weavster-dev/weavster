@@ -117,8 +117,8 @@ describe('_when', () => {
 
 describe('_ts', () => {
   const functions = {
-    addName: (o: any) => ({ ...o, name: `${o.first} ${o.last}` }),
-    up: (s: any) => String(s).toUpperCase(),
+    addName: (o: { first: string; last: string }) => ({ ...o, name: `${o.first} ${o.last}` }),
+    up: (s: unknown) => String(s).toUpperCase(),
     boom: () => {
       throw new Error('boom');
     },

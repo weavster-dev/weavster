@@ -29,6 +29,30 @@ Newest entries on top. One entry per merged slice.
 - What is next: implement RFC 0002 slice 1 — pipeline schema + loader, file/stdio connectors, the
   `weavster run` command, `validate` extended to pipelines, and tests.
 
+## 2026-06-06 — run + pipelines (RFC 0002 slice 1)
+
+- What changed: Implemented `weavster run`. New CLI modules: `connectors.ts` (`Source`/`Sink`
+  with `file`/`stdin`/`stdout`), `pipeline.ts` (load + schema-validate `pipelines/<name>.yaml`,
+  resolve connectors + formats + a `bounded` flag), `runner.ts` (`runPipelines` — startup load,
+  then a streaming loop: for each document the source yields → parse → applyFlow → serialize →
+  sink.write), and `commands/run.ts`. Added `pipeline.schema.json`, extended `weavster validate`
+  to check pipelines, added a golden-path pipeline + a CI run smoke, and the Pipelines docs page.
+  Decisions: `run` with no name runs all; `stdin` requires explicit `format`; sink format
+  defaults to the source format (explicit/extension override); file sinks overwrite.
+- What I learned: The RFC was revised mid-flight to a **continuous/ESB** model, so `Source` is
+  `documents(): AsyncIterable<string>` rather than a single `read()` — a `file` yields once
+  (bounded), `stdin` is line-delimited and streams (unbounded), and the same loop drives both.
+  Errors split by phase: startup (load/source-open) aborts; per-document failures fail a bounded
+  source but are logged-and-skipped on a stream. The run path is otherwise pure reuse —
+  parse/serialize from the format packs, `applyFlow` + the `_ts` loader — and the I/O connectors
+  stay in the CLI so `@weavster/core` remains pure. `run` operates on cwd (the positional is the
+  pipeline name, not a path), so unit tests call `runPipelines(dir, name)` directly and the CI
+  smoke `cd`s into the example. Status prints to **stderr** so a `stdout` sink keeps stdout clean.
+  Cross-format (JSON→XML) works via source-parser / sink-serializer but inherits the XML
+  single-root limitation.
+- What is next: network connectors (REST/SFTP) on the same `Source`/`Sink` interface, then
+  revisit `compile` and the Rust/WASM runtime.
+
 ## 2026-06-06 — Fix npm README + finalize release workflow (0.0.3)
 
 - What changed: The npm page for `@weavster/cli` showed no README even though the tarball
