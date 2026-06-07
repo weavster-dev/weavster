@@ -13,7 +13,7 @@ coverage:
         threshold: 1%
     patch:
       default:
-        target: 80%
+        target: 90%
 
 component_management:
   default_rules:
@@ -39,6 +39,11 @@ component_management:
 # Exclude non-product code from coverage math.
 ignore:
   - "**/*.test.ts"
+  - "**/*.test.tsx"
+  - "**/*.test.js"
+  - "**/*.spec.ts"
+  - "**/*.spec.tsx"
+  - "**/*.spec.js"
   - "**/dist/**"
   - "website/**"
   - "docs/**"
