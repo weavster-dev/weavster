@@ -6,6 +6,28 @@ on:
   pull_request:
 
 jobs:
+  # Lint + format gate. Check-only — never writes. Local fixes happen via the
+  # husky pre-commit hook (lint-staged); CI just fails on any violation.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: lint
+        run: pnpm lint
+
+      - name: format check
+        run: pnpm format:check
+
   cli:
     runs-on: ubuntu-latest
     steps:
@@ -36,7 +58,7 @@ jobs:
       # workspace, so new packages are uploaded without editing this step.
       # Path-based components in codecov.yml then categorize each one.
       - name: upload coverage to Codecov
-        uses: codecov/codecov-action@v5.2.2  # v5
+        uses: codecov/codecov-action@v5.2.2 # v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
 

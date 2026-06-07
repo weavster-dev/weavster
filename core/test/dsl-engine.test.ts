@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { document, fromValue, toValue } from '../src/model.js';
-import { type Flow, TransformError, applyFlow } from '../src/dsl/engine.js';
+import { type Flow, applyFlow } from '../src/dsl/engine.js';
 
 const docOf = (value: unknown) => document(fromValue(value), { sourceFormat: 'json' });
 const run = (value: unknown, steps: Flow['steps']) =>

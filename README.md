@@ -90,7 +90,11 @@ pnpm docs:build     # production build of the docs site
 pnpm test           # run all package test suites (core + cli)
 pnpm -r coverage    # run every suite with coverage (lcov + text)
 pnpm format         # format with Prettier
-pnpm lint           # lint with Biome
+pnpm format:check   # verify formatting (CI gate)
+pnpm lint           # lint with Biome (CI gate)
+
+# A husky pre-commit hook runs Biome + Prettier on staged files (lint-staged),
+# so style is fixed automatically before each commit.
 
 # run a command against a project during development
 pnpm --filter @weavster/cli dev validate ./path/to/project

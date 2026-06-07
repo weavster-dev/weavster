@@ -38,16 +38,16 @@ component_management:
 
 # Exclude non-product code from coverage math.
 ignore:
-  - "**/*.test.ts"
-  - "**/*.test.tsx"
-  - "**/*.test.js"
-  - "**/*.test.jsx"
-  - "**/*.spec.ts"
-  - "**/*.spec.tsx"
-  - "**/*.spec.js"
-  - "**/*.spec.jsx"
-  - "**/dist/**"
-  - "website/**"
-  - "docs/**"
-  - "examples/**"
-  - "spec/**"
+  - '**/*.test.ts'
+  - '**/*.test.tsx'
+  - '**/*.test.js'
+  - '**/*.test.jsx'
+  - '**/*.spec.ts'
+  - '**/*.spec.tsx'
+  - '**/*.spec.js'
+  - '**/*.spec.jsx'
+  - '**/dist/**'
+  - 'website/**'
+  - 'docs/**'
+  - 'examples/**'
+  - 'spec/**'

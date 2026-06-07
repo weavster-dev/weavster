@@ -16,6 +16,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   rather than silently missing. A dormant `rust-coverage` CI job auto-activates via
   `cargo-llvm-cov` once a `Cargo.toml` lands. Needs a `CODECOV_TOKEN` repo secret.
 - README badges: CI, Codecov, npm, license, Node.
+- CI `quality` job enforcing lint (`pnpm lint`) and formatting (`pnpm format:check`) — check-only,
+  fails the build on any violation.
+- Pre-commit autofix via husky + lint-staged: staged files run Biome (`--write`) and Prettier
+  (`--write`) before commit, so style is fixed locally and CI just verifies.
+- `.vscode/` workspace settings + recommended extensions (Biome, Prettier) for format-on-save.
+- Biome `overrides`: `noExplicitAny`/`noThenProperty` off in `*.test.ts(x)` (test fixtures and the
+  DSL `then` keyword); `noArrayIndexKey` off under `website/**`.
 - Biome linter config (`biome.json`) plus `lint` / `lint:fix` scripts. Linter only — Prettier
   still owns formatting (Biome's formatter and assist are disabled). CodeRabbit auto-detects the
   config and runs Biome on reviews.
