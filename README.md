@@ -43,6 +43,8 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   `flows/*.yaml` against the flow schema, with path-aware errors.
 - `weavster test`: runs each fixture (`fixtures/<flow>/<case>/`) through its
   `flows/<flow>.yaml` and prints a diff for any mismatch against `expected.json`.
+- `weavster run [name]`: runs `pipelines/<name>.yaml` — read a source, transform with a flow,
+  write a sink (file and stdin/stdout connectors; can convert formats). Omit the name to run all.
 - A reference user project at [`examples/golden-path/`](examples/golden-path/) exercised
   by `validate` and `test`.
 - `@weavster/core`: the canonical document model — a format-agnostic node tree
@@ -70,8 +72,8 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
 The transform engine is wired into the CLI: `weavster test` runs project flows over their
-fixtures. `init`, `validate`, and `test` are the working CLI commands; `compile` and `run`
-are still planned.
+fixtures and `weavster run` moves real data through them. `init`, `validate`, `test`, and
+`run` are the working CLI commands; `compile` is still planned.
 
 ## Local development
 

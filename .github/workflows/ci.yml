@@ -26,12 +26,20 @@ jobs:
 
       - run: pnpm --filter @weavster/cli typecheck
 
+      - run: pnpm lint
+
       - run: pnpm test
 
       - name: golden-path smoke
         run: |
           node cli/dist/index.js validate examples/golden-path
           node cli/dist/index.js test examples/golden-path
+
+      - name: run smoke
+        run: |
+          cd examples/golden-path
+          node "$GITHUB_WORKSPACE/cli/dist/index.js" run order
+          test -f out/order.json
 
       - name: init smoke
         run: |
