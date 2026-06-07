@@ -105,7 +105,7 @@ async function runOne(dir: string, name: string): Promise<RunResult> {
       }
     }
   } catch (err) {
-    // The source failed to open or stream — a startup-class failure.
+    // The source failed to open or stream — possibly after some documents were processed.
     return { name, ok: false, documents, error: message(err) };
   }
 

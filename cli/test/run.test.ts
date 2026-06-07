@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
+import { Readable } from 'node:stream';
 import { runPipelines } from '../src/runner.js';
 import { checkPipelines, resolveSink, resolveSource } from '../src/pipeline.js';
 
@@ -63,6 +64,27 @@ describe('runPipelines', () => {
     const report = await runPipelines(dir, 'nope');
     expect(report.ok).toBe(false);
     expect(report.results[0].error).toMatch(/no pipeline "nope"/);
+  });
+
+  it('logs and skips a bad document on an unbounded stdin source', async () => {
+    writePipeline(
+      'p',
+      'source: { type: stdin, format: json }\nflow: main\nsink: { type: file, path: out/x.json }\n',
+    );
+    const original = Object.getOwnPropertyDescriptor(process, 'stdin');
+    Object.defineProperty(process, 'stdin', {
+      value: Readable.from('{ "id": 1 }\n{ not json\n'),
+      configurable: true,
+    });
+    try {
+      const report = await runPipelines(dir, 'p');
+      expect(report.ok).toBe(true); // a stream survives a bad document
+      const [result] = report.results;
+      expect(result.documents).toBe(2);
+      expect(result.docErrors?.join('\n')).toMatch(/document 2: invalid JSON/);
+    } finally {
+      if (original) Object.defineProperty(process, 'stdin', original);
+    }
   });
 
   it('errors when a file source is missing', async () => {

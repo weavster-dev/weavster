@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { createInterface } from 'node:readline';
 
@@ -15,8 +15,12 @@ export interface Sink {
 export function fileSource(path: string): Source {
   return {
     async *documents() {
-      if (!existsSync(path)) throw new Error(`no input file "${path}"`);
-      yield readFileSync(path, 'utf8');
+      try {
+        await access(path);
+      } catch {
+        throw new Error(`no input file "${path}"`);
+      }
+      yield await readFile(path, 'utf8');
     },
   };
 }
@@ -26,9 +30,13 @@ export function stdinSource(): Source {
     async *documents() {
       // Line-delimited: each non-empty line is one document, yielded as it arrives.
       const lines = createInterface({ input: process.stdin, crlfDelay: Number.POSITIVE_INFINITY });
-      for await (const line of lines) {
-        const text = line.trim();
-        if (text) yield text;
+      try {
+        for await (const line of lines) {
+          const text = line.trim();
+          if (text) yield text;
+        }
+      } finally {
+        lines.close();
       }
     },
   };
@@ -37,8 +45,8 @@ export function stdinSource(): Source {
 export function fileSink(path: string): Sink {
   return {
     async write(text) {
-      mkdirSync(dirname(path), { recursive: true });
-      writeFileSync(path, text);
+      await mkdir(dirname(path), { recursive: true });
+      await writeFile(path, text);
     },
   };
 }
