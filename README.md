@@ -3,6 +3,12 @@
 Config-driven integration tool: define transformation pipelines in YAML, validate
 them locally, test them with fixtures, and run them through a modular engine.
 
+[![CI](https://github.com/weavster-dev/weavster/actions/workflows/ci.yml/badge.svg)](https://github.com/weavster-dev/weavster/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/weavster-dev/weavster/branch/main/graph/badge.svg)](https://codecov.io/gh/weavster-dev/weavster)
+[![npm](https://img.shields.io/npm/v/@weavster/cli)](https://www.npmjs.com/package/@weavster/cli)
+[![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-blue)](https://github.com/weavster-dev/weavster/blob/main/LICENSE)
+[![Node](https://img.shields.io/node/v/@weavster/cli)](https://nodejs.org)
+
 > Status: early reboot. The plan and direction live in
 > [`docs/MVP_PLAN.md`](docs/MVP_PLAN.md); active tasks in
 > [`docs/MVP_TASKS.md`](docs/MVP_TASKS.md).
@@ -82,6 +88,7 @@ pnpm install        # install workspace dependencies
 pnpm docs:start     # run the docs site locally
 pnpm docs:build     # production build of the docs site
 pnpm test           # run all package test suites (core + cli)
+pnpm -r coverage    # run every suite with coverage (lcov + text)
 pnpm format         # format with Prettier
 pnpm lint           # lint with Biome
 

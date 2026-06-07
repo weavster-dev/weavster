@@ -1,0 +1,46 @@
+# Codecov config for the Weavster monorepo.
+#
+# Components categorize coverage by path, so every package — current and
+# future — is tracked independently. A package with no uploaded coverage
+# shows as 0% rather than silently vanishing, which is how we "don't miss"
+# coverage as the repo grows (TS UI, Rust execution core, etc.).
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+    patch:
+      default:
+        target: 80%
+
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+  individual_components:
+    - component_id: core
+      name: core
+      paths: [core/**]
+    - component_id: cli
+      name: cli
+      paths: [cli/**]
+    # Future packages. Paths are harmless until the dirs exist; rename to
+    # match the actual directory names when each lands.
+    - component_id: ui
+      name: ui
+      paths: [ui/**]
+    - component_id: engine
+      name: engine (rust)
+      paths: [engine/**]
+
+# Exclude non-product code from coverage math.
+ignore:
+  - "**/*.test.ts"
+  - "**/dist/**"
+  - "website/**"
+  - "docs/**"
+  - "examples/**"
+  - "spec/**"

@@ -9,6 +9,13 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Codecov coverage reporting in CI. Each package exposes a `coverage` script; CI runs
+  `pnpm -r coverage` and Codecov auto-discovers every `coverage/lcov.info`, so new JS/TS
+  packages (e.g. the UI) are covered without editing CI. `codecov.yml` defines path-based
+  components (core, cli, and placeholders for ui/engine) so uncovered packages surface as 0%
+  rather than silently missing. A dormant `rust-coverage` CI job auto-activates via
+  `cargo-llvm-cov` once a `Cargo.toml` lands. Needs a `CODECOV_TOKEN` repo secret.
+- README badges: CI, Codecov, npm, license, Node.
 - Biome linter config (`biome.json`) plus `lint` / `lint:fix` scripts. Linter only — Prettier
   still owns formatting (Biome's formatter and assist are disabled). CodeRabbit auto-detects the
   config and runs Biome on reviews.
