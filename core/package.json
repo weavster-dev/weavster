@@ -10,12 +10,14 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "coverage": "vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text"
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "@vitest/coverage-v8": "^4.1.8",
     "typescript": "^5.7.3",
-    "vitest": "^3.0.5"
+    "vitest": "^4.1.8"
   },
   "dependencies": {
     "fast-xml-parser": "^5.8.0"

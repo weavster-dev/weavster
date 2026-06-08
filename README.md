@@ -3,6 +3,12 @@
 Config-driven integration tool: define transformation pipelines in YAML, validate
 them locally, test them with fixtures, and run them through a modular engine.
 
+[![CI](https://github.com/weavster-dev/weavster/actions/workflows/ci.yml/badge.svg)](https://github.com/weavster-dev/weavster/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/weavster-dev/weavster/branch/main/graph/badge.svg)](https://codecov.io/gh/weavster-dev/weavster)
+[![npm](https://img.shields.io/npm/v/@weavster/cli)](https://www.npmjs.com/package/@weavster/cli)
+[![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-blue)](https://github.com/weavster-dev/weavster/blob/main/LICENSE)
+[![Node](https://img.shields.io/node/v/@weavster/cli)](https://nodejs.org)
+
 > Status: early reboot. The plan and direction live in
 > [`docs/MVP_PLAN.md`](docs/MVP_PLAN.md); active tasks in
 > [`docs/MVP_TASKS.md`](docs/MVP_TASKS.md).
@@ -64,7 +70,8 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   loaded via jiti) when the declarative DSL isn't enough. See
   [TypeScript Transforms](https://docs.weavster.dev/typescript).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
-- Editor/formatter config (`.editorconfig`, Prettier) and Biome linter (`biome.json`).
+- Editor/formatter config (`.editorconfig`, Prettier), Biome linter (`biome.json`), and a
+  cspell dictionary (`.cspell.json`).
 - CodeRabbit reviews configured in `.coderabbit.yaml`: the high-level summary is written into the
   PR description, replacing the `@coderabbitai summary` placeholder the PR template ends with
   (under a `---`). The config also enables the Biome linter and other tools relevant to this repo.
@@ -84,8 +91,13 @@ pnpm install        # install workspace dependencies
 pnpm docs:start     # run the docs site locally
 pnpm docs:build     # production build of the docs site
 pnpm test           # run all package test suites (core + cli)
+pnpm -r coverage    # run every suite with coverage (lcov + text)
 pnpm format         # format with Prettier
-pnpm lint           # lint with Biome
+pnpm format:check   # verify formatting (CI gate)
+pnpm lint           # lint with Biome (CI gate)
+
+# A husky pre-commit hook runs Biome + Prettier on staged files (lint-staged),
+# so style is fixed automatically before each commit.
 
 # run a command against a project during development
 pnpm --filter @weavster/cli dev validate ./path/to/project

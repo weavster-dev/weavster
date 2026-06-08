@@ -42,6 +42,8 @@ reviews:
   tools:
     biome:
       enabled: true
+    cspell:
+      enabled: true
     markdownlint:
       enabled: true
     yamllint:

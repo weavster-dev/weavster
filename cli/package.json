@@ -37,6 +37,7 @@
     "dev": "tsx src/index.ts",
     "validate": "tsx src/index.ts validate",
     "test": "vitest run",
+    "coverage": "vitest run --coverage --coverage.reporter=lcov --coverage.reporter=text",
     "prepublishOnly": "tsup"
   },
   "dependencies": {
@@ -48,6 +49,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "@vitest/coverage-v8": "^4.1.8",
     "@weavster/core": "workspace:*",
     "tsup": "^8.5.1",
     "tsx": "^4.19.2",

@@ -6,6 +6,28 @@ on:
   pull_request:
 
 jobs:
+  # Lint + format gate. Check-only — never writes. Local fixes happen via the
+  # husky pre-commit hook (lint-staged); CI just fails on any violation.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: lint
+        run: pnpm lint
+
+      - name: format check
+        run: pnpm format:check
+
   cli:
     runs-on: ubuntu-latest
     steps:
@@ -26,9 +48,20 @@ jobs:
 
       - run: pnpm --filter @weavster/cli typecheck
 
-      - run: pnpm lint
+      # Runs `coverage` in every workspace package that defines it. New JS/TS
+      # packages (e.g. the UI) are picked up automatically once they add a
+      # `coverage` script — no change needed here. (Lint runs in the `quality`
+      # job; coverage runs the tests, so no separate lint/test step here.)
+      - name: test with coverage
+        run: pnpm -r coverage
 
-      - run: pnpm test
+      # No `files:` — Codecov auto-discovers every coverage/lcov.info under the
+      # workspace, so new packages are uploaded without editing this step.
+      # Path-based components in codecov.yml then categorize each one.
+      - name: upload coverage to Codecov
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: golden-path smoke
         run: |
@@ -46,3 +79,40 @@ jobs:
           node cli/dist/index.js init "$RUNNER_TEMP/wv-init"
           node cli/dist/index.js validate "$RUNNER_TEMP/wv-init"
           node cli/dist/index.js test "$RUNNER_TEMP/wv-init"
+
+  # Rust execution core. Dormant until a Cargo.toml lands, then runs
+  # cargo-llvm-cov and uploads with the `rust` flag. No edits needed to
+  # activate — just add the crate.
+  rust-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: detect rust
+        id: detect
+        run: |
+          if git ls-files '*Cargo.toml' | grep -q .; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "No Cargo.toml yet — skipping Rust coverage."
+          fi
+
+      - if: steps.detect.outputs.present == 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - if: steps.detect.outputs.present == 'true'
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - if: steps.detect.outputs.present == 'true'
+        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+
+      - if: steps.detect.outputs.present == 'true'
+        name: upload rust coverage to Codecov
+        uses: codecov/codecov-action@v7.0.0
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./lcov.info
+          flags: rust
