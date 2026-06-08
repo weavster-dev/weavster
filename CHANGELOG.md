@@ -9,6 +9,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Claude Code Review now runs with `track_progress: true`, so it posts a visible tracking
+  comment on every PR instead of staying silent when a clean diff produces no inline findings.
 - Add `@biomejs/biome` as a dev dependency so `pnpm lint` runs locally, wire it into CI, and
   clear the findings: drop unused imports, simplify redundant boolean casts, give the escape-hatch
   test functions real types, use a stable React key in the docs homepage, and disable
