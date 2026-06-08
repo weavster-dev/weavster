@@ -28,6 +28,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 - Pre-commit autofix via husky + lint-staged: staged files run Biome (`--write`) and Prettier
   (`--write`) before commit, so style is fixed locally and CI just verifies.
 - `.vscode/` workspace settings + recommended extensions (Biome, Prettier) for format-on-save.
+- `.cspell.json` spell-check dictionary (seeded with `weavster`), enabled as a CodeRabbit tool
+  (CodeRabbit runs cspell server-side during review).
 - `weavster run [name]`: execute pipelines that move real data — read a **source**, transform
   with a **flow**, write a **sink**. Pipelines are declared one-per-file in `pipelines/`
   (`source` + `flow` + `sink`); first connectors are `file` and `stdin`/`stdout`. The source

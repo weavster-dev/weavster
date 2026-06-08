@@ -70,7 +70,8 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   loaded via jiti) when the declarative DSL isn't enough. See
   [TypeScript Transforms](https://docs.weavster.dev/typescript).
 - Contribution rules ([`CONTRIBUTING.md`](CONTRIBUTING.md)) and PR template.
-- Editor/formatter config (`.editorconfig`, Prettier) and Biome linter (`biome.json`).
+- Editor/formatter config (`.editorconfig`, Prettier), Biome linter (`biome.json`), and a
+  cspell dictionary (`.cspell.json`).
 - CodeRabbit reviews configured in `.coderabbit.yaml`: the high-level summary is written into the
   PR description, replacing the `@coderabbitai summary` placeholder the PR template ends with
   (under a `---`). The config also enables the Biome linter and other tools relevant to this repo.

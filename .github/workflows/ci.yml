@@ -111,7 +111,7 @@ jobs:
 
       - if: steps.detect.outputs.present == 'true'
         name: upload rust coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: ./lcov.info
