@@ -17,12 +17,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - RFC 0003 (design only): the Weavster engine — a thin Rust + WASM production runtime. The CLI
-  compiles each flow ahead of time (`applyFlow` + format packs + `_ts`, bundled to JS and run
+  compiles each flow ahead of time (`applyFlow` + all format packs + `_ts`, bundled to JS and run
   through Javy/QuickJS) into a per-flow WASM module plus a versioned `manifest.json` artifact;
   the engine loads the artifact, drives connectors, and hosts the WASM. Ships as a thin Docker
-  image for single-server now and Kubernetes later. The TS `run` loop stays as the local runtime;
-  both reuse the same `@weavster/core` transform code. First slice targets the `file` connector
-  behind a pluggable `Source`/`Sink` registry.
+  image for single-server now and Kubernetes later. Transforms **always** run as WASM — local and
+  prod differ only in the host harness, so there is one execution path and the parity test is
+  "same module, two hosts." The host speaks a format-tagged input envelope and a result envelope
+  (`ok`/`error{stage}`); the engine boots from a mounted `weavster.yaml` (active-pipeline registry
+  with `enabled`/`disabled`), while `pipelines/*.yaml` configure each source/transform/sink. Each
+  pipeline runs `source → transform → sink` behind a FIFO queue at concurrency 1; per-document
+  failures log-and-move-on. First slice targets the `file` connector behind a pluggable
+  `Source`/`Sink` registry.
 - Codecov coverage reporting in CI. Each package exposes a `coverage` script; CI runs
   `pnpm -r coverage` and Codecov auto-discovers every `coverage/lcov.info`, so new JS/TS
   packages (e.g. the UI) are covered without editing CI. `codecov.yml` defines path-based

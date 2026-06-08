@@ -16,9 +16,12 @@ and is the single deployable for both the local single-server strategy now and a
 (Kubernetes) strategy later.
 
 The existing TS `run` loop (RFC 0002) stays — it is the local dev/test runtime. The Rust
-engine is the production runtime. **Both honor the same config contract and reuse the same
-`@weavster/core` transform code** (Node runs it directly; the engine runs the very same code
-compiled into WASM). There is one transform implementation, not two.
+engine is the production runtime. **Transforms always run as WASM in both** — the only
+difference is the harness around them: a TS host drives the wasm locally, the Rust engine
+drives the very same wasm in production. There is one transform implementation *and one
+execution path*, not two. Because both harnesses run the identical compiled module, there is
+no V8-vs-QuickJS divergence to reconcile; the parity test (slice 6) is "same module, two
+hosts," not "two engines we hope agree."
 
 ## Motivation
 
@@ -55,13 +58,17 @@ applyFlow (v0alpha2 engine)  +  the flow's _ts functions  +  format-pack parse/s
 ```
 
 So the WASM module is the **whole middle of the pipeline**: parse bytes → `applyFlow` →
-serialize bytes. The Rust engine never parses YAML, never knows the DSL — it feeds raw bytes
-in and writes raw bytes out. The same `applyFlow` that runs under Node for `weavster test` and
-`weavster run` runs, byte-for-byte the same logic, inside the engine.
+serialize bytes. The host never parses YAML, never knows the DSL — it writes a small input
+envelope in and reads a result envelope out. The same `applyFlow` that runs under Node for
+`weavster test` and `weavster run` runs, byte-for-byte the same logic, inside the engine.
 
 ```text
-source (Rust) ──bytes──▶  wasm[ parse → applyFlow → serialize ]  ──bytes──▶ sink (Rust)
+source (host) ──envelope──▶  wasm[ parse → applyFlow → serialize ]  ──envelope──▶ sink (host)
 ```
+
+The module bundles **all format packs**; the source/sink format is not baked in but passed at
+runtime in the envelope (see [the host ABI](#the-wasm-transform-host)). One module per flow,
+reusable across pipelines that pick different formats.
 
 ## Ahead-of-time compile and the artifact
 
@@ -80,22 +87,33 @@ artifact/
     invoice.wasm
 ```
 
-`manifest.json` is the contract between CLI and engine — it has its **own version**, decoupled
-from the project's `apiVersion`, so the DSL schema can churn without breaking the engine:
+`manifest.json` is the contract between CLI and engine — it carries **two independent versions**,
+both decoupled from the project's `apiVersion`:
+
+- `manifestVersion` — schema version of the manifest file itself. The engine refuses an unknown
+  major so the file shape can evolve safely.
+- `abiVersion` — which host ABI the wasm modules were built against (the Javy stdin/stdout
+  contract). The engine refuses a module it cannot drive, instead of producing garbage when a
+  future Javy/wasmtime upgrade shifts the ABI under an old artifact.
 
 ```jsonc
 {
   "manifestVersion": "1",
+  "abiVersion": "javy-1",
   "pipelines": [
     {
       "name": "orders",
-      "source": { "type": "file", "path": "in/order.json", "format": "json" },
+      "source": { "type": "file", "glob": "in/*.json", "format": "json" },
       "flow": "order",                     // → flows/order.wasm
       "sink":   { "type": "file", "path": "out/order.json", "format": "json" }
     }
   ]
 }
 ```
+
+Connector config is inline per pipeline (`source`/`sink`); the `flow→wasm` map is the `flow`
+field resolved by convention to `flows/<flow>.wasm`. `format` is a runtime field the host copies
+into the input envelope — it is *not* baked into the wasm.
 
 The engine consumes the artifact; it does not read the user's project directory. The CLI owns
 schema, validation, and bundling; the engine owns execution. The CLI boundary from the MVP plan
@@ -110,26 +128,64 @@ A thin Rust binary. Responsibilities, and nothing more:
 - **Drive connectors** — async source/sink I/O.
 - **Run the loop**, one per pipeline, reusing RFC 0002's continuous semantics: a bounded source
   (file) yields one document then closes; an unbounded source streams until end-of-stream.
+  Each pipeline is `source → transform → sink` fed by a **FIFO queue with concurrency 1** —
+  one message in flight, processed in order. Pipelines run concurrently *with each other*;
+  *within* a pipeline, strictly serial. (Higher per-pipeline concurrency is a `TODO(config)` —
+  the queue is the seam.)
 - **Scope errors** per document exactly as RFC 0002 specifies — startup errors abort non-zero;
-  per-document errors fail a bounded run but only log on a live stream; report pipeline +
-  document + stage.
+  for per-document errors, **log and move on**: fail a bounded run, but on a live stream log the
+  failing document (pipeline + document + stage) and continue. No checkpoint/resume yet —
+  at-least-once durability is a later slice.
 - **Observe** — structured logs now; metrics later.
 
-Dev of the engine itself: `cargo run -- ./artifact`. A user never builds Rust — they author
-config, run `weavster compile`, and hand the artifact to the prebuilt engine image.
+Dev of the engine itself: `cargo run -- -c ./weavster.yaml`. A user never builds Rust — they
+author config, run `weavster compile`, and hand the artifact to the prebuilt engine image.
 
 ### The WASM transform host
 
-The host contract is Javy's default ABI: write the input document to the instance's stdin, run,
-read the output document from stdout. One instance processes one document; instances are pooled
-and reused across documents (re-init between calls) to amortize instantiation. Transforms are
-**synchronous** (QuickJS, and `_ts` functions, are sync) — consistent with the existing
-function model.
+The host contract is Javy's default ABI: write an **input envelope** to the instance's stdin,
+run, read a **result envelope** from stdout. One instance processes **exactly one document**
+(see [Connectors](#connectors) — file-level fan-out is the connector's job, not the transform's).
+Instances are pooled and reused across documents (re-init between calls) to amortize
+instantiation. Transforms are **synchronous** (QuickJS, and `_ts` functions, are sync) —
+consistent with the existing function model.
+
+**Envelopes.** The format travels with the document, so one module serves every format:
+
+```jsonc
+// stdin — input envelope
+{ "format": "json", "payload": <bytes> }
+
+// stdout — result envelope (industry-standard result/either shape)
+{ "ok": true,  "payload": <bytes> }
+{ "ok": false, "error": { "stage":   "parse" | "transform" | "serialize",
+                          "type":    "...",        // error class
+                          "message": "...",
+                          "detail":  { } } }       // extension point for custom handling later
+```
+
+The `stage` field is what lets the host attribute a failure to parse / transform / serialize —
+information that lives inside the wasm and is otherwise invisible across the byte boundary. The
+host maps a `false` envelope onto RFC 0002's error scoping (fail a bounded run; log on a live
+stream) and reports pipeline + document + `stage`. Custom error-handling policies are a later
+slice; `detail` is the seam they hang off.
 
 ```rust
 // sketch — host side
-let out: Bytes = host.run(&flow_wasm, input_bytes)?;   // stdin → run → stdout
+let res: Result = host.run(&flow_wasm, Input { format, payload })?;  // stdin → run → stdout
 ```
+
+**Resource limits.** The wasm is sandboxed *and* bounded. Defaults now, configurability later:
+
+| Limit            | Default       | TODO                          |
+| ---------------- | ------------- | ----------------------------- |
+| Memory per inst. | 128 MB        | `// TODO(config)` per-flow    |
+| Wall-clock       | 5 s (epoch)   | `// TODO(config)` per-flow    |
+| Concurrency      | pooled, 1 doc | `// TODO(config)` pool size   |
+
+These ship as constants with `TODO(config)` markers — no config surface in this phase, but the
+wasmtime knobs (memory limiter, epoch interruption) are wired so a runaway `_ts` cannot hang or
+exhaust the engine.
 
 ### Connectors
 
@@ -139,7 +195,7 @@ runtimes stay aligned:
 ```rust
 #[async_trait]
 trait Source {
-    /// Yields once for a file; many times for a stream; `None` at end-of-stream.
+    /// Yields one document at a time; `None` at end-of-stream.
     async fn next(&mut self) -> Option<Result<Bytes>>;
 }
 
@@ -147,6 +203,22 @@ trait Source {
 trait Sink {
     async fn write(&mut self, doc: Bytes) -> Result<()>;
 }
+```
+
+**Each `next()` yields exactly one document — one message per transform invocation.** Anything
+"multi" — a glob matching many files, an array or JSONL file holding many records — is the
+*connector's* concern, not the transform's. This keeps the wasm contract dead simple (one doc in,
+one result out) while the connector side absorbs the variability, which is where it belongs.
+
+**Paths are globs, not single files**, so the same shape works across backends: a local
+directory glob, an SFTP remote glob, a blob-store key prefix all collapse to "enumerate matches,
+yield each." The glob resolves against a connector **root** (the artifact mount dir by default).
+For this RFC the `file` connector maps **one file → one document**; a file that holds many records
+(array/JSONL) is a **`// TODO` expansion** — when it lands, it changes only the connector, never
+the transform or the host ABI.
+
+```jsonc
+"source": { "type": "file", "glob": "in/*.json", "format": "json" }
 ```
 
 Connectors are resolved from the manifest through a **registry** keyed by `type`. This RFC
@@ -178,8 +250,40 @@ FROM rust:slim AS build
 # ... cargo build --release
 FROM gcr.io/distroless/cc
 COPY --from=build /engine /engine
-ENTRYPOINT ["/engine"]          # run: /engine /artifact
+ENTRYPOINT ["/engine"]          # reads /etc/weavster/weavster.yaml by default
 ```
+
+**Invocation.** The engine boots from `weavster.yaml`, the project config, **mounted** into the
+container — the nginx/postgres convention: a known default path (`/etc/weavster/weavster.yaml`),
+overridable with `-c/--config <path>`. `weavster.yaml` names the artifact location and any
+runtime settings; the engine resolves the artifact from there. No bare positional artifact path —
+config is the single mounted entrypoint, which is what k8s ConfigMap/volume mounts expect.
+
+```text
+/engine                          # default: -c /etc/weavster/weavster.yaml
+/engine -c /run/weavster.yaml    # custom location
+```
+
+**`weavster.yaml` is the active-pipeline registry.** Pipelines are files — `pipelines/*.yaml`,
+the same one-per-file convention as `flows/`. Each pipeline yaml configures *itself*: its source,
+transform (flow), and sink. `weavster.yaml` lists which pipelines are **active and their status
+(enabled / disabled)** — the project switchboard, not the per-pipeline config:
+
+```yaml
+# weavster.yaml
+apiVersion: weavster/v0alpha2
+name: golden-path
+pipelines:
+  - name: orders        # → pipelines/orders.yaml
+    enabled: true
+  - name: invoices
+    enabled: false      # compiled, but the engine does not run it
+```
+
+`weavster compile` reads `weavster.yaml`, resolves each **enabled** pipeline from its
+`pipelines/<name>.yaml`, and emits the manifest containing only those. Disabled pipelines are
+skipped (or compiled-but-inert — a slice-1 detail). The engine still consumes the manifest; the
+operator-facing switch is `enabled` in `weavster.yaml`.
 
 **Single server (now).** One engine process runs all the project's pipelines concurrently.
 
@@ -199,9 +303,12 @@ not foreclose.
    the per-pipeline run loop, and RFC 0002 error scoping. File source/sink only.
 4. **Connector trait + registry.** Land the `Source`/`Sink` traits and the `type`-keyed registry
    with `file` as the first (only) entry, so later connectors are additive.
-5. **Thin Docker image** + the `cargo run -- ./artifact` dev path.
-6. **Parity test.** A golden pipeline run through both the TS `run` loop and the engine must
-   produce identical output — the guardrail that keeps the two runtimes honest.
+5. **Thin Docker image** + the `cargo run -- -c ./weavster.yaml` dev path, with `weavster.yaml`
+   as the mounted, override-able config entrypoint.
+6. **Parity test.** A golden pipeline run through both harnesses must produce identical output.
+   Since both drive the **same compiled wasm**, this checks the two *hosts* (TS vs Rust I/O,
+   envelope handling, error scoping) agree — not two JS engines. Near-free, and the guardrail
+   that keeps the harnesses honest.
 
 ## Non-goals (this phase)
 
@@ -211,6 +318,31 @@ not foreclose.
 - Hot reload of artifacts, multi-tenant isolation, HA, scheduling, autoscaling.
 - Retiring the TS `run` loop — it stays as the local dev/test runtime.
 - A Rust reimplementation of the v0alpha2 DSL — the DSL only ever lives in `@weavster/core`.
+
+## Resolved (decisions folded into the body)
+
+- **Format ↔ flow binding** → format is a runtime field in the input envelope; the wasm bundles
+  all packs; **one module per flow**. (Was: parse/serialize baked into per-flow wasm, which broke
+  when two pipelines shared a flow with different formats.)
+- **Cross-boundary errors** → a **result envelope** (`ok` / `error{stage,type,message,detail}`)
+  carries the failing stage out of the wasm; industry-standard result shape, `detail` is the seam
+  for custom handling later.
+- **Resource limits** → memory + wall-clock + pooled-single-doc **defaults now**, `TODO(config)`
+  for per-flow/pool tuning.
+- **One execution path** → transforms **always run as wasm**; local and prod differ only in the
+  host harness, so there is no JS-engine divergence and the parity test is near-free.
+- **Engine invocation** → boots from `weavster.yaml`, mounted at a default path, `-c/--config` to
+  override (nginx/postgres convention).
+- **Multi-file / multi-record** → connector concern, not the transform's. One message per
+  invocation; **1 file → 1 document** now, multi-record-per-file is a `TODO` connector expansion.
+- **Per-document failure** → **log and move on** on a live stream (fail a bounded run). No
+  checkpoint/resume; at-least-once durability is a later slice.
+- **Concurrency** → each pipeline is `source → transform → sink` behind a **FIFO queue,
+  concurrency 1** (in-order, one in flight). Pipelines run concurrently with each other; higher
+  per-pipeline concurrency is a `TODO(config)`.
+- **`weavster.yaml` ↔ pipelines** → pipelines are `pipelines/*.yaml` (configure source/transform/
+  sink); `weavster.yaml` is the active-pipeline registry with `enabled`/`disabled` status. Compile
+  emits a manifest of the enabled set.
 
 ## Open questions
 
@@ -226,7 +358,8 @@ not foreclose.
 4. **Large / streaming documents** — Javy's stdin/stdout is whole-buffer per call; how do we
    handle documents that don't fit a single buffer, or genuinely streaming formats?
 5. **Artifact shape** — a directory (above) vs a single tarball/OCI artifact for distribution.
-6. **Engine invocation** — which pipelines to run, env/config, and where the artifact comes from
-   (mounted path, baked layer, pulled). CLI flags vs env vs a small engine config file.
-7. **`_ts` bundling** — how a function's own imports/deps are bundled (esbuild step) and what is
+6. **`_ts` bundling** — how a function's own imports/deps are bundled (esbuild step) and what is
    disallowed inside the sandbox.
+7. **Durability (deferred, not unknown)** — `log-and-move-on` is the chosen behavior now; the open
+   work is *when* at-least-once / checkpointing arrives, which connector types force it (queues,
+   DB), and where offsets live. Tracked for a later slice, not blocking this phase.
