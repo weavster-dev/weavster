@@ -108,6 +108,24 @@ pnpm --filter @weavster/cli dev validate ./path/to/project
 pnpm --filter @weavster/cli dev test ./path/to/project
 ```
 
+### Engine (Rust)
+
+The production runtime ([RFC 0003](docs/rfcs/0003-engine-runtime.md)) lives in
+[`engine/`](engine/), a Rust workspace at the repo root. It is currently a stub — the
+manifest loader, wasmtime host, and run loop land in later milestones (see
+[`docs/ENGINE_PLAN.md`](docs/ENGINE_PLAN.md)).
+
+**Build boundary:** Rust and the pnpm/TS packages sit side by side but never mix. The TS
+toolchain builds the CLI that _produces_ WASM artifacts; the engine only _runs_ them, so no
+Node or TS toolchain enters the engine build or its Docker image. Requires a stable Rust
+toolchain (`cargo`); Node is not needed to build the engine.
+
+```bash
+cargo build --workspace      # build the engine
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace       # run engine tests
+```
+
 ## Layout
 
 | Path          | Purpose                                                    |
@@ -117,6 +135,7 @@ pnpm --filter @weavster/cli dev test ./path/to/project
 | `spec/`       | Config JSON Schemas and example configs                    |
 | `cli/`        | CLI commands                                               |
 | `core/`       | Canonical document model, format packs, and engine         |
+| `engine/`     | Rust production runtime (RFC 0003) — currently a stub      |
 | `formats/`    | Reserved for format packs if later extracted from `core/`  |
 | `functions/`  | Built-in transform functions                               |
 | `ts-runtime/` | TypeScript escape hatch for custom transforms              |

@@ -1,0 +1,12 @@
+[package]
+name = "weavster-engine"
+version = "0.0.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Thin Rust runtime that executes compiled Weavster artifacts (RFC 0003)."
+license = "BUSL-1.1"
+publish = false
+
+[[bin]]
+name = "weavster-engine"
+path = "src/main.rs"
