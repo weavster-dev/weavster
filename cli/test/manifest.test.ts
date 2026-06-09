@@ -23,11 +23,18 @@ describe('manifest schema', () => {
 
   it('accepts the fixture artifact manifest', () => {
     expect(validate(readJson('examples/artifact/golden-path/manifest.json'))).toBe(true);
+    expect(validate.errors).toBeNull();
   });
 
   it('rejects an unknown manifestVersion', () => {
     expect(validate(example('invalid-unknown-manifest-version.manifest.json'))).toBe(false);
-    expect(validate.errors?.[0]?.instancePath).toBe('/manifestVersion');
+    // Ajv does not guarantee error order, so match by path rather than errors[0].
+    expect(validate.errors?.some((e) => e.instancePath === '/manifestVersion')).toBe(true);
+  });
+
+  it('rejects an unknown abiVersion', () => {
+    expect(validate(example('invalid-unknown-abi-version.manifest.json'))).toBe(false);
+    expect(validate.errors?.some((e) => e.instancePath === '/abiVersion')).toBe(true);
   });
 
   it('rejects a pipeline missing its flow', () => {

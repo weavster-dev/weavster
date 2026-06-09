@@ -36,9 +36,9 @@
         },
         "source": { "$ref": "#/$defs/source" },
         "flow": {
-          "description": "Flow name; resolves by convention to flows/<flow>.wasm.",
+          "description": "Flow name; resolves by convention to flows/<flow>.wasm. Same kebab shape as `name`, so it maps to a safe filename and cannot traverse out of flows/.",
           "type": "string",
-          "minLength": 1
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
         },
         "sink": { "$ref": "#/$defs/sink" }
       }

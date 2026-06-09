@@ -77,15 +77,15 @@ the transform's. Transforms are **synchronous**.
 
 ```jsonc
 // stdin — input envelope
-{ "in": "json", "out": "xml", "payload": <document bytes> }
+{ "in": "json", "out": "xml", "payload": "<source document as a UTF-8 string>" }
 //   in:      source format → selects the parser
 //   out:     sink format   → selects the serializer (may differ from `in` → conversion)
-//   payload: the raw source document
+//   payload: the raw source document, verbatim
 ```
 
 ```jsonc
 // stdout — result envelope (result/either shape)
-{ "ok": true,  "payload": <serialized bytes> }
+{ "ok": true,  "payload": "<serialized document as a UTF-8 string>" }
 
 { "ok": false, "error": {
     "stage":   "parse" | "transform" | "serialize", // where it failed, across the byte boundary
@@ -96,6 +96,10 @@ the transform's. Transforms are **synchronous**.
 ```
 
 - `in`/`out` are the manifest `format` values; `payload` is the document the connector yielded.
+- **`payload` is a JSON string holding the document text verbatim (UTF-8).** Both formats this
+  phase (`json`, `xml`) are text, so the source bytes are carried as-is and `in`/`out` decide how
+  they are parsed/serialized — the wire type is a string, never a raw JSON object. A binary format
+  would carry base64 instead; that is a later format-pack concern and does not change this ABI.
 - **`stage`** is the field that lets the host attribute a failure to parse vs transform vs
   serialize — information that otherwise dies inside the wasm. The host maps a `false` envelope
   onto RFC 0002 error scoping: fail a bounded run; **log-and-move-on** on a live stream; report
