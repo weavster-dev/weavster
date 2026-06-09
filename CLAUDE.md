@@ -78,7 +78,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 **Each commit updates `README.md` to match what exists now — never aspirational.**
 
 - Describe only features and commands that work today.
-- No roadmap, no "coming soon", no planned APIs (those live in `docs/MVP_PLAN.md`).
+- No roadmap, no "coming soon", no planned APIs (those live in `docs/ENGINE_PLAN.md`).
 - If a commit changes what the project can do, the README changes with it.
 
 ## 6. Testing Requirements
