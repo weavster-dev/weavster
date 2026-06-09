@@ -7,6 +7,19 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Define the engine artifact contract (Engine Plan E1 / RFC 0003 slice 1) so the CLI (`compile`,
+  E2) and engine (E3) can be built against it independently. Adds
+  `spec/schemas/manifest.schema.json` (the versioned `manifest.json`: `manifestVersion`,
+  `abiVersion`, and per-pipeline `{name, source, flow, sink}` with inline `file` connector
+  config), golden + invalid manifest fixtures under `spec/examples/manifest/`, a fixture artifact
+  showing the `manifest.json` + `flows/<name>.wasm` directory layout
+  (`spec/examples/artifact/golden-path/`), and `docs/ARTIFACT_SPEC.md` — the shared spec covering
+  the artifact layout (S6: a directory this phase), the manifest, and the WASM input/result
+  envelope byte contract (`in`/`out`/`payload` → `ok`/`error{stage}`). A schema test validates the
+  golden manifest and rejects the invalid fixtures.
+
 ### Changed
 
 - Bump the pinned package manager to `pnpm@11.5.2` (from `pnpm@10.20.0`). CI derives pnpm from

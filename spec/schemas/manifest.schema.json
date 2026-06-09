@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://weavster.dev/schemas/manifest.schema.json",
+  "title": "Weavster artifact manifest",
+  "description": "The CLI↔engine contract. Produced by `weavster compile`, consumed by the engine. Lists the enabled pipelines with inline connector config and the flow→wasm map. See docs/ARTIFACT_SPEC.md.",
+  "type": "object",
+  "required": ["manifestVersion", "abiVersion", "pipelines"],
+  "additionalProperties": false,
+  "properties": {
+    "manifestVersion": {
+      "description": "Schema version of this manifest file. The engine refuses an unknown value. Decoupled from the project apiVersion.",
+      "const": "1"
+    },
+    "abiVersion": {
+      "description": "Host ABI the wasm modules were built against (the Javy stdin/stdout contract). The engine refuses a module it cannot drive.",
+      "const": "javy-1"
+    },
+    "pipelines": {
+      "description": "The enabled pipelines, in declaration order. Disabled pipelines are excluded at compile time.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/pipeline" }
+    }
+  },
+  "$defs": {
+    "format": { "enum": ["json", "xml"] },
+    "pipeline": {
+      "type": "object",
+      "required": ["name", "source", "flow", "sink"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "description": "Pipeline name (matches pipelines/<name>.yaml).",
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "source": { "$ref": "#/$defs/source" },
+        "flow": {
+          "description": "Flow name; resolves by convention to flows/<flow>.wasm.",
+          "type": "string",
+          "minLength": 1
+        },
+        "sink": { "$ref": "#/$defs/sink" }
+      }
+    },
+    "source": {
+      "description": "Where documents come from. `file` is the only connector this phase; the source `format` selects the parser inside the wasm.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "glob", "format"],
+      "properties": {
+        "type": { "const": "file" },
+        "glob": {
+          "description": "Glob resolved against the connector root; each match yields one document.",
+          "type": "string",
+          "minLength": 1
+        },
+        "format": { "$ref": "#/$defs/format" }
+      }
+    },
+    "sink": {
+      "description": "Where documents go. `file` is the only connector this phase; the sink `format` selects the serializer inside the wasm.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path", "format"],
+      "properties": {
+        "type": { "const": "file" },
+        "path": {
+          "description": "Path written relative to the connector root.",
+          "type": "string",
+          "minLength": 1
+        },
+        "format": { "$ref": "#/$defs/format" }
+      }
+    }
+  }
+}

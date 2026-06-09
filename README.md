@@ -74,6 +74,11 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
 - CodeRabbit reviews configured in `.coderabbit.yaml`: the high-level summary is written into the
   PR description, replacing the `@coderabbitai summary` placeholder the PR template ends with
   (under a `---`). The config also enables the Biome linter and other tools relevant to this repo.
+- Engine artifact contract ([`docs/ARTIFACT_SPEC.md`](docs/ARTIFACT_SPEC.md)): the versioned
+  `manifest.json` schema ([`spec/schemas/manifest.schema.json`](spec/schemas/manifest.schema.json)),
+  the `manifest.json` + `flows/<name>.wasm` artifact layout, and the WASM input/result envelope —
+  the contract the Rust engine (RFC 0003) and `weavster compile` are built against. Spec only; the
+  `compile` command and engine that produce/consume it are not yet implemented.
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
