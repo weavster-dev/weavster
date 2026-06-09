@@ -11,6 +11,15 @@ understandable as it grows.
 - Keep refactors separate from behavior changes.
 - Keep docs next to the feature they explain.
 
+## Where the code lives
+
+Most of Weavster is a pnpm/TypeScript monorepo (`core/`, `cli/`, `website/`). The production
+runtime is the **Rust engine** in [`engine/`](engine/) — a Cargo workspace at the repo root
+([RFC 0003](docs/rfcs/0003-engine-runtime.md)). The two are built with separate toolchains and
+must not mix: the TS side builds the CLI that _compiles_ WASM artifacts; the engine only _runs_
+them, so no Node or TS toolchain enters the engine build or its image. Engine work uses
+`cargo build|clippy|test --workspace`; everything else uses `pnpm`.
+
 ## Commit conventions
 
 Use [Conventional Commits](https://www.conventionalcommits.org/):
