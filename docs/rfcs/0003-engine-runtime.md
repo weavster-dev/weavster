@@ -66,9 +66,10 @@ envelope in and reads a result envelope out. The same `applyFlow` that runs unde
 source (host) ──envelope──▶  wasm[ parse → applyFlow → serialize ]  ──envelope──▶ sink (host)
 ```
 
-The module bundles **all format packs**; the source/sink format is not baked in but passed at
-runtime in the envelope (see [the host ABI](#the-wasm-transform-host)). One module per flow,
-reusable across pipelines that pick different formats.
+The module bundles **all format packs**; the source and sink formats are not baked in but passed
+at runtime in the envelope (see [the host ABI](#the-wasm-transform-host)) — so a single module
+both parses the source format and serializes the (possibly different) sink format. One module per
+flow, reusable across pipelines that pick different formats or convert between them.
 
 ## Ahead-of-time compile and the artifact
 
@@ -112,8 +113,9 @@ both decoupled from the project's `apiVersion`:
 ```
 
 Connector config is inline per pipeline (`source`/`sink`); the `flow→wasm` map is the `flow`
-field resolved by convention to `flows/<flow>.wasm`. `format` is a runtime field the host copies
-into the input envelope — it is _not_ baked into the wasm.
+field resolved by convention to `flows/<flow>.wasm`. The `source`/`sink` `format` fields are
+runtime values the host copies into the input envelope (`in`/`out`) — they are _not_ baked into
+the wasm.
 
 The engine consumes the artifact; it does not read the user's project directory. The CLI owns
 schema, validation, and bundling; the engine owns execution. The CLI boundary from the MVP plan
@@ -150,11 +152,13 @@ Instances are pooled and reused across documents (re-init between calls) to amor
 instantiation. Transforms are **synchronous** (QuickJS, and `_ts` functions, are sync) —
 consistent with the existing function model.
 
-**Envelopes.** The format travels with the document, so one module serves every format:
+**Envelopes.** Both formats travel with the document — the **source** format selects the parser
+and the **sink** format selects the serializer — so one module serves every format _and_ every
+conversion (e.g. JSON→XML), not just identity passthrough:
 
 ```jsonc
 // stdin — input envelope
-{ "format": "json", "payload": <bytes> }
+{ "in": "json", "out": "xml", "payload": <bytes> }   // parse as `in`, serialize as `out`
 
 // stdout — result envelope (industry-standard result/either shape)
 { "ok": true,  "payload": <bytes> }
@@ -172,7 +176,7 @@ slice; `detail` is the seam they hang off.
 
 ```rust
 // sketch — host side (`EngineResult<T>` alias defined with the connector traits below)
-let out: Bytes = host.run(&flow_wasm, Input { format, payload })?;  // stdin → run → stdout
+let out: Bytes = host.run(&flow_wasm, Input { in_fmt, out_fmt, payload })?;  // stdin → run → stdout
 ```
 
 **Resource limits.** The wasm is sandboxed _and_ bounded. Defaults now, configurability later:
@@ -328,9 +332,11 @@ crate in the currently TS-only monorepo) that precedes slice 1 — lives in
 
 ## Resolved (decisions folded into the body)
 
-- **Format ↔ flow binding** → format is a runtime field in the input envelope; the wasm bundles
-  all packs; **one module per flow**. (Was: parse/serialize baked into per-flow wasm, which broke
-  when two pipelines shared a flow with different formats.)
+- **Format ↔ flow binding** → the source (`in`) and sink (`out`) formats are runtime fields in the
+  input envelope, so one module both parses the source format and serializes the sink format
+  (including conversions like JSON→XML); the wasm bundles all packs; **one module per flow**.
+  (Was: parse/serialize baked into per-flow wasm, which broke when two pipelines shared a flow with
+  different formats.)
 - **Cross-boundary errors** → a **result envelope** (`ok` / `error{stage,type,message,detail}`)
   carries the failing stage out of the wasm; industry-standard result shape, `detail` is the seam
   for custom handling later.

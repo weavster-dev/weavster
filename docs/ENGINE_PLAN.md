@@ -19,7 +19,9 @@ I/O and orchestration; it never sees the DSL.
 Locked decisions (from the RFC 0003 review — see its _Resolved_ section):
 
 - **Always-WASM.** Local and prod differ only in the host harness.
-- **One module per flow.** Bundles all format packs; `format` rides in the input envelope.
+- **One module per flow.** Bundles all format packs; the source (`in`) and sink (`out`) formats
+  ride in the input envelope, so one module parses the source and serializes the sink (conversions
+  included).
 - **Result envelope.** `ok` / `error{stage,type,message,detail}` — `stage` surfaces parse vs
   transform vs serialize across the wasm boundary. Industry-standard result shape.
 - **FIFO, concurrency 1.** Each pipeline is `source → transform → sink` behind an in-order queue,
@@ -75,8 +77,9 @@ Define the contract first so CLI (E2) and engine (E3) can be built against it in
       golden manifest validates against a published JSON schema.
 - [ ] Specify the `artifact/` layout (`manifest.json` + `flows/<name>.wasm`). Decide directory vs
       tarball (**S6**). → verify: the layout is documented and a fixture artifact exists.
-- [ ] Define the **input/result envelope** byte contract (format-tagged in; `ok`/`error{stage}`
-      out) as a shared spec doc both hosts cite. → verify: spec doc lands; referenced by E2 and E3.
+- [ ] Define the **input/result envelope** byte contract (`in`/`out` formats + payload in;
+      `ok`/`error{stage}` out) as a shared spec doc both hosts cite. → verify: spec doc lands;
+      referenced by E2 and E3.
 
 ## E2 — CLI `weavster compile` (TS side)
 
@@ -90,8 +93,9 @@ Bundle each enabled flow → JS → Javy → `flows/<name>.wasm`; emit the manif
 - [ ] Run Javy to produce `flows/<name>.wasm`; emit `manifest.json` with `manifestVersion` +
       `abiVersion`. → verify: `weavster compile` on `examples/golden-path` yields a runnable
       artifact.
-- [ ] Wrap the input/result envelope around the bundle (format select on stdin; `ok`/`error`
-      out). → verify: feeding a bad document yields an `error{stage:"parse"}` envelope, not a crash.
+- [ ] Wrap the input/result envelope around the bundle (`in`/`out` format select on stdin;
+      `ok`/`error` out). → verify: a JSON→XML pipeline round-trips, and feeding a bad document
+      yields an `error{stage:"parse"}` envelope, not a crash.
 
 ## E3 — Engine core (Rust)
 
