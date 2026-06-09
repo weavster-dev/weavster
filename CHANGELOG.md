@@ -9,6 +9,7 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Grants the workflow `pull-requests: write` (was `read`), required to post the comment.
 - Add `@biomejs/biome` as a dev dependency so `pnpm lint` runs locally, wire it into CI, and
   clear the findings: drop unused imports, simplify redundant boolean casts, give the escape-hatch
   test functions real types, use a stable React key in the docs homepage, and disable
