@@ -118,12 +118,3 @@ pnpm --filter @weavster/cli dev test ./path/to/project
 | `ts-runtime/` | TypeScript escape hatch for custom transforms              |
 | `tests/`      | Fixtures and integration tests                             |
 | `examples/`   | Golden-path example project                                |
-
-## Contributing
-
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Work proceeds in small, reviewable slices
-following [`docs/MVP_TASKS.md`](docs/MVP_TASKS.md).
-
-## License
-
-See [`LICENSE`](LICENSE).
