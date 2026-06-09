@@ -171,7 +171,7 @@ stream) and reports pipeline + document + `stage`. Custom error-handling policie
 slice; `detail` is the seam they hang off.
 
 ```rust
-// sketch — host side (Result<T> is a crate-level alias, as in the connector traits below)
+// sketch — host side (`EngineResult<T>` alias defined with the connector traits below)
 let out: Bytes = host.run(&flow_wasm, Input { format, payload })?;  // stdin → run → stdout
 ```
 
