@@ -15,6 +15,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
   E2 `weavster compile` → E3 engine core → E4 connector registry → E5 thin image → E6 parity
   test, plus de-risking spikes). Repoint CLAUDE.md and RELEASE.md at the new roadmap/archive;
   drop the plan/task doc links from README and CONTRIBUTING.
+- Grants the workflow `pull-requests: write` (was `read`), required to post the comment.
+- Claude Code Review now runs the `code-review` plugin with `track_progress: true` and posts a
+  top-level PR summary comment (via `gh pr comment`) plus inline findings, so every PR gets a
+  visible review even when the diff is clean. Follows the action's "Automatic PR Code Review"
+  recipe (`claude_args` allowlists the comment/diff tools).
 - Add `@biomejs/biome` as a dev dependency so `pnpm lint` runs locally, wire it into CI, and
   clear the findings: drop unused imports, simplify redundant boolean casts, give the escape-hatch
   test functions real types, use a stable React key in the docs homepage, and disable
