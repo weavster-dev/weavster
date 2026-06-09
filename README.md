@@ -9,9 +9,8 @@ them locally, test them with fixtures, and run them through a modular engine.
 [![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-blue)](https://github.com/weavster-dev/weavster/blob/main/LICENSE)
 [![Node](https://img.shields.io/node/v/@weavster/cli)](https://nodejs.org)
 
-> Status: early reboot. The plan and direction live in
-> [`docs/MVP_PLAN.md`](docs/MVP_PLAN.md); active tasks in
-> [`docs/MVP_TASKS.md`](docs/MVP_TASKS.md).
+> Status: config-first authoring, `weavster validate`, fixture-based `weavster test`, the
+> v0alpha2 transform DSL, JSON/XML format packs, and `weavster run` all work today.
 
 ## Quickstart
 

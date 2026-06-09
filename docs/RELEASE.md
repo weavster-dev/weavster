@@ -11,7 +11,7 @@ Shipping:
 - `@weavster/cli`: `weavster init`, `weavster validate`, `weavster test`.
 - A reference example (`examples/golden-path/`) and the docs site.
 
-Explicitly **not** in this MVP (tracked in the after-MVP backlog in `docs/MVP_TASKS.md`):
+Explicitly **not** in this MVP (tracked in the after-MVP backlog in `docs/archive/MVP_TASKS.md`):
 `compile`/`run` commands, HL7/X12 packs, additional transports, XSD validation, the WASM
 plugin path, and the Rust/WASM production runtime.
 
