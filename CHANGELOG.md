@@ -9,6 +9,21 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Add `weavster compile` (Engine Plan E2): compile a project's enabled pipelines into a portable
+  artifact (`manifest.json` + `flows/<flow>.wasm`) the Rust engine (E3) can run. Adds a
+  `pipelines:` switchboard to `weavster.yaml` (each entry a `{name, enabled}`; `enabled` defaults
+  to true) as the source of truth for which pipelines compile. `weavster compile [path]` reads the
+  switchboard, resolves each enabled `pipelines/<name>.yaml` (reusing `validate`), and for each
+  flow esbuild-bundles `applyFlow` + the JSON/XML packs + the flow's `_ts` functions into one
+  QuickJS-safe module, which Javy (`javy-cli`) compiles to a self-contained `flows/<flow>.wasm`.
+  The bundle wraps the WASM input/result envelope from `docs/ARTIFACT_SPEC.md` (`in`/`out` format
+  select on stdin; `ok`/`error{stage}` out), so one module parses the source, transforms, and
+  serializes the sink — a JSON→XML pipeline round-trips and a malformed document yields
+  `error{stage:"parse"}` rather than crashing. The emitted manifest validates against
+  `manifest.schema.json` (the file `path` becomes the manifest `glob`; `file` connectors only this
+  phase). Output goes to `<project>/target/artifact/` (`-o/--out` to override). Spikes **S1**
+  (QuickJS-safe bundle) and **S2** (static Javy linking) are resolved along the way — see below.
+
 - Define the engine artifact contract (Engine Plan E1 / RFC 0003 slice 1) so the CLI (`compile`,
   E2) and engine (E3) can be built against it independently. Adds
   `spec/schemas/manifest.schema.json` (the versioned `manifest.json`: `manifestVersion`,
@@ -28,6 +43,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- The CLI gains `esbuild` (flow bundling) and `javy-cli` (JS→wasm) dependencies for `compile`, and
+  a `pnpm patch` on `xml-naming@0.1.0` (a `fast-xml-parser` transitive dep): its XML-1.1 `/u`-mode
+  regexes are now built lazily instead of at import. QuickJS (which Javy targets) rejects the
+  `[\-\.\d]` escape in unicode mode, and the eager construction crashed every flow module at wasm
+  init even for JSON-only pipelines. XML 1.0 — the default — is unaffected.
 - Bump the pinned package manager to `pnpm@11.5.2` (from `pnpm@10.20.0`). CI derives pnpm from
   `packageManager` via `pnpm/action-setup`, so this moves local and CI together; the lockfile
   (v9.0) is unchanged and `pnpm install --frozen-lockfile` still passes. Adds an `allowBuilds`

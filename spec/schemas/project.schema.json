@@ -20,6 +20,26 @@
     "description": {
       "description": "Optional human-readable description of the project.",
       "type": "string"
+    },
+    "pipelines": {
+      "description": "The switchboard: active pipelines and whether each is enabled. `weavster compile` emits a manifest of the enabled set only. Each name resolves to pipelines/<name>.yaml.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Pipeline name (matches pipelines/<name>.yaml).",
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "enabled": {
+            "description": "Whether compile includes this pipeline. Defaults to true.",
+            "type": "boolean"
+          }
+        }
+      }
     }
   }
 }

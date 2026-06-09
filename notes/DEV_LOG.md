@@ -13,6 +13,36 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-09 — E2 `weavster compile` (TS side)
+
+- What changed: Built `weavster compile` — the build step that turns a project's enabled pipelines
+  into the portable artifact E1 specified. Added a `pipelines:` switchboard to the project schema
+  (`{name, enabled}`, default enabled) as the source of truth for what compiles. New CLI modules:
+  `compile.ts` (resolve the switchboard → `buildManifest` reusing `validate`, then bundle + Javy
+  each unique flow → `flows/<flow>.wasm` + `manifest.json`), `bundle.ts` (esbuild a generated
+  per-flow entry — `applyFlow` + JSON/XML packs + the flow's `_ts` functions + the WASM envelope —
+  into one QuickJS-safe ESM module, guarded against `node:`/async), `javy.ts` (drive `javy-cli`).
+  Verified end-to-end through Node's WASI (the same stdin/stdout ABI the Rust engine uses): the
+  golden-path flow transforms json→json, converts json→xml, and a bad document returns
+  `error{stage:"parse"}` — all inside the real wasm, not Node.
+- What I learned: The de-risking spike (S1) had to run the bundle through **actual Javy/QuickJS**,
+  not just Node — a Node-only smoke passed while the wasm crashed at init. Two QuickJS gaps
+  surfaced: (1) no `structuredClone` (the engine clones with it), fixed by injecting a JSON-clone
+  polyfill into every bundle; (2) `fast-xml-parser`'s transitive `xml-naming` eagerly builds
+  XML-1.1 `/u`-mode regexes at import, and QuickJS rejects `[\-\.\d]` in unicode mode — crashing
+  every flow module (even JSON-only ones, since the bundle imports the XML pack). Fixed with a
+  `pnpm patch` making those regexes lazy; XML 1.0 (the default) was always fine. Javy static
+  linking (S2) gives self-contained ~2.5 MB modules — no shared provider to ship. Design calls
+  taken with the user: the switchboard lives in `weavster.yaml`, and a file `path` is copied
+  verbatim into the manifest `glob` (real glob fan-out is an E4 connector concern).
+  Packaging caveat (for E5/release): the `xml-naming` patch lives in this repo's
+  `pnpm-workspace.yaml`, so it does **not** reach npm consumers of `@weavster/cli` — a published
+  `compile` would bundle unpatched `xml-naming` and emit a wasm module that crashes at init. The
+  portable fix (an esbuild transform that makes those regexes lazy at bundle time, or vendoring the
+  XML pack) is deferred to the release milestone; `compile` works in-repo and in CI today.
+- What is next: E3 — the Rust engine that loads the manifest and drives these wasm modules over
+  the same envelope ABI (de-risk spike **S4** first). E2 ∥ E3 per the plan sequencing.
+
 ## 2026-06-09 — E1 manifest + artifact spec (the contract)
 
 - What changed: Defined the CLI↔engine contract (Engine Plan E1 / RFC 0003 slice 1) before
@@ -33,6 +63,7 @@ Newest entries on top. One entry per merged slice.
   when `compile` lands.
 - What is next: E2 — `weavster compile` (bundle each enabled flow → JS → Javy → `flows/<name>.wasm`,
   emit the manifest), after de-risking spike S1 (QuickJS-safe bundle).
+
 ## 2026-06-09 — E0 engine workspace
 
 - What changed: Stood up the Rust side of the monorepo (Engine Plan E0). Added a root

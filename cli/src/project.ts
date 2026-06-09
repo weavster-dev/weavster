@@ -20,12 +20,37 @@ export function resolveProjectFile(path: string): string {
   return path;
 }
 
+/** A pipeline entry in the weavster.yaml switchboard. */
+export interface SwitchboardEntry {
+  name: string;
+  enabled?: boolean;
+}
+
+export interface Project {
+  apiVersion: string;
+  name: string;
+  description?: string;
+  pipelines?: SwitchboardEntry[];
+}
+
+export interface ProjectLoad {
+  project: Project | null;
+  file: string | null;
+  errors: string[];
+}
+
 /** Load, parse, and validate a project's weavster.yaml. */
 export function checkProject(path: string): CheckResult {
+  const { project, file, errors } = loadProject(path);
+  return { ok: project !== null, file, errors };
+}
+
+/** Load, parse, and schema-validate a project, returning the parsed data. */
+export function loadProject(path: string): ProjectLoad {
   const file = resolveProjectFile(path);
 
   if (!existsSync(file)) {
-    return { ok: false, file: null, errors: [`no ${PROJECT_FILE} found at ${file}`] };
+    return { project: null, file: null, errors: [`no ${PROJECT_FILE} found at ${file}`] };
   }
 
   let data: unknown;
@@ -33,9 +58,10 @@ export function checkProject(path: string): CheckResult {
     data = parse(readFileSync(file, 'utf8'));
   } catch (err) {
     const message = err instanceof YAMLParseError ? err.message : String(err);
-    return { ok: false, file, errors: [`invalid YAML: ${message}`] };
+    return { project: null, file, errors: [`invalid YAML: ${message}`] };
   }
 
   const { valid, errors } = validateProject(data);
-  return { ok: valid, file, errors };
+  if (!valid) return { project: null, file, errors };
+  return { project: data as Project, file, errors: [] };
 }

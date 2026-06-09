@@ -10,7 +10,8 @@ them locally, test them with fixtures, and run them through a modular engine.
 [![Node](https://img.shields.io/node/v/@weavster/cli)](https://nodejs.org)
 
 > Status: config-first authoring, `weavster validate`, fixture-based `weavster test`, the
-> v0alpha2 transform DSL, JSON/XML format packs, and `weavster run` all work today.
+> v0alpha2 transform DSL, JSON/XML format packs, `weavster run`, and `weavster compile`
+> (pipelines → a portable wasm artifact) all work today.
 
 ## Quickstart
 
@@ -50,6 +51,12 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   `flows/<flow>.yaml` and prints a diff for any mismatch against `expected.json`.
 - `weavster run [name]`: runs `pipelines/<name>.yaml` — read a source, transform with a flow,
   write a sink (file and stdin/stdout connectors; can convert formats). Omit the name to run all.
+- `weavster compile [path]`: compiles the enabled pipelines (the `pipelines:` switchboard in
+  `weavster.yaml`) into a portable artifact — `manifest.json` plus one `flows/<flow>.wasm` per
+  flow (each flow bundled with the JSON/XML packs and its `_ts` functions, then built to wasm by
+  Javy). Output lands in `<project>/target/artifact/`. This is the build step the forthcoming
+  Rust engine ([RFC 0003](docs/rfcs/0003-engine-runtime.md)) will run; see
+  [`docs/ARTIFACT_SPEC.md`](docs/ARTIFACT_SPEC.md) for the contract.
 - A reference user project at [`examples/golden-path/`](examples/golden-path/) exercised
   by `validate` and `test`.
 - `@weavster/core`: the canonical document model — a format-agnostic node tree
@@ -77,8 +84,8 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
 - Engine artifact contract ([`docs/ARTIFACT_SPEC.md`](docs/ARTIFACT_SPEC.md)): the versioned
   `manifest.json` schema ([`spec/schemas/manifest.schema.json`](spec/schemas/manifest.schema.json)),
   the `manifest.json` + `flows/<name>.wasm` artifact layout, and the WASM input/result envelope —
-  the contract the Rust engine (RFC 0003) and `weavster compile` are built against. Spec only; the
-  `compile` command and engine that produce/consume it are not yet implemented.
+  the contract the Rust engine (RFC 0003) and `weavster compile` are built against. `compile`
+  produces this artifact today; the Rust engine that consumes it is not yet implemented.
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 

@@ -6,7 +6,7 @@ import type { Flow, Step, TransformFn } from '@weavster/core';
 const FUNCTIONS_DIR = 'functions';
 
 /** Collect the module names referenced by `_ts` steps, recursing into `_when` branches. */
-function collectModules(steps: Step[]): string[] {
+export function collectModules(steps: Step[]): string[] {
   const names = new Set<string>();
   const walk = (list: Step[]) => {
     for (const step of list) {

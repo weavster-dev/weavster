@@ -42,10 +42,14 @@ loop; at-least-once durability / checkpointing; any Rust reimplementation of the
 
 These are RFC 0003's open questions. Time-box each; the answer feeds the milestone in brackets.
 
-- **S1 — QuickJS-safe bundle.** Can `applyFlow` + the JSON pack + the XML pack (fast-xml-parser)
-  bundle to JS with no `node:` builtins and no async? What fails; polyfill vs forbid. **[E2]**
-- **S2 — Javy linking.** Static per-flow modules vs a shared QuickJS provider. Default static;
-  measure artifact size. **[E1/E2]**
+- **S1 — QuickJS-safe bundle.** ✅ Resolved (E2). `applyFlow` + JSON + XML (fast-xml-parser)
+  esbuild-bundle clean (no `node:`/async/Promise). Two polyfills/patches needed: (1) a
+  `structuredClone` shim (QuickJS lacks it), injected into every flow bundle; (2) a `pnpm patch`
+  on `xml-naming` making its XML-1.1 `/u`-mode regexes lazy — QuickJS rejects `[\-\.\d]` in
+  unicode mode, and the eager build crashed wasm init. A `node:`/async guard scans every bundle.
+- **S2 — Javy linking.** ✅ Resolved (E2): **static** per-flow modules (`javy compile`, no `-d`).
+  Self-contained, no shared provider to ship. Artifact size ≈ 2.5 MB/flow (acceptable this phase;
+  a dynamically-linked shared provider is a later size optimization if needed).
 - **S3 — `_ts` bundling.** How a function's own imports/deps bundle (esbuild) and what is
   disallowed in the sandbox. **[E2]**
 - **S4 — instance lifecycle.** Re-init a pooled instance vs fresh instantiate per document;
@@ -60,10 +64,10 @@ These are RFC 0003's open questions. Time-box each; the answer feeds the milesto
 
 Stand up the Rust side of the (currently TS-only) monorepo without disturbing it.
 
-- [ ] Add an `engine/` Rust crate (binary). → verify: `cargo build` from a clean checkout.
-- [ ] Wire it into CI as a separate job (build + clippy + test); reuse the dormant
+- [x] Add an `engine/` Rust crate (binary). → verify: `cargo build` from a clean checkout.
+- [x] Wire it into CI as a separate job (build + clippy + test); reuse the dormant
       `rust-coverage` job already stubbed in `codecov.yml`. → verify: CI green on a no-op PR.
-- [ ] Settle workspace layout: `engine/` top-level alongside the pnpm packages; document the
+- [x] Settle workspace layout: `engine/` top-level alongside the pnpm packages; document the
       build boundary (TS toolchain never enters the engine image). → verify: README + CONTRIBUTING
       describe where Rust lives.
 
@@ -72,12 +76,12 @@ Stand up the Rust side of the (currently TS-only) monorepo without disturbing it
 Define the contract first so CLI (E2) and engine (E3) can be built against it independently.
 (RFC 0003 slice 1.)
 
-- [ ] Specify `manifest.json`: `manifestVersion`, `abiVersion` (Javy ABI pin), and the per-pipeline
+- [x] Specify `manifest.json`: `manifestVersion`, `abiVersion` (Javy ABI pin), and the per-pipeline
       `{name, source, flow, sink}` shape with inline connector config. → verify: a hand-written
       golden manifest validates against a published JSON schema.
-- [ ] Specify the `artifact/` layout (`manifest.json` + `flows/<name>.wasm`). Decide directory vs
+- [x] Specify the `artifact/` layout (`manifest.json` + `flows/<name>.wasm`). Decide directory vs
       tarball (**S6**). → verify: the layout is documented and a fixture artifact exists.
-- [ ] Define the **input/result envelope** byte contract (`in`/`out` formats + payload in;
+- [x] Define the **input/result envelope** byte contract (`in`/`out` formats + payload in;
       `ok`/`error{stage}` out) as a shared spec doc both hosts cite. → verify: spec doc lands;
       referenced by E2 and E3.
 
@@ -86,14 +90,14 @@ Define the contract first so CLI (E2) and engine (E3) can be built against it in
 Bundle each enabled flow → JS → Javy → `flows/<name>.wasm`; emit the manifest. Reuses `validate`.
 (RFC 0003 slice 2. Depends on **S1, S3**.)
 
-- [ ] Read `weavster.yaml` (active pipelines + `enabled`), resolve each enabled `pipelines/*.yaml`,
+- [x] Read `weavster.yaml` (active pipelines + `enabled`), resolve each enabled `pipelines/*.yaml`,
       reuse `validate`. → verify: disabled pipelines are excluded from the manifest.
-- [ ] Bundle per flow: `applyFlow` + all format packs + the flow's `_ts` → one QuickJS-safe JS
+- [x] Bundle per flow: `applyFlow` + all format packs + the flow's `_ts` → one QuickJS-safe JS
       module. → verify: bundle passes a `node:`/async guard (the **S1** check).
-- [ ] Run Javy to produce `flows/<name>.wasm`; emit `manifest.json` with `manifestVersion` +
+- [x] Run Javy to produce `flows/<name>.wasm`; emit `manifest.json` with `manifestVersion` +
       `abiVersion`. → verify: `weavster compile` on `examples/golden-path` yields a runnable
       artifact.
-- [ ] Wrap the input/result envelope around the bundle (`in`/`out` format select on stdin;
+- [x] Wrap the input/result envelope around the bundle (`in`/`out` format select on stdin;
       `ok`/`error` out). → verify: a JSON→XML pipeline round-trips, and feeding a bad document
       yields an `error{stage:"parse"}` envelope, not a crash.
 
