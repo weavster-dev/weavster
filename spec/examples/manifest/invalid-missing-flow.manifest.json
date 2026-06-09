@@ -1,0 +1,11 @@
+{
+  "manifestVersion": "1",
+  "abiVersion": "javy-1",
+  "pipelines": [
+    {
+      "name": "orders",
+      "source": { "type": "file", "glob": "in/*.json", "format": "json" },
+      "sink": { "type": "file", "path": "out/order.json", "format": "json" }
+    }
+  ]
+}

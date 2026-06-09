@@ -13,6 +13,26 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-09 — E1 manifest + artifact spec (the contract)
+
+- What changed: Defined the CLI↔engine contract (Engine Plan E1 / RFC 0003 slice 1) before
+  building either side. Added `spec/schemas/manifest.schema.json` (draft-07, matching the existing
+  project/flow/pipeline schemas): `manifestVersion` + `abiVersion` as `const` guards, `pipelines[]`
+  of `{name, source, flow, sink}` with inline `file` connector config (`glob` source, `path` sink,
+  required `format`). Added golden + 3 invalid manifest fixtures, a fixture artifact directory
+  (`spec/examples/artifact/golden-path/` — manifest + `flows/` layout), `docs/ARTIFACT_SPEC.md`
+  (layout + manifest + envelope byte contract; S6 decided = directory), and a `cli/test`
+  manifest-schema test (Ajv against the schema, no new CLI surface).
+- What I learned: The manifest reuses the pipeline schema's shape but diverges deliberately — file
+  source uses `glob` (not `path`) because connectors enumerate matches (E4), and `format` is
+  **required** on both source and sink because compile resolves the runtime values the host copies
+  into the envelope (pipeline.yaml left them inferable). The `.wasm` modules can't exist yet (Javy
+  is E2), so the fixture artifact ships the manifest + an empty `flows/` with a README — the layout
+  is the E1 deliverable, not the build output. Validating in a standalone test (rather than adding
+  `validateManifest` to `schema.ts`) keeps E1 to the contract; the CLI gains manifest validation
+  when `compile` lands.
+- What is next: E2 — `weavster compile` (bundle each enabled flow → JS → Javy → `flows/<name>.wasm`,
+  emit the manifest), after de-risking spike S1 (QuickJS-safe bundle).
 ## 2026-06-09 — E0 engine workspace
 
 - What changed: Stood up the Rust side of the monorepo (Engine Plan E0). Added a root
