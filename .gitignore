@@ -15,7 +15,9 @@ out/
 *.tsbuildinfo
 
 # Rust (engine/)
+# Rust (engine/)
 target/
+lcov.info
 
 # Docusaurus
 website/.docusaurus/
