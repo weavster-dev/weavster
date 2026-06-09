@@ -9,8 +9,8 @@ them locally, test them with fixtures, and run them through a modular engine.
 [![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-blue)](https://github.com/weavster-dev/weavster/blob/main/LICENSE)
 [![Node](https://img.shields.io/node/v/@weavster/cli)](https://nodejs.org)
 
-> Status: the MVP — config-first authoring, validate, fixture test, the v0alpha2 DSL, JSON/XML
-> packs, and `weavster run` — is delivered. Next: a thin Rust + WASM production runtime.
+> Status: config-first authoring, `weavster validate`, fixture-based `weavster test`, the
+> v0alpha2 transform DSL, JSON/XML format packs, and `weavster run` all work today.
 
 ## Quickstart
 

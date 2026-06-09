@@ -1,6 +1,6 @@
 # RFC 0003 — the Weavster engine (Rust + WASM runtime)
 
-- Status: **Draft** (design only; no implementation yet)
+- Status: **Accepted** (design resolved; no implementation yet)
 - Phase: "make it run in production" (the deployable runtime)
 - Builds on: `weavster run` and pipelines ([RFC 0002](./0002-run-pipelines.md)) and the
   v0alpha2 DSL ([RFC 0001](./0001-v0alpha2-dsl.md))
@@ -52,7 +52,7 @@ in a sandbox, driven over a simple stdin→stdout byte ABI.
 Crucially, the thing we compile is **not a Rust reimplementation of the DSL** — it is the
 existing `@weavster/core` code. A flow is compiled by bundling, per flow:
 
-```
+```text
 applyFlow (v0alpha2 engine)  +  the flow's _ts functions  +  format-pack parse/serialize
         └──────────────── one JS module ────────────────┘  ──Javy──▶  flows/<name>.wasm
 ```
@@ -171,8 +171,8 @@ stream) and reports pipeline + document + `stage`. Custom error-handling policie
 slice; `detail` is the seam they hang off.
 
 ```rust
-// sketch — host side
-let res: Result = host.run(&flow_wasm, Input { format, payload })?;  // stdin → run → stdout
+// sketch — host side (Result<T> is a crate-level alias, as in the connector traits below)
+let out: Bytes = host.run(&flow_wasm, Input { format, payload })?;  // stdin → run → stdout
 ```
 
 **Resource limits.** The wasm is sandboxed _and_ bounded. Defaults now, configurability later:
@@ -277,13 +277,14 @@ pipelines:
   - name: orders # → pipelines/orders.yaml
     enabled: true
   - name: invoices
-    enabled: false # compiled, but the engine does not run it
+    enabled: false # excluded from the compiled artifact
 ```
 
 `weavster compile` reads `weavster.yaml`, resolves each **enabled** pipeline from its
-`pipelines/<name>.yaml`, and emits the manifest containing only those. Disabled pipelines are
-skipped (or compiled-but-inert — a slice-1 detail). The engine still consumes the manifest; the
-operator-facing switch is `enabled` in `weavster.yaml`.
+`pipelines/<name>.yaml`, and emits the manifest containing only those. **Disabled pipelines are
+excluded from the manifest entirely** — re-enabling one requires a recompile, which is consistent
+with the ahead-of-time artifact model (any change already rebuilds the artifact). The engine runs
+exactly what the manifest contains; the operator-facing switch is `enabled` in `weavster.yaml`.
 
 **Single server (now).** One engine process runs all the project's pipelines concurrently.
 
@@ -294,6 +295,10 @@ to move from one to the other — only how it is invoked. Out of scope to build 
 not foreclose.
 
 ## Slices
+
+These are the design slices. Their milestone breakdown — plus a **slice 0** (stand up the Rust
+crate in the currently TS-only monorepo) that precedes slice 1 — lives in
+[`docs/ENGINE_PLAN.md`](../ENGINE_PLAN.md) as E0–E6.
 
 1. **Manifest + artifact spec.** Define `manifest.json` (versioned) and the `artifact/` layout.
    The contract first, so CLI and engine can be built against it independently.
