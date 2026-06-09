@@ -101,7 +101,7 @@ jobs:
       - if: steps.detect.outputs.present == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools-preview, clippy
+          components: llvm-tools-preview, clippy, rustfmt
 
       - if: steps.detect.outputs.present == 'true'
         name: build
