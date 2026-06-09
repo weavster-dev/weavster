@@ -13,10 +13,10 @@ still apply — see [`archive/MVP_TASKS.md`](./archive/MVP_TASKS.md).
 
 One portable **artifact** (built ahead of time by `weavster compile`) runs in a thin Rust engine.
 Transforms **always** run as WASM — the local TS `run` loop and the prod Rust engine are two
-*hosts* around the same compiled module, so there is one execution path, not two. The engine owns
+_hosts_ around the same compiled module, so there is one execution path, not two. The engine owns
 I/O and orchestration; it never sees the DSL.
 
-Locked decisions (from the RFC 0003 review — see its *Resolved* section):
+Locked decisions (from the RFC 0003 review — see its _Resolved_ section):
 
 - **Always-WASM.** Local and prod differ only in the host harness.
 - **One module per flow.** Bundles all format packs; `format` rides in the input envelope.
@@ -136,7 +136,7 @@ Ship the engine as a thin Docker image and define how it boots. (RFC 0003 slice 
 ## E6 — Parity test (the guardrail)
 
 A golden pipeline through both harnesses must produce identical output. Because both drive the
-**same wasm**, this checks the two *hosts* agree — not two JS engines. (RFC 0003 slice 6.)
+**same wasm**, this checks the two _hosts_ agree — not two JS engines. (RFC 0003 slice 6.)
 
 - [ ] Run `examples/golden-path` through the TS `run` loop and the Rust engine; assert byte-equal
       output. → verify: a CI job runs both and diffs.

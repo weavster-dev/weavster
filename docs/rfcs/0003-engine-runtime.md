@@ -18,8 +18,8 @@ and is the single deployable for both the local single-server strategy now and a
 The existing TS `run` loop (RFC 0002) stays — it is the local dev/test runtime. The Rust
 engine is the production runtime. **Transforms always run as WASM in both** — the only
 difference is the harness around them: a TS host drives the wasm locally, the Rust engine
-drives the very same wasm in production. There is one transform implementation *and one
-execution path*, not two. Because both harnesses run the identical compiled module, there is
+drives the very same wasm in production. There is one transform implementation _and one
+execution path_, not two. Because both harnesses run the identical compiled module, there is
 no V8-vs-QuickJS divergence to reconcile; the parity test (slice 6) is "same module, two
 hosts," not "two engines we hope agree."
 
@@ -37,7 +37,7 @@ The constraints the user set:
 2. **Transforms are TypeScript compiled to WASM.** User code runs sandboxed, deterministically,
    and identically in dev and prod.
 3. **The engine is Rust** — it owns I/O, orchestration, and the WASM host, and the toolchain
-   that *produces* WASM lives in the (Rust-buildable) tool path, not in the runtime image.
+   that _produces_ WASM lives in the (Rust-buildable) tool path, not in the runtime image.
 4. **A small, fixed set of connection types** — file, REST, blob, TCP/IP, gRPC, and DB
    read/write — behind one pluggable interface, with format/schema handling that varies per
    connector.
@@ -104,16 +104,16 @@ both decoupled from the project's `apiVersion`:
     {
       "name": "orders",
       "source": { "type": "file", "glob": "in/*.json", "format": "json" },
-      "flow": "order",                     // → flows/order.wasm
-      "sink":   { "type": "file", "path": "out/order.json", "format": "json" }
-    }
-  ]
+      "flow": "order", // → flows/order.wasm
+      "sink": { "type": "file", "path": "out/order.json", "format": "json" },
+    },
+  ],
 }
 ```
 
 Connector config is inline per pipeline (`source`/`sink`); the `flow→wasm` map is the `flow`
 field resolved by convention to `flows/<flow>.wasm`. `format` is a runtime field the host copies
-into the input envelope — it is *not* baked into the wasm.
+into the input envelope — it is _not_ baked into the wasm.
 
 The engine consumes the artifact; it does not read the user's project directory. The CLI owns
 schema, validation, and bundling; the engine owns execution. The CLI boundary from the MVP plan
@@ -129,8 +129,8 @@ A thin Rust binary. Responsibilities, and nothing more:
 - **Run the loop**, one per pipeline, reusing RFC 0002's continuous semantics: a bounded source
   (file) yields one document then closes; an unbounded source streams until end-of-stream.
   Each pipeline is `source → transform → sink` fed by a **FIFO queue with concurrency 1** —
-  one message in flight, processed in order. Pipelines run concurrently *with each other*;
-  *within* a pipeline, strictly serial. (Higher per-pipeline concurrency is a `TODO(config)` —
+  one message in flight, processed in order. Pipelines run concurrently _with each other_;
+  _within_ a pipeline, strictly serial. (Higher per-pipeline concurrency is a `TODO(config)` —
   the queue is the seam.)
 - **Scope errors** per document exactly as RFC 0002 specifies — startup errors abort non-zero;
   for per-document errors, **log and move on**: fail a bounded run, but on a live stream log the
@@ -175,13 +175,13 @@ slice; `detail` is the seam they hang off.
 let res: Result = host.run(&flow_wasm, Input { format, payload })?;  // stdin → run → stdout
 ```
 
-**Resource limits.** The wasm is sandboxed *and* bounded. Defaults now, configurability later:
+**Resource limits.** The wasm is sandboxed _and_ bounded. Defaults now, configurability later:
 
-| Limit            | Default       | TODO                          |
-| ---------------- | ------------- | ----------------------------- |
-| Memory per inst. | 128 MB        | `// TODO(config)` per-flow    |
-| Wall-clock       | 5 s (epoch)   | `// TODO(config)` per-flow    |
-| Concurrency      | pooled, 1 doc | `// TODO(config)` pool size   |
+| Limit            | Default       | TODO                        |
+| ---------------- | ------------- | --------------------------- |
+| Memory per inst. | 128 MB        | `// TODO(config)` per-flow  |
+| Wall-clock       | 5 s (epoch)   | `// TODO(config)` per-flow  |
+| Concurrency      | pooled, 1 doc | `// TODO(config)` pool size |
 
 These ship as constants with `TODO(config)` markers — no config surface in this phase, but the
 wasmtime knobs (memory limiter, epoch interruption) are wired so a runaway `_ts` cannot hang or
@@ -207,7 +207,7 @@ trait Sink {
 
 **Each `next()` yields exactly one document — one message per transform invocation.** Anything
 "multi" — a glob matching many files, an array or JSONL file holding many records — is the
-*connector's* concern, not the transform's. This keeps the wasm contract dead simple (one doc in,
+_connector's_ concern, not the transform's. This keeps the wasm contract dead simple (one doc in,
 one result out) while the connector side absorbs the variability, which is where it belongs.
 
 **Paths are globs, not single files**, so the same shape works across backends: a local
@@ -225,17 +225,17 @@ Connectors are resolved from the manifest through a **registry** keyed by `type`
 implements **`file` only** — but behind the trait + registry, so the remaining types slot in
 later without touching the run loop:
 
-| Type    | Status      | As source / sink                          |
-| ------- | ----------- | ----------------------------------------- |
-| `file`  | this RFC    | read / write a path                       |
-| `rest`  | later slice | HTTP poll-or-webhook / HTTP call          |
-| `blob`  | later slice | object-store get / put                    |
-| `tcp`   | later slice | socket read / write                       |
-| `grpc`  | later slice | stream recv / send                        |
-| `db`    | later slice | query rows / upsert rows                  |
+| Type   | Status      | As source / sink                 |
+| ------ | ----------- | -------------------------------- |
+| `file` | this RFC    | read / write a path              |
+| `rest` | later slice | HTTP poll-or-webhook / HTTP call |
+| `blob` | later slice | object-store get / put           |
+| `tcp`  | later slice | socket read / write              |
+| `grpc` | later slice | stream recv / send               |
+| `db`   | later slice | query rows / upsert rows         |
 
 Format/schema handling stays where RFC 0002 put it: the **source** format chooses the parser,
-the **sink** format chooses the serializer — and both run *inside the WASM module*, not in the
+the **sink** format chooses the serializer — and both run _inside the WASM module_, not in the
 connector. A connector only moves bytes, so a new connector type never re-implements a format.
 
 ## Deployment
@@ -265,7 +265,7 @@ config is the single mounted entrypoint, which is what k8s ConfigMap/volume moun
 ```
 
 **`weavster.yaml` is the active-pipeline registry.** Pipelines are files — `pipelines/*.yaml`,
-the same one-per-file convention as `flows/`. Each pipeline yaml configures *itself*: its source,
+the same one-per-file convention as `flows/`. Each pipeline yaml configures _itself_: its source,
 transform (flow), and sink. `weavster.yaml` lists which pipelines are **active and their status
 (enabled / disabled)** — the project switchboard, not the per-pipeline config:
 
@@ -274,10 +274,10 @@ transform (flow), and sink. `weavster.yaml` lists which pipelines are **active a
 apiVersion: weavster/v0alpha2
 name: golden-path
 pipelines:
-  - name: orders        # → pipelines/orders.yaml
+  - name: orders # → pipelines/orders.yaml
     enabled: true
   - name: invoices
-    enabled: false      # compiled, but the engine does not run it
+    enabled: false # compiled, but the engine does not run it
 ```
 
 `weavster compile` reads `weavster.yaml`, resolves each **enabled** pipeline from its
@@ -287,7 +287,7 @@ operator-facing switch is `enabled` in `weavster.yaml`.
 
 **Single server (now).** One engine process runs all the project's pipelines concurrently.
 
-**Distributed (later).** The *same* binary runs one pipeline (or a shard) per pod, with
+**Distributed (later).** The _same_ binary runs one pipeline (or a shard) per pod, with
 orchestration external. The engine is designed to run one project of N pipelines in-process; the
 distributed strategy is N engine instances each scoped to a subset. No engine change is required
 to move from one to the other — only how it is invoked. Out of scope to build here; in scope to
@@ -306,7 +306,7 @@ not foreclose.
 5. **Thin Docker image** + the `cargo run -- -c ./weavster.yaml` dev path, with `weavster.yaml`
    as the mounted, override-able config entrypoint.
 6. **Parity test.** A golden pipeline run through both harnesses must produce identical output.
-   Since both drive the **same compiled wasm**, this checks the two *hosts* (TS vs Rust I/O,
+   Since both drive the **same compiled wasm**, this checks the two _hosts_ (TS vs Rust I/O,
    envelope handling, error scoping) agree — not two JS engines. Near-free, and the guardrail
    that keeps the harnesses honest.
 
@@ -361,5 +361,5 @@ not foreclose.
 6. **`_ts` bundling** — how a function's own imports/deps are bundled (esbuild step) and what is
    disallowed inside the sandbox.
 7. **Durability (deferred, not unknown)** — `log-and-move-on` is the chosen behavior now; the open
-   work is *when* at-least-once / checkpointing arrives, which connector types force it (queues,
+   work is _when_ at-least-once / checkpointing arrives, which connector types force it (queues,
    DB), and where offsets live. Tracked for a later slice, not blocking this phase.
