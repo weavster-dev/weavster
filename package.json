@@ -2,7 +2,7 @@
   "name": "weavster",
   "version": "0.0.0",
   "private": true,
-  "packageManager": "pnpm@10.20.0",
+  "packageManager": "pnpm@11.5.2",
   "engines": {
     "node": ">=20.0"
   },

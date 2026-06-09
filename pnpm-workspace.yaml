@@ -2,3 +2,10 @@ packages:
   - core
   - cli
   - website
+
+# Approve dependency build scripts; pnpm 11 errors on unapproved ones
+# (ERR_PNPM_IGNORED_BUILDS).
+allowBuilds:
+  '@swc/core': true
+  core-js: true
+  esbuild: true

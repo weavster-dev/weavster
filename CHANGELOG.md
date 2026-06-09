@@ -9,6 +9,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Changed
 
+- Bump the pinned package manager to `pnpm@11.5.2` (from `pnpm@10.20.0`). CI derives pnpm from
+  `packageManager` via `pnpm/action-setup`, so this moves local and CI together; the lockfile
+  (v9.0) is unchanged and `pnpm install --frozen-lockfile` still passes. Adds an `allowBuilds`
+  block in `pnpm-workspace.yaml` (`@swc/core`, `core-js`, `esbuild`) since pnpm 11 now errors
+  (`ERR_PNPM_IGNORED_BUILDS`) on unapproved dependency build scripts instead of warning.
 - Archive the delivered MVP plan: move `docs/MVP_PLAN.md` and `docs/MVP_TASKS.md` to
   `docs/archive/` (with a README pointer), and add `docs/ENGINE_PLAN.md` — the milestone
   breakdown of the RFC 0003 production-runtime phase (E0 workspace → E1 manifest contract →
