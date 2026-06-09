@@ -123,16 +123,16 @@ cargo test --workspace       # run engine tests
 
 ## Layout
 
-| Path          | Purpose                                                      |
-| ------------- | ------------------------------------------------------------ |
-| `docs/`       | Plan, task list, and (later) the documentation site source   |
-| `website/`    | Docusaurus docs site (not yet scaffolded)                    |
-| `spec/`       | Config JSON Schemas and example configs                      |
-| `cli/`        | CLI commands                                                 |
-| `core/`       | Canonical document model, format packs, and engine           |
-| `engine/`     | Rust production runtime (RFC 0003) — runs compiled artifacts |
-| `formats/`    | Reserved for format packs if later extracted from `core/`    |
-| `functions/`  | Built-in transform functions                                 |
-| `ts-runtime/` | TypeScript escape hatch for custom transforms                |
-| `tests/`      | Fixtures and integration tests                               |
-| `examples/`   | Golden-path example project                                  |
+| Path          | Purpose                                                    |
+| ------------- | ---------------------------------------------------------- |
+| `docs/`       | Plan, task list, and (later) the documentation site source |
+| `website/`    | Docusaurus docs site (not yet scaffolded)                  |
+| `spec/`       | Config JSON Schemas and example configs                    |
+| `cli/`        | CLI commands                                               |
+| `core/`       | Canonical document model, format packs, and engine         |
+| `engine/`     | Rust production runtime (RFC 0003) — currently a stub      |
+| `formats/`    | Reserved for format packs if later extracted from `core/`  |
+| `functions/`  | Built-in transform functions                               |
+| `ts-runtime/` | TypeScript escape hatch for custom transforms              |
+| `tests/`      | Fixtures and integration tests                             |
+| `examples/`   | Golden-path example project                                |
