@@ -193,15 +193,17 @@ A connector is a typed `Source` or `Sink`, mirroring RFC 0002's TS interface so 
 runtimes stay aligned:
 
 ```rust
+type EngineResult<T> = Result<T, EngineError>;
+
 #[async_trait]
 trait Source {
     /// Yields one document at a time; `None` at end-of-stream.
-    async fn next(&mut self) -> Option<Result<Bytes>>;
+    async fn next(&mut self) -> Option<EngineResult<Bytes>>;
 }
 
 #[async_trait]
 trait Sink {
-    async fn write(&mut self, doc: Bytes) -> Result<()>;
+    async fn write(&mut self, doc: Bytes) -> EngineResult<()>;
 }
 ```
 
