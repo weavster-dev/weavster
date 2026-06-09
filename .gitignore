@@ -14,6 +14,9 @@ build/
 out/
 *.tsbuildinfo
 
+# Rust (engine/)
+target/
+
 # Docusaurus
 website/.docusaurus/
 website/build/

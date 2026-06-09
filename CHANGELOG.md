@@ -7,6 +7,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Added
+
+- Stand up the Rust engine workspace (Engine Plan E0): a root `Cargo.toml` virtual workspace and
+  an `engine/` binary crate (`weavster-engine`, edition 2024) — the production runtime from
+  [RFC 0003](docs/rfcs/0003-engine-runtime.md), currently a stub. The CI `rust-coverage` job is
+  reworked into `rust-engine` (build + clippy + test with coverage), self-gating so it stays
+  green until a `Cargo.toml` exists. README and CONTRIBUTING document where Rust lives and the
+  build boundary (no Node/TS toolchain in the engine build or image); `target/` is git-ignored.
+
 ### Changed
 
 - Bump the pinned package manager to `pnpm@11.5.2` (from `pnpm@10.20.0`). CI derives pnpm from

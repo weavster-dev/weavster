@@ -1,0 +1,10 @@
+# Rust workspace for the Weavster engine (RFC 0003) — the production runtime.
+#
+# Build boundary: the engine lives *alongside* the pnpm/TS packages, never
+# inside them. The TS toolchain (core/cli) builds `weavster compile`, which
+# *produces* WASM artifacts; the engine *runs* them. No Node or TS toolchain
+# enters the engine build or its Docker image. Keeping a Rust workspace at the
+# repo root lets `cargo build|clippy|test --workspace` run without a `cd`.
+[workspace]
+resolver = "3"
+members = ["engine"]

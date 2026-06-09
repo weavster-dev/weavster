@@ -80,10 +80,10 @@ jobs:
           node cli/dist/index.js validate "$RUNNER_TEMP/wv-init"
           node cli/dist/index.js test "$RUNNER_TEMP/wv-init"
 
-  # Rust execution core. Dormant until a Cargo.toml lands, then runs
-  # cargo-llvm-cov and uploads with the `rust` flag. No edits needed to
-  # activate — just add the crate.
-  rust-coverage:
+  # Rust engine (RFC 0003). Builds, lints, and tests the `engine/` workspace,
+  # then uploads coverage with the `rust` flag. Self-gating: the steps no-op
+  # until a Cargo.toml lands, so it stayed green before the crate existed.
+  rust-engine:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -95,19 +95,28 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "No Cargo.toml yet — skipping Rust coverage."
+            echo "No Cargo.toml yet — skipping Rust build."
           fi
 
       - if: steps.detect.outputs.present == 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
-          components: llvm-tools-preview
+          components: llvm-tools-preview, clippy
+
+      - if: steps.detect.outputs.present == 'true'
+        name: build
+        run: cargo build --workspace --locked
+
+      - if: steps.detect.outputs.present == 'true'
+        name: clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - if: steps.detect.outputs.present == 'true'
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - if: steps.detect.outputs.present == 'true'
-        run: cargo llvm-cov --workspace --lcov --output-path lcov.info
+        name: test with coverage
+        run: cargo llvm-cov --workspace --locked --lcov --output-path lcov.info
 
       - if: steps.detect.outputs.present == 'true'
         name: upload rust coverage to Codecov

@@ -13,6 +13,22 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-09 — E0 engine workspace
+
+- What changed: Stood up the Rust side of the monorepo (Engine Plan E0). Added a root
+  `Cargo.toml` virtual workspace (`resolver = "3"`, `members = ["engine"]`) and an `engine/`
+  binary crate `weavster-engine` (edition 2024) — a stub that prints a "not yet implemented"
+  banner. Committed `Cargo.lock`, git-ignored `target/`. Reworked the dormant CI `rust-coverage`
+  job into `rust-engine`: `cargo build` + `clippy -D warnings` + `llvm-cov` test/coverage,
+  still self-gated on a `Cargo.toml` existing. Documented where Rust lives and the build
+  boundary in README + CONTRIBUTING.
+- What I learned: The existing `rust-coverage` job runs `cargo … --workspace` from the repo
+  root, so a root virtual manifest (not an `engine/`-rooted workspace) keeps every cargo command
+  working without a `cd`. `--locked` needs `Cargo.lock` committed — generated it with
+  `cargo generate-lockfile`. The TS/Rust toolchains coexist cleanly; a root `Cargo.toml` is
+  additive and doesn't disturb pnpm (members are explicit, so cargo never scans `node_modules`).
+- What is next: E1 — the manifest + artifact spec (the CLI↔engine contract).
+
 ## 2026-06-06 — RFC 0002: run + pipelines (next phase design)
 
 - What changed: With the MVP shipped, picked the next phase — "make it move data" — and wrote
