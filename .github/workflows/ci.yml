@@ -112,7 +112,9 @@ jobs:
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - if: steps.detect.outputs.present == 'true'
-        uses: taiki-e/install-action@cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
 
       - if: steps.detect.outputs.present == 'true'
         name: test with coverage
