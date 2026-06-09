@@ -1,12 +1,11 @@
 # Contributing to Weavster
 
 Weavster is built in small, reviewable slices. The goal is a codebase that stays
-understandable as it grows. Read `docs/ENGINE_PLAN.md` (the current roadmap) before
-starting work; the delivered MVP plan is archived in `docs/archive/`.
+understandable as it grows.
 
 ## Workflow
 
-- Work the milestones in `docs/ENGINE_PLAN.md` top to bottom. Keep one active milestone.
+- Keep one active milestone at a time.
 - Create a short branch (or stacked PR) per small slice. One concept per PR.
 - Prefer a failing-test commit before the implementation commit.
 - Keep refactors separate from behavior changes.

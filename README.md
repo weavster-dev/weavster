@@ -9,10 +9,8 @@ them locally, test them with fixtures, and run them through a modular engine.
 [![License: BUSL-1.1](https://img.shields.io/badge/license-BUSL--1.1-blue)](https://github.com/weavster-dev/weavster/blob/main/LICENSE)
 [![Node](https://img.shields.io/node/v/@weavster/cli)](https://nodejs.org)
 
-> Status: the MVP (config-first authoring, validate, fixture test, the v0alpha2 DSL, JSON/XML
-> packs, `weavster run`) is delivered — its plan is archived in
-> [`docs/archive/`](docs/archive/). The current direction is the production runtime in
-> [`docs/ENGINE_PLAN.md`](docs/ENGINE_PLAN.md) ([RFC 0003](docs/rfcs/0003-engine-runtime.md)).
+> Status: the MVP — config-first authoring, validate, fixture test, the v0alpha2 DSL, JSON/XML
+> packs, and `weavster run` — is delivered. Next: a thin Rust + WASM production runtime.
 
 ## Quickstart
 
@@ -122,8 +120,7 @@ pnpm --filter @weavster/cli dev test ./path/to/project
 
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). Work proceeds in small, reviewable slices
-following [`docs/ENGINE_PLAN.md`](docs/ENGINE_PLAN.md).
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). Work proceeds in small, reviewable slices.
 
 ## License
 
