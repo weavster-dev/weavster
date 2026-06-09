@@ -108,10 +108,9 @@ jobs:
         run: cargo build --workspace --locked
 
       - if: steps.detect.outputs.present == 'true'
-        name: clippy
-      - if: steps.detect.outputs.present == 'true'
         name: fmt
         run: cargo fmt --check
+
       - if: steps.detect.outputs.present == 'true'
         name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
