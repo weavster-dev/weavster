@@ -90,8 +90,8 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
 The transform engine is wired into the CLI: `weavster test` runs project flows over their
-fixtures and `weavster run` moves real data through them. `init`, `validate`, `test`, and
-`run` are the working CLI commands; `compile` is still planned.
+fixtures and `weavster run` moves real data through them. `init`, `validate`, `test`, `run`,
+and `compile` are the working CLI commands.
 
 ## Local development
 

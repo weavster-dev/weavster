@@ -5,9 +5,22 @@ import { describe, expect, it, vi } from 'vitest';
 const spawnSync = vi.hoisted(() => vi.fn());
 vi.mock('node:child_process', () => ({ spawnSync }));
 
+// Mock createRequire so we can also test the "javy-cli not installed" branch.
+const mockResolve = vi.hoisted(() => vi.fn().mockReturnValue('/mocked/javy-cli'));
+vi.mock('node:module', () => ({ createRequire: () => ({ resolve: mockResolve }) }));
+
 const { javyCompile } = await import('../src/javy.js');
 
 describe('javyCompile (mocked spawn)', () => {
+  it('reports javy-cli not installed when require.resolve throws', () => {
+    mockResolve.mockImplementationOnce(() => {
+      throw new Error('Cannot find module');
+    });
+    const result = javyCompile('in.js', 'out.wasm');
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe('javy-cli is not installed');
+  });
+
   it('surfaces a transport error instead of "exited null"', () => {
     spawnSync.mockReturnValueOnce({ error: new Error('spawn ETIMEDOUT'), status: null });
     const result = javyCompile('in.js', 'out.wasm');
