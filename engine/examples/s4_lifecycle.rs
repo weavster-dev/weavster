@@ -6,7 +6,7 @@
 //!   - `Module::new` (JIT compile of the 2.5 MB module): once.
 //!   - fresh `Store` + instantiate + `_start` per document: per call.
 //!
-//! Run: cargo run --release --example s4_lifecycle -- <path/to/order.wasm>
+//! Run: cargo run --release --example s4_lifecycle -- <path/to/flow.wasm>
 
 use std::time::Instant;
 use wasmtime::{Engine, Linker, Module, Store};

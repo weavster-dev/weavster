@@ -1,6 +1,7 @@
 //! Structured logs (Engine Plan E3 slice 3): one JSON object per line on
-//! stderr, with pipeline/document/stage fields. Deliberately dependency-free;
-//! a tracing stack can replace this when the engine grows subscribers.
+//! stderr, with pipeline/document/stage fields. Deliberately framework-free
+//! (just serde_json, already a dependency); a tracing stack can replace this
+//! when the engine grows subscribers.
 
 use serde_json::json;
 

@@ -114,6 +114,9 @@ fn run_pipeline(artifact_dir: &Path, pipeline: &Pipeline, flow: &FlowModule) -> 
         if let Some(parent) = sink_path.parent() {
             std::fs::create_dir_all(parent)?;
         }
+        // One sink path, overwritten per document (last write wins) — the TS
+        // file connector's semantics. Per-document naming for multi-match
+        // globs is an E4 sink-semantics decision.
         std::fs::write(&sink_path, output)
             .with_context(|| format!("cannot write {}", sink_path.display()))?;
         log::done(&pipeline.name, documents);
@@ -125,6 +128,11 @@ fn run_pipeline(artifact_dir: &Path, pipeline: &Pipeline, flow: &FlowModule) -> 
 /// E2 emits a literal file path as a one-match glob; real patterns also work.
 /// TODO(E4): moves behind the connector trait/registry.
 fn resolve_glob(root: &Path, pattern: &str) -> Result<Vec<PathBuf>> {
+    // `root.join` silently discards the root for an absolute pattern, which
+    // would let a manifest read outside the connector root.
+    if Path::new(pattern).is_absolute() {
+        bail!("glob pattern must be relative to the connector root, got \"{pattern}\"");
+    }
     let absolute = root.join(pattern);
     let pattern_str = absolute
         .to_str()
@@ -156,6 +164,14 @@ mod tests {
         assert_eq!(names, ["a.json", "b.json"]);
 
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn resolve_glob_rejects_an_absolute_pattern() {
+        let err = resolve_glob(Path::new("/tmp"), "/etc/*.conf")
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("must be relative"), "{err}");
     }
 
     #[test]
