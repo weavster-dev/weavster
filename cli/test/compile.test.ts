@@ -1,8 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { buildManifest } from '../src/compile.js';
+import { buildManifest, compile } from '../src/compile.js';
+import { javyCompile } from '../src/javy.js';
 import { validateManifest } from '../src/schema.js';
 
 let dir: string;
@@ -66,6 +67,24 @@ describe('buildManifest', () => {
     expect(errors.join('\n')).toMatch(/no pipelines declared/);
   });
 
+  it('errors when the source format cannot be determined', () => {
+    writeFileSync(
+      join(dir, 'pipelines', 'order.yaml'),
+      'source: { type: file, path: in/order.txt }\nflow: order\nsink: { type: file, path: out/order.json }\n',
+    );
+    writeProject('  - name: order\n');
+    const { manifest, errors } = buildManifest(dir);
+    expect(manifest).toBeNull();
+    expect(errors.join('\n')).toMatch(/cannot determine source format/);
+  });
+
+  it('errors when weavster.yaml is invalid YAML', () => {
+    writeFileSync(join(dir, 'weavster.yaml'), 'pipelines: [unclosed');
+    const { manifest, errors } = buildManifest(dir);
+    expect(manifest).toBeNull();
+    expect(errors.join('\n')).toMatch(/invalid YAML/);
+  });
+
   it('rejects a non-file connector', () => {
     writeFileSync(
       join(dir, 'pipelines', 'order.yaml'),
@@ -75,5 +94,39 @@ describe('buildManifest', () => {
     const { manifest, errors } = buildManifest(dir);
     expect(manifest).toBeNull();
     expect(errors.join('\n')).toMatch(/only file connectors/);
+  });
+});
+
+describe('validateManifest', () => {
+  it('rejects data that does not match the contract schema', () => {
+    const { valid, errors } = validateManifest({});
+    expect(valid).toBe(false);
+    expect(errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe('compile error paths', () => {
+  it('fails compile (without invoking Javy) when a flow bundle is rejected', async () => {
+    // An async `_ts` function trips the sandbox guard during bundling, so
+    // compile must fail before any wasm is written.
+    mkdirSync(join(dir, 'flows'));
+    mkdirSync(join(dir, 'functions'));
+    writeFileSync(join(dir, 'flows', 'order.yaml'), 'steps:\n  - _ts: { module: fn }\n');
+    writeFileSync(join(dir, 'functions', 'fn.ts'), 'export default async (v: unknown) => v;\n');
+    writeProject('  - name: order\n');
+
+    const out = join(dir, 'target', 'artifact');
+    const result = await compile(dir, out);
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toMatch(/not sandbox-safe/);
+    expect(existsSync(join(out, 'manifest.json'))).toBe(false);
+  });
+});
+
+describe('javyCompile', () => {
+  it('reports a failed compile with javy stderr detail', () => {
+    const result = javyCompile(join(dir, 'missing.js'), join(dir, 'out.wasm'));
+    expect(result.ok).toBe(false);
+    expect(result.error).toBeTruthy();
   });
 });
