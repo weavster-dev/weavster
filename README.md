@@ -85,7 +85,12 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   `manifest.json` schema ([`spec/schemas/manifest.schema.json`](spec/schemas/manifest.schema.json)),
   the `manifest.json` + `flows/<name>.wasm` artifact layout, and the WASM input/result envelope —
   the contract the Rust engine (RFC 0003) and `weavster compile` are built against. `compile`
-  produces this artifact today; the Rust engine that consumes it is not yet implemented.
+  produces this artifact and the engine runs it today.
+- Rust engine core ([`engine/`](engine/)): `weavster-engine <artifact-dir>` loads + validates the
+  manifest (refusing unknown versions loudly), JIT-compiles each flow module once, and runs every
+  pipeline concurrently — FIFO per pipeline, fresh wasmtime store per document, with a memory cap
+  and wall-clock deadline so runaway transforms trap instead of hanging. Structured JSON logs
+  carry pipeline/document/stage.
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
@@ -118,9 +123,19 @@ pnpm --filter @weavster/cli dev test ./path/to/project
 ### Engine (Rust)
 
 The production runtime ([RFC 0003](docs/rfcs/0003-engine-runtime.md)) lives in
-[`engine/`](engine/), a Rust workspace at the repo root. It is currently a stub — the
-manifest loader, wasmtime host, and run loop land in later milestones (see
+[`engine/`](engine/), a Rust workspace at the repo root. The engine core works today:
+`weavster-engine <artifact-dir>` runs a compiled artifact (manifest loader, wasmtime host over
+the Javy ABI, per-pipeline run loop with resource limits). The connector registry, Docker
+image, and parity gate land in later milestones (see
 [`docs/ENGINE_PLAN.md`](docs/ENGINE_PLAN.md)).
+
+```bash
+# end to end: compile the golden path, then run the artifact with the engine
+pnpm --filter @weavster/cli dev compile ./examples/golden-path
+mkdir -p examples/golden-path/target/artifact/in
+cp examples/golden-path/in/order.json examples/golden-path/target/artifact/in/
+cargo run -- examples/golden-path/target/artifact
+```
 
 **Build boundary:** Rust and the pnpm/TS packages sit side by side but never mix. The TS
 toolchain builds the CLI that _produces_ WASM artifacts; the engine only _runs_ them, so no

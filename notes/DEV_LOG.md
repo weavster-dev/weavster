@@ -13,6 +13,34 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-10 — E3 engine core (Rust)
+
+- What changed: Implemented the engine core (Engine Plan E3 / RFC 0003 slice 3).
+  `weavster-engine <artifact-dir>` runs a compiled artifact: `manifest.rs` (serde load +
+  validate; refuses unknown `manifestVersion`/`abiVersion`/connector `type` loudly), `host.rs`
+  (wasmtime host over the Javy stdin/stdout ABI with memory cap + epoch wall-clock deadline),
+  `runner.rs` (per-pipeline FIFO concurrency-1 loop on scoped threads, pipelines concurrent;
+  glob source resolved against the artifact root, sorted = input order), `log.rs` (one JSON
+  object per line on stderr with pipeline/document/stage). Verified end-to-end: the golden-path
+  artifact runs through the Rust engine with byte-correct output, a poison document fails the
+  bounded run with a structured `stage:"parse"` log line, and a runaway `_ts` infinite loop
+  traps (`wasm trap: interrupt`) instead of hanging.
+- What I learned: The S4 spike reframed the RFC's "pool instances, re-init between documents" —
+  a Javy module is a WASI _command_ whose `_start` runs exactly once, so instance pooling isn't
+  possible at all. The costs sit elsewhere: `Module::new` JIT compile is ~220 ms (per flow, at
+  startup) and a fresh `Store` + instantiate + full run is ~1.3 ms/doc, byte-stable over 50 runs
+  — per-doc cost is QuickJS init inside the module, not wasmtime instantiation, so Wizer remains
+  the future lever. wasmtime 34 API notes: `WasiCtxBuilder` lives in `p2` and `build_p1()`
+  bridges to preview1 (Javy targets preview1); epoch interruption needs a ticker thread — a
+  `Weak<Engine>` upgrade loop exits cleanly when the engine drops. Engine integration tests
+  split by dependency: manifest-failure cases need no wasm (validation precedes module load);
+  artifact-driven tests self-skip unless `weavster compile` output exists, keeping `cargo test`
+  green without Node (the cross-toolchain gate is E6's job). Glob expansion landed here (sorted
+  matches = input order) though E4 owns the connector trait — the run-loop verify needed
+  multi-document pipelines.
+- What is next: E4 — `Source`/`Sink` traits behind a `type`-keyed registry (formalizing the file
+  connector + glob), then E5 (thin image + `weavster.yaml` boot) and E6 (TS↔Rust parity gate).
+
 ## 2026-06-09 — E2 `weavster compile` (TS side)
 
 - What changed: Built `weavster compile` — the build step that turns a project's enabled pipelines
