@@ -88,7 +88,7 @@ the transform's. Transforms are **synchronous**.
 { "ok": true,  "payload": "<serialized document as a UTF-8 string>" }
 
 { "ok": false, "error": {
-    "stage":   "parse" | "transform" | "serialize", // where it failed, across the byte boundary
+    "stage":   "envelope" | "parse" | "transform" | "serialize", // where it failed, across the byte boundary
     "type":    "...",      // error class
     "message": "...",      // human-readable
     "detail":  { }         // extension point for custom handling (later)
@@ -101,7 +101,9 @@ the transform's. Transforms are **synchronous**.
   they are parsed/serialized — the wire type is a string, never a raw JSON object. A binary format
   would carry base64 instead; that is a later format-pack concern and does not change this ABI.
 - **`stage`** is the field that lets the host attribute a failure to parse vs transform vs
-  serialize — information that otherwise dies inside the wasm. The host maps a `false` envelope
+  serialize — information that otherwise dies inside the wasm. `envelope` means the input
+  envelope itself was unusable (malformed JSON, stdin read failure) — a host bug, not a bad
+  document; the module still answers with the result shape rather than trapping. The host maps a `false` envelope
   onto RFC 0002 error scoping: fail a bounded run; **log-and-move-on** on a live stream; report
   pipeline + document + `stage`.
 - `detail` is the seam custom error-handling policies hang off later; unused this phase.

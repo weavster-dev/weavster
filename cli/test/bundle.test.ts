@@ -1,4 +1,6 @@
-import { dirname, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { bundleFlow } from '../src/bundle.js';
@@ -48,5 +50,43 @@ describe('bundleFlow', () => {
     const { code, errors } = await bundleFlow(goldenPath, 'nope');
     expect(code).toBeNull();
     expect(errors.join('\n')).toMatch(/no flow "nope"/);
+  });
+});
+
+describe('bundleFlow error paths', () => {
+  /** Scaffold a temp project with one flow calling one `_ts` function. */
+  function projectWithFunction(fnSource: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'wv-bundle-'));
+    mkdirSync(join(dir, 'flows'));
+    mkdirSync(join(dir, 'functions'));
+    writeFileSync(join(dir, 'flows', 'bad.yaml'), 'steps:\n  - _ts: { module: fn }\n');
+    writeFileSync(join(dir, 'functions', 'fn.ts'), fnSource);
+    return dir;
+  }
+
+  it('fails the bundle when a function imports a node: builtin', async () => {
+    const dir = projectWithFunction(
+      "import { readFileSync } from 'node:fs';\nexport default (v: unknown) => readFileSync('/etc/hosts', 'utf8');\n",
+    );
+    try {
+      const { code, errors } = await bundleFlow(dir, 'bad');
+      expect(code).toBeNull();
+      expect(errors.join('\n')).toMatch(/bundle failed/);
+      expect(errors.join('\n')).toMatch(/node: builtin not allowed/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects a bundle containing sandbox hazards (async function)', async () => {
+    const dir = projectWithFunction('export default async (v: unknown) => v;\n');
+    try {
+      const { code, errors } = await bundleFlow(dir, 'bad');
+      expect(code).toBeNull();
+      expect(errors.join('\n')).toMatch(/not sandbox-safe/);
+      expect(errors.join('\n')).toMatch(/async/);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

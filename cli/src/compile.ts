@@ -160,7 +160,10 @@ export async function compile(projectDir: string, outDir: string): Promise<Compi
   const { manifest, errors } = buildManifest(projectDir);
   if (manifest === null) return { ok: false, outDir, manifestPath: null, pipelines: [], errors };
 
+  // Start from a clean flows/ so a disabled or removed pipeline's .wasm from a
+  // previous run can't linger beside a manifest that no longer references it.
   const flowsDir = join(outDir, 'flows');
+  rmSync(flowsDir, { recursive: true, force: true });
   mkdirSync(flowsDir, { recursive: true });
 
   const flows = [...new Set(manifest.pipelines.map((p) => p.flow))];

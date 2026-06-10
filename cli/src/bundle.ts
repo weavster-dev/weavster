@@ -67,10 +67,18 @@ export function handle(input) {
 }
 
 // Javy ABI: whole-buffer stdin in, result envelope on stdout. Guarded so the
-// bundle stays importable in Node (for tests) where Javy is absent.
+// bundle stays importable in Node (for tests) where Javy is absent. A bad input
+// envelope (malformed JSON, stdin read failure) still answers with the result
+// shape — stage "envelope" — so the host gets a typed error, not a wasm trap.
 if (typeof Javy !== 'undefined') {
-  const input = JSON.parse(readInput());
-  writeOutput(JSON.stringify(handle(input)));
+  try {
+    const input = JSON.parse(readInput());
+    writeOutput(JSON.stringify(handle(input)));
+  } catch (e) {
+    writeOutput(
+      JSON.stringify({ ok: false, error: { stage: 'envelope', type: e.name, message: e.message } }),
+    );
+  }
 }
 
 function readInput() {
@@ -78,7 +86,8 @@ function readInput() {
   const buf = new Uint8Array(4096);
   let total = 0;
   let n;
-  while ((n = Javy.IO.readSync(0, buf)) > 0) {
+  while ((n = Javy.IO.readSync(0, buf)) !== 0) {
+    if (n < 0) throw new Error('stdin read error');
     chunks.push(buf.slice(0, n));
     total += n;
   }
@@ -95,7 +104,9 @@ function writeOutput(text) {
   const bytes = new TextEncoder().encode(text);
   let at = 0;
   while (at < bytes.length) {
-    at += Javy.IO.writeSync(1, bytes.subarray(at));
+    const written = Javy.IO.writeSync(1, bytes.subarray(at));
+    if (written <= 0) throw new Error('stdout write error');
+    at += written;
   }
 }
 `;
@@ -145,6 +156,9 @@ export async function bundleFlow(projectDir: string, flowName: string): Promise<
         },
       ],
     });
+    if (result.outputFiles === undefined || result.outputFiles.length === 0) {
+      return { code: null, errors: [`${flowName}: bundle produced no output`] };
+    }
     code = result.outputFiles[0].text;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -1,6 +1,7 @@
 import {
   closeSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   openSync,
   readFileSync,
@@ -26,6 +27,9 @@ let wasm: Buffer;
 
 beforeAll(async () => {
   outDir = mkdtempSync(join(tmpdir(), 'wv-artifact-'));
+  // Pre-seed a stale module from a "previous run" so the wipe is observable.
+  mkdirSync(join(outDir, 'flows'), { recursive: true });
+  writeFileSync(join(outDir, 'flows', 'stale.wasm'), 'old');
   const result = await compile(goldenPath, outDir);
   expect(result.errors).toEqual([]);
   expect(result.ok).toBe(true);
@@ -34,12 +38,16 @@ beforeAll(async () => {
 
 afterAll(() => rmSync(outDir, { recursive: true, force: true }));
 
-/** Run the Javy module once over the envelope ABI, returning the parsed result. */
+/**
+ * Run the Javy module once over the envelope ABI, returning the parsed result.
+ * A string input is written verbatim (to exercise malformed-envelope handling);
+ * anything else is JSON-encoded.
+ */
 function runEnvelope(input: unknown): { ok: boolean; payload?: string; error?: { stage: string } } {
   const scratch = mkdtempSync(join(tmpdir(), 'wv-wasi-'));
   const inPath = join(scratch, 'in');
   const outPath = join(scratch, 'out');
-  writeFileSync(inPath, JSON.stringify(input));
+  writeFileSync(inPath, typeof input === 'string' ? input : JSON.stringify(input));
   writeFileSync(outPath, '');
   const stdin = openSync(inPath, 'r');
   const stdout = openSync(outPath, 'w');
@@ -61,6 +69,8 @@ describe('compiled artifact', () => {
     expect(existsSync(join(outDir, 'flows', 'order.wasm'))).toBe(true);
     // The intermediate JS bundle must not linger in the artifact.
     expect(existsSync(join(outDir, 'flows', 'order.js'))).toBe(false);
+    // flows/ is wiped per run: the pre-seeded stale module is gone.
+    expect(existsSync(join(outDir, 'flows', 'stale.wasm'))).toBe(false);
   });
 
   it('runs the flow through the wasm envelope', () => {
@@ -86,5 +96,11 @@ describe('compiled artifact', () => {
     const result = runEnvelope({ in: 'json', out: 'json', payload: '{not json' });
     expect(result.ok).toBe(false);
     expect(result.error?.stage).toBe('parse');
+  });
+
+  it('answers a malformed input envelope with error{stage:"envelope"}, not a trap', () => {
+    const result = runEnvelope('{torn envelope');
+    expect(result.ok).toBe(false);
+    expect(result.error?.stage).toBe('envelope');
   });
 });
