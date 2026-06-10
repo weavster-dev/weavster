@@ -74,7 +74,7 @@ export function checkPipelines(projectDir: string): PipelineCheck[] {
   });
 }
 
-function extFormat(path: string): Format | undefined {
+export function extFormat(path: string): Format | undefined {
   const ext = extname(path).toLowerCase();
   if (ext === '.json') return 'json';
   if (ext === '.xml') return 'xml';

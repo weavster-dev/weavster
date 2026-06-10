@@ -1,0 +1,24 @@
+diff --git a/src/index.js b/src/index.js
+index 33889c7176d3594300444c8d2c34f46f6b933369..64bb7148873b417ed1c1c0e021a55b97f8f6defa 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -108,10 +108,17 @@ const buildRegexes = (startChar, char, flags = '') => {
+ };
+ 
+ const regexes10 = buildRegexes(nameStartChar10, nameChar10);       // no /u — BMP only
+-const regexes11 = buildRegexes(nameStartChar11, nameChar11, 'u');  // /u — enables \u{10000}-\u{EFFFF}
++
++// Build the XML 1.1 (/u-flag) regexes lazily. They are only needed when callers
++// opt into xmlVersion '1.1', and constructing them eagerly at import breaks
++// runtimes whose regex engine rejects /u-mode class escapes like [\-\.\d]
++// (e.g. QuickJS/Javy, which weavster compiles flows to). XML 1.0 stays eager.
++let regexes11;
+ 
+ const getRegexes = (xmlVersion = '1.0') =>
+-  xmlVersion === '1.1' ? regexes11 : regexes10;
++  xmlVersion === '1.1'
++    ? (regexes11 ??= buildRegexes(nameStartChar11, nameChar11, 'u'))  // /u — enables \u{10000}-\u{EFFFF}
++    : regexes10;
+ 
+ // ---------------------------------------------------------------------------
+ // Boolean validators

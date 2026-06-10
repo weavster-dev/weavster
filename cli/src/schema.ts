@@ -4,11 +4,13 @@ import { Ajv, type ErrorObject } from 'ajv';
 import projectSchema from '../../spec/schemas/project.schema.json' with { type: 'json' };
 import flowSchema from '../../spec/schemas/flow.schema.json' with { type: 'json' };
 import pipelineSchema from '../../spec/schemas/pipeline.schema.json' with { type: 'json' };
+import manifestSchema from '../../spec/schemas/manifest.schema.json' with { type: 'json' };
 
 const ajv = new Ajv({ allErrors: true });
 const validate = ajv.compile(projectSchema);
 const validateFlowSchema = ajv.compile(flowSchema);
 const validatePipelineSchema = ajv.compile(pipelineSchema);
+const validateManifestSchema = ajv.compile(manifestSchema);
 
 export interface ValidationResult {
   valid: boolean;
@@ -34,6 +36,13 @@ export function validatePipeline(data: unknown): ValidationResult {
   const valid = validatePipelineSchema(data) as boolean;
   if (valid) return { valid: true, errors: [] };
   return { valid: false, errors: (validatePipelineSchema.errors ?? []).map(formatError) };
+}
+
+/** Validate an already-built manifest against the artifact contract schema. */
+export function validateManifest(data: unknown): ValidationResult {
+  const valid = validateManifestSchema(data) as boolean;
+  if (valid) return { valid: true, errors: [] };
+  return { valid: false, errors: (validateManifestSchema.errors ?? []).map(formatError) };
 }
 
 /** Turn one Ajv error into a path-aware, human-readable line. */

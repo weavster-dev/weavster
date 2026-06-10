@@ -4,6 +4,7 @@ import { registerValidate } from './commands/validate.js';
 import { registerTest } from './commands/test.js';
 import { registerInit } from './commands/init.js';
 import { registerRun } from './commands/run.js';
+import { registerCompile } from './commands/compile.js';
 
 const program = new Command();
 
@@ -16,5 +17,6 @@ registerInit(program);
 registerValidate(program);
 registerTest(program);
 registerRun(program);
+registerCompile(program);
 
 program.parseAsync();
