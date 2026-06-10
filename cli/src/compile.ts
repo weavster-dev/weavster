@@ -67,11 +67,9 @@ function toManifestPipeline(
       ],
     };
   }
-  const sourcePath = pipeline.source.path;
-  const sinkPath = pipeline.sink.path;
-  if (sourcePath === undefined || sinkPath === undefined) {
-    return { pipeline: null, errors: [`${name}: file connectors need a "path"`] };
-  }
+  // The pipeline schema requires `path` on file connectors, so these are present.
+  const sourcePath = pipeline.source.path as string;
+  const sinkPath = pipeline.sink.path as string;
 
   // The source format must be known to bake it into the manifest; the sink
   // falls back to the source format, mirroring `weavster run`.

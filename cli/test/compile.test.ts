@@ -95,6 +95,43 @@ describe('buildManifest', () => {
     expect(manifest).toBeNull();
     expect(errors.join('\n')).toMatch(/only file connectors/);
   });
+
+  it('errors when the switchboard names a pipeline with no yaml file', () => {
+    writeProject('  - name: ghost\n');
+    const { manifest, errors } = buildManifest(dir);
+    expect(manifest).toBeNull();
+    expect(errors.join('\n')).toMatch(/no pipeline "ghost"/);
+  });
+
+  it('falls back to the source format when the sink extension is unknown', () => {
+    writeFileSync(
+      join(dir, 'pipelines', 'order.yaml'),
+      'source: { type: file, path: in/order.json }\nflow: order\nsink: { type: file, path: out/order.txt }\n',
+    );
+    writeProject('  - name: order\n');
+    const { manifest } = buildManifest(dir);
+    expect(manifest?.pipelines[0].sink.format).toBe('json');
+  });
+
+  it('errors when every switchboard pipeline is disabled', () => {
+    writeProject('  - name: order\n    enabled: false\n');
+    const { manifest, errors } = buildManifest(dir);
+    expect(manifest).toBeNull();
+    expect(errors.join('\n')).toMatch(/no enabled pipelines/);
+  });
+
+  it('rejects a manifest whose flow name violates the contract schema', () => {
+    // The pipeline schema allows any non-empty flow string, but the manifest
+    // contract requires kebab-case (it becomes a wasm filename).
+    writeFileSync(
+      join(dir, 'pipelines', 'order.yaml'),
+      'source: { type: file, path: in/order.json }\nflow: Bad_Flow\nsink: { type: file, path: out/order.json }\n',
+    );
+    writeProject('  - name: order\n');
+    const { manifest, errors } = buildManifest(dir);
+    expect(manifest).toBeNull();
+    expect(errors.join('\n')).toMatch(/manifest invalid/);
+  });
 });
 
 describe('validateManifest', () => {
@@ -106,6 +143,13 @@ describe('validateManifest', () => {
 });
 
 describe('compile error paths', () => {
+  it('fails compile when the manifest cannot be built', async () => {
+    writeFileSync(join(dir, 'weavster.yaml'), 'apiVersion: weavster/v0alpha2\nname: t\n');
+    const result = await compile(dir, join(dir, 'target', 'artifact'));
+    expect(result.ok).toBe(false);
+    expect(result.errors.join('\n')).toMatch(/no pipelines declared/);
+  });
+
   it('fails compile (without invoking Javy) when a flow bundle is rejected', async () => {
     // An async `_ts` function trips the sandbox guard during bundling, so
     // compile must fail before any wasm is written.
