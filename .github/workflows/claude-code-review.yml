@@ -6,10 +6,12 @@ on:
 
 jobs:
   claude-review:
-    # Only run when someone comments "/review" on a pull request.
+    # Only run when a trusted user comments "/review" on a pull request.
+    # The author guard keeps arbitrary accounts from spending Claude runs.
     if: |
       github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/review')
+      startsWith(github.event.comment.body, '/review') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
 
     runs-on: ubuntu-latest
     permissions:
@@ -48,7 +50,7 @@ jobs:
 
             1. Get all previous Claude comment IDs:
                ```bash
-               gh pr view ${{ github.event.issue.number }} --repo ${{ github.repository }} --json comments --jq '.comments[] | select(.author.login == "claude") | .id'
+               gh pr view ${{ github.event.issue.number }} --repo ${{ github.repository }} --json comments --jq '.comments[] | select(.author.login == "claude" or .author.login == "claude[bot]") | .id'
                ```
 
             2. For each comment ID (node_id), minimize it as OUTDATED:
