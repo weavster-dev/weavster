@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Claude code review workflow no longer runs on every PR push; it now runs only when someone
+  comments `/review` on a pull request.
+
 ### Added
 
 - Implement the engine core (Engine Plan E3 / RFC 0003 slice 3): `weavster-engine <artifact-dir>`
