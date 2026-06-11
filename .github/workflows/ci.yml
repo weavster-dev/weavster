@@ -48,6 +48,13 @@ jobs:
 
       - run: pnpm --filter @weavster/cli typecheck
 
+      # Pre-download the Javy binary once. javy-cli fetches it on first use, and
+      # vitest runs the compile test files in parallel workers — without this
+      # they race the same download and one captures the "Downloading…" notice
+      # as a compile error (flaky failure).
+      - name: warm the Javy binary
+        run: pnpm --filter @weavster/cli exec javy --version
+
       # Runs `coverage` in every workspace package that defines it. New JS/TS
       # packages (e.g. the UI) are picked up automatically once they add a
       # `coverage` script — no change needed here. (Lint runs in the `quality`
