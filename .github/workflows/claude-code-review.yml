@@ -1,22 +1,15 @@
 name: Claude Code Review
 
 on:
-  pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+  issue_comment:
+    types: [created]
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    # Only run when someone comments "/review" on a pull request.
+    if: |
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/review')
 
     runs-on: ubuntu-latest
     permissions:
@@ -45,18 +38,40 @@ jobs:
           # the PR (even with no findings). Inline findings go on the lines.
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ github.event.issue.number }}
 
             Review this pull request by running the code-review plugin:
-            /code-review:code-review ${{ github.repository }}/pull/${{ github.event.pull_request.number }}
+            /code-review:code-review ${{ github.repository }}/pull/${{ github.event.issue.number }}
+
+            IMPORTANT: Before posting your review, minimize any previous Claude Code
+            review comments to reduce clutter:
+
+            1. Get all previous Claude comment IDs:
+               ```bash
+               gh pr view ${{ github.event.issue.number }} --repo ${{ github.repository }} --json comments --jq '.comments[] | select(.author.login == "claude") | .id'
+               ```
+
+            2. For each comment ID (node_id), minimize it as OUTDATED:
+               ```bash
+               gh api graphql -f query='
+                 mutation {
+                   minimizeComment(input: {subjectId: "COMMENT_NODE_ID_HERE", classifier: OUTDATED}) {
+                     clientMutationId
+                   }
+                 }'
+               ```
+
+            This ensures only your latest review is prominently visible while
+            preserving the history.
 
             Then post a concise top-level summary comment on the PR with
             `gh pr comment` — even if there are no issues, say so. Use
             mcp__github_inline_comment__create_inline_comment (with confirmed: true)
             for specific line-level findings. Only post GitHub comments; do not
             return the review as a chat message.
-          # Tools the review needs to read the diff and post comments.
+          # Tools the review needs to read the diff, minimize old review
+          # comments (gh api graphql), and post new comments.
           claude_args: |
-            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh api graphql:*)"
           # See https://github.com/anthropics/claude-code-action/blob/main/docs/usage.md
           # or https://code.claude.com/docs/en/cli-reference for available options

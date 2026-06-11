@@ -7,6 +7,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ## [Unreleased]
 
+### Changed
+
+- Claude code review workflow no longer runs on every PR push; it now runs only when someone
+  comments `/review` on a pull request.
+
 ### Added
 
 - Add `weavster compile` (Engine Plan E2): compile a project's enabled pipelines into a portable
