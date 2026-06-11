@@ -32,7 +32,12 @@ fn run(artifact_dir: &Path) -> anyhow::Result<bool> {
 }
 
 fn main() -> ExitCode {
-    let artifact_dir = std::env::args().nth(1).unwrap_or_else(|| ".".to_string());
+    // E5 replaces this with the mounted-`weavster.yaml` boot (-c/--config);
+    // until then the artifact directory is explicit, never an implicit cwd.
+    let Some(artifact_dir) = std::env::args().nth(1) else {
+        eprintln!("usage: weavster-engine <artifact-dir>");
+        return ExitCode::FAILURE;
+    };
 
     match run(Path::new(&artifact_dir)) {
         Ok(true) => ExitCode::SUCCESS,

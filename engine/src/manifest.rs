@@ -87,8 +87,38 @@ pub fn parse(text: &str) -> Result<Manifest> {
                 pipeline.sink.r#type
             );
         }
+        // Every path in the manifest resolves against the artifact root; an
+        // absolute path or a `..` component would silently escape it.
+        check_contained(&pipeline.name, "source glob", &pipeline.source.glob)?;
+        check_contained(&pipeline.name, "sink path", &pipeline.sink.path)?;
+        if pipeline.flow.is_empty() || pipeline.flow.contains(['/', '\\']) || pipeline.flow == ".."
+        {
+            bail!(
+                "pipeline \"{}\": flow \"{}\" is not a plain name (it becomes flows/<flow>.wasm)",
+                pipeline.name,
+                pipeline.flow
+            );
+        }
     }
     Ok(manifest)
+}
+
+/// Refuse a path that is empty, absolute, or contains a `..` component —
+/// each would resolve outside the artifact (connector) root.
+fn check_contained(pipeline: &str, field: &str, path: &str) -> Result<()> {
+    if path.is_empty() {
+        bail!("pipeline \"{pipeline}\": {field} is empty");
+    }
+    let p = Path::new(path);
+    if p.is_absolute() {
+        bail!("pipeline \"{pipeline}\": {field} \"{path}\" must be relative to the artifact root");
+    }
+    if p.components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        bail!("pipeline \"{pipeline}\": {field} \"{path}\" must not contain \"..\"");
+    }
+    Ok(())
 }
 
 /// Load `manifest.json` from an artifact directory.
@@ -157,6 +187,27 @@ mod tests {
         let text = GOLDEN.replace(r#"{ "type": "file", "glob""#, r#"{ "type": "rest", "glob""#);
         let err = parse(&text).unwrap_err().to_string();
         assert!(err.contains("unknown source type \"rest\""), "{err}");
+    }
+
+    #[test]
+    fn refuses_an_absolute_sink_path() {
+        let text = GOLDEN.replace("out/order.json", "/etc/order.json");
+        let err = parse(&text).unwrap_err().to_string();
+        assert!(err.contains("must be relative"), "{err}");
+    }
+
+    #[test]
+    fn refuses_a_parent_dir_component_in_the_glob() {
+        let text = GOLDEN.replace("in/*.json", "../outside/*.json");
+        let err = parse(&text).unwrap_err().to_string();
+        assert!(err.contains("must not contain \"..\""), "{err}");
+    }
+
+    #[test]
+    fn refuses_a_flow_name_with_a_path_separator() {
+        let text = GOLDEN.replace("\"flow\": \"order\"", "\"flow\": \"../order\"");
+        let err = parse(&text).unwrap_err().to_string();
+        assert!(err.contains("not a plain name"), "{err}");
     }
 
     #[test]

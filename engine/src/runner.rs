@@ -87,11 +87,13 @@ fn run_pipeline(artifact_dir: &Path, pipeline: &Pipeline, flow: &FlowModule) -> 
         let payload = std::fs::read_to_string(&input_path)
             .with_context(|| format!("cannot read {}", input_path.display()))?;
 
-        let result = flow.run(&InputEnvelope {
-            r#in: &pipeline.source.format,
-            out: &pipeline.sink.format,
-            payload: &payload,
-        })?;
+        let result = flow
+            .run(&InputEnvelope {
+                r#in: &pipeline.source.format,
+                out: &pipeline.sink.format,
+                payload: &payload,
+            })
+            .with_context(|| format!("document {documents} ({})", input_path.display()))?;
 
         if !result.ok {
             let error = result.error.as_ref();

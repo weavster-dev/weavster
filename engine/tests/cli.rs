@@ -34,6 +34,19 @@ const GOLDEN_HEAD: &str = r#"{
 }"#;
 
 #[test]
+fn no_argument_prints_usage_and_fails() {
+    let output = Command::new(env!("CARGO_BIN_EXE_weavster-engine"))
+        .output()
+        .expect("run the weavster-engine binary");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("usage: weavster-engine <artifact-dir>"),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn missing_artifact_dir_fails_with_a_clear_message() {
     let output = run_engine(std::path::Path::new("/nonexistent/artifact"));
     assert!(!output.status.success());

@@ -89,6 +89,8 @@ fn processes_glob_matches_in_input_order_with_structured_logs() {
     let Some(artifact) = golden_artifact() else {
         return;
     };
+    // Distinct ids so the sink's last-write-wins semantics are observable.
+    let last = ORDER_DOC.replace("a1", "z9");
     let dir = stage(
         "order",
         &artifact,
@@ -96,7 +98,7 @@ fn processes_glob_matches_in_input_order_with_structured_logs() {
         &[
             ("a.json", ORDER_DOC),
             ("b.json", ORDER_DOC),
-            ("c.json", ORDER_DOC),
+            ("c.json", &last),
         ],
     );
 
@@ -116,6 +118,11 @@ fn processes_glob_matches_in_input_order_with_structured_logs() {
         .map(|v| v["document"].as_u64().unwrap())
         .collect();
     assert_eq!(docs, [1, 2, 3], "{stderr}");
+
+    // One sink path, overwritten per document: the file holds the LAST
+    // input's transform (c.json, id "z9" → "Z9").
+    let written = fs::read_to_string(dir.join("out/order.json")).unwrap();
+    assert!(written.contains("\"id\": \"Z9\""), "{written}");
 
     fs::remove_dir_all(&dir).ok();
 }
