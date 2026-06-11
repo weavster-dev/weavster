@@ -15,13 +15,10 @@ pub struct FileSource {
 
 impl FileSource {
     /// Resolve `glob` against `root` now, so an unreadable or empty pattern
-    /// fails at startup rather than mid-run.
+    /// fails at startup rather than mid-run. The manifest gate
+    /// (`manifest::check_contained`) guarantees `glob` is relative and free of
+    /// `..`, so `root.join` stays inside the connector root.
     pub fn new(root: &Path, glob: &str) -> Result<Self> {
-        // `root.join` silently discards the root for an absolute pattern; the
-        // manifest gate already refuses those, but defend the connector too.
-        if Path::new(glob).is_absolute() {
-            bail!("glob pattern must be relative to the connector root, got \"{glob}\"");
-        }
         let joined = root.join(glob);
         let pattern = joined.to_str().context("glob pattern is not valid UTF-8")?;
         let mut paths: Vec<PathBuf> = glob::glob(pattern)
@@ -62,19 +59,22 @@ pub struct FileSink {
 }
 
 impl FileSink {
-    pub fn new(root: &Path, path: &str) -> Self {
-        Self {
-            path: root.join(path),
+    /// Create the destination's parent directory now (once), so per-document
+    /// writes don't each re-issue a `create_dir_all`. The manifest gate keeps
+    /// `path` inside the connector root.
+    pub fn new(root: &Path, path: &str) -> Result<Self> {
+        let path = root.join(path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("cannot create {}", parent.display()))?;
         }
+        Ok(Self { path })
     }
 }
 
 #[async_trait]
 impl Sink for FileSink {
     async fn write(&mut self, payload: &str) -> Result<()> {
-        if let Some(parent) = self.path.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
         tokio::fs::write(&self.path, payload)
             .await
             .with_context(|| format!("cannot write {}", self.path.display()))
@@ -132,19 +132,10 @@ mod tests {
     }
 
     #[test]
-    fn source_rejects_an_absolute_pattern() {
-        let err = FileSource::new(Path::new("/tmp"), "/etc/*.conf")
-            .err()
-            .unwrap()
-            .to_string();
-        assert!(err.contains("must be relative"), "{err}");
-    }
-
-    #[test]
     fn sink_writes_the_payload_creating_parents() {
         let dir = temp("sink");
         block_on(async {
-            let mut sink = FileSink::new(&dir, "out/x.json");
+            let mut sink = FileSink::new(&dir, "out/x.json").unwrap();
             sink.write("hello").await.unwrap();
         });
         assert_eq!(

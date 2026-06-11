@@ -1,7 +1,10 @@
 //! Connector registry (Engine Plan E4): maps a manifest connector `type` to a
 //! concrete [`Source`]/[`Sink`]. This is the single place that knows which
 //! connector types exist, so adding one is a new match arm here plus its
-//! module under `connectors/` — nothing in the run loop changes.
+//! module under `connectors/` — the run loop never changes. The manifest specs
+//! ([`SourceSpec`]/[`SinkSpec`]) are still file-shaped (`glob`/`path`), so a
+//! non-`file` connector also turns those flat structs into a `#[serde(tag =
+//! "type")]` enum — do that rather than bolting on `Option<_>` fields.
 
 use crate::connector::{Sink, Source};
 use crate::connectors::file::{FileSink, FileSource};
@@ -20,7 +23,7 @@ pub fn build_source(root: &Path, spec: &SourceSpec) -> Result<Box<dyn Source>> {
 /// Build the sink for a pipeline, resolving paths against the connector root.
 pub fn build_sink(root: &Path, spec: &SinkSpec) -> Result<Box<dyn Sink>> {
     match spec.r#type.as_str() {
-        "file" => Ok(Box::new(FileSink::new(root, &spec.path))),
+        "file" => Ok(Box::new(FileSink::new(root, &spec.path)?)),
         other => bail!("unknown sink type \"{other}\" (only \"file\" is supported)"),
     }
 }

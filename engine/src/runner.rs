@@ -11,7 +11,7 @@
 use crate::connector::{Sink, Source};
 use crate::host::{FlowModule, Host, InputEnvelope};
 use crate::log;
-use crate::manifest::{Manifest, Pipeline};
+use crate::manifest::Manifest;
 use crate::registry;
 use anyhow::{Context, Result, bail};
 use std::collections::HashMap;
@@ -47,7 +47,9 @@ pub async fn run(artifact_dir: &Path, manifest: &Manifest) -> Result<RunReport> 
             flows.insert(pipeline.flow.clone(), Arc::new(module));
         }
         plans.push(PipelinePlan {
-            pipeline: pipeline.clone(),
+            name: pipeline.name.clone(),
+            in_format: pipeline.source.format.as_str().into(),
+            out_format: pipeline.sink.format.as_str().into(),
             source,
             sink,
             flow: Arc::clone(&flows[&pipeline.flow]),
@@ -58,7 +60,7 @@ pub async fn run(artifact_dir: &Path, manifest: &Manifest) -> Result<RunReport> 
     // flow module behind an Arc.
     let mut set: JoinSet<(String, Result<usize>)> = JoinSet::new();
     for plan in plans {
-        let name = plan.pipeline.name.clone();
+        let name = plan.name.clone();
         set.spawn(async move { (name, run_pipeline(plan).await) });
     }
 
@@ -77,10 +79,14 @@ pub async fn run(artifact_dir: &Path, manifest: &Manifest) -> Result<RunReport> 
     })
 }
 
-/// Everything one pipeline task owns: the spec (for formats + name), its built
-/// connectors, and a handle to the shared flow module.
+/// Everything one pipeline task owns: its name and the source/sink formats
+/// (the only manifest fields the loop needs), its built connectors, and a
+/// handle to the shared flow module. The formats are `Arc<str>` so each
+/// document's `spawn_blocking` clone is one atomic bump, not a fresh alloc.
 struct PipelinePlan {
-    pipeline: Pipeline,
+    name: String,
+    in_format: Arc<str>,
+    out_format: Arc<str>,
     source: Box<dyn Source>,
     sink: Box<dyn Sink>,
     flow: Arc<FlowModule>,
@@ -90,7 +96,9 @@ struct PipelinePlan {
 /// the flow, write the result to the sink. Returns the document count.
 async fn run_pipeline(plan: PipelinePlan) -> Result<usize> {
     let PipelinePlan {
-        pipeline,
+        name,
+        in_format,
+        out_format,
         mut source,
         mut sink,
         flow,
@@ -104,8 +112,8 @@ async fn run_pipeline(plan: PipelinePlan) -> Result<usize> {
         // worker so it never blocks other pipelines' I/O.
         let result = {
             let flow = Arc::clone(&flow);
-            let in_format = pipeline.source.format.clone();
-            let out_format = pipeline.sink.format.clone();
+            let in_format = Arc::clone(&in_format);
+            let out_format = Arc::clone(&out_format);
             let payload = doc.payload;
             tokio::task::spawn_blocking(move || {
                 flow.run(&InputEnvelope {
@@ -128,7 +136,7 @@ async fn run_pipeline(plan: PipelinePlan) -> Result<usize> {
             let message = error
                 .and_then(|e| e.message.as_deref())
                 .unwrap_or("(no message)");
-            log::error(&pipeline.name, documents, stage, error_type, message);
+            log::error(&name, documents, stage, error_type, message);
             // Every source this phase is bounded (files), so a poison document
             // fails the run. A live stream would log-and-move-on here instead.
             bail!("document {documents}: {stage}: {message}");
@@ -138,7 +146,7 @@ async fn run_pipeline(plan: PipelinePlan) -> Result<usize> {
             .payload
             .context("ok envelope is missing its payload")?;
         sink.write(&output).await?;
-        log::done(&pipeline.name, documents);
+        log::done(&name, documents);
     }
     Ok(documents)
 }

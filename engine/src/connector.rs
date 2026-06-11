@@ -13,7 +13,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 
 /// One document a source yields: its text payload plus an origin label used in
-/// logs and error messages (e.g. the file path it came from).
+/// logs and error messages (e.g. the file path it came from, or a URL). A
+/// `String` keeps the type connector-agnostic — not every origin is a path.
 pub struct SourceDoc {
     pub origin: String,
     pub payload: String,

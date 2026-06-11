@@ -14,7 +14,7 @@ pub const MANIFEST_VERSION: &str = "1";
 /// The wasm host ABI this engine can drive (Javy stdin/stdout).
 pub const ABI_VERSION: &str = "javy-1";
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct Manifest {
     pub manifest_version: String,
@@ -22,7 +22,7 @@ pub struct Manifest {
     pub pipelines: Vec<Pipeline>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Pipeline {
     pub name: String,
@@ -32,7 +32,7 @@ pub struct Pipeline {
     pub sink: SinkSpec,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SourceSpec {
     pub r#type: String,
@@ -40,7 +40,7 @@ pub struct SourceSpec {
     pub format: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SinkSpec {
     pub r#type: String,
