@@ -48,6 +48,13 @@ jobs:
 
       - run: pnpm --filter @weavster/cli typecheck
 
+      # Pre-download the Javy binary once. javy-cli fetches it on first use, and
+      # vitest runs the compile test files in parallel workers — without this
+      # they race the same download and one captures the "Downloading…" notice
+      # as a compile error (flaky failure).
+      - name: warm the Javy binary
+        run: pnpm --filter @weavster/cli exec javy --version
+
       # Runs `coverage` in every workspace package that defines it. New JS/TS
       # packages (e.g. the UI) are picked up automatically once they add a
       # `coverage` script — no change needed here. (Lint runs in the `quality`
@@ -114,6 +121,27 @@ jobs:
       - if: steps.detect.outputs.present == 'true'
         name: clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      # The artifact-driven engine tests (tests/artifact.rs) self-skip unless a
+      # compiled golden-path artifact exists, and only the TS toolchain can
+      # produce one. Build it here so coverage reflects the wasm host and run
+      # loop, not just the manifest-failure paths. This is the only place Node
+      # touches the engine — its build and image stay Node-free.
+      - if: steps.detect.outputs.present == 'true'
+        uses: pnpm/action-setup@v4
+
+      - if: steps.detect.outputs.present == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - if: steps.detect.outputs.present == 'true'
+        name: compile the golden-path artifact (for engine tests)
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm --filter @weavster/core build
+          pnpm --filter @weavster/cli dev compile "$GITHUB_WORKSPACE/examples/golden-path"
 
       - if: steps.detect.outputs.present == 'true'
         uses: taiki-e/install-action@v2

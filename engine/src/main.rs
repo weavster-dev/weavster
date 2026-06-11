@@ -1,29 +1,50 @@
 //! Weavster engine — the thin Rust production runtime (RFC 0003).
 //!
-//! E0 stands the crate up inside the (otherwise TS) monorepo. The engine
-//! itself — manifest loading, the wasmtime host over the Javy ABI, and the
-//! per-pipeline run loop — lands in later milestones (E3+). See
-//! `docs/ENGINE_PLAN.md`.
+//! Runs a compiled artifact (`weavster compile` output): loads `manifest.json`,
+//! JIT-compiles each flow module once, and drives every pipeline concurrently
+//! over the Javy stdin/stdout ABI. See `docs/ENGINE_PLAN.md` (E3) and
+//! `docs/ARTIFACT_SPEC.md` for the contract.
+//!
+//! Usage: `weavster-engine <artifact-dir>` (E5 adds the `weavster.yaml` boot).
 
-fn banner() -> String {
-    format!(
-        "weavster-engine {} — not yet implemented (see docs/ENGINE_PLAN.md)",
-        env!("CARGO_PKG_VERSION")
-    )
+mod host;
+mod log;
+mod manifest;
+mod runner;
+
+use std::path::Path;
+use std::process::ExitCode;
+
+fn run(artifact_dir: &Path) -> anyhow::Result<bool> {
+    let manifest = manifest::load(artifact_dir)?;
+    let report = runner::run(artifact_dir, &manifest)?;
+
+    for (pipeline, error) in &report.failures {
+        eprintln!("✗ {pipeline}: {error}");
+    }
+    let total = manifest.pipelines.len();
+    let ran = total - report.failures.len();
+    eprintln!(
+        "{ran}/{total} pipelines ran ({} documents)",
+        report.documents
+    );
+    Ok(report.failures.is_empty())
 }
 
-fn main() {
-    println!("{}", banner());
-}
+fn main() -> ExitCode {
+    // E5 replaces this with the mounted-`weavster.yaml` boot (-c/--config);
+    // until then the artifact directory is explicit, never an implicit cwd.
+    let Some(artifact_dir) = std::env::args().nth(1) else {
+        eprintln!("usage: weavster-engine <artifact-dir>");
+        return ExitCode::FAILURE;
+    };
 
-#[cfg(test)]
-mod tests {
-    use super::banner;
-
-    #[test]
-    fn banner_names_the_engine_and_version() {
-        let b = banner();
-        assert!(b.contains("weavster-engine"));
-        assert!(b.contains(env!("CARGO_PKG_VERSION")));
+    match run(Path::new(&artifact_dir)) {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::FAILURE,
+        Err(err) => {
+            eprintln!("✗ {err:#}");
+            ExitCode::FAILURE
+        }
     }
 }

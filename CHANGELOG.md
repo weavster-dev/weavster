@@ -9,6 +9,20 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Implement the engine core (Engine Plan E3 / RFC 0003 slice 3): `weavster-engine <artifact-dir>`
+  runs a compiled artifact end-to-end. The engine loads and validates `manifest.json` (refusing
+  unknown `manifestVersion`/`abiVersion` or connector types loudly), JIT-compiles each flow's
+  `flows/<flow>.wasm` once at startup, and drives every pipeline concurrently — each pipeline a
+  FIFO concurrency-1 loop (`source → transform → sink`, documents in input order) over the Javy
+  stdin/stdout envelope ABI from `docs/ARTIFACT_SPEC.md`. Per the **S4** spike
+  (`engine/examples/s4_lifecycle.rs`), each document gets a fresh wasmtime store + instance
+  (~1.3 ms) — a Javy module is a WASI command, so instances cannot be pooled, and module
+  compilation (~220 ms) is the once-per-flow cost. Resource limits ship with `TODO(config)`
+  defaults — a 256 MB memory cap and a 10 s epoch wall-clock deadline, so a runaway `_ts`
+  (infinite loop) traps instead of hanging. Startup errors abort non-zero; a poison document
+  fails the (bounded) run with a structured JSON log line carrying pipeline/document/stage.
+  Integration tests cover manifest failures without an artifact and self-skip the wasm-driven
+  cases when the golden artifact hasn't been compiled.
 - Add `weavster compile` (Engine Plan E2): compile a project's enabled pipelines into a portable
   artifact (`manifest.json` + `flows/<flow>.wasm`) the Rust engine (E3) can run. Adds a
   `pipelines:` switchboard to `weavster.yaml` (each entry a `{name, enabled}`; `enabled` defaults

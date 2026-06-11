@@ -52,8 +52,12 @@ These are RFC 0003's open questions. Time-box each; the answer feeds the milesto
   a dynamically-linked shared provider is a later size optimization if needed).
 - **S3 — `_ts` bundling.** How a function's own imports/deps bundle (esbuild) and what is
   disallowed in the sandbox. **[E2]**
-- **S4 — instance lifecycle.** Re-init a pooled instance vs fresh instantiate per document;
-  Wizer preinit as a later optimization. **[E3]**
+- **S4 — instance lifecycle.** ✅ Resolved (E3): **compile each flow `Module` once at startup
+  (~220 ms for a 2.5 MB Javy module), fresh `Store` + instance per document (~1.3 ms,
+  byte-stable over 50 runs).** A Javy module is a WASI command — `_start` runs exactly once —
+  so "re-init a pooled instance" isn't a thing; per-document cost is QuickJS init inside the
+  module, not wasmtime instantiation. Wizer preinit remains a later optimization.
+  (`engine/examples/s4_lifecycle.rs`.)
 - **S5 — large/streaming documents.** Javy's stdin/stdout is whole-buffer per call. **[E3, may
   defer]**
 - **S6 — artifact shape.** Directory vs tarball/OCI for distribution. **[E1]**
@@ -106,18 +110,20 @@ Bundle each enabled flow → JS → Javy → `flows/<name>.wasm`; emit the manif
 The thin binary: load manifest, host the WASM, run the loop. File source/sink only.
 (RFC 0003 slice 3. Depends on **S4**; **S5** may defer.)
 
-- [ ] Load + validate the manifest; refuse unknown `manifestVersion`/`abiVersion` loudly.
+- [x] Load + validate the manifest; refuse unknown `manifestVersion`/`abiVersion` loudly.
       → verify: a mismatched `abiVersion` fails fast with a clear message.
-- [ ] wasmtime host over the Javy stdin/stdout ABI; pool instances, re-init between documents
-      (**S4**). → verify: a pooled instance processes N documents with stable output.
-- [ ] Per-pipeline run loop: `source → transform → sink` behind a **FIFO queue, concurrency 1**;
+- [x] wasmtime host over the Javy stdin/stdout ABI; compile each `Module` once, fresh store +
+      instance per document (**S4** — pooling isn't possible for a WASI command module).
+      → verify: N documents through one compiled module yield stable output.
+- [x] Per-pipeline run loop: `source → transform → sink` behind a **FIFO queue, concurrency 1**;
       pipelines concurrent with each other. → verify: documents come out in input order.
-- [ ] Error scoping: startup errors abort non-zero; per-document errors **log-and-move-on** on a
+- [x] Error scoping: startup errors abort non-zero; per-document errors **log-and-move-on** on a
       live stream, fail a bounded run; report pipeline + document + `stage`. → verify: a poison
-      document is logged and the stream continues.
-- [ ] Resource limits with `TODO(config)` defaults: memory cap, wall-clock (epoch), pooled
+      document is logged with pipeline/document/stage (every E3 source is bounded, so it fails
+      the run; the stream path lands with the first unbounded connector).
+- [x] Resource limits with `TODO(config)` defaults: memory cap, wall-clock (epoch), pooled
       single-doc. → verify: a runaway `_ts` (infinite loop) is interrupted, not hung.
-- [ ] Structured logs. → verify: a run emits pipeline/document/stage fields.
+- [x] Structured logs. → verify: a run emits pipeline/document/stage fields.
 
 ## E4 — Connector trait + registry
 
