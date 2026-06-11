@@ -88,12 +88,31 @@ fn unknown_manifest_version_fails_fast() {
 
 #[test]
 fn missing_flow_module_fails_at_startup() {
-    // Valid manifest, but flows/order.wasm does not exist.
+    // Valid manifest and a matching input (so the source opens), but
+    // flows/order.wasm does not exist.
     let dir = temp_artifact("noflow", GOLDEN_HEAD);
+    fs::create_dir_all(dir.join("in")).unwrap();
+    fs::write(dir.join("in/order.json"), "{}").unwrap();
     let output = run_engine(&dir);
     fs::remove_dir_all(&dir).ok();
 
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("cannot load flow module"), "{stderr}");
+}
+
+#[test]
+fn unknown_connector_type_fails_with_a_clear_error() {
+    // The manifest is shape-valid; the registry rejects the connector type.
+    let manifest =
+        GOLDEN_HEAD.replace(r#"{ "type": "file", "glob""#, r#"{ "type": "rest", "glob""#);
+    let dir = temp_artifact("badtype", &manifest);
+    // Connectors are built before flow modules load, so no .wasm is needed —
+    // the unknown type aborts startup first.
+    let output = run_engine(&dir);
+    fs::remove_dir_all(&dir).ok();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("unknown source type \"rest\""), "{stderr}");
 }

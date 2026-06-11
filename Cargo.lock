@@ -2113,9 +2113,11 @@ name = "weavster-engine"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "glob",
  "serde",
  "serde_json",
+ "tokio",
  "wasmtime",
  "wasmtime-wasi",
 ]

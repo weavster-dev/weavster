@@ -14,6 +14,17 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Land the connector trait + registry (Engine Plan E4 / RFC 0003 slice 4). `Source`/`Sink` are
+  async traits (`engine/src/connector.rs`); a `type`-keyed registry (`registry.rs`) is the one
+  place that knows which connector types exist, so later connectors (rest/blob/tcp/grpc/db) are a
+  new match arm plus a module — no run-loop change. The `file` connector (`connectors/file.rs`) is
+  the only entry this phase: a glob source (sorted = input order, one file → one document) and a
+  path sink. The engine now runs on a tokio runtime — pipelines are concurrent tasks, connector
+  I/O is async, and the synchronous wasm transform runs in `spawn_blocking`. Connectors are built
+  at startup (before flow modules load), so an unknown connector type or an empty glob aborts the
+  run with a clear message before any document moves. The manifest `Source`/`Sink` structs are
+  renamed `SourceSpec`/`SinkSpec`; the file-only check moves from the manifest into the registry.
+
 - Implement the engine core (Engine Plan E3 / RFC 0003 slice 3): `weavster-engine <artifact-dir>`
   runs a compiled artifact end-to-end. The engine loads and validates `manifest.json` (refusing
   unknown `manifestVersion`/`abiVersion` or connector types loudly), JIT-compiles each flow's

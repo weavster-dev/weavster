@@ -13,6 +13,30 @@ Newest entries on top. One entry per merged slice.
 
 ---
 
+## 2026-06-11 — E4 connector trait + registry (Rust)
+
+- What changed: Pulled connector I/O out of the run loop behind async `Source`/`Sink` traits
+  (`connector.rs`) dispatched by a `type`-keyed registry (`registry.rs`); the `file` connector
+  (`connectors/file.rs`) — glob source (sorted = input order), path sink — is the only entry.
+  The engine moved onto a tokio runtime: pipelines are concurrent tasks, connector I/O is async,
+  and the synchronous wasm transform runs in `spawn_blocking`. Connectors are now built at startup
+  before flow modules load, so an unknown connector type or an empty glob aborts the run cleanly
+  before any document moves. Renamed the manifest `Source`/`Sink` structs to `SourceSpec`/
+  `SinkSpec` and moved the file-only check from the manifest into the registry.
+- What I learned: Async was the right call for additivity (every future connector is async I/O),
+  but it's pure plumbing here — `file` is sync underneath, so the win is only that REST/blob/etc
+  slot in without a breaking trait change. Two Rust specifics: `trait Source: Send` makes
+  `Box<dyn Source>` `Send` so it moves into a spawned task without a `+ Send` annotation; and
+  `.unwrap_err()` needs the _Ok_ type to be `Debug`, which trait objects and `FileSource` aren't,
+  so error-path tests use `.err().unwrap()`. Building connectors at startup (rather than inside
+  each task) made the failure ordering deterministic and let the unknown-type test run without a
+  real `.wasm` — but it also reordered errors: the missing-flow test had to gain an input file so
+  the source opens before the flow load it's actually testing fails. Toolchain note: the offline
+  crates index lacked `tokio-macros ~2.7.0`, so I dropped the `macros` feature (the runtime is
+  built by hand anyway) and tests drive async bodies on a hand-built current-thread runtime.
+- What is next: E5 — thin Docker image (Rust build → distroless/scratch, no Node) and the
+  mounted-`weavster.yaml` boot (`-c/--config`), then E6 (TS↔Rust parity gate).
+
 ## 2026-06-10 — E3 engine core (Rust)
 
 - What changed: Implemented the engine core (Engine Plan E3 / RFC 0003 slice 3).

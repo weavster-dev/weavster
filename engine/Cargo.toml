@@ -13,9 +13,11 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.102"
+async-trait = "0.1.89"
 glob = "0.3.3"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "fs"] }
 wasmtime = "34.0.2"
 wasmtime-wasi = "34.0.2"
 
