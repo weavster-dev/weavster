@@ -53,11 +53,15 @@ jobs:
                gh pr view ${{ github.event.issue.number }} --repo ${{ github.repository }} --json comments --jq '.comments[] | select(.author.login == "claude" or .author.login == "claude[bot]") | .id'
                ```
 
-            2. For each comment ID (node_id), minimize it as OUTDATED:
+            2. Minimize them all as OUTDATED in one call, using one aliased
+               mutation per comment ID (node_id):
                ```bash
                gh api graphql -f query='
                  mutation {
-                   minimizeComment(input: {subjectId: "COMMENT_NODE_ID_HERE", classifier: OUTDATED}) {
+                   c1: minimizeComment(input: {subjectId: "FIRST_COMMENT_NODE_ID", classifier: OUTDATED}) {
+                     clientMutationId
+                   }
+                   c2: minimizeComment(input: {subjectId: "SECOND_COMMENT_NODE_ID", classifier: OUTDATED}) {
                      clientMutationId
                    }
                  }'
