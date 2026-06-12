@@ -1,10 +1,14 @@
 //! Connector registry (Engine Plan E4): maps a manifest connector `type` to a
 //! concrete [`Source`]/[`Sink`]. This is the single place that knows which
 //! connector types exist, so adding one is a new match arm here plus its
-//! module under `connectors/` — the run loop never changes. The manifest specs
-//! ([`SourceSpec`]/[`SinkSpec`]) are still file-shaped (`glob`/`path`), so a
-//! non-`file` connector also turns those flat structs into a `#[serde(tag =
-//! "type")]` enum — do that rather than bolting on `Option<_>` fields.
+//! module under `connectors/` — the run loop never changes.
+//!
+//! TODO(next connector): the manifest specs ([`SourceSpec`]/[`SinkSpec`]) are
+//! still file-shaped (`glob`/`path`) with `deny_unknown_fields`, so a manifest
+//! with `"type": "rest"` fails to deserialize before it reaches this registry.
+//! The first non-`file` connector must turn those flat structs into a
+//! `#[serde(tag = "type")]` enum — do that rather than bolting on `Option<_>`
+//! fields.
 
 use crate::connector::{Sink, Source};
 use crate::connectors::file::{FileSink, FileSource};

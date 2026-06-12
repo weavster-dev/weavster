@@ -57,20 +57,27 @@ pub async fn run(artifact_dir: &Path, manifest: &Manifest) -> Result<RunReport> 
     }
 
     // Spawn one task per pipeline; tasks own their connectors and share the
-    // flow module behind an Arc.
-    let mut set: JoinSet<(String, Result<usize>)> = JoinSet::new();
+    // flow module behind an Arc. The task id → name map lets a panicking
+    // pipeline be recorded as a failure (with its name) without aborting the
+    // others — pipelines stay isolated, as on E3's scoped threads.
+    let mut set: JoinSet<Result<usize>> = JoinSet::new();
+    let mut names: HashMap<tokio::task::Id, String> = HashMap::new();
     for plan in plans {
         let name = plan.name.clone();
-        set.spawn(async move { (name, run_pipeline(plan).await) });
+        let handle = set.spawn(run_pipeline(plan));
+        names.insert(handle.id(), name);
     }
 
     let mut failures = Vec::new();
     let mut documents = 0;
-    while let Some(joined) = set.join_next().await {
-        let (name, result) = joined.context("pipeline task panicked")?;
-        match result {
-            Ok(count) => documents += count,
-            Err(err) => failures.push((name, format!("{err:#}"))),
+    while let Some(joined) = set.join_next_with_id().await {
+        match joined {
+            Ok((_, Ok(count))) => documents += count,
+            Ok((id, Err(err))) => failures.push((names[&id].clone(), format!("{err:#}"))),
+            Err(join_err) => {
+                let name = names.get(&join_err.id()).cloned().unwrap_or_default();
+                failures.push((name, "pipeline task panicked".into()));
+            }
         }
     }
     Ok(RunReport {

@@ -9,7 +9,10 @@ use std::path::{Path, PathBuf};
 
 /// Reads each file a glob matches, in sorted (input) order. One file is one
 /// document this phase; multi-record files are a later expansion.
-pub struct FileSource {
+///
+/// `pub(crate)`: the only caller is `registry::build_source`, reached after
+/// manifest validation, so `new` can trust the glob is root-relative.
+pub(crate) struct FileSource {
     remaining: VecDeque<PathBuf>,
 }
 
@@ -18,7 +21,7 @@ impl FileSource {
     /// fails at startup rather than mid-run. The manifest gate
     /// (`manifest::check_contained`) guarantees `glob` is relative and free of
     /// `..`, so `root.join` stays inside the connector root.
-    pub fn new(root: &Path, glob: &str) -> Result<Self> {
+    pub(crate) fn new(root: &Path, glob: &str) -> Result<Self> {
         let joined = root.join(glob);
         let pattern = joined.to_str().context("glob pattern is not valid UTF-8")?;
         let mut paths: Vec<PathBuf> = glob::glob(pattern)
@@ -53,16 +56,18 @@ impl Source for FileSource {
 
 /// Writes to a single path, overwriting per document (last write wins) — the
 /// TS file connector's semantics. Per-document naming for multi-match globs is
-/// a later decision.
-pub struct FileSink {
+/// a later decision. `pub(crate)`: built only by `registry::build_sink`.
+pub(crate) struct FileSink {
     path: PathBuf,
 }
 
 impl FileSink {
     /// Create the destination's parent directory now (once), so per-document
     /// writes don't each re-issue a `create_dir_all`. The manifest gate keeps
-    /// `path` inside the connector root.
-    pub fn new(root: &Path, path: &str) -> Result<Self> {
+    /// `path` inside the connector root. The `std::fs` call is blocking, but
+    /// it's a one-shot at startup before any task runs — off the hot path, so
+    /// not worth a `spawn_blocking` hop.
+    pub(crate) fn new(root: &Path, path: &str) -> Result<Self> {
         let path = root.join(path);
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)
@@ -141,6 +146,23 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(dir.join("out/x.json")).unwrap(),
             "hello"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn sink_overwrites_per_write_last_one_wins() {
+        let dir = temp("overwrite");
+        block_on(async {
+            let mut sink = FileSink::new(&dir, "out/x.json").unwrap();
+            sink.write("first").await.unwrap();
+            sink.write("second").await.unwrap();
+        });
+        // The single sink path holds only the last document's output — the
+        // intentional last-write-wins semantics for a multi-match glob.
+        assert_eq!(
+            std::fs::read_to_string(dir.join("out/x.json")).unwrap(),
+            "second"
         );
         std::fs::remove_dir_all(&dir).ok();
     }
