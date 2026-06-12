@@ -45,7 +45,12 @@ const GOLDEN_HEAD: &str = r#"{
 
 #[test]
 fn missing_default_config_fails_with_a_clear_message() {
-    // No args → the default mounted config path, which is absent in CI.
+    // No args → the default mounted config path. Skip if it happens to exist on
+    // this host, since the assertions assume it is absent.
+    if std::path::Path::new("/etc/weavster/weavster.yaml").exists() {
+        eprintln!("skipping: /etc/weavster/weavster.yaml exists on this host");
+        return;
+    }
     let output = Command::new(env!("CARGO_BIN_EXE_weavster-engine"))
         .output()
         .expect("run the weavster-engine binary");
