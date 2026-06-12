@@ -7,17 +7,20 @@
 //!
 //! Usage: `weavster-engine <artifact-dir>` (E5 adds the `weavster.yaml` boot).
 
+mod connector;
+mod connectors;
 mod host;
 mod log;
 mod manifest;
+mod registry;
 mod runner;
 
 use std::path::Path;
 use std::process::ExitCode;
 
-fn run(artifact_dir: &Path) -> anyhow::Result<bool> {
+async fn run(artifact_dir: &Path) -> anyhow::Result<bool> {
     let manifest = manifest::load(artifact_dir)?;
-    let report = runner::run(artifact_dir, &manifest)?;
+    let report = runner::run(artifact_dir, &manifest).await?;
 
     for (pipeline, error) in &report.failures {
         eprintln!("✗ {pipeline}: {error}");
@@ -39,7 +42,15 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    match run(Path::new(&artifact_dir)) {
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(err) => {
+            eprintln!("✗ cannot start the async runtime: {err}");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    match runtime.block_on(run(Path::new(&artifact_dir))) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(err) => {

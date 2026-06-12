@@ -26,15 +26,15 @@ pub struct Manifest {
 #[serde(deny_unknown_fields)]
 pub struct Pipeline {
     pub name: String,
-    pub source: Source,
+    pub source: SourceSpec,
     /// Flow name; resolves by convention to `flows/<flow>.wasm`.
     pub flow: String,
-    pub sink: Sink,
+    pub sink: SinkSpec,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Source {
+pub struct SourceSpec {
     pub r#type: String,
     pub glob: String,
     pub format: String,
@@ -42,7 +42,7 @@ pub struct Source {
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Sink {
+pub struct SinkSpec {
     pub r#type: String,
     pub path: String,
     pub format: String,
@@ -72,23 +72,10 @@ pub fn parse(text: &str) -> Result<Manifest> {
         bail!("manifest has no pipelines");
     }
     for pipeline in &manifest.pipelines {
-        // `file` is the only connector this phase; E4 turns this into a registry.
-        if pipeline.source.r#type != "file" {
-            bail!(
-                "pipeline \"{}\": unknown source type \"{}\" (only \"file\" is supported)",
-                pipeline.name,
-                pipeline.source.r#type
-            );
-        }
-        if pipeline.sink.r#type != "file" {
-            bail!(
-                "pipeline \"{}\": unknown sink type \"{}\" (only \"file\" is supported)",
-                pipeline.name,
-                pipeline.sink.r#type
-            );
-        }
-        // Every path in the manifest resolves against the artifact root; an
-        // absolute path or a `..` component would silently escape it.
+        // Connector `type` is validated when the registry builds it (E4); here
+        // we guard the path shape regardless of type. Every path in the
+        // manifest resolves against the artifact root, so an absolute path or a
+        // `..` component would silently escape it.
         check_contained(&pipeline.name, "source glob", &pipeline.source.glob)?;
         check_contained(&pipeline.name, "sink path", &pipeline.sink.path)?;
         if pipeline.flow.is_empty() || pipeline.flow.contains(['/', '\\']) || pipeline.flow == ".."
@@ -180,13 +167,6 @@ mod tests {
     #[test]
     fn refuses_malformed_json() {
         assert!(parse("{ not json").is_err());
-    }
-
-    #[test]
-    fn refuses_an_unknown_connector_type() {
-        let text = GOLDEN.replace(r#"{ "type": "file", "glob""#, r#"{ "type": "rest", "glob""#);
-        let err = parse(&text).unwrap_err().to_string();
-        assert!(err.contains("unknown source type \"rest\""), "{err}");
     }
 
     #[test]

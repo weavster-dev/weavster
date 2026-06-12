@@ -88,9 +88,11 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   produces this artifact and the engine runs it today.
 - Rust engine core ([`engine/`](engine/)): `weavster-engine <artifact-dir>` loads + validates the
   manifest (refusing unknown versions loudly), JIT-compiles each flow module once, and runs every
-  pipeline concurrently — FIFO per pipeline, fresh wasmtime store per document, with a memory cap
-  and wall-clock deadline so runaway transforms trap instead of hanging. Structured JSON logs
-  carry pipeline/document/stage.
+  pipeline concurrently on a tokio runtime — FIFO per pipeline, fresh wasmtime store per document,
+  with a memory cap and wall-clock deadline so runaway transforms trap instead of hanging.
+  Structured JSON logs carry pipeline/document/stage. Sources and sinks sit behind async
+  `Source`/`Sink` traits in a `type`-keyed registry; `file` (glob source, path sink) is the only
+  connector today, and later ones are additive — no run-loop change.
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 

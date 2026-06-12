@@ -130,12 +130,12 @@ The thin binary: load manifest, host the WASM, run the loop. File source/sink on
 Land `Source`/`Sink` behind a `type`-keyed registry with `file` as the only entry, so later
 connectors (rest/blob/tcp/grpc/db) are additive. (RFC 0003 slice 4.)
 
-- [ ] `Source::next()` / `Sink::write()` async traits; `type`-keyed registry. → verify: an unknown
-      `type` in the manifest fails with a clear error.
-- [ ] `file` connector: **glob** source resolved against a connector root; one match → one
+- [x] `Source::next()` / `Sink::write()` async traits; `type`-keyed registry. → verify: an unknown
+      `type` in the manifest fails with a clear error (registry + an end-to-end binary test).
+- [x] `file` connector: **glob** source resolved against a connector root; one match → one
       document (1 file → 1 document; multi-record is a `// TODO` expansion). → verify: a glob
       matching three files yields three documents.
-- [ ] `file` sink: write a path. → verify: golden output matches byte-for-byte.
+- [x] `file` sink: write a path. → verify: golden output matches byte-for-byte.
 
 ## E5 — Thin image + invocation
 
