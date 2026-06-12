@@ -156,9 +156,15 @@ Ship the engine as a thin Docker image and define how it boots. (RFC 0003 slice 
 A golden pipeline through both harnesses must produce identical output. Because both drive the
 **same wasm**, this checks the two _hosts_ agree — not two JS engines. (RFC 0003 slice 6.)
 
-- [ ] Run `examples/golden-path` through the TS `run` loop and the Rust engine; assert byte-equal
-      output. → verify: a CI job runs both and diffs.
-- [ ] Wire it into CI as a merge gate for engine changes. → verify: a deliberate host divergence
+Note: the production TS `run` loop applies flows in-process (`@weavster/core` `applyFlow`), not via
+wasm — so the second host here is a dedicated **Node WASI host** (`cli/test/wasmHost.ts`) that
+drives the compiled module over the same stdin/stdout envelope ABI as the engine. That keeps the
+comparison "same wasm, two hosts" rather than two JS engines, as the slice intends.
+
+- [x] Drive `examples/golden-path` through both hosts — the Node WASI host and the Rust engine —
+      over the same compiled `order.wasm`; assert byte-equal output (`cli/test/parity.test.ts`,
+      gated on `WEAVSTER_ENGINE_BIN`). → verify: a CI `parity` job runs both and diffs.
+- [x] Wire it into CI as a merge gate for engine changes. → verify: a deliberate host divergence
       makes the job fail.
 
 ---

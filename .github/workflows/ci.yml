@@ -87,6 +87,42 @@ jobs:
           node cli/dist/index.js validate "$RUNNER_TEMP/wv-init"
           node cli/dist/index.js test "$RUNNER_TEMP/wv-init"
 
+  # E6 parity gate (RFC 0003 slice 6). The merge guardrail for engine changes:
+  # drive the same compiled wasm through the Node WASI host and the Rust engine
+  # and assert byte-equal output. Needs both toolchains, so it stands alone. A
+  # deliberate host divergence (either side mishandling the envelope or I/O)
+  # fails this job. The parity test self-gates on WEAVSTER_ENGINE_BIN.
+  parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm --filter @weavster/core build
+
+      # Same flaky-download guard as the cli job: warm Javy before the test
+      # compiles the golden flow to wasm.
+      - name: warm the Javy binary
+        run: pnpm --filter @weavster/cli exec javy --version
+
+      - name: build the engine
+        run: cargo build --release -p weavster-engine --locked
+
+      - name: parity — TS WASI host vs Rust engine (byte-equal)
+        env:
+          WEAVSTER_ENGINE_BIN: ${{ github.workspace }}/target/release/weavster-engine
+        run: pnpm --filter @weavster/cli exec vitest run test/parity.test.ts
+
   # Rust engine (RFC 0003). Builds, lints, and tests the `engine/` workspace,
   # then uploads coverage with the `rust` flag. Self-gating: the steps no-op
   # until a Cargo.toml lands, so it stayed green before the crate existed.

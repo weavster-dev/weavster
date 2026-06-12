@@ -131,7 +131,8 @@ The production runtime ([RFC 0003](docs/rfcs/0003-engine-runtime.md)) lives in
 [`engine/`](engine/), a Rust workspace at the repo root. The engine works today: it boots from a
 mounted `weavster.yaml` and runs the compiled artifact resolved beside it (manifest loader,
 wasmtime host over the Javy ABI, per-pipeline run loop with resource limits, connector registry,
-thin Docker image). Only the parity gate lands in a later milestone (see
+thin Docker image). A CI parity gate drives the same compiled wasm through a Node WASI host and
+the engine and asserts byte-equal output, so the two hosts can't drift (see
 [`docs/ENGINE_PLAN.md`](docs/ENGINE_PLAN.md)).
 
 ```bash
