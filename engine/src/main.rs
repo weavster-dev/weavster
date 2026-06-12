@@ -5,8 +5,11 @@
 //! over the Javy stdin/stdout ABI. See `docs/ENGINE_PLAN.md` (E3) and
 //! `docs/ARTIFACT_SPEC.md` for the contract.
 //!
-//! Usage: `weavster-engine <artifact-dir>` (E5 adds the `weavster.yaml` boot).
+//! Boots from a mounted `weavster.yaml` (default `/etc/weavster/weavster.yaml`,
+//! `-c/--config` to override) and resolves the artifact by convention next to
+//! it — see `config.rs` and Engine Plan E5.
 
+mod config;
 mod connector;
 mod connectors;
 mod host;
@@ -35,12 +38,27 @@ async fn run(artifact_dir: &Path) -> anyhow::Result<bool> {
 }
 
 fn main() -> ExitCode {
-    // E5 replaces this with the mounted-`weavster.yaml` boot (-c/--config);
-    // until then the artifact directory is explicit, never an implicit cwd.
-    let Some(artifact_dir) = std::env::args().nth(1) else {
-        eprintln!("usage: weavster-engine <artifact-dir>");
-        return ExitCode::FAILURE;
+    let boot = match config::parse(std::env::args().skip(1)) {
+        Ok(config::Cli::Run(boot)) => boot,
+        Ok(config::Cli::Help) => {
+            println!("{}", config::USAGE);
+            return ExitCode::SUCCESS;
+        }
+        Err(err) => {
+            eprintln!("✗ {err:#}");
+            return ExitCode::FAILURE;
+        }
     };
+
+    // The mounted config is the boot anchor: refuse to start if it is absent,
+    // rather than silently running whatever artifact happens to sit nearby.
+    if !boot.config.exists() {
+        eprintln!(
+            "✗ no weavster.yaml at {} — mount your project config there or pass -c <path>",
+            boot.config.display()
+        );
+        return ExitCode::FAILURE;
+    }
 
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(rt) => rt,
@@ -50,7 +68,7 @@ fn main() -> ExitCode {
         }
     };
 
-    match runtime.block_on(run(Path::new(&artifact_dir))) {
+    match runtime.block_on(run(&boot.artifact)) {
         Ok(true) => ExitCode::SUCCESS,
         Ok(false) => ExitCode::FAILURE,
         Err(err) => {

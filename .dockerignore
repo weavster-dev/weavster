@@ -1,0 +1,8 @@
+# The engine image (engine/Dockerfile) only needs the Cargo workspace. Keep the
+# TS toolchain, build output, and tooling out of the build context.
+target
+**/target
+node_modules
+**/node_modules
+website
+.git
