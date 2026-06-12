@@ -6,8 +6,18 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Output};
 
+const MIN_CONFIG: &str = "apiVersion: weavster/v0alpha2\nname: test\n";
+
+/// Boot the engine against a staged artifact dir. A real `weavster.yaml` is
+/// written into the dir (the boot anchor the engine requires) and `--artifact`
+/// points at the same dir, so the test does not depend on the path convention.
 fn run_engine(artifact_dir: &std::path::Path) -> Output {
+    let config = artifact_dir.join("weavster.yaml");
+    fs::write(&config, MIN_CONFIG).expect("write weavster.yaml");
     Command::new(env!("CARGO_BIN_EXE_weavster-engine"))
+        .arg("-c")
+        .arg(&config)
+        .arg("--artifact")
         .arg(artifact_dir)
         .output()
         .expect("run the weavster-engine binary")
@@ -34,21 +44,47 @@ const GOLDEN_HEAD: &str = r#"{
 }"#;
 
 #[test]
-fn no_argument_prints_usage_and_fails() {
+fn missing_default_config_fails_with_a_clear_message() {
+    // No args → the default mounted config path. Skip if it happens to exist on
+    // this host, since the assertions assume it is absent.
+    if std::path::Path::new("/etc/weavster/weavster.yaml").exists() {
+        eprintln!("skipping: /etc/weavster/weavster.yaml exists on this host");
+        return;
+    }
     let output = Command::new(env!("CARGO_BIN_EXE_weavster-engine"))
         .output()
         .expect("run the weavster-engine binary");
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(
-        stderr.contains("usage: weavster-engine <artifact-dir>"),
-        "{stderr}"
-    );
+    assert!(stderr.contains("no weavster.yaml at"), "{stderr}");
+    assert!(stderr.contains("/etc/weavster/weavster.yaml"), "{stderr}");
+}
+
+#[test]
+fn help_flag_prints_usage_and_succeeds() {
+    let output = Command::new(env!("CARGO_BIN_EXE_weavster-engine"))
+        .arg("--help")
+        .output()
+        .expect("run the weavster-engine binary");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("usage: weavster-engine"), "{stdout}");
 }
 
 #[test]
 fn missing_artifact_dir_fails_with_a_clear_message() {
-    let output = run_engine(std::path::Path::new("/nonexistent/artifact"));
+    // Config present (the boot anchor), but the artifact it points at is absent.
+    let dir = temp_artifact("noart", GOLDEN_HEAD);
+    fs::write(dir.join("weavster.yaml"), MIN_CONFIG).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_weavster-engine"))
+        .arg("-c")
+        .arg(dir.join("weavster.yaml"))
+        .arg("--artifact")
+        .arg("/nonexistent/artifact")
+        .output()
+        .expect("run the weavster-engine binary");
+    fs::remove_dir_all(&dir).ok();
+
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("cannot read"), "{stderr}");

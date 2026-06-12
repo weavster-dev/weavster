@@ -53,7 +53,18 @@ fn stage(name: &str, artifact: &Path, glob: &str, inputs: &[(&str, &str)]) -> Pa
 }
 
 fn run_engine(artifact_dir: &Path) -> Output {
+    // Boot from a weavster.yaml beside the staged artifact; the engine resolves
+    // documents/sink paths against the --artifact dir.
+    let config = artifact_dir.join("weavster.yaml");
+    fs::write(
+        &config,
+        "apiVersion: weavster/v0alpha2\nname: golden-path\n",
+    )
+    .expect("write weavster.yaml");
     Command::new(env!("CARGO_BIN_EXE_weavster-engine"))
+        .arg("-c")
+        .arg(&config)
+        .arg("--artifact")
         .arg(artifact_dir)
         .output()
         .expect("run the weavster-engine binary")

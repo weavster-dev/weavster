@@ -86,13 +86,16 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   the `manifest.json` + `flows/<name>.wasm` artifact layout, and the WASM input/result envelope —
   the contract the Rust engine (RFC 0003) and `weavster compile` are built against. `compile`
   produces this artifact and the engine runs it today.
-- Rust engine core ([`engine/`](engine/)): `weavster-engine <artifact-dir>` loads + validates the
-  manifest (refusing unknown versions loudly), JIT-compiles each flow module once, and runs every
-  pipeline concurrently on a tokio runtime — FIFO per pipeline, fresh wasmtime store per document,
-  with a memory cap and wall-clock deadline so runaway transforms trap instead of hanging.
-  Structured JSON logs carry pipeline/document/stage. Sources and sinks sit behind async
-  `Source`/`Sink` traits in a `type`-keyed registry; `file` (glob source, path sink) is the only
-  connector today, and later ones are additive — no run-loop change.
+- Rust engine core ([`engine/`](engine/)): the engine boots from a mounted `weavster.yaml`
+  (default `/etc/weavster/weavster.yaml`, `-c/--config` to override) and resolves the compiled
+  artifact next to it by convention (`--artifact` to override). It loads + validates the manifest
+  (refusing unknown versions loudly), JIT-compiles each flow module once, and runs every pipeline
+  concurrently on a tokio runtime — FIFO per pipeline, fresh wasmtime store per document, with a
+  memory cap and wall-clock deadline so runaway transforms trap instead of hanging. Structured
+  JSON logs carry pipeline/document/stage. Sources and sinks sit behind async `Source`/`Sink`
+  traits in a `type`-keyed registry; `file` (glob source, path sink) is the only connector today,
+  and later ones are additive — no run-loop change. Ships as a thin multi-stage Docker image
+  ([`engine/Dockerfile`](engine/Dockerfile)) — a static-base binary on distroless, no Node.
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
@@ -125,18 +128,27 @@ pnpm --filter @weavster/cli dev test ./path/to/project
 ### Engine (Rust)
 
 The production runtime ([RFC 0003](docs/rfcs/0003-engine-runtime.md)) lives in
-[`engine/`](engine/), a Rust workspace at the repo root. The engine core works today:
-`weavster-engine <artifact-dir>` runs a compiled artifact (manifest loader, wasmtime host over
-the Javy ABI, per-pipeline run loop with resource limits). The connector registry, Docker
-image, and parity gate land in later milestones (see
+[`engine/`](engine/), a Rust workspace at the repo root. The engine works today: it boots from a
+mounted `weavster.yaml` and runs the compiled artifact resolved beside it (manifest loader,
+wasmtime host over the Javy ABI, per-pipeline run loop with resource limits, connector registry,
+thin Docker image). Only the parity gate lands in a later milestone (see
 [`docs/ENGINE_PLAN.md`](docs/ENGINE_PLAN.md)).
 
 ```bash
-# end to end: compile the golden path, then run the artifact with the engine
+# end to end: compile the golden path, then run the artifact with the engine.
+# the engine boots from weavster.yaml and resolves the artifact at
+# <config-dir>/target/artifact (matching compile's default output).
 pnpm --filter @weavster/cli dev compile ./examples/golden-path
 mkdir -p examples/golden-path/target/artifact/in
 cp examples/golden-path/in/order.json examples/golden-path/target/artifact/in/
-cargo run -- examples/golden-path/target/artifact
+cargo run -- -c examples/golden-path/weavster.yaml
+
+# or as the thin Docker image — mount the project at the default config path.
+# the image runs as a non-root user, so run as the host user (--user) to keep
+# the bind-mounted sink dir writable.
+docker build -f engine/Dockerfile -t weavster-engine .
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v "$PWD/examples/golden-path:/etc/weavster" weavster-engine
 ```
 
 **Build boundary:** Rust and the pnpm/TS packages sit side by side but never mix. The TS

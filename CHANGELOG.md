@@ -14,6 +14,15 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Ship the engine as a thin Docker image and boot it from config (Engine Plan E5 / RFC 0003
+  slice 5). The engine no longer takes a positional artifact path; it boots from a mounted
+  `weavster.yaml` (default `/etc/weavster/weavster.yaml`, `-c/--config` to override) and resolves
+  the artifact **by convention** next to it — `<config-dir>/target/artifact`, matching `weavster
+compile`'s default output — overridable with `--artifact` (`engine/src/config.rs`). A
+  multi-stage `engine/Dockerfile` builds with the Rust toolchain and ships only the binary on
+  distroless/cc — no Node, no TS toolchain (a repo-root `.dockerignore` keeps them out of the
+  build context).
+
 - Land the connector trait + registry (Engine Plan E4 / RFC 0003 slice 4). `Source`/`Sink` are
   async traits (`engine/src/connector.rs`); a `type`-keyed registry (`registry.rs`) is the one
   place that knows which connector types exist, so later connectors (rest/blob/tcp/grpc/db) are a

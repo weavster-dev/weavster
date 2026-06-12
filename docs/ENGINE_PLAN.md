@@ -141,11 +141,15 @@ connectors (rest/blob/tcp/grpc/db) are additive. (RFC 0003 slice 4.)
 
 Ship the engine as a thin Docker image and define how it boots. (RFC 0003 slice 5.)
 
-- [ ] Multi-stage Dockerfile: build with Rust, ship a static binary on distroless/scratch — no
-      Node, no TS toolchain. → verify: image builds; `docker run` executes the golden artifact.
-- [ ] Boot from a **mounted `weavster.yaml`** at a default path, `-c/--config` override
-      (nginx/postgres convention). Resolve where the artifact lives from it. → verify:
-      `cargo run -- -c ./weavster.yaml` and the container both run the golden pipeline.
+- [x] Multi-stage Dockerfile: build with Rust, ship the binary on distroless/cc (Debian 12) — no
+      Node, no TS toolchain. (`cc` over `scratch`: the binary links glibc + libstdc++ dynamically.)
+      → verify: image builds; `docker run` executes the golden artifact.
+- [x] Boot from a **mounted `weavster.yaml`** at a default path, `-c/--config` override
+      (nginx/postgres convention). Resolve where the artifact lives from it — `weavster.yaml`'s
+      schema is closed (`additionalProperties: false`), so the artifact is resolved **by
+      convention** as `<config-dir>/target/artifact` (compile's default output), `--artifact` to
+      override. → verify: `cargo run -- -c ./weavster.yaml` and the container both run the golden
+      pipeline.
 
 ## E6 — Parity test (the guardrail)
 
