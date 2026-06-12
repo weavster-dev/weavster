@@ -143,9 +143,12 @@ mkdir -p examples/golden-path/target/artifact/in
 cp examples/golden-path/in/order.json examples/golden-path/target/artifact/in/
 cargo run -- -c examples/golden-path/weavster.yaml
 
-# or as the thin Docker image — mount the project at the default config path:
+# or as the thin Docker image — mount the project at the default config path.
+# the image runs as a non-root user, so run as the host user (--user) to keep
+# the bind-mounted sink dir writable.
 docker build -f engine/Dockerfile -t weavster-engine .
-docker run --rm -v "$PWD/examples/golden-path:/etc/weavster" weavster-engine
+docker run --rm --user "$(id -u):$(id -g)" \
+  -v "$PWD/examples/golden-path:/etc/weavster" weavster-engine
 ```
 
 **Build boundary:** Rust and the pnpm/TS packages sit side by side but never mix. The TS
