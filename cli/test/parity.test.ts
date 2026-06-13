@@ -50,8 +50,14 @@ describe.skipIf(!engineBin)('host parity (E6)', () => {
     writeFileSync(config, 'apiVersion: weavster/v0alpha2\nname: golden-path\n');
     const run = spawnSync(engineBin as string, ['-c', config, '--artifact', outDir], {
       encoding: 'utf8',
+      timeout: 30_000,
+      killSignal: 'SIGKILL',
     });
-    expect(run.status, run.stderr).toBe(0);
+    // Surface a setup failure (binary missing/not executable) clearly — there
+    // run.status is null with no stderr — and bound the wait so a hung engine
+    // fails the gate instead of stalling it to the job timeout.
+    expect(run.error?.message, 'engine process failed to start').toBeUndefined();
+    expect(run.status, run.stderr || String(run.error)).toBe(0);
     const rust = readFileSync(join(outDir, 'out', 'order.json'), 'utf8');
 
     // The guardrail: same wasm, two hosts, identical bytes.

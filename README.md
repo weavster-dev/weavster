@@ -54,8 +54,8 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
 - `weavster compile [path]`: compiles the enabled pipelines (the `pipelines:` switchboard in
   `weavster.yaml`) into a portable artifact — `manifest.json` plus one `flows/<flow>.wasm` per
   flow (each flow bundled with the JSON/XML packs and its `_ts` functions, then built to wasm by
-  Javy). Output lands in `<project>/target/artifact/`. This is the build step the forthcoming
-  Rust engine ([RFC 0003](docs/rfcs/0003-engine-runtime.md)) will run; see
+  Javy). Output lands in `<project>/target/artifact/`. This is the build step the Rust engine
+  ([RFC 0003](docs/rfcs/0003-engine-runtime.md)) runs; see
   [`docs/ARTIFACT_SPEC.md`](docs/ARTIFACT_SPEC.md) for the contract.
 - A reference user project at [`examples/golden-path/`](examples/golden-path/) exercised
   by `validate` and `test`.
@@ -172,7 +172,7 @@ cargo test --workspace       # run engine tests
 | `spec/`       | Config JSON Schemas and example configs                    |
 | `cli/`        | CLI commands                                               |
 | `core/`       | Canonical document model, format packs, and engine         |
-| `engine/`     | Rust production runtime (RFC 0003) — currently a stub      |
+| `engine/`     | Rust production runtime (RFC 0003) — E0–E6 complete        |
 | `formats/`    | Reserved for format packs if later extracted from `core/`  |
 | `functions/`  | Built-in transform functions                               |
 | `ts-runtime/` | TypeScript escape hatch for custom transforms              |
