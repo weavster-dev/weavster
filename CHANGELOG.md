@@ -15,9 +15,8 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 ### Added
 
 - Publish the engine image to GHCR on release. A `docker` job in the release workflow builds
-  `engine/Dockerfile` and pushes `ghcr.io/weavster-dev/weavster-engine`, tagged with the release
-  version and `latest`, on every `v*` tag. Single-arch (amd64) for now; arm64 via buildx/QEMU is a
-  later add.
+  `engine/Dockerfile` and pushes a multi-arch (amd64 + arm64) `ghcr.io/weavster-dev/weavster-engine`
+  manifest, tagged with the release version and `latest`, on every `v*` tag.
 
 - Add the E6 parity gate (Engine Plan E6 / RFC 0003 slice 6): drive the same compiled
   `order.wasm` through two hosts — a Node WASI host (`cli/test/wasmHost.ts`, extracted from the

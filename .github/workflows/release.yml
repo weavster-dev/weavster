@@ -58,10 +58,11 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             --notes "${notes:-Release $GITHUB_REF_NAME}"
 
-  # Build the thin engine image (engine/Dockerfile) and push it to GHCR, tagged
-  # with the release version and `latest`. Independent of the npm job — the
-  # build itself is the engine's release validation. Single-arch (amd64) for
-  # now; arm64 via QEMU/buildx is a later add.
+  # Build the thin engine image (engine/Dockerfile) and push a multi-arch
+  # manifest (amd64 + arm64) to GHCR, tagged with the release version and
+  # `latest`. Independent of the npm job — the build itself is the engine's
+  # release validation. QEMU emulates the arm64 cargo build, so this job is
+  # slower than a single-arch one.
   docker:
     runs-on: ubuntu-latest
     permissions:
@@ -69,6 +70,8 @@ jobs:
       packages: write # push to ghcr.io/weavster-dev/*
     steps:
       - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3 # register arm64 emulation for buildx
 
       - uses: docker/setup-buildx-action@v3
 
@@ -90,6 +93,7 @@ jobs:
         with:
           context: .
           file: engine/Dockerfile
+          platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
