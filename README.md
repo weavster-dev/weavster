@@ -54,8 +54,8 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
 - `weavster compile [path]`: compiles the enabled pipelines (the `pipelines:` switchboard in
   `weavster.yaml`) into a portable artifact — `manifest.json` plus one `flows/<flow>.wasm` per
   flow (each flow bundled with the JSON/XML packs and its `_ts` functions, then built to wasm by
-  Javy). Output lands in `<project>/target/artifact/`. This is the build step the forthcoming
-  Rust engine ([RFC 0003](docs/rfcs/0003-engine-runtime.md)) will run; see
+  Javy). Output lands in `<project>/target/artifact/`. This is the build step the Rust engine
+  ([RFC 0003](docs/rfcs/0003-engine-runtime.md)) runs; see
   [`docs/ARTIFACT_SPEC.md`](docs/ARTIFACT_SPEC.md) for the contract.
 - A reference user project at [`examples/golden-path/`](examples/golden-path/) exercised
   by `validate` and `test`.
@@ -131,7 +131,8 @@ The production runtime ([RFC 0003](docs/rfcs/0003-engine-runtime.md)) lives in
 [`engine/`](engine/), a Rust workspace at the repo root. The engine works today: it boots from a
 mounted `weavster.yaml` and runs the compiled artifact resolved beside it (manifest loader,
 wasmtime host over the Javy ABI, per-pipeline run loop with resource limits, connector registry,
-thin Docker image). Only the parity gate lands in a later milestone (see
+thin Docker image). A CI parity gate drives the same compiled wasm through a Node WASI host and
+the engine and asserts byte-equal output, so the two hosts can't drift (see
 [`docs/ENGINE_PLAN.md`](docs/ENGINE_PLAN.md)).
 
 ```bash
@@ -171,7 +172,7 @@ cargo test --workspace       # run engine tests
 | `spec/`       | Config JSON Schemas and example configs                    |
 | `cli/`        | CLI commands                                               |
 | `core/`       | Canonical document model, format packs, and engine         |
-| `engine/`     | Rust production runtime (RFC 0003) — currently a stub      |
+| `engine/`     | Rust production runtime (RFC 0003) — E0–E6 complete        |
 | `formats/`    | Reserved for format packs if later extracted from `core/`  |
 | `functions/`  | Built-in transform functions                               |
 | `ts-runtime/` | TypeScript escape hatch for custom transforms              |

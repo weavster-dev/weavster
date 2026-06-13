@@ -14,6 +14,16 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Add the E6 parity gate (Engine Plan E6 / RFC 0003 slice 6): drive the same compiled
+  `order.wasm` through two hosts — a Node WASI host (`cli/test/wasmHost.ts`, extracted from the
+  existing compile-wasm test) and the Rust engine binary — and assert **byte-equal** output
+  (`cli/test/parity.test.ts`). Because both drive one wasm, a difference means the hosts disagree
+  on I/O or envelope handling, not that two JS engines diverged. (The production TS `run` loop
+  applies flows in-process via `applyFlow`, so parity uses a dedicated WASI host, not that loop.)
+  A standalone CI `parity` job builds both toolchains and runs the diff as a merge gate for engine
+  changes; the test self-gates on `WEAVSTER_ENGINE_BIN`, so a local `pnpm test` skips its slow
+  Javy compile.
+
 - Ship the engine as a thin Docker image and boot it from config (Engine Plan E5 / RFC 0003
   slice 5). The engine no longer takes a positional artifact path; it boots from a mounted
   `weavster.yaml` (default `/etc/weavster/weavster.yaml`, `-c/--config` to override) and resolves
