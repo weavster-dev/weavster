@@ -14,6 +14,11 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 
 ### Added
 
+- Publish the engine image to GHCR on release. On every `v*` tag the release workflow builds
+  `engine/Dockerfile` once per architecture on a **native** runner (amd64 + arm64, no QEMU),
+  pushes each by digest, then merges them into one multi-arch
+  `ghcr.io/weavster-dev/weavster-engine` manifest tagged with the release version and `latest`.
+
 - Add the E6 parity gate (Engine Plan E6 / RFC 0003 slice 6): drive the same compiled
   `order.wasm` through two hosts — a Node WASI host (`cli/test/wasmHost.ts`, extracted from the
   existing compile-wasm test) and the Rust engine binary — and assert **byte-equal** output

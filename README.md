@@ -95,7 +95,8 @@ See the [Getting Started guide](https://docs.weavster.dev/getting-started) for t
   JSON logs carry pipeline/document/stage. Sources and sinks sit behind async `Source`/`Sink`
   traits in a `type`-keyed registry; `file` (glob source, path sink) is the only connector today,
   and later ones are additive — no run-loop change. Ships as a thin multi-stage Docker image
-  ([`engine/Dockerfile`](engine/Dockerfile)) — a static-base binary on distroless, no Node.
+  ([`engine/Dockerfile`](engine/Dockerfile)) — a static-base binary on distroless, no Node —
+  published to `ghcr.io/weavster-dev/weavster-engine` on each release tag.
 - Dev log ([`notes/DEV_LOG.md`](notes/DEV_LOG.md)) and changelog
   ([`CHANGELOG.md`](CHANGELOG.md)).
 
@@ -150,6 +151,11 @@ cargo run -- -c examples/golden-path/weavster.yaml
 docker build -f engine/Dockerfile -t weavster-engine .
 docker run --rm --user "$(id -u):$(id -g)" \
   -v "$PWD/examples/golden-path:/etc/weavster" weavster-engine
+
+# released images are published to GHCR (use a version tag or :latest):
+#   docker run --rm --user "$(id -u):$(id -g)" \
+#     -v "$PWD/examples/golden-path:/etc/weavster" \
+#     ghcr.io/weavster-dev/weavster-engine:latest
 ```
 
 **Build boundary:** Rust and the pnpm/TS packages sit side by side but never mix. The TS
