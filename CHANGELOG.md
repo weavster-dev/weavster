@@ -20,3 +20,4 @@ All notable changes to this project are documented here, following
 ### Fixed
 
 - `weavster test --format junit`: exclude the internal `passed` flag from JUnit XML so output is valid `<testcase name=.../>` elements.
+- MkDocs: complete `mkdocs.yml` (site_url, full nav, exclude internal kickoff doc, lenient link validation), add `requirements.txt`, and a `docs.yml` workflow that deploys to GitHub Pages via `mkdocs gh-deploy` on the `gh-pages` branch.
