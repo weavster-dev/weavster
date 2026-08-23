@@ -49,7 +49,7 @@ func runTransform(codecName string, content []byte) error {
 // testResult is one fixture outcome.
 type testResult struct {
 	Name    string `json:"name" xml:"name,attr"`
-	Passed  bool   `json:"passed"`
+	Passed  bool   `json:"passed" xml:"-"`
 	Failure string `json:"failure,omitempty" xml:"failure,omitempty"`
 }
 
