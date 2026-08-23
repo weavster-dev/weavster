@@ -16,3 +16,6 @@ coverage.out
 .DS_Store
 .idea/
 .vscode/
+
+# Agent-local state
+/.pi-glla/
