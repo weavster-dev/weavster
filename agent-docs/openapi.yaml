@@ -4,6 +4,78 @@ info:
   version: 0.1.0
   description: >
     REST API for the Weavster message-oriented integration platform.
-    Skeleton — the full contract is generated from the internal/gateway handlers
-    during the build (see docs/mvp-project-plan.md phase P7).
-paths: {}
+    JSON-first; the read-only topology graph is the confirmed MVP UI surface.
+paths:
+  /api/v1/system:
+    get:
+      summary: System status
+      responses:
+        "200":
+          description: System information (id, version, build date, runtime, charsets, protocols/ciphers, license).
+  /api/v1/topology:
+    get:
+      summary: Flow topology overview graph (read-only)
+      responses:
+        "200":
+          description: Overview graph (flow nodes + route/dependency edges).
+  /api/v1/topology/flows/{flowId}:
+    get:
+      summary: Flow-internal topology graph (read-only)
+      parameters:
+        - name: flowId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Flow-internal graph (source -> transform -> destination nodes + message-path edges).
+  /api/v1/flows:
+    get:
+      summary: List flows
+      responses:
+        "200":
+          description: Flow list.
+    post:
+      summary: Create flow
+      responses:
+        "201":
+          description: Created.
+  /api/v1/flows/{id}:
+    get:
+      summary: Get flow
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Flow record.
+    delete:
+      summary: Delete flow
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted.
+  /api/v1/messages:
+    get:
+      summary: Search messages
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: flowId
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Message search results.
