@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://weavster-dev.github.io/weavster/mvp-project-plan/">
+        <link rel="shortcut icon" href="../img/favicon.ico">
+        <title>MVP Project Plan - Weavster</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="..">Weavster</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href=".." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="./" class="nav-link active" aria-current="page">MVP Project Plan</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../agent-onboarding/" class="nav-link">Agent Onboarding</a>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href=".." class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../agent-onboarding/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/weavster-dev/weavster/edit/master/docs/mvp-project-plan.md" class="nav-link">Edit on weavster-dev/weavster
+                                    </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#weavster-mvp-project-plan" class="nav-link">Weavster MVP — Project Plan</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#1-what-we-are-building" class="nav-link">1. What we are building</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#2-confirmed-stack-locked-in-phase-2" class="nav-link">2. Confirmed stack (locked in Phase 2)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#3-mvp-scope-in-vs-out" class="nav-link">3. MVP scope — in vs out</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#4-critical-gaps-folded-into-the-mvp-from-the-viability-analysis" class="nav-link">4. Critical gaps folded into the MVP (from the viability analysis)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#5-build-topology-20-modules" class="nav-link">5. Build topology (20 modules)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#6-build-sequence-prompt-3-milestones" class="nav-link">6. Build sequence (Prompt 3 milestones)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#7-definition-of-done" class="nav-link">7. Definition of done</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="weavster-mvp-project-plan">Weavster MVP — Project Plan</h1>
+<p><strong>Status:</strong> Draft for review
+<strong>Phase:</strong> 2.5 (collation of Phase 2 → single MVP build plan)
+<strong>Inputs:</strong> <code>specs/black-box-functional-spec.md</code>, <code>specs/target-architecture-wasm-iac.md</code>, <code>specs/production-viability-gap-analysis.md</code>, <code>specs/read-only-graph-view-contract.md</code>
+<strong>Companion artifacts:</strong> <code>agentic-manifest.json</code> (machine-readable module map) · <code>docs/agent-onboarding.md</code> (coding rules for the build loop)</p>
+<blockquote>
+<p>This document condenses Phase 2 into one readable plan for the MVP build. It is the narrative sibling of <code>agentic-manifest.json</code>, which remains the executable source of truth for Prompt 3 subagents.</p>
+</blockquote>
+<hr />
+<h2 id="1-what-we-are-building">1. What we are building</h2>
+<p>Weavster is a <strong>message-oriented integration platform</strong>: it receives messages from many sources (files, HTTP, TCP/MLLP, databases, SMTP, web services), applies filters and transformations authored declaratively (YAML DSL) or as sandboxed WASM, routes them to one or more destinations, and provides durable storage, search, export, scheduling, alerting, administration, and automation — hardened for regulated data (HL7 v2, X12, NCPDP, DICOM, XML, JSON).</p>
+<p>It is a <strong>greenfield replacement</strong> for the legacy integration engine, built to the non-negotiable constraints of a <strong>single static binary</strong>, <strong>WASM-sandboxed user logic</strong>, <strong>local DX without Postgres</strong>, and <strong>100% code-defined configuration (IaC)</strong>.</p>
+<h2 id="2-confirmed-stack-locked-in-phase-2">2. Confirmed stack (locked in Phase 2)</h2>
+<table>
+<thead>
+<tr>
+<th>Decision</th>
+<th>Choice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Control-plane language</td>
+<td><strong>Go</strong> (<code>&gt;=1.22</code>), single static binary</td>
+</tr>
+<tr>
+<td>Module path / binary</td>
+<td><code>github.com/weavster-dev/weavster</code> / <code>weavster</code></td>
+</tr>
+<tr>
+<td>Web framework</td>
+<td><code>net/http</code> + <strong>chi</strong></td>
+</tr>
+<tr>
+<td>WASM host runtime</td>
+<td><strong>wazero</strong> (pure-Go, zero CGo)</td>
+</tr>
+<tr>
+<td>Transform authoring</td>
+<td>Declarative <strong>YAML DSL</strong> (default) + multi-language <strong>WASI</strong> (advanced)</td>
+</tr>
+<tr>
+<td>YAML-DSL codegen</td>
+<td><strong>Go + TinyGo → WASI</strong> (pinned, reproducible toolchain)</td>
+</tr>
+<tr>
+<td>Databases</td>
+<td><strong>PostgreSQL</strong> (prod) · <strong>SQLite</strong> (local DX) · <strong>in-memory</strong> (passthrough/buffered)</td>
+</tr>
+<tr>
+<td>API</td>
+<td>REST + OpenAPI 3.1 (JSON-first)</td>
+</tr>
+<tr>
+<td>Config &amp; IaC</td>
+<td>YAML/JSON config-as-code + Terraform/OpenTofu/Pulumi samples</td>
+</tr>
+<tr>
+<td>Docs</td>
+<td><strong>MkDocs</strong> human site + <strong><code>agent-docs/</code></strong> (OpenAPI, JSON Schemas, <code>llms.txt</code>)</td>
+</tr>
+<tr>
+<td>Testing</td>
+<td>Go <code>testing</code> + <code>weavster test</code> wrapper (JUnit XML / JSON)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Architecture principle:</strong> hexagonal (ports &amp; adapters). Every component depends only on a <strong>Go interface (port)</strong>, never another component's concrete type. This is what allows the monolith to be split per-component on Kubernetes later without a rewrite.</p>
+<h2 id="3-mvp-scope-in-vs-out">3. MVP scope — in vs out</h2>
+<p><strong>In scope (MVP):</strong> single Go binary/container; Postgres + SQLite/in-memory via the <code>Store</code> port; TLS + mTLS; local auth (password policy, lockout, anti-enumeration); built-in RBAC permission set; YAML DSL (auto-compiled) + WASI transforms; internal scheduler with Postgres <code>SKIP LOCKED</code> job claiming; <code>weavster test</code>; Git-backed config-as-code + IaC samples; REST API + OpenAPI; <strong>read-only</strong> flow-topology web UI; Prometheus metrics + structured logs + events; and the <strong>three critical gap closures</strong> below.</p>
+<p><strong>Explicitly out (Enterprise, port exists but implementation excluded):</strong> SSO (OIDC/SAML), complex RBAC/ABAC (OPA/Cedar), immutable/SIEM audit, K8s horizontal scaling, Redis/NATS queue + leader election, distributed tracing + transform replay, multi-tenancy, DICOM service-class provider. <em>Leave the interface, stub the rest.</em></p>
+<h2 id="4-critical-gaps-folded-into-the-mvp-from-the-viability-analysis">4. Critical gaps folded into the MVP (from the viability analysis)</h2>
+<table>
+<thead>
+<tr>
+<th>Gap</th>
+<th>MVP closure</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>#1 State migration</strong></td>
+<td>First-class <code>import legacy</code> command + ETL (extract → transform → load) with dry-run report and opt-in <code>--with-content</code>.</td>
+</tr>
+<tr>
+<td><strong>#2 WASM module lifecycle</strong></td>
+<td>Versioned, signed, rollbackable module registry (draft → promoted → active → superseded → retired).</td>
+</tr>
+<tr>
+<td><strong>#5 Idempotency &amp; retries</strong></td>
+<td>Transactional outbox + deterministic <code>idempotency_key</code> on all side effects; bounded retries + dead-letter state.</td>
+</tr>
+<tr>
+<td><strong>#4 HA floor (partial)</strong></td>
+<td>Durable job claim + lease heartbeat + startup reconciler (crash-safety only; full HA is Enterprise).</td>
+</tr>
+<tr>
+<td><strong>#6 Config plan/apply</strong></td>
+<td><code>config plan</code> (dry-run diff) / <code>config apply</code>, drift detection, JSON plan output.</td>
+</tr>
+<tr>
+<td><strong>#7 Migrations</strong></td>
+<td>Versioned, forward-only <code>Store</code> migration runner with pre-upgrade checkpoint.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-build-topology-20-modules">5. Build topology (20 modules)</h2>
+<p>Full detail (paths, files, dependencies, acceptance criteria, frameworks) lives in <code>agentic-manifest.json</code>. Condensed map:</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Path</th>
+<th>Responsibility</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>API Gateway</td>
+<td><code>internal/gateway</code></td>
+<td>REST + OpenAPI, authN/Z, audit, TLS/CSRF/security headers</td>
+</tr>
+<tr>
+<td>Auth &amp; Authorization</td>
+<td><code>internal/auth</code></td>
+<td>AuthProvider/Authorizer, password policy, lockout, MFA hook</td>
+</tr>
+<tr>
+<td>Audit Log</td>
+<td><code>internal/audit</code></td>
+<td>AuditSink, PHI access logging</td>
+</tr>
+<tr>
+<td>Scheduler</td>
+<td><code>internal/scheduler</code></td>
+<td>cron/interval + durable job queue + reconciler + lease</td>
+</tr>
+<tr>
+<td>Executor</td>
+<td><code>internal/executor</code></td>
+<td>wazero runtime + resource limits + host functions</td>
+</tr>
+<tr>
+<td>State Manager</td>
+<td><code>internal/state</code></td>
+<td>Store port (Postgres/SQLite/memory) + migrations + search/export</td>
+</tr>
+<tr>
+<td>Adapters</td>
+<td><code>internal/adapters</code></td>
+<td>Source/Sink ports (file/http/tcp-MLLP/db/smtp/webservice/interflow/document)</td>
+</tr>
+<tr>
+<td>Data-Type Codecs</td>
+<td><code>internal/codecs</code></td>
+<td>HL7 v2, X12, NCPDP, JSON, XML, delimited, raw</td>
+</tr>
+<tr>
+<td>Transform Compiler</td>
+<td><code>internal/compiler</code></td>
+<td>YAML DSL → TinyGo → WASM + schema validation</td>
+</tr>
+<tr>
+<td>Module Registry</td>
+<td><code>internal/registry</code></td>
+<td>WASM module version/sign/promote/rollback/GC <em>(glue, gap #2)</em></td>
+</tr>
+<tr>
+<td>Config-as-Code</td>
+<td><code>internal/config</code></td>
+<td>plan/apply/drift, JSON-Schema validation</td>
+</tr>
+<tr>
+<td>Git Store</td>
+<td><code>internal/gitstore</code></td>
+<td>native Git-backed config (commit/push/pull/history/restore)</td>
+</tr>
+<tr>
+<td>Legacy Import ETL</td>
+<td><code>internal/migrate</code></td>
+<td>legacy XML → YAML migration <em>(glue, gap #1)</em></td>
+</tr>
+<tr>
+<td>Outbox &amp; Idempotency</td>
+<td><code>internal/outbox</code></td>
+<td>transactional outbox + idempotency keys + retry/dead-letter <em>(glue, gap #5)</em></td>
+</tr>
+<tr>
+<td>Alerts</td>
+<td><code>internal/alerts</code></td>
+<td>alert definitions + evaluation</td>
+</tr>
+<tr>
+<td>Notifier</td>
+<td><code>internal/notify</code></td>
+<td>Notifier port (SMTP/webhook)</td>
+</tr>
+<tr>
+<td>Secrets</td>
+<td><code>internal/secrets</code></td>
+<td>SecretProvider (local store + env)</td>
+</tr>
+<tr>
+<td>Observability</td>
+<td><code>internal/observability</code></td>
+<td>Prometheus metrics + slog + OTel + events + stats</td>
+</tr>
+<tr>
+<td>Topology Graph</td>
+<td><code>internal/topology</code></td>
+<td>read-only flow topology (MVP UI data contract)</td>
+</tr>
+<tr>
+<td>CLI / Server Entry</td>
+<td><code>cmd/weavster</code></td>
+<td>composition root + CLI shell + <code>weavster test</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="6-build-sequence-prompt-3-milestones">6. Build sequence (Prompt 3 milestones)</h2>
+<p>Dependency-aware ordering; each phase is a mergeable, testable slice.</p>
+<ol>
+<li><strong>P0 — Scaffold.</strong> <code>go.mod</code>, CI (build+vet+test), <code>.gitignore</code>, <code>AGENTS.md</code>, MkDocs + <code>agent-docs/</code> skeleton.</li>
+<li><strong>P1 — Foundational leaves</strong> (no internal deps): <code>codecs</code>, <code>secrets</code>, <code>observability</code>, <code>gitstore</code>, <code>config</code> (parse + validate + schemas).</li>
+<li><strong>P2 — Durable state.</strong> <code>state</code> (Store port + migrations + search), then <code>outbox</code>.</li>
+<li><strong>P3 — WASM layer.</strong> <code>registry</code>, then <code>executor</code>, then <code>compiler</code>.</li>
+<li><strong>P4 — Orchestration.</strong> <code>scheduler</code>, then <code>adapters</code>.</li>
+<li><strong>P5 — Control plane.</strong> <code>auth</code>, <code>audit</code>, <code>notify</code>, <code>alerts</code>, <code>topology</code>, then <code>gateway</code>.</li>
+<li><strong>P6 — Composition root.</strong> <code>cmd/weavster</code> (server + CLI shell + <code>weavster test</code>).</li>
+<li><strong>P7 — Migration + IaC + docs.</strong> <code>migrate</code> (ETL), Terraform/OpenTofu/Pulumi samples, MkDocs content, <code>agent-docs/</code> (OpenAPI + schemas + <code>llms.txt</code>).</li>
+</ol>
+<h2 id="7-definition-of-done">7. Definition of done</h2>
+<p>Per module (from <code>docs/agent-onboarding.md</code>): acceptance criteria implemented; <code>gofmt -l .</code> empty; <code>go vet ./...</code> clean; <code>golangci-lint run</code> clean; <code>go test -race ./&lt;module&gt;/...</code> green; no CGo; no second language; no Postgres required in tests; Enterprise items left as ports/stubs. Whole-system gate: <code>weavster test --format junit</code> passes the golden-path fixtures, and the binary cross-compiles (<code>linux/amd64</code>, <code>linux/arm64</code>, <code>darwin/arm64</code>) and builds to a distroless non-root container.</p>
+<hr />
+<p><em>Collated from Phase 2. If this plan and <code>agentic-manifest.json</code> ever conflict on a technical fact, the manifest wins for Prompt 3 subagents; the specs win for semantics; surface any disagreement rather than resolving it silently.</em></p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+        <script src="../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>
