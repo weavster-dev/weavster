@@ -1,0 +1,21 @@
+# Weavster — Agent Context Index
+
+Source of truth for coding agents building the Weavster MVP.
+
+## Canonical artifacts
+
+- [../agentic-manifest.json](../agentic-manifest.json) — machine-readable build plan (20 modules, dependencies, acceptance criteria, frameworks)
+- [../docs/agent-onboarding.md](../docs/agent-onboarding.md) — coding rules (language, linters, tests, build/container commands, ports)
+- [../docs/mvp-project-plan.md](../docs/mvp-project-plan.md) — narrative MVP plan (scope, stack, build sequence)
+
+## Requirements & architecture (Phase 2)
+
+- [../specs/black-box-functional-spec.md](../specs/black-box-functional-spec.md) — clean-room behavioral requirements
+- [../specs/target-architecture-wasm-iac.md](../specs/target-architecture-wasm-iac.md) — stack decisions + module boundaries
+- [../specs/production-viability-gap-analysis.md](../specs/production-viability-gap-analysis.md) — critical/high/medium gaps + MVP closures
+- [../specs/read-only-graph-view-contract.md](../specs/read-only-graph-view-contract.md) — read-only topology graph data contract
+
+## Machine contracts
+
+- [openapi.yaml](openapi.yaml) — OpenAPI 3.1 API contract (generated during the build)
+- [schemas/](schemas/) — JSON Schemas for configs (generated during the build)

@@ -1,0 +1,9 @@
+openapi: 3.1.0
+info:
+  title: Weavster API
+  version: 0.1.0
+  description: >
+    REST API for the Weavster message-oriented integration platform.
+    Skeleton — the full contract is generated from the internal/gateway handlers
+    during the build (see docs/mvp-project-plan.md phase P7).
+paths: {}

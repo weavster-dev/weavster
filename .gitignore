@@ -1,0 +1,18 @@
+# Binaries
+/bin/
+*.exe
+
+# Go
+vendor/
+coverage.out
+*.coverprofile
+*.test
+
+# Derived build artifacts (YAML is the source of truth; .wasm is a cache)
+/artifacts/
+/target/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/

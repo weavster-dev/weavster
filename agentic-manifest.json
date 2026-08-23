@@ -1,0 +1,355 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "manifest_version": "1.0",
+  "name": "weavster",
+  "description": "Agentic Build Manifest for the weavster message-oriented integration platform (greenfield re-architecture). Compiled from Phase 2 source-of-truth docs; drives the Prompt 3 build loop.",
+  "phase": 3,
+  "source_of_truth": [
+    "specs/black-box-functional-spec.md",
+    "specs/target-architecture-wasm-iac.md",
+    "specs/production-viability-gap-analysis.md",
+    "specs/read-only-graph-view-contract.md"
+  ],
+
+  "tech_stack_dna": {
+    "language": "Go",
+    "language_version": ">=1.22",
+    "module_path": "github.com/weavster-dev/weavster",
+    "binary_name": "weavster",
+    "package_manager": "go.mod (Go modules)",
+    "web_framework": "net/http + chi",
+    "wasm_runtime": "wazero",
+    "dsl_codegen_target": "Go + TinyGo (WASI)",
+    "databases": ["PostgreSQL (prod)", "SQLite (local DX)", "in-memory (passthrough/buffered)"],
+    "api_protocol": "REST + OpenAPI 3.1 (JSON-first; XML where parity requires)",
+    "iac": "YAML/JSON config-as-code + Terraform/OpenTofu/Pulumi sample modules"
+  },
+
+  "tooling": {
+    "test_command": "go test -race ./...",
+    "flow_test_command": "weavster test --format junit --output artifacts/",
+    "build_command": "go build -o bin/weavster ./cmd/weavster",
+    "cross_compile_targets": ["linux/amd64", "linux/arm64", "darwin/arm64"],
+    "format_command": "gofmt -l .",
+    "vet_command": "go vet ./...",
+    "lint_command": "golangci-lint run",
+    "container": {
+      "base_image": "gcr.io/distroless/static-debian12:nonroot",
+      "build": "docker build -f Dockerfile -t weavster:latest .",
+      "runtime": "non-root, single static binary"
+    }
+  },
+
+  "layout": {
+    "convention": "standard Go project layout (cmd/ + internal/ + pkg/)",
+    "rule": "all executable entrypoints under cmd/; all private modules under internal/; only intentionally-exported libraries under pkg/. Every internal component depends on a port (Go interface), never another component's concrete type (hexagonal)."
+  },
+
+  "modules": [
+    {
+      "logical_name": "API Gateway",
+      "path": "internal/gateway",
+      "origin": "architecture-diagram + ports-table (AuthProvider/Authorizer/AuditSink consumers)",
+      "files_to_create": ["gateway.go", "router.go", "middleware.go", "openapi.go", "handlers_flows.go", "handlers_messages.go", "handlers_admin.go", "gateway_test.go"],
+      "depends_on": ["Auth & Authorization", "Audit Log", "Topology Graph", "Scheduler", "State Manager", "Config-as-Code"],
+      "acceptance_criteria": [
+        "Serves the REST API over chi router with OpenAPI 3.1 contract published to agent-docs/openapi.yaml (spec §5).",
+        "Enforces CSRF marker-header check returning HTTP 400 when absent (spec §2.13.45, §10).",
+        "Emits HSTS, X-Frame-Options DENY, CSP frame-ancestors 'none', X-Content-Type-Options nosniff; blocks TRACE/TRACK with 405 (spec §10).",
+        "Terminates HTTPS with configurable TLS protocols/ciphers and ephemeral-DH sizing (spec §2.13.44, §4.1).",
+        "Passes `go test -race ./internal/gateway/...`."
+      ],
+      "frameworks_to_use": ["github.com/go-chi/chi/v5", "github.com/getkin/kin-openapi", "github.com/oapi-codegen/oapi-codegen/v2"]
+    },
+    {
+      "logical_name": "Auth & Authorization",
+      "path": "internal/auth",
+      "origin": "ports-table (AuthProvider, Authorizer) + black-box §2.8/§2.13",
+      "files_to_create": ["authn.go", "authz.go", "password_policy.go", "lockout.go", "antienumeration.go", "mfa_hook.go", "auth_test.go"],
+      "depends_on": ["State Manager"],
+      "acceptance_criteria": [
+        "Implements AuthProvider port (local user store) and Authorizer port (resource-category permission set) as interfaces (architecture §3.1).",
+        "Supports user CRUD + password change (spec §2.8.26).",
+        "Enforces configurable password policy: min length, character-class counts with -1 forbidding, expiration/grace, reuse constraints (spec §2.13.41, §4.4).",
+        "Enforces account lockout after N failures for a period with strike decay (spec §2.13.42).",
+        "Generic login failure message by default (anti-enumeration on) (spec §2.13.43).",
+        "Exposes external auth hook + pluggable MFA hook invoked after primary authN (spec §2.8.28).",
+        "Passes `go test -race ./internal/auth/...`."
+      ],
+      "frameworks_to_use": ["golang.org/x/crypto (argon2id for password hashing)"]
+    },
+    {
+      "logical_name": "Audit Log",
+      "path": "internal/audit",
+      "origin": "ports-table (AuditSink) + black-box §10 PHI/audit access logging",
+      "files_to_create": ["audit.go", "sink.go", "phi_access.go", "audit_test.go"],
+      "depends_on": ["State Manager", "Observability"],
+      "acceptance_criteria": [
+        "Implements AuditSink port; local event-store adapter for MVP (architecture §3.1).",
+        "Writes protected-content (PHI) access and query events to the audit/event log, excluding sensitive parameters (spec §10).",
+        "Passes `go test -race ./internal/audit/...`."
+      ],
+      "frameworks_to_use": ["stdlib log/slog"]
+    },
+    {
+      "logical_name": "Scheduler",
+      "path": "internal/scheduler",
+      "origin": "architecture-diagram + viability-gap-4 (MVP crash-safety primitive)",
+      "files_to_create": ["scheduler.go", "cron.go", "jobqueue.go", "reconciler.go", "lease.go", "scheduler_test.go"],
+      "depends_on": ["State Manager", "Executor"],
+      "acceptance_criteria": [
+        "Implements JobQueue port with Postgres FOR UPDATE SKIP LOCKED claiming (SQLite equivalent for local DX) (architecture §3, §9.1).",
+        "Triggers polling sources on interval and cron-like schedules (spec §2.4.11-12).",
+        "Durable job claim with claimed_by + lease_until heartbeat; startup reconciler re-claims expired leases so a stale node cannot double-claim (gap #4 MVP).",
+        "Recovers queued jobs after restart/outage (spec §2.5.16).",
+        "Passes `go test -race ./internal/scheduler/...`."
+      ],
+      "frameworks_to_use": ["github.com/robfig/cron/v3"]
+    },
+    {
+      "logical_name": "Executor",
+      "path": "internal/executor",
+      "origin": "architecture-diagram + §4 WASM execution model",
+      "files_to_create": ["executor.go", "runtime.go", "limits.go", "hostfuncs.go", "response_stage.go", "executor_test.go"],
+      "depends_on": ["Module Registry", "Data-Type Codecs", "Observability"],
+      "acceptance_criteria": [
+        "Implements TransformEngine port over wazero; sandboxed guest: no filesystem/network/clock by default (architecture §4.2).",
+        "Enforces fuel (CPU), max memory pages, wall-clock deadline, and WASI stdio capture on every instantiation; exceeding a limit aborts with structured error carrying module name + version + input hash + limit type (architecture §4.3, gap #3 MVP).",
+        "Registers host functions (parse/serialize, ack, route, store, net, crypto/hash) per-module by declared capabilities (least privilege) (architecture §4.2).",
+        "Runs response-transformer and response-selector stages distinct from the initial transform (spec §2.2.7).",
+        "Fan-out to all non-excluded destinations; inter-flow routing via route host function (spec §2.3.8-9).",
+        "Passes `go test -race ./internal/executor/...`."
+      ],
+      "frameworks_to_use": ["github.com/tetratelabs/wazero"]
+    },
+    {
+      "logical_name": "State Manager",
+      "path": "internal/state",
+      "origin": "architecture-diagram + ports-table (Store) + black-box §2.6",
+      "files_to_create": ["store.go", "postgres.go", "sqlite.go", "memory.go", "migrations.go", "search.go", "export.go", "store_test.go"],
+      "depends_on": ["Config-as-Code"],
+      "acceptance_criteria": [
+        "Implements Store port with Postgres (durable), SQLite (local), and in-memory (passthrough/buffered) backends; no Postgres required for local DX (architecture §3.1, constraint #3).",
+        "Persists received/intermediate/sent message content per configurable storage policy and per-content-type options (spec §2.6.17).",
+        "Search by id ranges, date, status, send-attempt count, content subtypes, metadata values, custom metadata columns with pagination/sorting (spec §2.6.18).",
+        "Export in raw/processed/transformed/encoded/response/original forms with archive/compress/encrypt; import messages back (spec §2.6.19-20).",
+        "Track per-(message,destination) send-attempt count and last error code (spec §2.5.14, §6.3).",
+        "Versioned, forward-only migration runner with pre-upgrade backup checkpoint (gap #7).",
+        "Passes `go test -race ./internal/state/...`."
+      ],
+      "frameworks_to_use": ["github.com/jackc/pgx/v5 (pgxpool)", "modernc.org/sqlite (pure-Go, no CGo)"]
+    },
+    {
+      "logical_name": "Adapters",
+      "path": "internal/adapters",
+      "origin": "ports-table (Source/Sink) + black-box §8",
+      "files_to_create": ["ports.go", "file.go", "http.go", "tcp_mllp.go", "db.go", "smtp.go", "webservice.go", "interflow.go", "document.go", "adapters_test.go"],
+      "depends_on": ["Data-Type Codecs", "State Manager", "Observability"],
+      "acceptance_criteria": [
+        "Implements Source and Sink ports with MVP adapters: file, http, tcp (MLLP), in-memory, database, smtp, web-service, document (architecture §3.1, spec §8).",
+        "Per-destination transmission modes and protocol-specific options (e.g., MLLP framing for TCP sink) (spec §2.3.10).",
+        "Message queue (broker) and DICOM adapters are enterprise ports only — interfaces exist, implementations excluded from MVP (architecture §9.2).",
+        "Passes `go test -race ./internal/adapters/...`."
+      ],
+      "frameworks_to_use": ["stdlib net/http", "stdlib net (TCP/MLLP)", "stdlib net/smtp"]
+    },
+    {
+      "logical_name": "Data-Type Codecs",
+      "path": "internal/codecs",
+      "origin": "black-box §7 data types",
+      "files_to_create": ["codec.go", "hl7v2.go", "x12.go", "ncpdp.go", "json.go", "xml.go", "delimited.go", "raw.go", "ack.go", "codecs_test.go"],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Parse/serialize: delimited text, HL7 v2, XML, JSON, X12 EDI, NCPDP, binary/raw; acknowledgment generation where applicable (spec §7).",
+        "XXE-safe XML parsing: external entities/DTD disabled by construction (spec §10).",
+        "DICOM codec flagged Enterprise if a licensed library is required; explicit coverage matrix documented (gap #12).",
+        "Passes `go test -race ./internal/codecs/...`."
+      ],
+      "frameworks_to_use": ["stdlib encoding/json", "stdlib encoding/xml (XXE-hardened)"]
+    },
+    {
+      "logical_name": "Transform Compiler",
+      "path": "internal/compiler",
+      "origin": "architecture §4.1 Path A (YAML DSL codegen)",
+      "files_to_create": ["compiler.go", "yaml_ast.go", "codegen.go", "tinygo_build.go", "schema_validate.go", "compiler_test.go"],
+      "depends_on": ["Module Registry", "Data-Type Codecs"],
+      "acceptance_criteria": [
+        "Transpiles declarative YAML DSL transforms (map/build/XSLT-style steps, filter, destination-set filter) into Go+TinyGo source, compiled to WASI with a pinned reproducible toolchain (architecture §4.1, spec §2.2.4-5).",
+        "YAML is the source of truth; the .wasm is a cached, rebuildable artifact (never hand-edited) (architecture §4.1).",
+        "Validates every config artifact against its JSON Schema on load and rejects invalid configs (architecture §6).",
+        "Compiles with a pinned TinyGo toolchain; same Go toolchain as the control plane (architecture §10.1).",
+        "Passes `go test -race ./internal/compiler/...`."
+      ],
+      "frameworks_to_use": ["gopkg.in/yaml.v3", "github.com/santhosh-tekuri/jsonschema/v5", "tinygo (external pinned toolchain → WASI)"]
+    },
+    {
+      "logical_name": "Module Registry",
+      "path": "internal/registry",
+      "origin": "viability-gap-2 (WASM module lifecycle)",
+      "glue_module": true,
+      "files_to_create": ["registry.go", "lifecycle.go", "signing.go", "garbage_collect.go", "registry_test.go"],
+      "depends_on": ["State Manager"],
+      "acceptance_criteria": [
+        "Content-addressed registry (SHA-256 of .wasm); each module is {name, version, digest, source, signature, created-by} (gap #2).",
+        "Lifecycle states draft → promoted → active → superseded → retired; only active modules instantiable; promotion is explicit + audited (gap #2).",
+        "Rollback = re-promote a prior version (atomic pointer move, no rebuild) (gap #2).",
+        "Verifies module signature before instantiation; signed (Ed25519, cosign-keyless optional) (gap #2).",
+        "Garbage-collects retired modules with zero active references; surfaces module ls/history/rollback commands (gap #2).",
+        "Passes `go test -race ./internal/registry/...`."
+      ],
+      "frameworks_to_use": ["stdlib crypto/sha256", "stdlib crypto/ed25519"]
+    },
+    {
+      "logical_name": "Config-as-Code",
+      "path": "internal/config",
+      "origin": "architecture §6 + viability-gap-6 (plan vs apply)",
+      "files_to_create": ["config.go", "schema.go", "plan.go", "apply.go", "drift.go", "config_test.go"],
+      "depends_on": ["State Manager", "Git Store"],
+      "acceptance_criteria": [
+        "All flows/alerts/snippets/scripts/maps/settings are YAML/JSON under a versioned config root; single source of truth (architecture §6).",
+        "config validate / config diff / apply --dry-run produce a plan of changes (added/updated/removed) before mutation (architecture §6, gap #6).",
+        "config plan (dry-run diff) + config apply (mutate) with machine-readable JSON plan and --diff output (gap #6).",
+        "Drift detection: compare live state vs Git source of truth with an out-of-band changes report (gap #6).",
+        "Stores applied plans in the audit log (who/what approved) (gap #6).",
+        "Passes `go test -race ./internal/config/...`."
+      ],
+      "frameworks_to_use": ["gopkg.in/yaml.v3", "github.com/santhosh-tekuri/jsonschema/v5", "github.com/invopop/jsonschema (schema generation)"]
+    },
+    {
+      "logical_name": "Git Store",
+      "path": "internal/gitstore",
+      "origin": "black-box §2.10.34 + §2.12 version control",
+      "files_to_create": ["gitstore.go", "history.go", "workingtree.go", "gitstore_test.go"],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Native Git-backed config store: commit, push, pull (remote-wins), history, working-tree diff, restore (spec §2.10.34, §2.12.39-40).",
+        "Historical revisions with content-at-revision and repository log endpoints (spec §2.12.39).",
+        "Passes `go test -race ./internal/gitstore/...`."
+      ],
+      "frameworks_to_use": ["github.com/go-git/go-git/v5"]
+    },
+    {
+      "logical_name": "Legacy Import ETL",
+      "path": "internal/migrate",
+      "origin": "viability-gap-1 (state migration & data seeding)",
+      "glue_module": true,
+      "files_to_create": ["etl.go", "extract.go", "transform.go", "load.go", "dryrun.go", "mapping_table.go", "migrate_test.go"],
+      "depends_on": ["State Manager", "Transform Compiler", "Config-as-Code"],
+      "acceptance_criteria": [
+        "import legacy command + API endpoint consuming the legacy XML/archive export format (gap #1).",
+        "Three-phase ETL: extract (flows/snippets/scripts/users/config map), transform (legacy constructs → YAML DSL; inexpressible scripts → WASI stub flagged for review), load (seed Store then validate against JSON Schemas) (gap #1).",
+        "Message history imports metadata + references by default with opt-in --with-content flag (gap #1).",
+        "Dry-run report: counts + list of constructs not auto-translated, before any write (gap #1).",
+        "Legacy→YAML mapper is versioned and separately tested with its own transform fixtures via `weavster test` (gap #1).",
+        "Passes `go test -race ./internal/migrate/...`."
+      ],
+      "frameworks_to_use": ["stdlib encoding/xml (legacy export format)"]
+    },
+    {
+      "logical_name": "Outbox & Idempotency",
+      "path": "internal/outbox",
+      "origin": "viability-gap-5 (idempotency & retries)",
+      "glue_module": true,
+      "files_to_create": ["outbox.go", "idempotency.go", "retry.go", "deadletter.go", "outbox_test.go"],
+      "depends_on": ["State Manager"],
+      "acceptance_criteria": [
+        "Transactional outbox: receive → persist → transform → persist result → deliver → mark delivered; crash re-enters same job with same message ID (gap #5).",
+        "Deterministic idempotency_key from (message_id, destination, attempt) on every external side effect; at-least-once sinks (raw TCP MLLP) documented as such (gap #5).",
+        "On ambiguous-result retry, check status first rather than blindly re-send (gap #5).",
+        "Bounded retries with backoff, a dead-letter state, and a deadletter admin surface (no silent infinite retry) (gap #5).",
+        "Passes `go test -race ./internal/outbox/...`."
+      ],
+      "frameworks_to_use": []
+    },
+    {
+      "logical_name": "Alerts",
+      "path": "internal/alerts",
+      "origin": "black-box §2.7",
+      "files_to_create": ["alerts.go", "evaluate.go", "deliver.go", "alerts_test.go"],
+      "depends_on": ["State Manager", "Notifier"],
+      "acceptance_criteria": [
+        "Alert definitions triggered by processing errors with configurable triggers, recipients, flow/source scope (spec §2.7.24).",
+        "Enable/disable, import/export, and test (fire once) for alerts (spec §2.7.25).",
+        "Notifies configured recipients via Notifier when a trigger fires (spec §2.7.25).",
+        "Passes `go test -race ./internal/alerts/...`."
+      ],
+      "frameworks_to_use": []
+    },
+    {
+      "logical_name": "Notifier",
+      "path": "internal/notify",
+      "origin": "ports-table (Notifier)",
+      "files_to_create": ["notify.go", "smtp.go", "webhook.go", "notify_test.go"],
+      "depends_on": ["Observability"],
+      "acceptance_criteria": [
+        "Implements Notifier port with SMTP and webhook MVP adapters (architecture §3.1).",
+        "Passes `go test -race ./internal/notify/...`."
+      ],
+      "frameworks_to_use": ["stdlib net/smtp"]
+    },
+    {
+      "logical_name": "Secrets",
+      "path": "internal/secrets",
+      "origin": "ports-table (SecretProvider) + viability-gap-8",
+      "files_to_create": ["secrets.go", "local.go", "env.go", "secrets_test.go"],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Implements SecretProvider port; MVP adapters = local credential store + env//run/secrets (architecture §3.1, gap #8).",
+        "Cloud KMS/Vault rotation is an enterprise adapter (interface only) (gap #8).",
+        "Passes `go test -race ./internal/secrets/...`."
+      ],
+      "frameworks_to_use": []
+    },
+    {
+      "logical_name": "Observability",
+      "path": "internal/observability",
+      "origin": "ports-table (MetricsExporter) + black-box §2.11/§10",
+      "files_to_create": ["metrics.go", "logging.go", "tracing.go", "events.go", "stats.go", "observability_test.go"],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Implements MetricsExporter port: Prometheus gauges/counters + OTel stdout/OTLP exporter (architecture §3.1).",
+        "Per-flow statistics (received/filtered/transformed/sent/errored/queued, connector-level) with reset (current/lifetime) and dump-to-file (spec §2.11.36).",
+        "Event log with search, count, export (spec §2.11.35).",
+        "Time-series statistics for trending + server log viewer (spec §2.11.37).",
+        "System status endpoint: id, version, build date, timezone, time, runtime info, charsets, protocols/ciphers, license info (spec §2.11.38).",
+        "Structured logs via stdlib log/slog; executor span hooks present for future OTel propagation (gap #3, deferred Enterprise).",
+        "Passes `go test -race ./internal/observability/...`."
+      ],
+      "frameworks_to_use": ["github.com/prometheus/client_golang", "go.opentelemetry.io/otel", "stdlib log/slog"]
+    },
+    {
+      "logical_name": "Topology Graph",
+      "path": "internal/topology",
+      "origin": "read-only-graph-view-contract.md (MVP UI surface)",
+      "files_to_create": ["graph.go", "overview.go", "flow_internal.go", "topology_test.go"],
+      "depends_on": ["State Manager", "Observability"],
+      "acceptance_criteria": [
+        "GET /api/v1/topology returns overview graph (flow nodes + route/dependency edges) per read-only-graph-view-contract.md §3.1.",
+        "GET /api/v1/topology/flows/{flowId} returns flow-internal graph (source → transform → destination nodes + message-path edges) per contract §3.2.",
+        "Stable entity-derived node/edge ids; no server-side layout; rolling activity snapshot (received/sent/errored/queued/lastMessageAt) (contract §2, §4).",
+        "Read-only: no mutation endpoints; requires flows:view permission (contract §5).",
+        "Passes `go test -race ./internal/topology/...`."
+      ],
+      "frameworks_to_use": []
+    },
+    {
+      "logical_name": "CLI / Server Entry",
+      "path": "cmd/weavster",
+      "origin": "black-box §3 CLI surface + architecture §7 test command",
+      "files_to_create": ["main.go", "server.go", "cli.go", "commands.go", "test_command.go", "main_test.go"],
+      "depends_on": ["API Gateway", "Scheduler", "Executor", "State Manager", "Config-as-Code", "Legacy Import ETL", "Module Registry", "Outbox & Idempotency", "Alerts", "Observability"],
+      "acceptance_criteria": [
+        "Composition root wiring all ports/adapters into the single static binary (architecture §3).",
+        "Scriptable CLI shell (interactive + batch -s) over the network API with the §3.2 command surface and §3.3 exit-code semantics (spec §3).",
+        "Startup flags -a/-u/-p/-s/-v/-c/-h/-d (spec §3.1).",
+        "weavster test [--filter NAME] [--format junit|json] [--output DIR] runs flow transforms against fixtures with no Postgres required (architecture §7).",
+        "Refuses to run under a privileged OS account unless allowed; terminates non-zero (spec §11).",
+        "Cross-compiles to linux/amd64, linux/arm64, darwin/arm64 with zero CGo (architecture §8).",
+        "Passes `go test -race ./cmd/weavster/...` and `go build -o bin/weavster ./cmd/weavster`."
+      ],
+      "frameworks_to_use": ["stdlib flag", "github.com/go-chi/chi/v5 (server wiring)"]
+    }
+  ],
+
+  "glue_modules_note": "Modules flagged glue_module=true are gap-driven additions beyond the clean-room functional spec; they were injected from production-viability-gap-analysis.md and are required for production viability: Module Registry (gap #2), Legacy Import ETL (gap #1), Outbox & Idempotency (gap #5). The Scheduler's durable job claim/lease/reconciler (gap #4 MVP floor) and Config-as-Code's plan/apply/drift (gap #6) are gap-driven additions folded into otherwise-spec modules."
+}
