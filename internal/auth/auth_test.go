@@ -212,3 +212,74 @@ func TestPasswordReuseRejected(t *testing.T) {
 		t.Errorf("new password must be accepted: %v", err)
 	}
 }
+
+func TestUpdateUserAndListUsers(t *testing.T) {
+	p := NewLocalProvider(testOptions())
+	ctx := context.Background()
+
+	// Setup: create two users.
+	if err := p.CreateUser(ctx, User{Username: "alice", PasswordHash: "Passw0rd!", Org: "eng"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CreateUser(ctx, User{Username: "bob", PasswordHash: "B0bPass!", Org: "ops"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// ListUsers must return both users.
+	users, err := p.ListUsers(ctx)
+	if err != nil {
+		t.Fatalf("ListUsers: %v", err)
+	}
+	if len(users) != 2 {
+		t.Errorf("ListUsers count = %d, want 2", len(users))
+	}
+
+	// UpdateUser: change the Org field on alice.
+	// Capture the hashed password before update so we can verify it is preserved.
+	before, err := p.GetUser(ctx, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalHash := before.PasswordHash
+
+	if err := p.UpdateUser(ctx, "alice", User{Username: "alice", Org: "platform", PasswordHash: "ignored"}); err != nil {
+		t.Fatalf("UpdateUser: %v", err)
+	}
+	updated, err := p.GetUser(ctx, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Org != "platform" {
+		t.Errorf("UpdateUser Org = %q, want 'platform'", updated.Org)
+	}
+	// Password hash must be preserved from the original — UpdateUser must not overwrite it.
+	if updated.PasswordHash == "ignored" {
+		t.Error("UpdateUser must not replace PasswordHash with the supplied value")
+	}
+	if updated.PasswordHash != originalHash {
+		t.Errorf("UpdateUser PasswordHash changed: got %q, want original hash %q", updated.PasswordHash, originalHash)
+	}
+
+	// UpdateUser on non-existent user must return ErrUserNotFound.
+	if err := p.UpdateUser(ctx, "nobody", User{Username: "nobody"}); err != ErrUserNotFound {
+		t.Errorf("UpdateUser unknown user: expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestAntiEnumerationOff(t *testing.T) {
+	// With AntiEnumeration disabled, the provider must return the real error.
+	p := NewLocalProvider(Options{
+		Policy:          PasswordPolicy{MinLength: 4},
+		Lockout:         LockoutPolicy{RetryLimit: 3, LockoutPeriod: 60},
+		AntiEnumeration: false,
+	})
+	ctx := context.Background()
+	_ = p.CreateUser(ctx, User{Username: "frank", PasswordHash: "pass"})
+
+	if _, err := p.Authenticate(ctx, "frank", "wrong", ""); err != ErrPasswordWrong {
+		t.Errorf("expected ErrPasswordWrong, got %v", err)
+	}
+	if _, err := p.Authenticate(ctx, "ghost", "pass", ""); err != ErrUserNotFound {
+		t.Errorf("expected ErrUserNotFound for unknown user, got %v", err)
+	}
+}
