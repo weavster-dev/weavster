@@ -18,6 +18,7 @@ All notable changes to this project are documented here, following
 - P7 migration + IaC + docs: `migrate` (legacy XML import ETL — extract/transform/load with dry-run report and a versioned legacy→YAML mapping table), Terraform + Pulumi sample modules (`iac/`), multi-stage distroless `Dockerfile`, generated `agent-docs/schemas/*.json`, full `agent-docs/openapi.yaml`, and updated README/MkDocs/llms.txt.
 - `CONTRIBUTING.md` development guide (setup, build, gates, conventions, and PR process).
 - GitHub issue templates: bug report + feature request forms and blank-issue config (`.github/ISSUE_TEMPLATE/`).
+- `LICENSE`: Business Source License 1.1 (Licensor Weavster Dev, Change License MPL 2.0), brought forward from the weavster-old-v2 archive with the copyright year updated to 2026.
 
 ### Fixed
 
