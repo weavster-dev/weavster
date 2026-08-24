@@ -227,6 +227,7 @@ func TestNilServiceReturns503(t *testing.T) {
 		{http.MethodGet, "/api/v1/topology/flows/x"},
 		{http.MethodGet, "/api/v1/flows"},
 		{http.MethodGet, "/api/v1/flows/x"},
+		{http.MethodPost, "/api/v1/flows"},
 		{http.MethodDelete, "/api/v1/flows/x"},
 		{http.MethodGet, "/api/v1/messages"},
 	} {
