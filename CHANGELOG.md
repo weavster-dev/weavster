@@ -17,7 +17,9 @@ All notable changes to this project are documented here, following
 - P6 composition root: `cmd/weavster` (server wiring all ports/adapters, scriptable CLI shell with batch `-s` mode and §3.3 exit codes, startup flags `-a/-u/-p/-s/-v/-c/-h/-d`, `weavster test --filter/--format/--output` with junit/json output, privileged-run guard; cross-compiles to linux/amd64, linux/arm64, darwin/arm64 with zero CGo).
 - P7 migration + IaC + docs: `migrate` (legacy XML import ETL — extract/transform/load with dry-run report and a versioned legacy→YAML mapping table), Terraform + Pulumi sample modules (`iac/`), multi-stage distroless `Dockerfile`, generated `agent-docs/schemas/*.json`, full `agent-docs/openapi.yaml`, and updated README/MkDocs/llms.txt.
 - `CONTRIBUTING.md` development guide (setup, build, gates, conventions, and PR process).
+- Coverage gate: octocov (`.octocov.yml`, `acceptable: 70%`) wired into a `.github/workflows/coverage-gate.yml` CI job that runs `go test -coverprofile` and fails below threshold.
 - GitHub issue templates: bug report + feature request forms and blank-issue config (`.github/ISSUE_TEMPLATE/`).
+- E2E tests (`test/e2e/`): real-HTTP tests of the gateway surface (OpenAPI spec, `/system`, security headers, TRACE/TRACK blocking, CSRF marker enforcement).
 - `LICENSE`: Business Source License 1.1 (Licensor Weavster Dev, Change License MPL 2.0), brought forward from the weavster-old-v2 archive with the copyright year updated to 2026.
 
 ### Fixed

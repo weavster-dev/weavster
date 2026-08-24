@@ -151,3 +151,64 @@ func TestAuthorizer(t *testing.T) {
 		t.Error("nil user must be denied")
 	}
 }
+
+func TestPasswordHashRoundTrip(t *testing.T) {
+	hash, err := HashPassword("Correct1")
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	if !VerifyPassword(hash, "Correct1") {
+		t.Error("VerifyPassword must succeed for correct password")
+	}
+	if VerifyPassword(hash, "Wrong1") {
+		t.Error("VerifyPassword must fail for wrong password")
+	}
+	// Malformed hash must not panic and must return false.
+	if VerifyPassword("notahash", "Correct1") {
+		t.Error("malformed hash must return false")
+	}
+}
+
+func TestPasswordCheckExpired(t *testing.T) {
+	pol := PasswordPolicy{Expiration: 30}
+
+	// Not expired: changed two weeks ago.
+	if err := pol.CheckExpired(time.Now().Add(-14 * 24 * time.Hour)); err != nil {
+		t.Errorf("fresh password must not be expired: %v", err)
+	}
+
+	// Expired: changed 31 days ago.
+	if err := pol.CheckExpired(time.Now().Add(-31 * 24 * time.Hour)); err == nil {
+		t.Error("password older than Expiration days must be expired")
+	}
+
+	// Expiration=0 disables expiry.
+	disabled := PasswordPolicy{Expiration: 0}
+	if err := disabled.CheckExpired(time.Now().Add(-365 * 24 * time.Hour)); err != nil {
+		t.Errorf("zero Expiration must never expire: %v", err)
+	}
+}
+
+func TestPasswordReuseRejected(t *testing.T) {
+	p := NewLocalProvider(Options{
+		Policy: PasswordPolicy{
+			MinLength:  4,
+			ReuseLimit: 3,
+		},
+	})
+	ctx := context.Background()
+
+	if err := p.CreateUser(ctx, User{Username: "eve", PasswordHash: "Pass1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Changing to the same password must be rejected.
+	if err := p.ChangePassword(ctx, "eve", "Pass1", "Pass1"); err != ErrPasswordReused {
+		t.Errorf("reused password: expected ErrPasswordReused, got %v", err)
+	}
+
+	// Changing to a new password must succeed.
+	if err := p.ChangePassword(ctx, "eve", "Pass1", "Pass2"); err != nil {
+		t.Errorf("new password must be accepted: %v", err)
+	}
+}

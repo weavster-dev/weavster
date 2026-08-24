@@ -148,3 +148,92 @@ func TestTLSConfig(t *testing.T) {
 		t.Errorf("expected ErrInvalidTLS, got %v", err)
 	}
 }
+
+func TestFlowsGetCreateDelete(t *testing.T) {
+	srv := newTestServer(true).Router()
+
+	// GET /api/v1/flows/f1 — existing flow.
+	rec := do(t, srv, http.MethodGet, "/api/v1/flows/f1", true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("FlowsGet status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "f1") {
+		t.Errorf("FlowsGet body = %s", rec.Body.String())
+	}
+
+	// POST /api/v1/flows — create a new flow.
+	body := `{"id":"f2","name":"Discharge","sourceType":"file","status":"stopped","enabled":false}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/flows", strings.NewReader(body))
+	req.Header.Set(MarkerHeader, MarkerValue)
+	req.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	srv.ServeHTTP(rec2, req)
+	if rec2.Code != http.StatusCreated {
+		t.Fatalf("FlowsCreate status = %d, want 201; body: %s", rec2.Code, rec2.Body.String())
+	}
+	if !strings.Contains(rec2.Body.String(), "Discharge") {
+		t.Errorf("FlowsCreate body = %s", rec2.Body.String())
+	}
+
+	// DELETE /api/v1/flows/f1 — delete a flow.
+	rec3 := do(t, srv, http.MethodDelete, "/api/v1/flows/f1", true)
+	if rec3.Code != http.StatusNoContent {
+		t.Fatalf("FlowsDelete status = %d, want 204", rec3.Code)
+	}
+}
+
+func TestMessagesSearch(t *testing.T) {
+	srv := newTestServer(true).Router()
+	rec := do(t, srv, http.MethodGet, "/api/v1/messages", true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("MessagesSearch status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "sent") {
+		t.Errorf("MessagesSearch body = %s", rec.Body.String())
+	}
+}
+
+func TestSystemStatus(t *testing.T) {
+	srv := newTestServer(true).Router()
+	rec := do(t, srv, http.MethodGet, "/api/v1/system", true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("System status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "weavster") {
+		t.Errorf("System body = %s", rec.Body.String())
+	}
+}
+
+func TestTopologyFlowInternal(t *testing.T) {
+	srv := newTestServer(true).Router()
+	rec := do(t, srv, http.MethodGet, "/api/v1/topology/flows/flow-x", true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("TopologyFlow status = %d, want 200", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), "flow-x") {
+		t.Errorf("TopologyFlow body = %s", rec.Body.String())
+	}
+}
+
+func TestNilServiceReturns503(t *testing.T) {
+	// A server with no optional services wired up must return 503.
+	bare := New(Config{RequireCSRF: false}).Router()
+
+	for _, tc := range []struct {
+		method, path string
+	}{
+		{http.MethodGet, "/api/v1/topology"},
+		{http.MethodGet, "/api/v1/topology/flows/x"},
+		{http.MethodGet, "/api/v1/flows"},
+		{http.MethodGet, "/api/v1/flows/x"},
+		{http.MethodDelete, "/api/v1/flows/x"},
+		{http.MethodGet, "/api/v1/messages"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		rec := httptest.NewRecorder()
+		bare.ServeHTTP(rec, req)
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("%s %s → %d, want 503", tc.method, tc.path, rec.Code)
+		}
+	}
+}
