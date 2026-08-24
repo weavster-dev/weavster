@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a bug in Weavster.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear, concise description of the bug and the expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps, config/DSL snippets, or commands that trigger the bug.
+      placeholder: |
+        1. Run `weavster server ...`
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: `weavster version` output or commit SHA.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which component is affected?
+      options:
+        - gateway
+        - auth
+        - scheduler
+        - executor
+        - compiler
+        - registry
+        - state
+        - adapters
+        - codecs
+        - config
+        - gitstore
+        - migrate
+        - outbox
+        - alerts
+        - notify
+        - secrets
+        - observability
+        - topology
+        - CLI
+        - docs
+        - other
