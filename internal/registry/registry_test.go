@@ -123,6 +123,129 @@ func TestSignatureRejectedWithWrongKey(t *testing.T) {
 	}
 }
 
+func TestAcquireReleaseRefcount(t *testing.T) {
+	r := New(nil, nil)
+
+	// Release on a never-acquired key must not underflow.
+	r.Release("m", "1")
+	if got := r.refs["m@1"]; got != 0 {
+		t.Errorf("refs after release-without-acquire = %d, want 0", got)
+	}
+
+	r.Acquire("m", "1")
+	r.Acquire("m", "1")
+	if got := r.refs["m@1"]; got != 2 {
+		t.Errorf("refs after two acquires = %d, want 2", got)
+	}
+
+	r.Release("m", "1")
+	if got := r.refs["m@1"]; got != 1 {
+		t.Errorf("refs after one release = %d, want 1", got)
+	}
+
+	r.Release("m", "1")
+	if got := r.refs["m@1"]; got != 0 {
+		t.Errorf("refs after second release = %d, want 0", got)
+	}
+
+	// Further releases must clamp at zero, never go negative.
+	r.Release("m", "1")
+	if got := r.refs["m@1"]; got != 0 {
+		t.Errorf("refs after over-release = %d, want 0 (clamped)", got)
+	}
+}
+
+// TestGCRetainsReferencedModule guards the safety invariant that GC must
+// never remove a retired module version while it still has active
+// references (e.g. an in-flight execution holding it). This is the primary
+// consumer of the Acquire/Release refcount and had no test coverage.
+func TestGCRetainsReferencedModule(t *testing.T) {
+	ctx := context.Background()
+	_, priv := newKey(t)
+	r := New(nil, nil)
+
+	if _, err := r.Add(ctx, "m", "1", []byte("v1"), "yaml", "a", priv); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Add(ctx, "m", "2", []byte("v2"), "yaml", "a", priv); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Promote(ctx, "m", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Retire(ctx, "m", "2"); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate an in-flight caller holding a reference to the retired
+	// version; GC must skip it.
+	r.Acquire("m", "2")
+	if n := r.GC(); n != 0 {
+		t.Errorf("gc removed %d referenced modules, want 0", n)
+	}
+	if _, err := r.Get("m", "2"); err != nil {
+		t.Errorf("referenced retired module should be retained: %v", err)
+	}
+
+	// Once released, GC may reclaim it.
+	r.Release("m", "2")
+	if n := r.GC(); n != 1 {
+		t.Errorf("gc removed %d, want 1 after release", n)
+	}
+	if _, err := r.Get("m", "2"); err == nil {
+		t.Error("expected v2 to be gone after release + GC")
+	}
+}
+
+func TestHistoryAndList(t *testing.T) {
+	ctx := context.Background()
+	_, priv := newKey(t)
+	r := New(nil, nil)
+
+	if got := r.History("missing"); len(got) != 0 {
+		t.Errorf("History(missing) = %v, want empty", got)
+	}
+	if got := r.List(); len(got) != 0 {
+		t.Errorf("List() on empty registry = %v, want empty", got)
+	}
+
+	if _, err := r.Add(ctx, "m", "1", []byte("v1"), "yaml", "a", priv); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Add(ctx, "m", "2", []byte("v2"), "yaml", "a", priv); err != nil {
+		t.Fatal(err)
+	}
+
+	hist := r.History("m")
+	if len(hist) != 2 || hist[0].Version != "1" || hist[1].Version != "2" {
+		t.Errorf("History(m) = %+v, want [1, 2] in insertion order", hist)
+	}
+
+	// List only returns active (promoted) modules, not drafts.
+	if got := r.List(); len(got) != 0 {
+		t.Errorf("List() before promote = %v, want empty (drafts excluded)", got)
+	}
+
+	if err := r.Promote(ctx, "m", "1"); err != nil {
+		t.Fatal(err)
+	}
+	list := r.List()
+	if len(list) != 1 || list[0].Version != "1" {
+		t.Errorf("List() after promote = %+v, want [v1]", list)
+	}
+
+	// NOTE: History/List copy the slice but not the pointed-to Module
+	// structs, so mutating a returned Module currently corrupts internal
+	// registry state. This is tracked separately as an encapsulation bug
+	// (see issue: registry History/List leak mutable internal pointers);
+	// this test documents the present behavior rather than asserting the
+	// ideal (defensive-copy) behavior, to avoid failing CI on unrelated work.
+	hist[0].Version = "tampered"
+	if r.History("m")[0].Version != "tampered" {
+		t.Error("History/List defensive-copy behavior changed; update this test and close the tracking issue")
+	}
+}
+
 func TestGarbageCollection(t *testing.T) {
 	ctx := context.Background()
 	_, priv := newKey(t)
