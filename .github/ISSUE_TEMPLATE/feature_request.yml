@@ -1,0 +1,27 @@
+name: Feature request
+description: Suggest an enhancement to Weavster.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem does this solve? Link related issues if any.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: How should it work? Describe the desired behavior or API.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you've considered and why they don't fit.
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — specs, links, constraints (no CGo, single static binary, hexagonal boundaries).
