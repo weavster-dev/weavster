@@ -16,6 +16,7 @@ All notable changes to this project are documented here, following
 - P5 control plane: `auth` (AuthProvider/Authorizer ports, Argon2id hashing, password policy, lockout+decay, anti-enumeration, external auth + MFA hooks), `audit` (AuditSink local event store + PHI access logging with sensitive-parameter redaction), `notify` (SMTP + webhook), `alerts` (definitions, evaluation, delivery, enable/disable, import/export, test), `topology` (read-only overview + flow-internal graphs per the data contract), and `gateway` (chi router, OpenAPI 3.1 serving, CSRF marker, security headers, TRACE/TRACK blocking, configurable TLS).
 - P6 composition root: `cmd/weavster` (server wiring all ports/adapters, scriptable CLI shell with batch `-s` mode and §3.3 exit codes, startup flags `-a/-u/-p/-s/-v/-c/-h/-d`, `weavster test --filter/--format/--output` with junit/json output, privileged-run guard; cross-compiles to linux/amd64, linux/arm64, darwin/arm64 with zero CGo).
 - P7 migration + IaC + docs: `migrate` (legacy XML import ETL — extract/transform/load with dry-run report and a versioned legacy→YAML mapping table), Terraform + Pulumi sample modules (`iac/`), multi-stage distroless `Dockerfile`, generated `agent-docs/schemas/*.json`, full `agent-docs/openapi.yaml`, and updated README/MkDocs/llms.txt.
+- `CONTRIBUTING.md` development guide (setup, build, gates, conventions, and PR process).
 - GitHub issue templates: bug report + feature request forms and blank-issue config (`.github/ISSUE_TEMPLATE/`).
 
 ### Fixed
