@@ -20,6 +20,7 @@ All notable changes to this project are documented here, following
 - Coverage gate: octocov (`.octocov.yml`, `acceptable: 70%`) wired into a `.github/workflows/coverage-gate.yml` CI job that runs `go test -coverprofile` and fails below threshold.
 - GitHub issue templates: bug report + feature request forms and blank-issue config (`.github/ISSUE_TEMPLATE/`).
 - E2E tests (`test/e2e/`): real-HTTP tests of the gateway surface (OpenAPI spec, `/system`, security headers, TRACE/TRACK blocking, CSRF marker enforcement).
+- `LICENSE`: Business Source License 1.1 (Licensor Weavster Dev, Change License MPL 2.0), brought forward from the weavster-old-v2 archive with the copyright year updated to 2026.
 
 ### Fixed
 
