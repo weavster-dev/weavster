@@ -1,0 +1,6 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: Weavster documentation
+    url: https://weavster-dev.github.io/weavster/
+    about: Read the docs before opening an issue.
