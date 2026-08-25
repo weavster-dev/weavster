@@ -227,7 +227,7 @@ func TestSQLJobQueueHeartbeat(t *testing.T) {
 	}
 }
 
-func TestSchedulerReconcile(t *testing.T) {
+func TestSchedulerReconcileMemQueue(t *testing.T) {
 	q := NewMemJobQueue()
 	s := New(q, &fakeRunner{})
 	ctx := context.Background()
