@@ -11,9 +11,11 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// TestAdapterNames covers the Name() accessors that are otherwise never
-// exercised by the existing Read/Write-focused tests.
-func TestAdapterNames(t *testing.T) {
+// TestAdapterNamesGap covers the Name() accessors that are otherwise never
+// exercised by the existing Read/Write-focused tests. Distinct from
+// TestAdapterNames in adapters_test.go, which covers a narrower subset of
+// adapters via a different fixture.
+func TestAdapterNamesGap(t *testing.T) {
 	dir := t.TempDir()
 	fileSrc, err := NewFileSource(dir, "*")
 	if err != nil {
