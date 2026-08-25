@@ -13,7 +13,7 @@ import (
 
 // TestAdapterNames covers the Name() accessors that are otherwise never
 // exercised by the existing Read/Write-focused tests.
-func TestAdapterNames(t *testing.T) {
+func TestAdapterNamesGap(t *testing.T) {
 	dir := t.TempDir()
 	fileSrc, err := NewFileSource(dir, "*")
 	if err != nil {
