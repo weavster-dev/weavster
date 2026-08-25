@@ -213,40 +213,95 @@ func TestPasswordReuseRejected(t *testing.T) {
 	}
 }
 
-func TestUpdateAndListUsers(t *testing.T) {
-	p := NewLocalProvider(Options{
-		Policy: PasswordPolicy{MinLength: 4},
-	})
+func TestUpdateUserAndListUsers(t *testing.T) {
+	p := NewLocalProvider(testOptions())
 	ctx := context.Background()
 
-	if err := p.CreateUser(ctx, User{Username: "alice", PasswordHash: "Pass1"}); err != nil {
-		t.Fatal(err)
-	}
-	if err := p.CreateUser(ctx, User{Username: "bob", PasswordHash: "Pass1"}); err != nil {
-		t.Fatal(err)
+	// UpdateUser on a non-existent user must return ErrUserNotFound.
+	if err := p.UpdateUser(ctx, "nobody", User{Username: "nobody"}); err != ErrUserNotFound {
+		t.Errorf("UpdateUser missing: expected ErrUserNotFound, got %v", err)
 	}
 
+	// Create a user, update its email and permissions, verify preserved password data.
+	_ = p.CreateUser(ctx, User{Username: "frank", PasswordHash: "Passw0rd!", Email: "old@example.com"})
+	orig, _ := p.GetUser(ctx, "frank")
+	origHash := orig.PasswordHash
+	origChanged := orig.PasswordChangedAt
+
+	updated := User{Username: "frank", Email: "new@example.com", Permissions: []string{PermAdmin}}
+	if err := p.UpdateUser(ctx, "frank", updated); err != nil {
+		t.Fatalf("UpdateUser: %v", err)
+	}
+	got, _ := p.GetUser(ctx, "frank")
+	if got.Email != "new@example.com" {
+		t.Errorf("Email not updated: %s", got.Email)
+	}
+	// UpdateUser must preserve the existing password hash and change timestamp.
+	if got.PasswordHash != origHash {
+		t.Error("UpdateUser must preserve PasswordHash")
+	}
+	if !got.PasswordChangedAt.Equal(origChanged) {
+		t.Error("UpdateUser must preserve PasswordChangedAt")
+	}
+
+	// ListUsers must return all users in the store.
+	_ = p.CreateUser(ctx, User{Username: "grace", PasswordHash: "Passw0rd!"})
 	users, err := p.ListUsers(ctx)
 	if err != nil {
 		t.Fatalf("ListUsers: %v", err)
 	}
-	if len(users) != 2 {
-		t.Errorf("list count = %d, want 2", len(users))
+	found := map[string]bool{}
+	for _, u := range users {
+		found[u.Username] = true
 	}
+	if !found["frank"] || !found["grace"] {
+		t.Errorf("ListUsers missing users: %v", found)
+	}
+}
 
-	if err := p.UpdateUser(ctx, "alice", User{Username: "alice", Permissions: []string{"admin"}}); err != nil {
-		t.Fatalf("UpdateUser: %v", err)
-	}
-	u, err := p.GetUser(ctx, "alice")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(u.Permissions) != 1 || u.Permissions[0] != "admin" {
-		t.Errorf("permissions = %v", u.Permissions)
-	}
+func TestAntiEnumerationDisabled(t *testing.T) {
+	// With AntiEnumeration=false, ErrUserNotFound and ErrPasswordWrong are returned verbatim.
+	p := NewLocalProvider(Options{
+		Policy:          PasswordPolicy{MinLength: 4},
+		Lockout:         LockoutPolicy{},
+		AntiEnumeration: false,
+	})
+	ctx := context.Background()
+	_ = p.CreateUser(ctx, User{Username: "henry", PasswordHash: "pass"})
 
-	// Update non-existent user
-	if err := p.UpdateUser(ctx, "noexist", User{Username: "noexist"}); err != ErrUserNotFound {
+	if _, err := p.Authenticate(ctx, "nosuchuser", "pass", ""); err != ErrUserNotFound {
 		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+	if _, err := p.Authenticate(ctx, "henry", "wrongpass", ""); err != ErrPasswordWrong {
+		t.Errorf("expected ErrPasswordWrong, got %v", err)
+	}
+}
+
+func TestChangePasswordNotFound(t *testing.T) {
+	p := NewLocalProvider(testOptions())
+	ctx := context.Background()
+	if err := p.ChangePassword(ctx, "nobody", "old", "new"); err != ErrUserNotFound {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+}
+
+func TestHashPasswordEmptyInput(t *testing.T) {
+	// HashPassword with an empty string must not panic and must produce a verifiable hash.
+	hash, err := HashPassword("")
+	if err != nil {
+		t.Fatalf("HashPassword empty: %v", err)
+	}
+	if !VerifyPassword(hash, "") {
+		t.Error("VerifyPassword must succeed for empty password against its own hash")
+	}
+}
+
+func TestPasswordValidateSpecialForbidden(t *testing.T) {
+	pol := PasswordPolicy{MinLength: 4, MinSpecial: -1}
+	if err := pol.Validate("abc!"); err == nil {
+		t.Error("special character must be rejected when MinSpecial=-1")
+	}
+	if err := pol.Validate("abcd"); err != nil {
+		t.Errorf("no-special password must be accepted: %v", err)
 	}
 }

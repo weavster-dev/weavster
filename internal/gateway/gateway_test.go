@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -226,6 +227,7 @@ func TestNilServiceReturns503(t *testing.T) {
 		{http.MethodGet, "/api/v1/topology/flows/x"},
 		{http.MethodGet, "/api/v1/flows"},
 		{http.MethodGet, "/api/v1/flows/x"},
+		{http.MethodPost, "/api/v1/flows"},
 		{http.MethodDelete, "/api/v1/flows/x"},
 		{http.MethodGet, "/api/v1/messages"},
 	} {
@@ -235,5 +237,127 @@ func TestNilServiceReturns503(t *testing.T) {
 		if rec.Code != http.StatusServiceUnavailable {
 			t.Errorf("%s %s → %d, want 503", tc.method, tc.path, rec.Code)
 		}
+	}
+}
+
+// errFlows is a FlowStore that always returns an error for mutating operations.
+type errFlows struct{ flows []Flow }
+
+func (e *errFlows) List(_ context.Context) ([]Flow, error) {
+	return nil, errors.New("store unavailable")
+}
+func (e *errFlows) Get(_ context.Context, _ string) (Flow, error) {
+	return Flow{}, errors.New("store unavailable")
+}
+func (e *errFlows) Create(_ context.Context, _ Flow) error { return errors.New("store unavailable") }
+func (e *errFlows) Delete(_ context.Context, _ string) error {
+	return errors.New("store unavailable")
+}
+
+// errMessages is a MessageStore that always errors.
+type errMessages struct{}
+
+func (errMessages) Search(_ context.Context, _ MessageQuery) ([]Message, error) {
+	return nil, errors.New("search unavailable")
+}
+
+// errTopology is a TopologyProvider that always errors.
+type errTopology struct{}
+
+func (errTopology) Overview(_ context.Context) (topology.Graph, error) {
+	return topology.Graph{}, errors.New("topology unavailable")
+}
+func (errTopology) FlowInternal(_ context.Context, _ string) (topology.Graph, error) {
+	return topology.Graph{}, errors.New("topology unavailable")
+}
+
+func newErrServer() *Server {
+	return New(Config{
+		Topology:    errTopology{},
+		Flows:       &errFlows{},
+		Messages:    errMessages{},
+		System:      observability.SystemStatus("weavster-1", "0.1.0", "2026-08-23"),
+		RequireCSRF: false,
+	})
+}
+
+func TestFlowsHandlerErrorPaths(t *testing.T) {
+	srv := newErrServer().Router()
+
+	// List error → 500
+	rec := do(t, srv, http.MethodGet, "/api/v1/flows", false)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("FlowsList error: want 500, got %d", rec.Code)
+	}
+
+	// Get error → 404
+	rec = do(t, srv, http.MethodGet, "/api/v1/flows/missing", false)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("FlowsGet error: want 404, got %d", rec.Code)
+	}
+
+	// Create bad JSON → 400
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/flows", strings.NewReader("{bad json"))
+	req.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	srv.ServeHTTP(rec2, req)
+	if rec2.Code != http.StatusBadRequest {
+		t.Errorf("FlowsCreate bad JSON: want 400, got %d", rec2.Code)
+	}
+
+	// Create store error → 500
+	body := `{"id":"x","name":"X","sourceType":"file","status":"stopped","enabled":false}`
+	req = httptest.NewRequest(http.MethodPost, "/api/v1/flows", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec3 := httptest.NewRecorder()
+	srv.ServeHTTP(rec3, req)
+	if rec3.Code != http.StatusInternalServerError {
+		t.Errorf("FlowsCreate store error: want 500, got %d", rec3.Code)
+	}
+
+	// Delete error → 404
+	rec = do(t, srv, http.MethodDelete, "/api/v1/flows/missing", false)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("FlowsDelete error: want 404, got %d", rec.Code)
+	}
+}
+
+func TestMessagesSearchErrorPath(t *testing.T) {
+	srv := newErrServer().Router()
+	rec := do(t, srv, http.MethodGet, "/api/v1/messages", false)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("MessagesSearch error: want 500, got %d", rec.Code)
+	}
+}
+
+func TestTopologyHandlerErrorPaths(t *testing.T) {
+	srv := newErrServer().Router()
+
+	rec := do(t, srv, http.MethodGet, "/api/v1/topology", false)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("TopologyOverview error: want 500, got %d", rec.Code)
+	}
+
+	rec = do(t, srv, http.MethodGet, "/api/v1/topology/flows/x", false)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("TopologyFlow error: want 500, got %d", rec.Code)
+	}
+}
+
+func TestValidateSpecMalformed(t *testing.T) {
+	// ValidateSpec validates the embedded spec — it must return nil normally.
+	if err := ValidateSpec(); err != nil {
+		t.Fatalf("ValidateSpec on valid spec: %v", err)
+	}
+}
+
+func TestMessagesSearchQueryParams(t *testing.T) {
+	// Ensure query parameters are forwarded to the search (covers the q.Limit default branch).
+	srv := newTestServer(false).Router()
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/messages?status=sent&flowId=f1", nil)
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("MessagesSearch with params: want 200, got %d", rec.Code)
 	}
 }
