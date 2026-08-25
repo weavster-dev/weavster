@@ -45,3 +45,16 @@ func TestWebhookNotifier(t *testing.T) {
 		t.Errorf("got = %+v", got)
 	}
 }
+
+func TestWebhookNotifierErrorStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	n := NewWebhookNotifier(srv.URL)
+	err := n.Notify(context.Background(), Notification{Recipients: []string{"x"}, Subject: "s", Body: "b"})
+	if err == nil {
+		t.Error("expected error for non-2xx status")
+	}
+}

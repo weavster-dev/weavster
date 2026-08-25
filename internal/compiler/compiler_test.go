@@ -84,3 +84,34 @@ func TestBuildRequiresTinyGo(t *testing.T) {
 		t.Error("expected error when tinygo is absent")
 	}
 }
+
+func TestCompileErrorPaths(t *testing.T) {
+	// Invalid YAML must fail at parse.
+	if _, _, err := Compile([]byte(":\tinvalid")); err == nil {
+		t.Error("expected parse error for invalid YAML")
+	}
+}
+
+func TestGenerateAllStepTypes(t *testing.T) {
+	src, err := Generate(&Transform{
+		Kind: "Transform",
+		Name: "all-steps",
+		Steps: []Step{
+			{Map: &MapStep{From: "a.b", To: "c.d"}},
+			{Set: &SetStep{Field: "x", Expr: "val"}},
+			{Filter: &FilterStep{When: "x == ''", Action: "reject"}},
+			{Build: &BuildStep{Template: "hello {{name}}"}},
+			{DestinationSet: &DestinationSetStep{Exclude: []string{"a", "b"}}},
+			{}, // empty step
+		},
+	})
+	if err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	text := string(src)
+	for _, want := range []string{`"map"`, `"set"`, `"filter"`, `"build"`, `"destinationSet"`, `"empty"`} {
+		if !strings.Contains(text, want) {
+			t.Errorf("missing %s in generated source", want)
+		}
+	}
+}

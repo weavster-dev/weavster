@@ -199,3 +199,61 @@ func TestMigrationsForwardOnly(t *testing.T) {
 		t.Fatalf("second migrate: %v", err)
 	}
 }
+
+func TestContentForm(t *testing.T) {
+	m := Message{
+		Raw:         []byte("raw"),
+		Processed:   []byte("processed"),
+		Transformed: []byte("transformed"),
+		Encoded:     []byte("encoded"),
+		Response:    []byte("response"),
+		Original:    []byte("original"),
+	}
+	cases := []struct {
+		form string
+		want []byte
+	}{
+		{FormProcessed, m.Processed},
+		{FormTransformed, m.Transformed},
+		{FormEncoded, m.Encoded},
+		{FormResponse, m.Response},
+		{FormOriginal, m.Original},
+		{"unknown", m.Raw},
+	}
+	for _, tc := range cases {
+		got := m.ContentForm(tc.form)
+		if string(got) != string(tc.want) {
+			t.Errorf("ContentForm(%q) = %q, want %q", tc.form, got, tc.want)
+		}
+	}
+}
+
+func TestExportSpecificIDs(t *testing.T) {
+	s := NewMemStore()
+	ctx := context.Background()
+
+	msgs := []Message{
+		{ID: "m1", FlowID: "f1", Status: StatusReceived, ContentType: "text/plain", Raw: []byte("a"), ReceivedAt: time.Now()},
+		{ID: "m2", FlowID: "f1", Status: StatusReceived, ContentType: "text/plain", Raw: []byte("b"), ReceivedAt: time.Now()},
+	}
+	for _, m := range msgs {
+		if err := s.Put(ctx, m); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Export only m1
+	data, err := Export(ctx, s, []string{"m1"}, FormOriginal)
+	if err != nil {
+		t.Fatalf("export: %v", err)
+	}
+
+	fresh := NewMemStore()
+	n, err := Import(ctx, fresh, data)
+	if err != nil {
+		t.Fatalf("import: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("imported %d, want 1", n)
+	}
+}

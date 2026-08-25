@@ -133,3 +133,63 @@ func TestPushPullRemoteWins(t *testing.T) {
 		t.Errorf("B file = %q, want v2 (remote-wins)", got)
 	}
 }
+
+func TestInitAndOpen(t *testing.T) {
+	dir := t.TempDir()
+	s, err := Init(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.WriteFile("file.txt", []byte("hello")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Commit("init", Author{Name: "tester", Email: "t@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Re-open the on-disk repository.
+	s2, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	data, err := s2.ReadFile("file.txt")
+	if err != nil {
+		t.Fatalf("ReadFile: %v", err)
+	}
+	if string(data) != "hello" {
+		t.Errorf("file content = %q", data)
+	}
+}
+
+func TestLogAndHistoryEmptyAndMissing(t *testing.T) {
+	s, err := NewMem()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Log on repo with no commits should return empty or ErrNoHead.
+	log, err := s.Log()
+	if err != nil {
+		// ErrNoHead is acceptable on an empty repo.
+		if log != nil {
+			t.Errorf("expected nil log on error, got %v", log)
+		}
+	} else if len(log) != 0 {
+		t.Errorf("log on empty repo = %d, want 0", len(log))
+	}
+
+	// History for a missing path after one commit.
+	if err := s.WriteFile("a.yaml", []byte("v1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Commit("add a", Author{Name: "tester", Email: "t@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	hist, err := s.History("noexist.yaml")
+	if err != nil {
+		// Allow not-found error.
+		_ = err
+	} else if len(hist) != 0 {
+		t.Errorf("expected empty history for missing file, got %d entries", len(hist))
+	}
+}

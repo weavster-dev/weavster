@@ -123,6 +123,164 @@ func TestSignatureRejectedWithWrongKey(t *testing.T) {
 	}
 }
 
+func TestAcquireRelease(t *testing.T) {
+	ctx := context.Background()
+	_, priv := newKey(t)
+	r := New(nil, nil)
+
+	if _, err := r.Add(ctx, "m", "1", []byte("wasm"), "yaml", "alice", priv); err != nil {
+		t.Fatal(err)
+	}
+
+	r.Acquire("m", "1")
+	r.Acquire("m", "1")
+	r.Release("m", "1")
+	r.Release("m", "1")
+	// Extra release must not go negative (no panic).
+	r.Release("m", "1")
+}
+
+func TestHistoryAndList(t *testing.T) {
+	ctx := context.Background()
+	_, priv := newKey(t)
+	r := New(nil, nil)
+
+	if _, err := r.Add(ctx, "m", "1", []byte("v1"), "yaml", "alice", priv); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Add(ctx, "m", "2", []byte("v2"), "yaml", "alice", priv); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Promote(ctx, "m", "1"); err != nil {
+		t.Fatal(err)
+	}
+
+	history := r.History("m")
+	if len(history) != 2 {
+		t.Fatalf("history len = %d, want 2", len(history))
+	}
+	if history[0].Version != "1" || history[1].Version != "2" {
+		t.Errorf("history versions = %s, %s", history[0].Version, history[1].Version)
+	}
+
+	list := r.List()
+	if len(list) != 1 || list[0].Version != "1" {
+		t.Errorf("list = %+v", list)
+	}
+
+	// History for unknown name returns empty slice.
+	if h := r.History("unknown"); len(h) != 0 {
+		t.Errorf("unknown history = %v", h)
+	}
+}
+
+func TestAddDuplicateVersionError(t *testing.T) {
+	ctx := context.Background()
+	_, priv := newKey(t)
+	r := New(nil, nil)
+
+	if _, err := r.Add(ctx, "m", "1", []byte("wasm"), "yaml", "alice", priv); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Add(ctx, "m", "1", []byte("wasm"), "yaml", "alice", priv); err == nil {
+		t.Error("expected error adding duplicate version")
+	}
+}
+
+func TestPromoteNotFoundError(t *testing.T) {
+	r := New(nil, nil)
+	if err := r.Promote(context.Background(), "noexist", "1"); err == nil {
+		t.Error("expected error promoting non-existent module")
+	}
+}
+
+func TestRollbackSameVersion(t *testing.T) {
+	ctx := context.Background()
+	_, priv := newKey(t)
+	r := New(nil, nil)
+
+	if _, err := r.Add(ctx, "m", "1", []byte("v1"), "yaml", "alice", priv); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Promote(ctx, "m", "1"); err != nil {
+		t.Fatal(err)
+	}
+	// Rollback to same version should succeed without error.
+	if err := r.Rollback(ctx, "m", "1"); err != nil {
+		t.Fatalf("rollback same version: %v", err)
+	}
+}
+
+func TestRollbackNotFoundError(t *testing.T) {
+	r := New(nil, nil)
+	if err := r.Rollback(context.Background(), "noexist", "1"); err == nil {
+		t.Error("expected error rolling back non-existent module")
+	}
+}
+
+func TestRetireActiveError(t *testing.T) {
+	ctx := context.Background()
+	_, priv := newKey(t)
+	r := New(nil, nil)
+
+	if _, err := r.Add(ctx, "m", "1", []byte("v1"), "yaml", "alice", priv); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Promote(ctx, "m", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Retire(ctx, "m", "1"); err == nil {
+		t.Error("expected error retiring active module")
+	}
+}
+
+func TestRetireNotFoundError(t *testing.T) {
+	r := New(nil, nil)
+	if err := r.Retire(context.Background(), "noexist", "1"); err == nil {
+		t.Error("expected error retiring non-existent module")
+	}
+}
+
+func TestPromoteAlreadyActiveNoOp(t *testing.T) {
+	ctx := context.Background()
+	_, priv := newKey(t)
+	r := New(nil, nil)
+
+	if _, err := r.Add(ctx, "m", "1", []byte("v1"), "yaml", "alice", priv); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.Promote(ctx, "m", "1"); err != nil {
+		t.Fatal(err)
+	}
+	// Promoting an already-active module should be a no-op.
+	if err := r.Promote(ctx, "m", "1"); err != nil {
+		t.Fatalf("re-promote: %v", err)
+	}
+}
+
+func TestInstantiateNoActive(t *testing.T) {
+	r := New(nil, nil)
+	if _, err := r.Instantiate("noexist"); err == nil {
+		t.Error("expected error for no active module")
+	}
+}
+
+func TestGetModule(t *testing.T) {
+	ctx := context.Background()
+	_, priv := newKey(t)
+	r := New(nil, nil)
+
+	if _, err := r.Add(ctx, "m", "1", []byte("v1"), "yaml", "alice", priv); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := r.Get("m", "1"); err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if _, err := r.Get("m", "99"); err == nil {
+		t.Error("expected error for unknown version")
+	}
+}
+
 func TestGarbageCollection(t *testing.T) {
 	ctx := context.Background()
 	_, priv := newKey(t)

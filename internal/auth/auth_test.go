@@ -212,3 +212,41 @@ func TestPasswordReuseRejected(t *testing.T) {
 		t.Errorf("new password must be accepted: %v", err)
 	}
 }
+
+func TestUpdateAndListUsers(t *testing.T) {
+	p := NewLocalProvider(Options{
+		Policy: PasswordPolicy{MinLength: 4},
+	})
+	ctx := context.Background()
+
+	if err := p.CreateUser(ctx, User{Username: "alice", PasswordHash: "Pass1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.CreateUser(ctx, User{Username: "bob", PasswordHash: "Pass1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	users, err := p.ListUsers(ctx)
+	if err != nil {
+		t.Fatalf("ListUsers: %v", err)
+	}
+	if len(users) != 2 {
+		t.Errorf("list count = %d, want 2", len(users))
+	}
+
+	if err := p.UpdateUser(ctx, "alice", User{Username: "alice", Permissions: []string{"admin"}}); err != nil {
+		t.Fatalf("UpdateUser: %v", err)
+	}
+	u, err := p.GetUser(ctx, "alice")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(u.Permissions) != 1 || u.Permissions[0] != "admin" {
+		t.Errorf("permissions = %v", u.Permissions)
+	}
+
+	// Update non-existent user
+	if err := p.UpdateUser(ctx, "noexist", User{Username: "noexist"}); err != ErrUserNotFound {
+		t.Errorf("expected ErrUserNotFound, got %v", err)
+	}
+}
