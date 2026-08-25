@@ -3,6 +3,7 @@ package executor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -146,5 +147,39 @@ func TestSelectResponse(t *testing.T) {
 	}
 	if _, _, ok := SelectResponse(cands, func([]byte) bool { return false }); ok {
 		t.Error("expected no selection")
+	}
+}
+
+func TestResponseStage(t *testing.T) {
+	e := NewEngine(nil)
+	s := NewResponseStage(e)
+	out, err := s.TransformResponse(context.Background(), Request{
+		ModuleName: "ident", Version: "1", Wasm: identityWasm, Input: []byte("resp"),
+	})
+	if err != nil {
+		t.Fatalf("TransformResponse: %v", err)
+	}
+	if string(out) != "resp" {
+		t.Errorf("output = %q, want resp", out)
+	}
+}
+
+func TestLimitErrorFields(t *testing.T) {
+	inner := context.DeadlineExceeded
+	le := &LimitError{Module: "m", Version: "1", InputHash: "abc", Limit: LimitFuel, Err: inner}
+	msg := le.Error()
+	if msg == "" {
+		t.Error("LimitError.Error() must not be empty")
+	}
+	if le.Unwrap() != inner {
+		t.Error("LimitError.Unwrap() must return wrapped error")
+	}
+}
+
+func TestFanOutErrors(t *testing.T) {
+	want := fmt.Errorf("send failed")
+	errs := FanOut([]string{"a"}, nil, func(string) error { return want })
+	if len(errs) != 1 || errs[0] != want {
+		t.Errorf("errs = %v", errs)
 	}
 }

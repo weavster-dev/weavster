@@ -81,3 +81,68 @@ func TestImportExport(t *testing.T) {
 		t.Errorf("imported = %d, want 2", len(m2.List()))
 	}
 }
+
+func TestAlertRemove(t *testing.T) {
+	m := NewManager(nil)
+	m.Add(Alert{ID: "a1", Trigger: "processing-error", Enabled: true})
+	m.Remove("a1")
+	if len(m.List()) != 0 {
+		t.Error("alert should be removed")
+	}
+	// Removing non-existent should not panic.
+	m.Remove("noexist")
+}
+
+func TestEvaluateScopeMatches(t *testing.T) {
+	m := NewManager(nil)
+	m.Add(Alert{ID: "flow-scoped", Trigger: "processing-error", Scope: "flow:myflow", Enabled: true})
+	m.Add(Alert{ID: "source-scoped", Trigger: "processing-error", Scope: "source:mysrc", Enabled: true})
+	m.Add(Alert{ID: "no-scope", Trigger: "processing-error", Enabled: true})
+
+	// flow match
+	matched := m.Evaluate(ProcessingError{Flow: "myflow", Source: "other", Err: "processing-error"})
+	ids := make(map[string]bool)
+	for _, a := range matched {
+		ids[a.ID] = true
+	}
+	if !ids["flow-scoped"] {
+		t.Error("flow-scoped alert should match")
+	}
+	if ids["source-scoped"] {
+		t.Error("source-scoped alert should not match on different source")
+	}
+	if !ids["no-scope"] {
+		t.Error("no-scope alert should always match")
+	}
+
+	// source match
+	matched2 := m.Evaluate(ProcessingError{Flow: "other", Source: "mysrc", Err: "processing-error"})
+	ids2 := make(map[string]bool)
+	for _, a := range matched2 {
+		ids2[a.ID] = true
+	}
+	if !ids2["source-scoped"] {
+		t.Error("source-scoped alert should match on its source")
+	}
+}
+
+func TestHandleDeliver(t *testing.T) {
+	fn := &fakeNotifier{}
+	m := NewManager(fn)
+	m.Add(Alert{ID: "a1", Trigger: "processing-error", Recipients: []string{"x@example.com"}, Enabled: true})
+
+	if err := m.Handle(context.Background(), ProcessingError{Flow: "f1", Err: "processing-error"}); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+	if len(fn.calls) != 1 {
+		t.Errorf("expected 1 notification, got %d", len(fn.calls))
+	}
+}
+
+func TestHandleNoNotifier(t *testing.T) {
+	m := NewManager(nil)
+	m.Add(Alert{ID: "a1", Trigger: "processing-error", Enabled: true})
+	if err := m.Handle(context.Background(), ProcessingError{Err: "processing-error"}); err != nil {
+		t.Fatalf("Handle with nil notifier: %v", err)
+	}
+}

@@ -231,3 +231,218 @@ func TestEnterpriseStubs(t *testing.T) {
 		t.Errorf("dicom source = %v", err)
 	}
 }
+
+func TestAdapterNames(t *testing.T) {
+	dir := t.TempDir()
+
+	// FileSource and FileSink
+	src, err := NewFileSource(dir, "*.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if src.Name() != "file" {
+		t.Errorf("FileSource.Name = %q", src.Name())
+	}
+	sink := NewFileSink(dir)
+	if sink.Name() != "file" {
+		t.Errorf("FileSink.Name = %q", sink.Name())
+	}
+
+	// HTTPSink and HTTPSource
+	httpSink := NewHTTPSink("http://localhost")
+	if httpSink.Name() != "http" {
+		t.Errorf("HTTPSink.Name = %q", httpSink.Name())
+	}
+	httpSrc := NewHTTPSource("/in")
+	if httpSrc.Name() != "http" {
+		t.Errorf("HTTPSource.Name = %q", httpSrc.Name())
+	}
+
+	// Interflow
+	f := NewInterflow(1)
+	isrc := f.Source()
+	isink := f.Sink()
+	if isrc.Name() != "in-memory" {
+		t.Errorf("interflowSource.Name = %q", isrc.Name())
+	}
+	if isink.Name() != "in-memory" {
+		t.Errorf("interflowSink.Name = %q", isink.Name())
+	}
+
+	// Enterprise stubs
+	if (BrokerSource{}).Name() != "broker" {
+		t.Errorf("BrokerSource.Name")
+	}
+	if (BrokerSink{}).Name() != "broker" {
+		t.Errorf("BrokerSink.Name")
+	}
+	if (DICOMSource{}).Name() != "dicom" {
+		t.Errorf("DICOMSource.Name")
+	}
+	if (DICOMSink{}).Name() != "dicom" {
+		t.Errorf("DICOMSink.Name")
+	}
+}
+
+func TestAdapterCloses(t *testing.T) {
+	dir := t.TempDir()
+
+	src, err := NewFileSource(dir, "*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := src.Close(); err != nil {
+		t.Errorf("FileSource.Close: %v", err)
+	}
+	if err := NewFileSink(dir).Close(); err != nil {
+		t.Errorf("FileSink.Close: %v", err)
+	}
+	if err := NewHTTPSink("http://localhost").Close(); err != nil {
+		t.Errorf("HTTPSink.Close: %v", err)
+	}
+	if err := NewHTTPSource("/in").Close(); err != nil {
+		t.Errorf("HTTPSource.Close: %v", err)
+	}
+
+	f := NewInterflow(1)
+	if err := f.Source().Close(); err != nil {
+		t.Errorf("interflowSource.Close: %v", err)
+	}
+	// Closing the sink closes the channel.
+	if err := f.Sink().Close(); err != nil {
+		t.Errorf("interflowSink.Close: %v", err)
+	}
+
+	// Enterprise stubs
+	if err := (BrokerSource{}).Close(); err != nil {
+		t.Errorf("BrokerSource.Close: %v", err)
+	}
+	if err := (BrokerSink{}).Close(); err != nil {
+		t.Errorf("BrokerSink.Close: %v", err)
+	}
+	if err := (DICOMSource{}).Close(); err != nil {
+		t.Errorf("DICOMSource.Close: %v", err)
+	}
+	if err := (DICOMSink{}).Close(); err != nil {
+		t.Errorf("DICOMSink.Close: %v", err)
+	}
+}
+
+func TestDocumentSinkNameAndClose(t *testing.T) {
+	dir := t.TempDir()
+	sink := NewDocumentSink(dir, "{{body}}")
+	if sink.Name() != "document" {
+		t.Errorf("DocumentSink.Name = %q", sink.Name())
+	}
+	if err := sink.Close(); err != nil {
+		t.Errorf("DocumentSink.Close: %v", err)
+	}
+}
+
+func TestDBAdapterNameAndClose(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.SetMaxOpenConns(1)
+	defer func() { _ = db.Close() }()
+
+	sink, err := NewDBSink(db, "msgs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sink.Name() != "database" {
+		t.Errorf("DBSink.Name = %q", sink.Name())
+	}
+	if err := sink.Close(); err != nil {
+		t.Errorf("DBSink.Close: %v", err)
+	}
+
+	src := NewDBSource(db, "SELECT id, body FROM msgs")
+	if src.Name() != "database" {
+		t.Errorf("DBSource.Name = %q", src.Name())
+	}
+	if err := src.Close(); err != nil {
+		t.Errorf("DBSource.Close: %v", err)
+	}
+}
+
+func TestSMTPSinkNameAndClose(t *testing.T) {
+	sink := NewSMTPSink("localhost:25", "from@example.com", []string{"to@example.com"})
+	if sink.Name() != "smtp" {
+		t.Errorf("SMTPSink.Name = %q", sink.Name())
+	}
+	if err := sink.Close(); err != nil {
+		t.Errorf("SMTPSink.Close: %v", err)
+	}
+}
+
+func TestWebServiceSinkNameAndClose(t *testing.T) {
+	sink := NewWebServiceSink("http://localhost", "urn:test")
+	if sink.Name() != "web-service" {
+		t.Errorf("WebServiceSink.Name = %q", sink.Name())
+	}
+	if err := sink.Close(); err != nil {
+		t.Errorf("WebServiceSink.Close: %v", err)
+	}
+}
+
+func TestHTTPSinkNon2xx(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+
+	sink := NewHTTPSink(srv.URL)
+	if err := sink.Write(context.Background(), Message{Body: []byte("x")}); err == nil {
+		t.Error("expected error for non-2xx response")
+	}
+}
+
+func TestHTTPSourceContextCancelled(t *testing.T) {
+	src := NewHTTPSource("/in")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := src.Read(ctx); err == nil {
+		t.Error("expected error reading with cancelled context")
+	}
+}
+
+func TestInterflowContextCancelled(t *testing.T) {
+	f := NewInterflow(0) // unbuffered so write blocks
+	src := f.Source()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if _, err := src.Read(ctx); err == nil {
+		t.Error("expected context error on cancelled read")
+	}
+}
+
+func TestMLLPSource(t *testing.T) {
+	srv, err := ListenMLLP("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = srv.Close() }()
+
+	if srv.Name() != "tcp" {
+		t.Errorf("MLLPSource.Name = %q", srv.Name())
+	}
+	if srv.Addr() == nil {
+		t.Error("MLLPSource.Addr must not be nil")
+	}
+}
+
+func TestMLLPSinkNameAndClose(t *testing.T) {
+	sink := NewMLLPSink("127.0.0.1:9999")
+	if sink.Name() != "tcp" {
+		t.Errorf("MLLPSink.Name = %q", sink.Name())
+	}
+	// Close of an unconnected sink should not error.
+	if err := sink.Close(); err != nil {
+		t.Errorf("MLLPSink.Close: %v", err)
+	}
+}

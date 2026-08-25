@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -136,3 +137,20 @@ func (fakeClient) FlowList(context.Context) ([]string, error) {
 }
 func (fakeClient) UserList(context.Context) ([]string, error) { return []string{"admin"}, nil }
 func (fakeClient) Version(context.Context) string             { return version }
+
+func TestShellError(t *testing.T) {
+	var errb bytes.Buffer
+	code := shellError(&errb, false, fmt.Errorf("oops"))
+	if code != 2 {
+		t.Errorf("shellError code = %d, want 2", code)
+	}
+	if !strings.Contains(errb.String(), "oops") {
+		t.Errorf("output = %q", errb.String())
+	}
+
+	errb.Reset()
+	code = shellError(&errb, true, fmt.Errorf("debug-err"))
+	if code != 2 || !strings.Contains(errb.String(), "debug-err") {
+		t.Errorf("debug mode: code=%d output=%q", code, errb.String())
+	}
+}

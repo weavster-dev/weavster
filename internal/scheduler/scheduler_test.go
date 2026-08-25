@@ -164,3 +164,82 @@ func TestLeaseExpiry(t *testing.T) {
 		t.Error("future lease must not be expired")
 	}
 }
+
+func TestMemJobQueueHeartbeat(t *testing.T) {
+	ctx := context.Background()
+	q := NewMemJobQueue()
+	_ = q.Enqueue(ctx, Job{ID: "j1", Type: "poll"})
+	_, _, _ = q.Claim(ctx, "node-a", time.Minute)
+
+	if err := q.Heartbeat(ctx, "j1", "node-a", time.Minute); err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	// Wrong node should fail.
+	if err := q.Heartbeat(ctx, "j1", "node-b", time.Minute); err == nil {
+		t.Error("expected error heartbeating with wrong node")
+	}
+	// Unknown job should fail.
+	if err := q.Heartbeat(ctx, "noexist", "node-a", time.Minute); err == nil {
+		t.Error("expected error heartbeating unknown job")
+	}
+}
+
+func TestMemJobQueueCompleteWrongNode(t *testing.T) {
+	ctx := context.Background()
+	q := NewMemJobQueue()
+	_ = q.Enqueue(ctx, Job{ID: "j1", Type: "poll"})
+	_, _, _ = q.Claim(ctx, "node-a", time.Minute)
+
+	if err := q.Complete(ctx, "j1", "node-b"); err == nil {
+		t.Error("expected error completing with wrong node")
+	}
+	if err := q.Complete(ctx, "noexist", "node-a"); err == nil {
+		t.Error("expected error completing unknown job")
+	}
+}
+
+func TestMemJobQueueRequeueWrongNode(t *testing.T) {
+	ctx := context.Background()
+	q := NewMemJobQueue()
+	_ = q.Enqueue(ctx, Job{ID: "j1", Type: "poll"})
+	_, _, _ = q.Claim(ctx, "node-a", time.Minute)
+
+	if err := q.Requeue(ctx, "j1", "node-b", "bad"); err == nil {
+		t.Error("expected error requeueing with wrong node")
+	}
+	if err := q.Requeue(ctx, "noexist", "node-a", "bad"); err == nil {
+		t.Error("expected error requeueing unknown job")
+	}
+}
+
+func TestSQLJobQueueHeartbeat(t *testing.T) {
+	ctx := context.Background()
+	q := newSQLiteQueue(t)
+	_ = q.Enqueue(ctx, Job{ID: "j1", Type: "poll"})
+	_, _, _ = q.Claim(ctx, "node-a", time.Minute)
+
+	if err := q.Heartbeat(ctx, "j1", "node-a", time.Minute); err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	// Wrong node should fail.
+	if err := q.Heartbeat(ctx, "j1", "node-b", time.Minute); err == nil {
+		t.Error("expected error heartbeating with wrong node")
+	}
+}
+
+func TestSchedulerReconcile(t *testing.T) {
+	q := NewMemJobQueue()
+	s := New(q, &fakeRunner{})
+	ctx := context.Background()
+
+	_ = q.Enqueue(ctx, Job{ID: "j1", Type: "poll"})
+	_, _, _ = q.Claim(ctx, "node-a", -time.Second) // immediately-expired lease
+
+	n, err := s.Reconcile(ctx, "node-a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Errorf("reconcile = %d, want 1", n)
+	}
+}
