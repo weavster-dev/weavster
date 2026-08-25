@@ -1,6 +1,7 @@
 package gitstore
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -263,6 +264,108 @@ func TestInitAndOpen(t *testing.T) {
 	}
 	if string(data) != "hello" {
 		t.Errorf("file content = %q", data)
+	}
+}
+
+// TestInitOnRegularFileFails ensures Init surfaces the underlying error
+// rather than panicking when path already exists as a non-directory file
+// (e.g. a stray file blocking repo creation on disk).
+func TestInitOnRegularFileFails(t *testing.T) {
+	dir := t.TempDir()
+	f := filepath.Join(dir, "x")
+	if err := os.WriteFile(f, []byte("hi"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Init(f); err == nil {
+		t.Error("expected error initializing a repo at a regular file path")
+	}
+}
+
+// TestReadFileMissingFails ensures ReadFile returns an error for a path
+// that does not exist in the working tree, instead of a zero-value slice.
+func TestReadFileMissingFails(t *testing.T) {
+	s, err := NewMem()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReadFile("does-not-exist.yaml"); err == nil {
+		t.Error("expected error reading a missing file")
+	}
+}
+
+// TestContentAtRevisionBadHashFails ensures ContentAtRevision surfaces an
+// error when given a revision hash that does not exist in the repository.
+func TestContentAtRevisionBadHashFails(t *testing.T) {
+	s, err := NewMem()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ContentAtRevision("a.txt", "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"); err == nil {
+		t.Error("expected error for a nonexistent revision hash")
+	}
+}
+
+// TestContentAtRevisionMissingPathFails ensures ContentAtRevision surfaces
+// an error when the path did not exist at the given (real) revision.
+func TestContentAtRevisionMissingPathFails(t *testing.T) {
+	s, err := NewMem()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.WriteFile("a.txt", []byte("v1")); err != nil {
+		t.Fatal(err)
+	}
+	h, err := s.Commit("add a", Author{Name: "tester", Email: "t@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ContentAtRevision("never-existed.yaml", h); err == nil {
+		t.Error("expected error for a path absent at the given revision")
+	}
+}
+
+// TestPullAlreadyUpToDateReturnsNil ensures Pull maps go-git's
+// NoErrAlreadyUpToDate sentinel to a nil error (rather than surfacing it as
+// a failure) when a second pull finds nothing new to fetch.
+func TestPullAlreadyUpToDateReturnsNil(t *testing.T) {
+	dir := t.TempDir()
+	remoteDir := filepath.Join(dir, "remote.git")
+	if _, err := git.PlainInit(remoteDir, true); err != nil {
+		t.Fatal(err)
+	}
+
+	aDir := filepath.Join(dir, "a")
+	a, err := Init(aDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.CreateRemote("origin", remoteDir); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.WriteFile("f.txt", []byte("v1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.Commit("init", Author{Name: "t", Email: "t@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Push("origin"); err != nil {
+		t.Fatal(err)
+	}
+
+	bDir := filepath.Join(dir, "b")
+	bRepo, err := git.PlainClone(bDir, false, &git.CloneOptions{URL: remoteDir})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := openFrom(bRepo)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Nothing new has been pushed since the clone, so this pull should hit
+	// the NoErrAlreadyUpToDate branch and return nil (not an error).
+	if err := b.Pull("origin"); err != nil {
+		t.Errorf("pull with nothing new = %v, want nil", err)
 	}
 }
 
