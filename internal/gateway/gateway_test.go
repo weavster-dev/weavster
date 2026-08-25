@@ -344,7 +344,7 @@ func TestTopologyHandlerErrorPaths(t *testing.T) {
 	}
 }
 
-func TestValidateSpecMalformed(t *testing.T) {
+func TestValidateSpecValid(t *testing.T) {
 	// ValidateSpec validates the embedded spec — it must return nil normally.
 	if err := ValidateSpec(); err != nil {
 		t.Fatalf("ValidateSpec on valid spec: %v", err)
