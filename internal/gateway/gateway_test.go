@@ -241,7 +241,7 @@ func TestNilServiceReturns503(t *testing.T) {
 }
 
 // errFlows is a FlowStore that always returns an error for mutating operations.
-type errFlows struct{ flows []Flow }
+type errFlows struct{}
 
 func (e *errFlows) List(_ context.Context) ([]Flow, error) {
 	return nil, errors.New("store unavailable")

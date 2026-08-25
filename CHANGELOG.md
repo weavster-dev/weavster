@@ -21,7 +21,7 @@ All notable changes to this project are documented here, following
 - GitHub issue templates: bug report + feature request forms and blank-issue config (`.github/ISSUE_TEMPLATE/`).
 - E2E tests (`test/e2e/`): real-HTTP tests of the gateway surface (OpenAPI spec, `/system`, security headers, TRACE/TRACK blocking, CSRF marker enforcement).
 - `LICENSE`: Business Source License 1.1 (Licensor Weavster Dev, Change License MPL 2.0), brought forward from the weavster-old-v2 archive with the copyright year updated to 2026.
-- Gateway coverage: unit test for the `POST /api/v1/flows` 503 branch when the Flows service is not wired (completes `handleFlowsCreate` coverage).
+- Gateway coverage: unit tests for `POST /api/v1/flows` error branches when the Flows service is not wired (503) and when the store returns an error (500).
 
 ### Fixed
 
