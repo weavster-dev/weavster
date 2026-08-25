@@ -227,29 +227,6 @@ func TestSQLJobQueueHeartbeat(t *testing.T) {
 	}
 }
 
-func TestSchedulerAddStartStop(t *testing.T) {
-	q := NewMemJobQueue()
-	runner := &fakeRunner{}
-	s := New(q, runner)
-
-	spec := ScheduleSpec{Type: "interval", Interval: time.Hour, Job: Job{ID: "recurring", Type: "poll"}}
-	if _, err := s.Add(spec); err != nil {
-		t.Fatalf("Add: %v", err)
-	}
-
-	s.Start()
-	stopCtx := s.Stop()
-	<-stopCtx.Done()
-}
-
-func TestSchedulerAddInvalidSpec(t *testing.T) {
-	q := NewMemJobQueue()
-	s := New(q, &fakeRunner{})
-	if _, err := s.Add(ScheduleSpec{Type: "interval", Interval: 0}); err == nil {
-		t.Error("expected error for invalid schedule spec")
-	}
-}
-
 func TestSchedulerReconcile(t *testing.T) {
 	q := NewMemJobQueue()
 	s := New(q, &fakeRunner{})

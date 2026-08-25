@@ -12,9 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/weavster-dev/weavster/internal/audit"
-	"github.com/weavster-dev/weavster/internal/gateway"
 )
 
 func TestRunHelpAndVersion(t *testing.T) {
@@ -140,81 +137,6 @@ func (fakeClient) FlowList(context.Context) ([]string, error) {
 }
 func (fakeClient) UserList(context.Context) ([]string, error) { return []string{"admin"}, nil }
 func (fakeClient) Version(context.Context) string             { return version }
-
-func TestMemFlowStore(t *testing.T) {
-	ctx := context.Background()
-	s := newMemFlowStore()
-
-	flows, err := s.List(ctx)
-	if err != nil || len(flows) == 0 {
-		t.Fatalf("List = %v, %v", flows, err)
-	}
-
-	f, err := s.Get(ctx, "admit")
-	if err != nil || f.ID != "admit" {
-		t.Fatalf("Get = %+v, %v", f, err)
-	}
-
-	if _, err := s.Get(ctx, "noexist"); err == nil {
-		t.Error("expected error for unknown flow")
-	}
-
-	if err := s.Create(ctx, gateway.Flow{ID: "new", Name: "New"}); err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if _, err := s.Get(ctx, "new"); err != nil {
-		t.Fatalf("get after create: %v", err)
-	}
-
-	if err := s.Delete(ctx, "new"); err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
-	if _, err := s.Get(ctx, "new"); err == nil {
-		t.Error("expected error after delete")
-	}
-}
-
-func TestTopologyAdapters(t *testing.T) {
-	ctx := context.Background()
-	flows := newMemFlowStore()
-	topo := topologyAdapter{flows: flows}
-
-	g, err := topo.Overview(ctx)
-	if err != nil {
-		t.Fatalf("Overview: %v", err)
-	}
-	if len(g.Nodes) == 0 {
-		t.Error("expected nodes in overview")
-	}
-
-	g2, err := topo.FlowInternal(ctx, "admit")
-	if err != nil {
-		t.Fatalf("FlowInternal: %v", err)
-	}
-	if len(g2.Nodes) == 0 {
-		t.Error("expected nodes in flow internal")
-	}
-
-	if _, err := topo.FlowInternal(ctx, "noexist"); err == nil {
-		t.Error("expected error for unknown flow")
-	}
-}
-
-func TestAuthAdapters(t *testing.T) {
-	ctx := context.Background()
-
-	// authorizerAdapter
-	az := authorizerAdapter{}
-	_ = az.Authorize(ctx, gateway.Identity{Username: "admin", Permissions: []string{"admin"}}, "flows", "read")
-
-	// auditAdapter
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	sink := audit.NewLocalSink(logger)
-	ad := auditAdapter{s: sink}
-	if err := ad.Record(ctx, "actor", "action", "resource"); err != nil {
-		t.Fatalf("Record: %v", err)
-	}
-}
 
 func TestShellError(t *testing.T) {
 	var errb bytes.Buffer

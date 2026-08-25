@@ -131,7 +131,7 @@ func TestHandleDeliver(t *testing.T) {
 	m := NewManager(fn)
 	m.Add(Alert{ID: "a1", Trigger: "processing-error", Recipients: []string{"x@example.com"}, Enabled: true})
 
-	if err := m.Handle(t.Context(), ProcessingError{Flow: "f1", Err: "processing-error"}); err != nil {
+	if err := m.Handle(context.Background(), ProcessingError{Flow: "f1", Err: "processing-error"}); err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 	if len(fn.calls) != 1 {
@@ -142,7 +142,7 @@ func TestHandleDeliver(t *testing.T) {
 func TestHandleNoNotifier(t *testing.T) {
 	m := NewManager(nil)
 	m.Add(Alert{ID: "a1", Trigger: "processing-error", Enabled: true})
-	if err := m.Handle(t.Context(), ProcessingError{Err: "processing-error"}); err != nil {
+	if err := m.Handle(context.Background(), ProcessingError{Err: "processing-error"}); err != nil {
 		t.Fatalf("Handle with nil notifier: %v", err)
 	}
 }
