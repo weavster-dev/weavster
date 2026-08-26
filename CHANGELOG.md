@@ -23,6 +23,7 @@ All notable changes to this project are documented here, following
 - E2E tests (`test/e2e/`): real-HTTP tests of the gateway surface (OpenAPI spec, `/system`, security headers, TRACE/TRACK blocking, CSRF marker enforcement).
 - `LICENSE`: Business Source License 1.1 (Licensor Weavster Dev, Change License MPL 2.0), brought forward from the weavster-old-v2 archive with the copyright year updated to 2026.
 - Gateway coverage: unit tests for `POST /api/v1/flows` error branches for malformed JSON (400) and store failures (500).
+- `README.md` Quick Start section: prerequisites, clone/build/run in under 5 minutes, and verification via the OpenAPI and `/api/v1/system` endpoints.
 
 ### Fixed
 
