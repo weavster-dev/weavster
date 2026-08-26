@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -195,5 +196,23 @@ func TestMessageAdapterSearch(t *testing.T) {
 	}
 	if len(msgs) != 0 {
 		t.Errorf("expected 0 messages for missing flow, got %d", len(msgs))
+	}
+}
+
+// erroringStore is a minimal state.Store whose Search always fails, used to
+// exercise messageAdapter.Search's error-propagation branch (unreachable via
+// MemStore, which never errors).
+type erroringStore struct{ state.Store }
+
+func (erroringStore) Search(context.Context, state.Query) ([]state.Message, error) {
+	return nil, errSearchFailed
+}
+
+var errSearchFailed = errors.New("search failed")
+
+func TestMessageAdapterSearchError(t *testing.T) {
+	ma := messageAdapter{store: erroringStore{}}
+	if _, err := ma.Search(context.Background(), gateway.MessageQuery{Limit: 10}); !errors.Is(err, errSearchFailed) {
+		t.Errorf("Search error = %v, want %v", err, errSearchFailed)
 	}
 }
