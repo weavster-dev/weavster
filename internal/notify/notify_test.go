@@ -55,6 +55,12 @@ func TestWebhookNotifierErrorStatus(t *testing.T) {
 	n := NewWebhookNotifier(srv.URL)
 	err := n.Notify(context.Background(), Notification{Recipients: []string{"x"}, Subject: "s", Body: "b"})
 	if err == nil {
-		t.Error("expected error for non-2xx status")
+		t.Fatal("expected error for non-2xx status")
+	}
+	// Exercise httpStatusError.Error() directly: previously untested, it
+	// backs any log/alert message surfaced for a failed webhook delivery.
+	want := http.StatusText(http.StatusInternalServerError)
+	if got := err.Error(); got != want {
+		t.Errorf("Error() = %q, want %q", got, want)
 	}
 }
