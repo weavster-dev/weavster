@@ -51,10 +51,10 @@ func TestQueueHeartbeat(t *testing.T) {
 	}
 }
 
-// TestSchedulerReconcile covers Scheduler.Reconcile, which delegates to the
-// underlying queue's Reconcile to re-queue jobs whose lease expired (e.g. a
-// node crashed mid-run), so a new node can claim and run them.
-func TestSchedulerReconcile(t *testing.T) {
+// TestSchedulerReconcileExpiredLease covers Scheduler.Reconcile, which delegates
+// to the underlying queue's Reconcile to re-queue jobs whose lease expired (e.g.
+// a node crashed mid-run), so a new node can claim and run them.
+func TestSchedulerReconcileExpiredLease(t *testing.T) {
 	q := NewMemJobQueue()
 	s := New(q, &fakeRunner{})
 	ctx := context.Background()
