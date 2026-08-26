@@ -99,6 +99,66 @@ func TestDispatchExitCodes(t *testing.T) {
 	}
 }
 
+func TestDispatchStatusFlowUser(t *testing.T) {
+	client := &fakeClient{}
+	var out, errb bytes.Buffer
+
+	if code := dispatch(context.Background(), client, "status", &out, &errb, false); code != 0 {
+		t.Errorf("status exit = %d, stderr = %q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "started") {
+		t.Errorf("status output = %q", out.String())
+	}
+
+	out.Reset()
+	if code := dispatch(context.Background(), client, "user list", &out, &errb, false); code != 0 {
+		t.Errorf("user list exit = %d, stderr = %q", code, errb.String())
+	}
+	if !strings.Contains(out.String(), "admin") {
+		t.Errorf("user list output = %q", out.String())
+	}
+
+	out.Reset()
+	if code := dispatch(context.Background(), client, "user bogus", &out, &errb, false); code != 2 {
+		t.Errorf("user bogus exit = %d, want 2", code)
+	}
+	if !strings.Contains(errb.String(), "unknown user subcommand") {
+		t.Errorf("stderr = %q", errb.String())
+	}
+}
+
+func TestDispatchClientErrors(t *testing.T) {
+	client := &erroringClient{}
+	var out, errb bytes.Buffer
+
+	if code := dispatch(context.Background(), client, "status", &out, &errb, false); code != 2 {
+		t.Errorf("status error exit = %d, want 2", code)
+	}
+
+	errb.Reset()
+	if code := dispatch(context.Background(), client, "flow list", &out, &errb, false); code != 2 {
+		t.Errorf("flow list error exit = %d, want 2", code)
+	}
+
+	errb.Reset()
+	if code := dispatch(context.Background(), client, "user list", &out, &errb, false); code != 2 {
+		t.Errorf("user list error exit = %d, want 2", code)
+	}
+}
+
+type erroringClient struct{}
+
+func (erroringClient) Status(context.Context) (string, error) {
+	return "", fmt.Errorf("status unavailable")
+}
+func (erroringClient) FlowList(context.Context) ([]string, error) {
+	return nil, fmt.Errorf("flow list unavailable")
+}
+func (erroringClient) UserList(context.Context) ([]string, error) {
+	return nil, fmt.Errorf("user list unavailable")
+}
+func (erroringClient) Version(context.Context) string { return version }
+
 func TestPrivilegedGuard(t *testing.T) {
 	if err := checkPrivileged(false, func() bool { return true }); err == nil {
 		t.Error("expected refusal when privileged")
