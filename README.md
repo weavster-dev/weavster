@@ -7,6 +7,39 @@ search, export, scheduling, alerting, and a REST API + read-only topology graph.
 
 Single static Go binary (no CGo, no external runtime).
 
+## Quick Start
+
+Get the server running locally in under 5 minutes.
+
+**Prerequisites:** Go `>= 1.22` and `git`.
+
+```bash
+git clone https://github.com/weavster-dev/weavster.git
+cd weavster
+go build -o bin/weavster ./cmd/weavster
+./bin/weavster server 0.0.0.0:8080
+```
+
+Verify it's up — the server exposes its OpenAPI contract without auth:
+
+```bash
+curl -s http://localhost:8080/api/openapi.yaml | head -n 5
+```
+
+and the system status endpoint (API routes require the CSRF marker header):
+
+```bash
+curl -s -H 'X-Weavster-CSRF: 1' http://localhost:8080/api/v1/system
+```
+
+Run the test suite to confirm a healthy checkout:
+
+```bash
+go test -race ./...
+```
+
+Full developer workflow and quality gates: see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## What exists now
 
 - **Control plane** (`internal/`): API gateway (REST + OpenAPI 3.1, CSRF/security headers, TLS),
