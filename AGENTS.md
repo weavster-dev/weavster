@@ -3,38 +3,70 @@
 Coding guidelines for the **Weavster** repository — a Go, single-binary message-oriented
 integration platform. These rules apply to coding agents working in this repo.
 
-## Source of truth (read before writing code)
+Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.
 
-- `agentic-manifest.json` — machine-readable build plan (20 modules, dependencies, acceptance criteria, frameworks). **Executable source of truth** for build-loop subagents.
-- `docs/agent-onboarding.md` — non-ambiguous coding rules: language, linters, test/build/container commands, folder layout, ports.
-- `docs/mvp-project-plan.md` — narrative MVP plan (scope, stack, build sequence).
-- `specs/` — Phase 2 requirements and architecture (the semantics).
+**Tradeoff:** These guidelines bias toward caution over speed. For trivial tasks, use judgment.
 
-Precedence on conflict: the manifest wins for structure, the specs win for semantics, and
-`docs/agent-onboarding.md` wins for tooling. **Surface a conflict — never resolve it silently.**
+## 1. Think Before Coding
 
-## Think before coding
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
 
-- State assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them — don't pick silently.
-- If something is unclear, stop and name what's confusing.
+Before implementing:
 
-## Simplicity first
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
 
-- Minimum code that solves the problem. Nothing speculative.
-- No abstractions for single-use code; no unrequested configurability.
-- If 200 lines could be 50, rewrite.
+## 2. Simplicity First
 
-## Surgical changes
+**Minimum code that solves the problem. Nothing speculative.**
 
-- Touch only what the task requires. Don't refactor adjacent code.
-- Match existing style even if you'd do it differently.
-- Mention unrelated issues; don't fix them unasked. Clean up only orphans *your* change created.
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
 
-## Goal-driven execution
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
-- Define success criteria; loop until verified.
-- For multi-step tasks, state a plan with a `→ verify:` per step.
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
 ## Go-specific rules
 
@@ -57,4 +89,21 @@ Precedence on conflict: the manifest wins for structure, the specs win for seman
 
 ## Coverage
 
-- Tests cover all acceptance criteria; generated code reaches 90% unit-test coverage.
+- Tests cover all acceptance criteria; generated code reaches at least 90% unit-test coverage.
+
+## Documentation
+
+**Write user-facing documentation, not code documentation.** The docs site (`docs/`) explains how
+a user/operator uses the tool — never how the code is structured.
+
+- **What to document:** CLI flags/subcommands, config file YAML/JSON keys and values, API endpoints
+  and request/response shapes, UI screens and workflows, adapter/connector setup.
+- **Each feature gets:** a concrete example (with command-line invocation, config snippet, or API call),
+  expected output/behavior, and notes on common pitfalls.
+- **No godocs, no architecture diagrams, no interface descriptions.** Those belong in Go doc
+  comments and ADRs, not the user docs site.
+- **Docs live alongside code changes.** A PR that adds a CLI flag also adds the flag's doc entry,
+  with example invocation.
+
+Precedence: `docs/agent-onboarding.md` and `docs/mvp-project-plan.md` describe *how the docs site
+is built* (MkDocs, theme, versioning). This section describes *what goes into it*.

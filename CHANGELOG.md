@@ -18,6 +18,7 @@ All notable changes to this project are documented here, following
 - P7 migration + IaC + docs: `migrate` (legacy XML import ETL — extract/transform/load with dry-run report and a versioned legacy→YAML mapping table), Terraform + Pulumi sample modules (`iac/`), multi-stage distroless `Dockerfile`, generated `agent-docs/schemas/*.json`, full `agent-docs/openapi.yaml`, and updated README/MkDocs/llms.txt.
 - `CONTRIBUTING.md` development guide (setup, build, gates, conventions, and PR process).
 - `CLAUDE.md` agent instruction file with expanding reference to `AGENTS.md`.
+- AGENTS.md §Documentation: added user-facing documentation standard (CLI/config/API/UI examples, not code internals). CLAUDE.md updated to reference it.
 - Coverage gate: octocov (`.octocov.yml`, `acceptable: 70%`) wired into a `.github/workflows/coverage-gate.yml` CI job that runs `go test -coverprofile` and fails below threshold.
 - Coverage uplift: added targeted unit tests across `adapters`, `alerts`, `compiler`, `executor`, `gitstore`, `notify`, `scheduler`, `state`, and `cmd/weavster` to raise overall statement coverage from 79.2% to 82.9%, satisfying the raised 80% gate.
 - GitHub issue templates: bug report + feature request forms and blank-issue config (`.github/ISSUE_TEMPLATE/`).
