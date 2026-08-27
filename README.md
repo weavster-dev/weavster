@@ -1,5 +1,7 @@
 # Weavster — a message-oriented integration platform.
 
+![Coverage](https://raw.githubusercontent.com/weavster-dev/weavster/main/docs/coverage.svg)
+
 Config-driven, message-oriented integration platform: receive messages from files, HTTP,
 TCP/MLLP, databases, SMTP, and web services; filter and transform them with declarative YAML
 DSL or sandboxed WASM; and route them to one or more destinations — with durable storage,

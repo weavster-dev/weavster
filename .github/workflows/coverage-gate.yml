@@ -6,7 +6,8 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write # for octocov self-push of the coverage badge
+  pull-requests: write # for octocov PR coverage report comments
 
 jobs:
   coverage:

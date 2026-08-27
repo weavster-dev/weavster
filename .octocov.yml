@@ -2,3 +2,17 @@ coverage:
   paths:
     - coverage.out
   acceptable: 80%
+  badge:
+    path: docs/coverage.svg
+
+# Comment a coverage report on PRs.
+comment:
+  if: is_pull_request
+  hideFooterLink: true
+  deletePrevious: true
+
+# On the default branch, push the generated badge back to the repo so the
+# README badge stays up to date.
+push:
+  if: is_default_branch
+  message: 'ci: update coverage badge [skip ci]'
