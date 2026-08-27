@@ -1,12 +1,16 @@
 site_name: Weavster
 site_description: Config-driven, message-oriented integration platform
-site_url: https://weavster-dev.github.io/weavster/
+site_url: https://docs.weavster.dev/
 repo_url: https://github.com/weavster-dev/weavster
 repo_name: weavster-dev/weavster
 docs_dir: docs
 
+# 'Edit on GitHub' link target (default branch is 'main', not 'master').
+edit_uri: edit/main/docs/
+
 nav:
   - Home: index.md
+  - Docs Site Guide: documentation.md
   - MVP Project Plan: mvp-project-plan.md
   - Agent Onboarding: agent-onboarding.md
 

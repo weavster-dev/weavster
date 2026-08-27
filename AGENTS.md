@@ -105,5 +105,5 @@ a user/operator uses the tool — never how the code is structured.
 - **Docs live alongside code changes.** A PR that adds a CLI flag also adds the flag's doc entry,
   with example invocation.
 
-Precedence: `docs/agent-onboarding.md` and `docs/mvp-project-plan.md` describe *how the docs site
-is built* (MkDocs, theme, versioning). This section describes *what goes into it*.
+Precedence: `docs/documentation.md` describes *how* the docs site is built (MkDocs, theme, versioning, deploy).
+This section describes *what goes into it*.

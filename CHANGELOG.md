@@ -19,6 +19,7 @@ All notable changes to this project are documented here, following
 - `CONTRIBUTING.md` development guide (setup, build, gates, conventions, and PR process).
 - `CLAUDE.md` agent instruction file with expanding reference to `AGENTS.md`.
 - AGENTS.md §Documentation: added user-facing documentation standard (CLI/config/API/UI examples, not code internals). CLAUDE.md updated to reference it.
+- `docs/documentation.md`: site build guide (MkDocs, theme, nav, deploy, versioning). AGENTS.md §Documentation now points here instead of removed files.
 - Coverage gate: octocov (`.octocov.yml`, `acceptable: 70%`) wired into a `.github/workflows/coverage-gate.yml` CI job that runs `go test -coverprofile` and fails below threshold.
 - Coverage uplift: added targeted unit tests across `adapters`, `alerts`, `compiler`, `executor`, `gitstore`, `notify`, `scheduler`, `state`, and `cmd/weavster` to raise overall statement coverage from 79.2% to 82.9%, satisfying the raised 80% gate.
 - GitHub issue templates: bug report + feature request forms and blank-issue config (`.github/ISSUE_TEMPLATE/`).
@@ -33,3 +34,4 @@ All notable changes to this project are documented here, following
 - Duplicate test function declarations breaking `go vet`/`go test` on main: renamed `TestAdapterNames` (in `adapters_gap_test.go`) to `TestAdapterNamesGap` and `TestSchedulerReconcile` (in `heartbeat_reconcile_test.go`) to `TestSchedulerReconcileExpiredLease`, preserving both test cases.
 - `weavster test --format junit`: exclude the internal `passed` flag from JUnit XML so output is valid `<testcase name=.../>` elements.
 - MkDocs: complete `mkdocs.yml` (site_url, full nav, exclude internal kickoff doc, lenient link validation), add `requirements.txt`, and a `docs.yml` workflow that deploys to GitHub Pages via `mkdocs gh-deploy` on the `gh-pages` branch.
+- MkDocs: point `site_url` at the custom domain `https://docs.weavster.dev/`, set `edit_uri: edit/main/docs/`, and add a `docs/CNAME` file. The `CNAME` is copied into every `mkdocs gh-deploy` so the custom domain is no longer wiped by `--force` (which previously unset it and broke `docs.weavster.dev`); the `site_url` change also fixes canonical/sitemap URLs and the "Edit on GitHub" link.
