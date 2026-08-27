@@ -10,6 +10,7 @@ edit_uri: edit/main/docs/
 
 nav:
   - Home: index.md
+  - Docs Site Guide: documentation.md
   - MVP Project Plan: mvp-project-plan.md
   - Agent Onboarding: agent-onboarding.md
 
