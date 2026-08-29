@@ -39,6 +39,18 @@ func TestRunUsageError(t *testing.T) {
 	}
 }
 
+func TestRunScriptReadError(t *testing.T) {
+	var out, errb bytes.Buffer
+	missing := filepath.Join(t.TempDir(), "missing-script")
+
+	if code := run([]string{"-s", missing}, strings.NewReader(""), &out, &errb); code != 2 {
+		t.Errorf("script read error exit = %d, want 2", code)
+	}
+	if !strings.Contains(errb.String(), "Error:") || !strings.Contains(errb.String(), missing) {
+		t.Errorf("script read error = %q", errb.String())
+	}
+}
+
 func TestRunTestCommand(t *testing.T) {
 	dir := t.TempDir()
 	var out, errb bytes.Buffer
