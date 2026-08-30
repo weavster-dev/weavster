@@ -2,10 +2,13 @@ package executor
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
+
+	"github.com/tetratelabs/wazero"
 )
 
 // identityWasm exports transform(ptr, len) -> len (identity via the in-place
@@ -112,6 +115,44 @@ func TestLeastPrivilegeHostFunctions(t *testing.T) {
 		Capabilities: []string{CapRoute},
 	}); err == nil {
 		t.Error("expected failure when crypto capability is not declared")
+	}
+}
+
+func TestHashSHA256WritesDigestAndRejectsInvalidMemory(t *testing.T) {
+	ctx := context.Background()
+	rt := wazero.NewRuntime(ctx)
+	t.Cleanup(func() { _ = rt.Close(ctx) })
+
+	host := &hostRegistry{}
+	if _, err := host.register(ctx, rt, []string{CapCrypto}); err != nil {
+		t.Fatalf("register host functions: %v", err)
+	}
+	guest, err := rt.Instantiate(ctx, hashImportWasm)
+	if err != nil {
+		t.Fatalf("instantiate guest module: %v", err)
+	}
+
+	input := []byte("payload")
+	if ok := guest.Memory().Write(64, input); !ok {
+		t.Fatal("write test input")
+	}
+	if status := host.hashSha256(ctx, guest, 64, uint32(len(input)), 128); status != 0 {
+		t.Fatalf("hash status = %d, want 0", status)
+	}
+	got, ok := guest.Memory().Read(128, sha256.Size)
+	if !ok {
+		t.Fatal("read hash output")
+	}
+	want := sha256.Sum256(input)
+	if string(got) != string(want[:]) {
+		t.Errorf("hash output = %x, want %x", got, want)
+	}
+
+	if status := host.hashSha256(ctx, guest, 65535, 2, 0); status != 1 {
+		t.Errorf("invalid input status = %d, want 1", status)
+	}
+	if status := host.hashSha256(ctx, guest, 64, uint32(len(input)), 65520); status != 2 {
+		t.Errorf("invalid output status = %d, want 2", status)
 	}
 }
 
