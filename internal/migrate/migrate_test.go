@@ -71,6 +71,16 @@ func TestRunLoadsConfig(t *testing.T) {
 	}
 }
 
+func TestExtractRejectsMalformedXML(t *testing.T) {
+	legacy, err := Extract([]byte("<weavster-export><flows></weavster-export>"))
+	if err == nil {
+		t.Fatal("Extract() error = nil, want malformed XML error")
+	}
+	if legacy != nil {
+		t.Errorf("Extract() legacy = %+v, want nil on malformed XML", legacy)
+	}
+}
+
 func TestTransformDeclarativeFilter(t *testing.T) {
 	le, err := Extract([]byte(legacyXML))
 	if err != nil {
