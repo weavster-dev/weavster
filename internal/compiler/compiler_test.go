@@ -76,6 +76,12 @@ func TestCompileAndValidate(t *testing.T) {
 	}
 }
 
+func TestValidateAcceptsValidTransform(t *testing.T) {
+	if err := Validate([]byte(exampleYAML)); err != nil {
+		t.Fatalf("validate valid transform: %v", err)
+	}
+}
+
 func TestBuildRequiresTinyGo(t *testing.T) {
 	if _, err := exec.LookPath("tinygo"); err == nil {
 		t.Skip("tinygo present; skipping absence test")
