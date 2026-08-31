@@ -11,6 +11,8 @@ import (
 	"github.com/go-git/go-billy/v5/memfs"
 	"github.com/go-git/go-billy/v5/osfs"
 	git "github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/storage/memory"
 )
 
 // failWriteFile is a billy.File whose Write always fails. It is used to force
@@ -51,6 +53,19 @@ func (f *failReadDirFS) ReadDir(string) ([]os.FileInfo, error) {
 
 func (f *failReadDirFS) Lstat(string) (os.FileInfo, error) {
 	return nil, os.ErrPermission
+}
+
+var errCommitStorage = errors.New("injected commit storage failure")
+
+type commitFailStorage struct {
+	*memory.Storage
+}
+
+func (s *commitFailStorage) SetEncodedObject(obj plumbing.EncodedObject) (plumbing.Hash, error) {
+	if obj.Type() == plumbing.CommitObject {
+		return plumbing.ZeroHash, errCommitStorage
+	}
+	return s.Storage.SetEncodedObject(obj)
 }
 
 // TestWriteFileCreateError exercises WriteFile's Create error branch by
@@ -104,6 +119,24 @@ func TestCommitOnFreshRepoFails(t *testing.T) {
 	}
 	if _, err := s.Commit("first", Author{Name: "t", Email: "t@example.com"}); err == nil {
 		t.Fatal("expected error committing on a repo with no HEAD")
+	}
+}
+
+func TestCommitStorageErrorPropagates(t *testing.T) {
+	repo, err := git.Init(&commitFailStorage{Storage: memory.NewStorage()}, memfs.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := openFrom(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.WriteFile("flow.yaml", []byte("name: admit")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.Commit("add flow", Author{Name: "tester", Email: "t@example.com"}); !errors.Is(err, errCommitStorage) {
+		t.Fatalf("Commit error = %v, want wrapped %v", err, errCommitStorage)
 	}
 }
 
