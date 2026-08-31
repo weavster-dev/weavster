@@ -2,6 +2,7 @@ package codecs
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
@@ -82,5 +83,15 @@ func TestAcknowledgeNotSupported(t *testing.T) {
 func TestDICOMAcknowledge(t *testing.T) {
 	if _, err := DICOM().Acknowledge(nil); !errors.Is(err, ErrEnterprise) {
 		t.Errorf("Acknowledge() = %v, want ErrEnterprise", err)
+	}
+}
+
+func TestJSONSerializeNil(t *testing.T) {
+	_, err := JSON().Serialize(nil)
+	if err == nil {
+		t.Fatal("expected error for nil JSON value")
+	}
+	if !strings.Contains(err.Error(), "cannot serialize nil") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
