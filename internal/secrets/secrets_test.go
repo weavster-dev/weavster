@@ -44,6 +44,13 @@ func TestEnvFromEnvironment(t *testing.T) {
 	}
 }
 
+func TestNewEnvDefaultsSecretsDirectory(t *testing.T) {
+	e := NewEnv("")
+	if got, want := e.secretsDir, "/run/secrets"; got != want {
+		t.Errorf("NewEnv(\"\").secretsDir = %q, want %q", got, want)
+	}
+}
+
 func TestEnvFromSecretsDir(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, "smtp.pass"), []byte("s3cret"), 0o600); err != nil {
