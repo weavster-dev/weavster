@@ -16,6 +16,7 @@ const (
 	heartbeatUpdate = `UPDATE jobs SET lease_until = ? WHERE id = ? AND claimed_by = ?`
 	completeDelete  = `DELETE FROM jobs WHERE id = ? AND claimed_by = ?`
 	requeueUpdate   = `UPDATE jobs SET status = 'queued', claimed_by = '', lease_until = 0, last_error = ? WHERE id = ? AND claimed_by = ?`
+	reconcileUpdate = `UPDATE jobs SET status = 'queued', claimed_by = '' WHERE status = 'running' AND lease_until <= ?`
 )
 
 // TestSQLJobQueueHeartbeatDBError covers the ExecContext error branch of
@@ -122,6 +123,21 @@ func TestSQLJobQueueRequeueRowsAffectedError(t *testing.T) {
 
 	if err := q.Requeue(ctx, "j1", "node-a", "boom"); err == nil {
 		t.Fatal("Requeue: expected RowsAffected error, got nil")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestSQLJobQueueReconcileDBError(t *testing.T) {
+	q, mock := newPostgresMockQueue(t)
+
+	mock.ExpectExec(reconcileUpdate).
+		WithArgs(sqlmock.AnyArg()).
+		WillReturnError(errors.New("update failed"))
+
+	if _, err := q.Reconcile(context.Background(), "node-a"); err == nil {
+		t.Fatal("Reconcile: expected DB error, got nil")
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unmet expectations: %v", err)
