@@ -2,10 +2,17 @@ package notify
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+type failingRoundTripper struct{ err error }
+
+func (t failingRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, t.err
+}
 
 // TestWebhookNotifierErrorResponse covers WebhookNotifier.Notify's handling
 // of non-2xx responses and the underlying httpStatusError.Error(), which
@@ -26,4 +33,24 @@ func TestWebhookNotifierErrorResponse(t *testing.T) {
 	if err.Error() != want {
 		t.Errorf("Notify() error = %q, want %q", err.Error(), want)
 	}
+}
+
+func TestWebhookNotifierPropagatesRequestAndTransportErrors(t *testing.T) {
+	t.Run("invalid URL", func(t *testing.T) {
+		err := NewWebhookNotifier("://invalid").Notify(context.Background(), Notification{})
+		if err == nil {
+			t.Fatal("Notify() error = nil, want invalid URL error")
+		}
+	})
+
+	t.Run("transport failure", func(t *testing.T) {
+		want := errors.New("network unavailable")
+		notifier := NewWebhookNotifier("https://example.invalid")
+		notifier.client = &http.Client{Transport: failingRoundTripper{err: want}}
+
+		err := notifier.Notify(context.Background(), Notification{})
+		if !errors.Is(err, want) {
+			t.Errorf("Notify() error = %v, want %v", err, want)
+		}
+	})
 }
