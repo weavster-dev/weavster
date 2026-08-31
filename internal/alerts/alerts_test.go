@@ -2,6 +2,7 @@ package alerts
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/weavster-dev/weavster/internal/notify"
@@ -14,6 +15,12 @@ type fakeNotifier struct {
 func (f *fakeNotifier) Notify(_ context.Context, n notify.Notification) error {
 	f.calls = append(f.calls, n)
 	return nil
+}
+
+type failingNotifier struct{ err error }
+
+func (f failingNotifier) Notify(context.Context, notify.Notification) error {
+	return f.err
 }
 
 func TestEvaluateAndHandle(t *testing.T) {
@@ -144,5 +151,22 @@ func TestHandleNoNotifier(t *testing.T) {
 	m.Add(Alert{ID: "a1", Trigger: "processing-error", Enabled: true})
 	if err := m.Handle(context.Background(), ProcessingError{Err: "processing-error"}); err != nil {
 		t.Fatalf("Handle with nil notifier: %v", err)
+	}
+}
+
+func TestHandleReturnsNotifierErrorWithAlertID(t *testing.T) {
+	notifyErr := errors.New("webhook unavailable")
+	m := NewManager(failingNotifier{err: notifyErr})
+	m.Add(Alert{ID: "critical-alert", Trigger: "processing-error", Enabled: true})
+
+	err := m.Handle(context.Background(), ProcessingError{Flow: "orders", Err: "timeout"})
+	if err == nil {
+		t.Fatal("Handle() error = nil, want notifier error")
+	}
+	if !errors.Is(err, notifyErr) {
+		t.Errorf("Handle() error = %v, want wrapped notifier error", err)
+	}
+	if got, want := err.Error(), "alerts: deliver critical-alert: webhook unavailable"; got != want {
+		t.Errorf("Handle() error = %q, want %q", got, want)
 	}
 }

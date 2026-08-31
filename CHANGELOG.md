@@ -28,6 +28,7 @@ All notable changes to this project are documented here, following
 - Gateway coverage: unit tests for `POST /api/v1/flows` error branches for malformed JSON (400) and store failures (500).
 - `README.md` Quick Start section: prerequisites, clone/build/run in under 5 minutes, and verification via the OpenAPI and `/api/v1/system` endpoints.
 - octocov PR coverage report + coverage badge: `coverage-gate.yml` now comments a coverage report on PRs and pushes a self-updating `docs/coverage.svg` badge to `main`, linked from the `README.md`.
+- Alert delivery regression coverage: verify `Manager.Handle` preserves notifier failures and identifies the affected alert.
 
 ### Fixed
 
