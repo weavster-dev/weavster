@@ -11,9 +11,14 @@ type fakeMFA struct{ err error }
 
 func (m *fakeMFA) Verify(context.Context, *User, string) error { return m.err }
 
-type fakeExternal struct{ ok bool }
+type fakeExternal struct {
+	ok  bool
+	err error
+}
 
-func (e *fakeExternal) Authenticate(context.Context, string, string) (bool, error) { return e.ok, nil }
+func (e *fakeExternal) Authenticate(context.Context, string, string) (bool, error) {
+	return e.ok, e.err
+}
 
 func testOptions() Options {
 	return Options{
@@ -128,6 +133,22 @@ func TestMFAAndExternalHooks(t *testing.T) {
 	_ = ext.CreateUser(ctx, User{Username: "dave", PasswordHash: "ignored"})
 	if _, err := ext.Authenticate(ctx, "dave", "anything", ""); err != nil {
 		t.Errorf("external hook should override: %v", err)
+	}
+}
+
+func TestExternalAuthenticationErrorUsesGenericFailure(t *testing.T) {
+	p := NewLocalProvider(Options{
+		Policy:          PasswordPolicy{MinLength: 4},
+		AntiEnumeration: true,
+		External:        &fakeExternal{err: errors.New("external service unavailable")},
+	})
+	ctx := context.Background()
+	if err := p.CreateUser(ctx, User{Username: "erin", PasswordHash: "pass"}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := p.Authenticate(ctx, "erin", "pass", ""); err != ErrGenericFailure {
+		t.Errorf("external authentication error = %v, want ErrGenericFailure", err)
 	}
 }
 
