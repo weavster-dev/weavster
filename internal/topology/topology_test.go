@@ -18,6 +18,37 @@ func TestOverview(t *testing.T) {
 	}
 }
 
+func TestOverviewDependencyEdgeAndActivity(t *testing.T) {
+	activity := &Activity{Received: 4, Sent: 3, Errored: 1, Queued: 2}
+	g := Overview([]FlowSummary{{
+		ID:       "orders",
+		Name:     "Order Intake",
+		Status:   "started",
+		Activity: activity,
+		Deps:     []string{"customers"},
+	}})
+
+	if len(g.Nodes) != 1 {
+		t.Fatalf("node count = %d, want 1", len(g.Nodes))
+	}
+	if g.Nodes[0].Activity != activity {
+		t.Errorf("node activity = %+v, want original activity pointer %+v", g.Nodes[0].Activity, activity)
+	}
+	if len(g.Edges) != 1 {
+		t.Fatalf("edge count = %d, want 1", len(g.Edges))
+	}
+	edge := g.Edges[0]
+	if edge.ID != "edge:flow:orders:dependency:flow:customers" ||
+		edge.From != "flow:orders" ||
+		edge.To != "flow:customers" ||
+		edge.Kind != EdgeDependency {
+		t.Errorf("dependency edge = %+v", edge)
+	}
+	if edge.Label != "" || edge.Status != "" {
+		t.Errorf("dependency edge label/status = %q/%q, want empty", edge.Label, edge.Status)
+	}
+}
+
 func TestFlowInternal(t *testing.T) {
 	g := FlowInternal(FlowDetail{
 		ID:     "a",
