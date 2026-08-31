@@ -21,6 +21,16 @@ func TestLocalSink(t *testing.T) {
 	}
 }
 
+func TestNewLocalSinkUsesDefaultLogger(t *testing.T) {
+	sink := NewLocalSink(nil)
+	if sink.logger == nil {
+		t.Fatal("logger is nil")
+	}
+	if err := sink.Record(context.Background(), Entry{Actor: "admin", Action: ActionLogin, Resource: "console"}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestPHIAccessRedaction(t *testing.T) {
 	sink := NewLocalSink(slog.New(slog.NewTextHandler(io.Discard, nil)))
 	err := RecordPHIAccess(context.Background(), sink, "alice", "message:42", map[string]string{
