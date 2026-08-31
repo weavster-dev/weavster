@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -55,6 +56,51 @@ func TestParseYAMLAndJSON(t *testing.T) {
 	}
 	if _, err := Parse(j); err != nil {
 		t.Fatalf("parse marshaled yaml: %v", err)
+	}
+}
+
+func TestArtifactsFlattensAllConfigKinds(t *testing.T) {
+	c := Config{
+		Flows: map[string]Flow{
+			"admit": {Name: "Admit", Source: Source{Type: "file"}},
+		},
+		Alerts: map[string]Alert{
+			"on-error": {Trigger: "processing-error", Recipients: []string{"ops@example.com"}, Enabled: true},
+		},
+		Snippets: map[string]string{"patient-name": "PID.5"},
+		Scripts:  map[string]string{"transform": "return input"},
+		Map:      map[string]string{"facility": "central"},
+		Settings: map[string]any{"retries": 3},
+	}
+
+	artifacts := c.Artifacts()
+	if len(artifacts) != 6 {
+		t.Fatalf("artifact count = %d, want 6", len(artifacts))
+	}
+	for key, want := range map[string]string{
+		"snippet/patient-name": "PID.5",
+		"script/transform":     "return input",
+		"map/facility":         "central",
+		"settings/retries":     "3",
+	} {
+		if got := string(artifacts[key]); got != want {
+			t.Errorf("%s = %q, want %q", key, got, want)
+		}
+	}
+
+	var flow Flow
+	if err := json.Unmarshal(artifacts["flow/admit"], &flow); err != nil {
+		t.Fatalf("unmarshal flow artifact: %v", err)
+	}
+	if flow.Name != "Admit" || flow.Source.Type != "file" {
+		t.Errorf("flow artifact = %+v", flow)
+	}
+	var alert Alert
+	if err := json.Unmarshal(artifacts["alert/on-error"], &alert); err != nil {
+		t.Fatalf("unmarshal alert artifact: %v", err)
+	}
+	if alert.Trigger != "processing-error" || !alert.Enabled {
+		t.Errorf("alert artifact = %+v", alert)
 	}
 }
 
