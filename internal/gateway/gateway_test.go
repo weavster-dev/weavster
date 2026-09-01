@@ -436,6 +436,7 @@ func doAuth(t *testing.T, h http.Handler, method, path, user, pass string) *http
 	req := httptest.NewRequest(method, path, nil)
 	if user != "" || pass != "" {
 		req.SetBasicAuth(user, pass)
+		req.Header.Set("X-Forwarded-Proto", "https")
 	}
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
@@ -509,6 +510,7 @@ func TestAuthAdminCanAccessEverything(t *testing.T) {
 	for _, tc := range tests {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.SetBasicAuth("admin", "pass")
+		req.Header.Set("X-Forwarded-Proto", "https")
 		if tc.body != "" {
 			req.Header.Set("Content-Type", "application/json")
 		}
@@ -655,5 +657,30 @@ func TestDegradedModeNoAuth(t *testing.T) {
 	rec = do(t, srv, http.MethodDelete, "/api/v1/flows/f1", false)
 	if rec.Code != http.StatusNoContent {
 		t.Errorf("degraded DELETE /api/v1/flows/f1: want 204, got %d", rec.Code)
+	}
+}
+
+func TestAuthRejectsCleartextCredentials(t *testing.T) {
+	auth := &fakeAuth{users: map[string]fakeUser{"admin": {"pass", []string{"admin"}}}}
+	srv := newAuthedServer(auth, fakeAuthorizer{}, &fakeAudit{}).Router()
+
+	// Credentials over cleartext (no TLS, no proxy header) → 400.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/system", nil)
+	req.SetBasicAuth("admin", "pass")
+	// deliberately omit X-Forwarded-Proto header
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("cleartext credentials: want 400, got %d", rec.Code)
+	}
+
+	// Same credentials with proxy header → 200.
+	req2 := httptest.NewRequest(http.MethodGet, "/api/v1/system", nil)
+	req2.SetBasicAuth("admin", "pass")
+	req2.Header.Set("X-Forwarded-Proto", "https")
+	rec2 := httptest.NewRecorder()
+	srv.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Errorf("credentials with proxy header: want 200, got %d", rec2.Code)
 	}
 }

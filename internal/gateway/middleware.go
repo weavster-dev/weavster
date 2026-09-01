@@ -64,6 +64,10 @@ func IdentityFromContext(ctx context.Context) (Identity, bool) {
 // (spec §3.1). If cfg.Auth is nil, authentication is skipped (degraded mode).
 // On success the Identity is stored in the request context; on failure a
 // WWW-Authenticate challenge is emitted with HTTP 401.
+//
+// Basic Auth credentials are secrets that must not travel over cleartext.
+// Requests without TLS are rejected with HTTP 400 unless they arrive via a
+// trusted TLS-terminating proxy (X-Forwarded-Proto: https).
 func (s *Server) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.Auth == nil {
@@ -75,6 +79,13 @@ func (s *Server) Authenticate(next http.Handler) http.Handler {
 			s.audit(r.Context(), "", "authenticate", "api:missing")
 			w.Header().Set("WWW-Authenticate", `Basic realm="weavster"`)
 			http.Error(w, "authentication required", http.StatusUnauthorized)
+			return
+		}
+		// Credentials are reusable secrets: reject cleartext unless behind
+		// a trusted TLS-terminating proxy.
+		if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+			s.audit(r.Context(), username, "authenticate", "api:cleartext")
+			http.Error(w, "authentication requires TLS", http.StatusBadRequest)
 			return
 		}
 		id, err := s.cfg.Auth.Authenticate(r.Context(), username, password, "")

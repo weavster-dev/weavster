@@ -195,6 +195,7 @@ func TestBuildServerServesSystem(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/system", nil)
 	req.Header.Set("X-Weavster-CSRF", "1")
 	req.SetBasicAuth("admin", "Admin123!")
+	req.Header.Set("X-Forwarded-Proto", "https")
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("system status = %d", rec.Code)
