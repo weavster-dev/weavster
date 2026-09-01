@@ -184,6 +184,8 @@ func TestPrivilegedGuard(t *testing.T) {
 }
 
 func TestBuildServerServesSystem(t *testing.T) {
+	t.Setenv("WEAVSTER_ADMIN_USER", "admin")
+	t.Setenv("WEAVSTER_ADMIN_PASSWORD", "Admin123!")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler, err := buildServer(logger)
 	if err != nil {
@@ -192,12 +194,24 @@ func TestBuildServerServesSystem(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/system", nil)
 	req.Header.Set("X-Weavster-CSRF", "1")
+	req.SetBasicAuth("admin", "Admin123!")
+	req.Header.Set("X-Forwarded-Proto", "https")
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("system status = %d", rec.Code)
 	}
 	if !strings.Contains(rec.Body.String(), "weavster") {
 		t.Errorf("system body = %q", rec.Body.String())
+	}
+}
+
+func TestBuildServerMissingCredentials(t *testing.T) {
+	os.Unsetenv("WEAVSTER_ADMIN_USER")
+	os.Unsetenv("WEAVSTER_ADMIN_PASSWORD")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	_, err := buildServer(logger)
+	if err == nil {
+		t.Fatal("expected error when credentials are absent")
 	}
 }
 

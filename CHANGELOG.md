@@ -32,6 +32,9 @@ All notable changes to this project are documented here, following
 - Alert delivery regression coverage: verify `Manager.Handle` preserves notifier failures and identifies the affected alert.
 - Config artifact coverage: tests now verify `Config.Artifacts` flattens every supported artifact kind and preserves serializable flow and alert content.
 
+- Gateway auth: wired `Authenticate` (HTTP Basic Auth) and `Authorize` (resource:action permission) middleware into all `/api/v1` routes, with audit logging for login attempts and forbidden accesses — previously the routes were completely unprotected despite having `AuthProvider`/`Authorizer`/`AuditSink` adapters wired in the composition root. Basic Auth credentials are rejected over cleartext unless the request arrives via a trusted TLS-terminating proxy (`X-Forwarded-Proto: https`). When auth is configured but the authorizer is missing, the server fails closed (500). OpenAPI specs (`internal/gateway/openapi.go` + `agent-docs/openapi.yaml`) now declare the `BasicAuth` security scheme, per-route security requirements, and 401/403 responses.
+- Removed hardcoded `admin`/`Admin123!` seed from `buildServer`; operator must supply `WEAVSTER_ADMIN_USER` and `WEAVSTER_ADMIN_PASSWORD` environment variables — startup fails with an error when either is absent.
+
 ### Fixed
 
 - Duplicate test function declarations breaking `go vet`/`go test` on main: renamed `TestAdapterNames` (in `adapters_gap_test.go`) to `TestAdapterNamesGap` and `TestSchedulerReconcile` (in `heartbeat_reconcile_test.go`) to `TestSchedulerReconcileExpiredLease`, preserving both test cases.
