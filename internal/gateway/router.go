@@ -20,17 +20,43 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		r.Use(s.Authenticate)
 		if s.cfg.RequireCSRF {
 			r.Use(RequireMarkerHeader)
 		}
-		r.Get("/system", s.handleSystem)
-		r.Get("/topology", s.handleTopologyOverview)
-		r.Get("/topology/flows/{flowId}", s.handleTopologyFlow)
-		r.Get("/flows", s.handleFlowsList)
-		r.Post("/flows", s.handleFlowsCreate)
-		r.Get("/flows/{id}", s.handleFlowsGet)
-		r.Delete("/flows/{id}", s.handleFlowsDelete)
-		r.Get("/messages", s.handleMessagesSearch)
+
+		// System — any authenticated principal may read.
+		r.Group(func(r chi.Router) {
+			r.Use(s.Authorize("system", "view"))
+			r.Get("/system", s.handleSystem)
+		})
+
+		// Topology — requires topology:view.
+		r.Group(func(r chi.Router) {
+			r.Use(s.Authorize("topology", "view"))
+			r.Get("/topology", s.handleTopologyOverview)
+			r.Get("/topology/flows/{flowId}", s.handleTopologyFlow)
+		})
+
+		// Flows read — requires flows:view.
+		r.Group(func(r chi.Router) {
+			r.Use(s.Authorize("flows", "view"))
+			r.Get("/flows", s.handleFlowsList)
+			r.Get("/flows/{id}", s.handleFlowsGet)
+		})
+
+		// Flows mutate — requires flows:edit.
+		r.Group(func(r chi.Router) {
+			r.Use(s.Authorize("flows", "edit"))
+			r.Post("/flows", s.handleFlowsCreate)
+			r.Delete("/flows/{id}", s.handleFlowsDelete)
+		})
+
+		// Messages — requires messages:view.
+		r.Group(func(r chi.Router) {
+			r.Use(s.Authorize("messages", "view"))
+			r.Get("/messages", s.handleMessagesSearch)
+		})
 	})
 	return r
 }

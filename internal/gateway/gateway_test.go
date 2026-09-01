@@ -361,3 +361,299 @@ func TestMessagesSearchQueryParams(t *testing.T) {
 		t.Errorf("MessagesSearch with params: want 200, got %d", rec.Code)
 	}
 }
+
+// --- auth test fakes ---
+
+// fakeAuth is an AuthProvider stub.
+type fakeAuth struct {
+	users map[string]fakeUser // username → user
+}
+
+type fakeUser struct {
+	password    string
+	permissions []string
+}
+
+func (a *fakeAuth) Authenticate(_ context.Context, username, password, _ string) (Identity, error) {
+	if a == nil {
+		return Identity{}, errors.New("no auth provider")
+	}
+	u, ok := a.users[username]
+	if !ok || u.password != password {
+		return Identity{}, errors.New("auth failed")
+	}
+	return Identity{Username: username, Permissions: u.permissions}, nil
+}
+
+// fakeAuthorizer is an Authorizer stub that mirrors the real LocalAuthorizer logic.
+type fakeAuthorizer struct{}
+
+func (fakeAuthorizer) Authorize(_ context.Context, id Identity, resource, action string) bool {
+	need := resource + ":" + action
+	for _, p := range id.Permissions {
+		if p == "admin" || p == need {
+			return true
+		}
+	}
+	return false
+}
+
+// fakeAudit is an AuditSink that captures entries.
+type fakeAudit struct {
+	entries []auditEntry
+}
+
+type auditEntry struct {
+	actor, action, resource string
+}
+
+func (a *fakeAudit) Record(_ context.Context, actor, action, resource string) error {
+	a.entries = append(a.entries, auditEntry{actor, action, resource})
+	return nil
+}
+
+// newAuthedServer returns a Server wired with fake auth providers. When
+// authCfg is nil, no auth/authorizer/audit adapters are set (degraded).
+func newAuthedServer(authCfg *fakeAuth, az Authorizer, aud *fakeAudit) *Server {
+	s := New(Config{
+		Topology:    fakeTopology{},
+		Flows:       &fakeFlows{flows: []Flow{{ID: "f1", Name: "Admit", SourceType: "file", Status: "started", Enabled: true}}},
+		Messages:    fakeMessages{},
+		System:      observability.SystemStatus("weavster-1", "0.1.0", "2026-08-23"),
+		RequireCSRF: false,
+	})
+	if authCfg != nil {
+		s.cfg.Auth = authCfg
+		s.cfg.Authorizer = az
+		s.cfg.Audit = aud
+	}
+	return s
+}
+
+// doAuth is like do but sets HTTP Basic Auth credentials.
+func doAuth(t *testing.T, h http.Handler, method, path, user, pass string) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(method, path, nil)
+	if user != "" || pass != "" {
+		req.SetBasicAuth(user, pass)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestAuthUnauthenticatedReturns401(t *testing.T) {
+	auth := &fakeAuth{users: map[string]fakeUser{"admin": {"pass", []string{"admin"}}}}
+	srv := newAuthedServer(auth, fakeAuthorizer{}, &fakeAudit{}).Router()
+
+	paths := []string{
+		"/api/v1/system",
+		"/api/v1/topology",
+		"/api/v1/topology/flows/x",
+		"/api/v1/flows",
+		"/api/v1/flows/f1",
+		"/api/v1/messages",
+	}
+	for _, p := range paths {
+		rec := do(t, srv, http.MethodGet, p, false)
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("GET %s without auth = %d, want 401", p, rec.Code)
+		}
+		if www := rec.Header().Get("WWW-Authenticate"); www == "" {
+			t.Errorf("GET %s: missing WWW-Authenticate header", p)
+		}
+	}
+
+	// POST /api/v1/flows without auth
+	rec := do(t, srv, http.MethodPost, "/api/v1/flows", false)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("POST /api/v1/flows without auth = %d, want 401", rec.Code)
+	}
+
+	// DELETE /api/v1/flows/f1 without auth
+	rec = do(t, srv, http.MethodDelete, "/api/v1/flows/f1", false)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("DELETE /api/v1/flows/f1 without auth = %d, want 401", rec.Code)
+	}
+}
+
+func TestAuthWrongPasswordReturns401(t *testing.T) {
+	auth := &fakeAuth{users: map[string]fakeUser{"admin": {"pass", []string{"admin"}}}}
+	srv := newAuthedServer(auth, fakeAuthorizer{}, &fakeAudit{}).Router()
+
+	rec := doAuth(t, srv, http.MethodGet, "/api/v1/system", "admin", "wrong")
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("wrong password: want 401, got %d", rec.Code)
+	}
+}
+
+func TestAuthAdminCanAccessEverything(t *testing.T) {
+	auth := &fakeAuth{users: map[string]fakeUser{"admin": {"pass", []string{"admin"}}}}
+	aud := &fakeAudit{}
+	srv := newAuthedServer(auth, fakeAuthorizer{}, aud).Router()
+
+	tests := []struct {
+		method, path string
+		body         string
+		want         int
+	}{
+		{http.MethodGet, "/api/v1/system", "", http.StatusOK},
+		{http.MethodGet, "/api/v1/topology", "", http.StatusOK},
+		{http.MethodGet, "/api/v1/topology/flows/f1", "", http.StatusOK},
+		{http.MethodGet, "/api/v1/flows", "", http.StatusOK},
+		{http.MethodGet, "/api/v1/flows/f1", "", http.StatusOK},
+		{http.MethodPost, "/api/v1/flows", `{"id":"f2","name":"Discharge","sourceType":"file","status":"stopped","enabled":false}`, http.StatusCreated},
+		{http.MethodDelete, "/api/v1/flows/f1", "", http.StatusNoContent},
+		{http.MethodGet, "/api/v1/messages", "", http.StatusOK},
+	}
+	for _, tc := range tests {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+		req.SetBasicAuth("admin", "pass")
+		if tc.body != "" {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code != tc.want {
+			t.Errorf("%s %s as admin: want %d, got %d", tc.method, tc.path, tc.want, rec.Code)
+		}
+	}
+
+	// Audit should have login + accesses.
+	if len(aud.entries) == 0 {
+		t.Error("expected audit entries but got none")
+	}
+	// First entry must be the login.
+	if aud.entries[0].action != "authenticate" || aud.entries[0].resource != "api:success" {
+		t.Errorf("first audit = %+v, want authenticate:api:success", aud.entries[0])
+	}
+}
+
+func TestAuthViewerCannotMutate(t *testing.T) {
+	auth := &fakeAuth{users: map[string]fakeUser{
+		"viewer": {"pass", []string{"flows:view", "messages:view", "system:view", "topology:view"}},
+	}}
+	srv := newAuthedServer(auth, fakeAuthorizer{}, &fakeAudit{}).Router()
+
+	// Viewer can read.
+	for _, p := range []string{"/api/v1/system", "/api/v1/topology", "/api/v1/flows", "/api/v1/flows/f1", "/api/v1/messages"} {
+		rec := doAuth(t, srv, http.MethodGet, p, "viewer", "pass")
+		if rec.Code != http.StatusOK {
+			t.Errorf("viewer GET %s: want 200, got %d", p, rec.Code)
+		}
+	}
+
+	// Viewer cannot create or delete.
+	rec := doAuth(t, srv, http.MethodPost, "/api/v1/flows", "viewer", "pass")
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("viewer POST /api/v1/flows: want 403, got %d", rec.Code)
+	}
+	rec = doAuth(t, srv, http.MethodDelete, "/api/v1/flows/f1", "viewer", "pass")
+	if rec.Code != http.StatusForbidden {
+		t.Errorf("viewer DELETE /api/v1/flows/f1: want 403, got %d", rec.Code)
+	}
+}
+
+func TestAuthFailedLoginAudited(t *testing.T) {
+	auth := &fakeAuth{users: map[string]fakeUser{"admin": {"pass", []string{"admin"}}}}
+	aud := &fakeAudit{}
+	srv := newAuthedServer(auth, fakeAuthorizer{}, aud).Router()
+
+	// Attempt login with wrong password.
+	rec := doAuth(t, srv, http.MethodGet, "/api/v1/system", "admin", "wrong")
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+
+	// Make a request without credentials to trigger missing-credentials audit.
+	rec2 := do(t, srv, http.MethodGet, "/api/v1/system", false)
+	if rec2.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 without creds, got %d", rec2.Code)
+	}
+
+	// Audit must show the failed attempt.
+	foundFailed := false
+	foundMissing := false
+	for _, e := range aud.entries {
+		if e.action == "authenticate" && e.resource == "api:failed" {
+			foundFailed = true
+		}
+		if e.action == "authenticate" && e.resource == "api:missing" {
+			foundMissing = true
+		}
+	}
+	if !foundFailed {
+		t.Errorf("missing audit entry for failed login; entries: %+v", aud.entries)
+	}
+	if !foundMissing {
+		t.Errorf("missing audit entry for missing credentials; entries: %+v", aud.entries)
+	}
+}
+
+func TestAuthForbiddenAudited(t *testing.T) {
+	auth := &fakeAuth{users: map[string]fakeUser{"viewer": {"pass", []string{"messages:view"}}}}
+	aud := &fakeAudit{}
+	srv := newAuthedServer(auth, fakeAuthorizer{}, aud).Router()
+
+	rec := doAuth(t, srv, http.MethodPost, "/api/v1/flows", "viewer", "pass")
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", rec.Code)
+	}
+
+	// Must have an authorize-failure audit entry.
+	found := false
+	for _, e := range aud.entries {
+		if e.action == "authorize:flows:edit" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("missing audit entry for forbidden access; entries: %+v", aud.entries)
+	}
+}
+
+func TestOpenAPISpecUnauthenticated(t *testing.T) {
+	// /api/openapi.yaml must remain accessible without auth.
+	auth := &fakeAuth{users: map[string]fakeUser{"admin": {"pass", []string{"admin"}}}}
+	srv := newAuthedServer(auth, fakeAuthorizer{}, &fakeAudit{}).Router()
+
+	rec := do(t, srv, http.MethodGet, "/api/openapi.yaml", false)
+	if rec.Code != http.StatusOK {
+		t.Errorf("openapi.yaml without auth: want 200, got %d", rec.Code)
+	}
+}
+
+func TestDegradedModeNoAuth(t *testing.T) {
+	// Without auth/authorizer/audit configured, all routes work as before.
+	srv := newAuthedServer(nil, nil, nil).Router()
+
+	paths := []string{
+		"/api/v1/system",
+		"/api/v1/topology",
+		"/api/v1/topology/flows/f1",
+		"/api/v1/flows",
+		"/api/v1/flows/f1",
+		"/api/v1/messages",
+	}
+	for _, p := range paths {
+		rec := do(t, srv, http.MethodGet, p, false)
+		if rec.Code != http.StatusOK {
+			t.Errorf("degraded GET %s: want 200, got %d", p, rec.Code)
+		}
+	}
+
+	body := `{"id":"f2","name":"Discharge","sourceType":"file","status":"stopped","enabled":false}`
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/flows", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Errorf("degraded POST /api/v1/flows: want 201, got %d", rec.Code)
+	}
+
+	rec = do(t, srv, http.MethodDelete, "/api/v1/flows/f1", false)
+	if rec.Code != http.StatusNoContent {
+		t.Errorf("degraded DELETE /api/v1/flows/f1: want 204, got %d", rec.Code)
+	}
+}

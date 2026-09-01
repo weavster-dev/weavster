@@ -192,6 +192,7 @@ func TestBuildServerServesSystem(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/system", nil)
 	req.Header.Set("X-Weavster-CSRF", "1")
+	req.SetBasicAuth("admin", "Admin123!")
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("system status = %d", rec.Code)

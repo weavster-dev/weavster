@@ -31,7 +31,7 @@ func buildServer(logger *slog.Logger) (http.Handler, error) {
 		AntiEnumeration: true,
 	})
 	_ = provider.CreateUser(context.Background(), auth.User{
-		Username: "admin", PasswordHash: "admin123!", Permissions: []string{auth.PermAdmin},
+		Username: "admin", PasswordHash: "Admin123!", Permissions: []string{auth.PermAdmin},
 	})
 
 	sink := audit.NewLocalSink(logger)
