@@ -99,7 +99,11 @@ func (s *Server) Authorize(resource, action string) func(http.Handler) http.Hand
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if s.cfg.Authorizer == nil {
-				next.ServeHTTP(w, r)
+				if s.cfg.Auth == nil {
+					next.ServeHTTP(w, r)
+					return
+				}
+				http.Error(w, "authorization unavailable", http.StatusInternalServerError)
 				return
 			}
 			id, ok := IdentityFromContext(r.Context())
