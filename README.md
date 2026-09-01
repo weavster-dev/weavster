@@ -19,7 +19,7 @@ Get the server running locally in under 5 minutes.
 git clone https://github.com/weavster-dev/weavster.git
 cd weavster
 go build -o bin/weavster ./cmd/weavster
-./bin/weavster server 0.0.0.0:8080
+WEAVSTER_ADMIN_USER=admin WEAVSTER_ADMIN_PASSWORD=<yourpassword> ./bin/weavster server 0.0.0.0:8080
 ```
 
 Verify it's up — the server exposes its OpenAPI contract without auth:

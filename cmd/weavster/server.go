@@ -23,6 +23,12 @@ import (
 
 // buildServer wires all ports/adapters into the single binary (arch §3).
 func buildServer(logger *slog.Logger) (http.Handler, error) {
+	adminUser := os.Getenv("WEAVSTER_ADMIN_USER")
+	adminPass := os.Getenv("WEAVSTER_ADMIN_PASSWORD")
+	if adminUser == "" || adminPass == "" {
+		return nil, errors.New("WEAVSTER_ADMIN_USER and WEAVSTER_ADMIN_PASSWORD must be set")
+	}
+
 	store := state.NewMemStore()
 
 	provider := auth.NewLocalProvider(auth.Options{
@@ -30,9 +36,11 @@ func buildServer(logger *slog.Logger) (http.Handler, error) {
 		Lockout:         auth.LockoutPolicy{RetryLimit: 5, LockoutPeriod: 300},
 		AntiEnumeration: true,
 	})
-	_ = provider.CreateUser(context.Background(), auth.User{
-		Username: "admin", PasswordHash: "Admin123!", Permissions: []string{auth.PermAdmin},
-	})
+	if err := provider.CreateUser(context.Background(), auth.User{
+		Username: adminUser, PasswordHash: adminPass, Permissions: []string{auth.PermAdmin},
+	}); err != nil {
+		return nil, fmt.Errorf("creating admin user: %w", err)
+	}
 
 	sink := audit.NewLocalSink(logger)
 	flows := newMemFlowStore()

@@ -23,6 +23,8 @@ func TestIsPrivileged(t *testing.T) {
 // address is already in use: ListenAndServe fails, and runServer must
 // surface the error on stderr and return exit code 1 rather than hang.
 func TestRunServerBindFailure(t *testing.T) {
+	t.Setenv("WEAVSTER_ADMIN_USER", "admin")
+	t.Setenv("WEAVSTER_ADMIN_PASSWORD", "Admin123!")
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -45,6 +47,8 @@ func TestRunServerBindFailure(t *testing.T) {
 // returns 0 when it receives SIGTERM -- the path exercised in production by
 // the container runtime's stop signal.
 func TestRunServerShutsDownOnSignal(t *testing.T) {
+	t.Setenv("WEAVSTER_ADMIN_USER", "admin")
+	t.Setenv("WEAVSTER_ADMIN_PASSWORD", "Admin123!")
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)

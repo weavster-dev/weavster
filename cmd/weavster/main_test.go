@@ -184,6 +184,8 @@ func TestPrivilegedGuard(t *testing.T) {
 }
 
 func TestBuildServerServesSystem(t *testing.T) {
+	t.Setenv("WEAVSTER_ADMIN_USER", "admin")
+	t.Setenv("WEAVSTER_ADMIN_PASSWORD", "Admin123!")
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	handler, err := buildServer(logger)
 	if err != nil {
@@ -199,6 +201,16 @@ func TestBuildServerServesSystem(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "weavster") {
 		t.Errorf("system body = %q", rec.Body.String())
+	}
+}
+
+func TestBuildServerMissingCredentials(t *testing.T) {
+	os.Unsetenv("WEAVSTER_ADMIN_USER")
+	os.Unsetenv("WEAVSTER_ADMIN_PASSWORD")
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	_, err := buildServer(logger)
+	if err == nil {
+		t.Fatal("expected error when credentials are absent")
 	}
 }
 

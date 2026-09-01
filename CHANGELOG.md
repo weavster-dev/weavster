@@ -33,6 +33,7 @@ All notable changes to this project are documented here, following
 - Config artifact coverage: tests now verify `Config.Artifacts` flattens every supported artifact kind and preserves serializable flow and alert content.
 
 - Gateway auth: wired `Authenticate` (HTTP Basic Auth) and `Authorize` (resource:action permission) middleware into all `/api/v1` routes, with audit logging for login attempts and forbidden accesses — previously the routes were completely unprotected despite having `AuthProvider`/`Authorizer`/`AuditSink` adapters wired in the composition root.
+- Removed hardcoded `admin`/`Admin123!` seed from `buildServer`; operator must supply `WEAVSTER_ADMIN_USER` and `WEAVSTER_ADMIN_PASSWORD` environment variables — startup fails with an error when either is absent.
 
 ### Fixed
 
