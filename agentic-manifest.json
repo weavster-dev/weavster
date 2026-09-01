@@ -82,7 +82,7 @@
       "logical_name": "Audit Log",
       "path": "internal/audit",
       "origin": "ports-table (AuditSink) + black-box §10 PHI/audit access logging",
-      "files_to_create": ["audit.go", "sink.go", "phi_access.go", "audit_test.go"],
+      "files_to_create": ["audit.go", "phi_access.go", "audit_test.go"],
       "depends_on": ["State Manager", "Observability"],
       "acceptance_criteria": [
         "Implements AuditSink port; local event-store adapter for MVP (architecture §3.1).",
