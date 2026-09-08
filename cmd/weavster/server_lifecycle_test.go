@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -39,6 +40,20 @@ func TestRunServerBindFailure(t *testing.T) {
 	}
 	if stderr.Len() == 0 {
 		t.Error("expected an error message on stderr")
+	}
+}
+
+func TestRunServerRejectsNonLoopbackAddress(t *testing.T) {
+	t.Setenv("WEAVSTER_ADMIN_USER", "admin")
+	t.Setenv("WEAVSTER_ADMIN_PASSWORD", "Admin123!")
+
+	var stderr bytes.Buffer
+	code := runServer([]string{"0.0.0.0:8080"}, &stderr)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1, stderr = %q", code, stderr.String())
+	}
+	if got := stderr.String(); !strings.Contains(got, "non-loopback HTTP bind address") {
+		t.Fatalf("stderr = %q, want non-loopback bind error", got)
 	}
 }
 

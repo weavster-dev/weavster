@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -71,6 +72,10 @@ func runServer(args []string, stderr io.Writer) int {
 	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
 		addr = args[0]
 	}
+	if err := checkGatewayBindAddress(addr); err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
 
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
 	handler, err := buildServer(logger)
@@ -112,6 +117,20 @@ func checkPrivileged(allow bool, privileged func() bool) error {
 		return errors.New("refusing to run under a privileged OS account; use a dedicated service account or set WEAVSTER_ALLOW_ROOT=1")
 	}
 	return nil
+}
+
+func checkGatewayBindAddress(addr string) error {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil
+	}
+	if host == "localhost" {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	return errors.New("refusing non-loopback HTTP bind address with Basic authentication; use a loopback address and terminate TLS at a trusted local proxy")
 }
 
 // --- adapters (composition-root glue) ---
