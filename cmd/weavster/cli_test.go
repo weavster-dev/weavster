@@ -33,13 +33,16 @@ func TestNewHTTPClientExplicitAddr(t *testing.T) {
 // the CSRF marker header required by the gateway (spec §2.13.45, §10).
 func TestHTTPClientGetSetsMarkerHeader(t *testing.T) {
 	var gotHeader string
+	var gotUser string
+	var gotPass string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotHeader = r.Header.Get(gateway.MarkerHeader)
+		gotUser, gotPass, _ = r.BasicAuth()
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
-	c := newHTTPClient(srv.URL, "", "")
+	c := newHTTPClient(srv.URL, "user", "pass")
 	resp, err := c.get(context.Background(), "/anything")
 	if err != nil {
 		t.Fatalf("get() error = %v", err)
@@ -47,6 +50,9 @@ func TestHTTPClientGetSetsMarkerHeader(t *testing.T) {
 	defer resp.Body.Close()
 	if gotHeader != gateway.MarkerValue {
 		t.Errorf("marker header = %q, want %q", gotHeader, gateway.MarkerValue)
+	}
+	if gotUser != "user" || gotPass != "pass" {
+		t.Errorf("basic auth = %q/%q, want user/pass", gotUser, gotPass)
 	}
 }
 

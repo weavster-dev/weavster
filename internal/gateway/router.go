@@ -25,7 +25,7 @@ func (s *Server) Router() http.Handler {
 			r.Use(RequireMarkerHeader)
 		}
 
-		// System — any authenticated principal may read.
+		// System — requires system:view.
 		r.Group(func(r chi.Router) {
 			r.Use(s.Authorize("system", "view"))
 			r.Get("/system", s.handleSystem)

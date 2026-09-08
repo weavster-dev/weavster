@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"net"
 	"net/http"
 )
 
@@ -65,9 +66,10 @@ func IdentityFromContext(ctx context.Context) (Identity, bool) {
 // On success the Identity is stored in the request context; on failure a
 // WWW-Authenticate challenge is emitted with HTTP 401.
 //
-// Basic Auth credentials are secrets that must not travel over cleartext.
-// Requests without TLS are rejected with HTTP 400 unless they arrive via a
-// trusted TLS-terminating proxy (X-Forwarded-Proto: https).
+// Basic Auth credentials are reusable secrets that must not travel over
+// untrusted cleartext network paths. Requests without TLS are rejected with
+// HTTP 400 unless they arrive via a trusted TLS-terminating proxy
+// (X-Forwarded-Proto: https) or from loopback.
 func (s *Server) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.Auth == nil {
@@ -82,12 +84,13 @@ func (s *Server) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 		// Credentials are reusable secrets: reject cleartext unless behind
-		// a trusted TLS-terminating proxy.
-		if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" {
+		// a trusted TLS-terminating proxy or over loopback.
+		if r.TLS == nil && r.Header.Get("X-Forwarded-Proto") != "https" && !isLoopbackRemoteAddr(r.RemoteAddr) {
 			s.audit(r.Context(), username, "authenticate", "api:cleartext")
 			http.Error(w, "authentication requires TLS", http.StatusBadRequest)
 			return
 		}
+
 		id, err := s.cfg.Auth.Authenticate(r.Context(), username, password, "")
 		if err != nil {
 			s.audit(r.Context(), username, "authenticate", "api:failed")
@@ -99,6 +102,15 @@ func (s *Server) Authenticate(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), identityCtxKey, id)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func isLoopbackRemoteAddr(remoteAddr string) bool {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // Authorize returns HTTP middleware that enforces the given resource+action

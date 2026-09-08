@@ -683,4 +683,14 @@ func TestAuthRejectsCleartextCredentials(t *testing.T) {
 	if rec2.Code != http.StatusOK {
 		t.Errorf("credentials with proxy header: want 200, got %d", rec2.Code)
 	}
+
+	// Loopback cleartext for local-only usage → 200.
+	req3 := httptest.NewRequest(http.MethodGet, "/api/v1/system", nil)
+	req3.SetBasicAuth("admin", "pass")
+	req3.RemoteAddr = "127.0.0.1:12345"
+	rec3 := httptest.NewRecorder()
+	srv.ServeHTTP(rec3, req3)
+	if rec3.Code != http.StatusOK {
+		t.Errorf("cleartext credentials from loopback: want 200, got %d", rec3.Code)
+	}
 }

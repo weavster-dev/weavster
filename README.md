@@ -28,7 +28,7 @@ Verify it's up — the server exposes its OpenAPI contract without auth:
 curl -s http://localhost:8080/api/openapi.yaml | head -n 5
 ```
 
-and the system status endpoint (API routes require Basic auth + CSRF marker header):
+and the system status endpoint (API routes require Basic auth + CSRF marker header; loopback HTTP is supported for local CLI/script use):
 
 ```bash
 curl -s -u 'admin:<yourpassword>' -H 'X-Weavster-CSRF: 1' http://localhost:8080/api/v1/system
