@@ -48,9 +48,7 @@ These features are wired into the running binary (`weavster server`):
 
 - **API Gateway**: REST + OpenAPI 3.1, CSRF marker enforcement, security headers
   (HSTS, X-Frame-Options, CSP, X-Content-Type-Options), TRACE/TRACK blocking.
-- **Auth**: Local auth provider (Argon2id), password policy, lockout, anti-enumeration,
-  MFA hook interface.
-- **Audit**: Local audit sink with PHI access logging.
+- **Flow CRUD**: Create, list, get, and delete flows via REST API.
 - **Topology**: Read-only flow topology overview + flow-internal graph endpoints.
 - **State**: In-memory message store with search.
 - **Observability**: Structured logging (slog), system status endpoint.
@@ -64,6 +62,12 @@ These features are wired into the running binary (`weavster server`):
 These packages have passing tests (≥87% coverage) but are not yet wired into the
 composition root or need integration work:
 
+- **Auth**: Local auth provider (Argon2id, password policy, lockout,
+  anti-enumeration, MFA hook interface). Instantiated in the composition root
+  but not yet invoked by request handlers — no login endpoint or auth
+  middleware is active.
+- **Audit**: Local audit sink with PHI access logging. Passed into gateway
+  config but no handler records audit events yet.
 - **Scheduler**: Durable job queue with leases, cron/interval schedules.
 - **Adapters**: File, HTTP, TCP/MLLP, database, SMTP, web-service, document,
   interflow sources/sinks.
@@ -78,8 +82,6 @@ composition root or need integration work:
 - **Secrets**: Local credential store + env provider, KMS interface.
 - **Codecs**: HL7 v2 (+ACK), X12 (+997), NCPDP, JSON, XXE-safe XML, delimited, raw.
 - **Legacy Migration**: Three-phase ETL with dry-run report.
-- **Full CLI surface**: Complete command set from spec §3.2, interactive remote shell,
-  flow lifecycle management.
 
 ## Enterprise-deferred
 
@@ -93,16 +95,18 @@ Redis/NATS, distributed tracing.
 |---|---|
 | REST API + OpenAPI 3.1 | ✅ Wired |
 | CSRF + security headers | ✅ Wired |
-| Local auth (password policy, lockout) | ✅ Wired |
-| MFA hook interface | ✅ Wired |
-| Audit logging (PHI access) | ✅ Wired |
+| Flow CRUD (create/list/get/delete) | ✅ Wired |
 | Topology graph (read-only) | ✅ Wired |
 | In-memory message store + search | ✅ Wired |
 | System status endpoint | ✅ Wired |
 | `weavster test` (codec fixtures) | ✅ Wired |
 | `weavster server` | ✅ Wired |
+| Basic CLI shell (6 commands) | ✅ Wired |
 | CLI batch mode (`-s`) | ✅ Wired |
 | Cross-compilation (3 targets) | ✅ Wired |
+| Local auth (password policy, lockout) | 🔧 Package |
+| MFA hook interface | 🔧 Package |
+| Audit logging (PHI access) | 🔧 Package |
 | Scheduler (durable jobs, leases) | 🔧 Package |
 | Source/sink adapters | 🔧 Package |
 | Outbox + idempotency + dead-letter | 🔧 Package |
@@ -114,8 +118,6 @@ Redis/NATS, distributed tracing.
 | Secrets (local + env providers) | 🔧 Package |
 | Codecs (HL7v2/X12/NCPDP/JSON/XML/delimited/raw) | 🔧 Package |
 | Legacy import ETL | 🔧 Package |
-| Full CLI shell (interactive, full commands) | 🔧 Package |
-| Flow lifecycle management | 🔧 Package |
 | TLS/HTTPS | 🔧 Package |
 | Prometheus + OTel metrics | 🔧 Package |
 | Statistics + time-series | 🔧 Package |
@@ -137,7 +139,7 @@ Redis/NATS, distributed tracing.
 |---|---|---|---|---|---|
 | HL7 v2 | ✅ | ✅ | ✅ | 2.x (MSH/MSA) | Delimiters, escaping, repetitions |
 | X12 | ✅ | ✅ | ✅ (997) | ISA/GS/ST envelope | Envelopes, loops |
-| NCPDP | ✅ | ✅ | — | Telecommunication | FS/GS/RS delimiters, fixed-width amounts |
+| NCPDP | ✅ | ✅ | — | Telecommunication | FS/GS/RS delimiters, fixed-width amounts; response limited |
 | JSON | ✅ | ✅ | — | RFC 8259 | stdlib encoding/json |
 | XML | ✅ | ✅ | — | 1.0 | XXE/DTD disabled by construction |
 | Delimited | ✅ | ✅ | — | Configurable delimiter | Tab/pipe/comma, optional header |
