@@ -60,12 +60,18 @@ func TestStoreCRUDAndSearch(t *testing.T) {
 				{"status", Query{Status: StatusSent}, 1},
 				{"status-miss", Query{Status: StatusQueued}, 0},
 				{"content-type", Query{ContentType: "hl7v2"}, 1},
+				{"content-type-miss", Query{ContentType: "json"}, 0},
 				{"metadata", Query{Metadata: map[string]string{"patient": "123"}}, 1},
 				{"metadata-miss", Query{Metadata: map[string]string{"patient": "999"}}, 0},
 				{"attempts", Query{MinAttempts: 2, MaxAttempts: 5}, 1},
 				{"attempts-miss", Query{MinAttempts: 5}, 0},
 				{"id-range", Query{IDFrom: "100", IDTo: "100"}, 1},
 				{"id-range-miss", Query{IDFrom: "200", IDTo: "300"}, 0},
+				{"id-upper-miss", Query{IDTo: "099"}, 0},
+				{"from-inclusive", Query{From: m.ReceivedAt}, 1},
+				{"from-miss", Query{From: m.ReceivedAt.Add(time.Second)}, 0},
+				{"to-inclusive", Query{To: m.ReceivedAt}, 1},
+				{"to-miss", Query{To: m.ReceivedAt.Add(-time.Second)}, 0},
 			}
 			for _, tc := range cases {
 				res, err := s.Search(ctx, tc.q)
