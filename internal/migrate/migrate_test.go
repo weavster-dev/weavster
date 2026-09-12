@@ -2,6 +2,8 @@ package migrate
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/weavster-dev/weavster/internal/config"
@@ -68,6 +70,35 @@ func TestRunLoadsConfig(t *testing.T) {
 	}
 	if _, ok := arts["snippet/normalize"]; !ok {
 		t.Errorf("snippet artifact missing: %v", arts)
+	}
+}
+
+func TestRunReportsTransformPhaseFailure(t *testing.T) {
+	rep, err := Run(context.Background(), []byte(legacyXML), Options{MappingVersion: "bogus"}, config.NewMemStore(), false)
+	if err == nil {
+		t.Fatal("Run() error = nil, want transform error")
+	}
+	if rep != nil {
+		t.Errorf("Run() report = %+v, want nil", rep)
+	}
+	if got := err.Error(); !strings.Contains(got, "migrate: transform:") || !strings.Contains(got, "unknown mapping version") {
+		t.Errorf("Run() error = %q, want transform phase and cause", got)
+	}
+}
+
+func TestRunReportsLoadPhaseFailure(t *testing.T) {
+	putErr := errors.New("backend unavailable")
+	store := &failingStore{Store: config.NewMemStore(), putErr: putErr}
+
+	rep, err := Run(context.Background(), []byte(legacyXML), Options{}, store, false)
+	if !errors.Is(err, putErr) {
+		t.Fatalf("Run() error = %v, want wrapped %v", err, putErr)
+	}
+	if rep != nil {
+		t.Errorf("Run() report = %+v, want nil", rep)
+	}
+	if got := err.Error(); !strings.Contains(got, "migrate: load:") {
+		t.Errorf("Run() error = %q, want load phase", got)
 	}
 }
 
