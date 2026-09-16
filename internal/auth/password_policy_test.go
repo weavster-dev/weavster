@@ -65,6 +65,24 @@ func TestPasswordPolicyReuse(t *testing.T) {
 	}
 }
 
+func TestVerifyPasswordRejectsMalformedHashComponents(t *testing.T) {
+	tests := []struct {
+		name    string
+		encoded string
+	}{
+		{name: "invalid salt", encoded: "%%%$YWJj"},
+		{name: "invalid digest", encoded: "YWJj$%%%"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if VerifyPassword(tt.encoded, "password") {
+				t.Error("VerifyPassword accepted a malformed encoded hash")
+			}
+		})
+	}
+}
+
 func TestPasswordPolicyValidateEdgeCases(t *testing.T) {
 	cases := []struct {
 		name   string
