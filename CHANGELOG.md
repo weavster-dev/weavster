@@ -31,6 +31,7 @@ All notable changes to this project are documented here, following
 - octocov PR coverage report + coverage badge: `coverage-gate.yml` now comments a coverage report on PRs and pushes a self-updating `docs/coverage.svg` badge to `main`, linked from the `README.md`.
 - Alert delivery regression coverage: verify `Manager.Handle` preserves notifier failures and identifies the affected alert.
 - Config artifact coverage: tests now verify `Config.Artifacts` flattens every supported artifact kind and preserves serializable flow and alert content.
+- Webhook notification coverage: test the outbound POST method, JSON content type, and complete serialized payload.
 
 ### Fixed
 
