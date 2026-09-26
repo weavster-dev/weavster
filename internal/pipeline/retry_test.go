@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -216,6 +217,115 @@ func TestRetryPagesThroughAllQueued(t *testing.T) {
 	}
 	if n, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) { return f, nil }); err != nil || n != total {
 		t.Errorf("RetryDue = %d, %v; want %d", n, err, total)
+	}
+}
+
+type failingSearchStore struct {
+	state.Store
+	err error
+}
+
+func (s failingSearchStore) Search(context.Context, state.Query) ([]state.Message, error) {
+	return nil, s.err
+}
+
+func TestRetryDueReturnsSearchFailure(t *testing.T) {
+	lookupCalled := false
+	p := New(failingSearchStore{Store: state.NewMemStore(), err: errStore}, nil, nil, Options{})
+	n, err := p.RetryDue(context.Background(), func(context.Context, string) (Flow, error) {
+		lookupCalled = true
+		return Flow{}, nil
+	})
+	if n != 0 || !errors.Is(err, errStore) {
+		t.Fatalf("RetryDue = %d, %v; want 0 and store error", n, err)
+	}
+	if lookupCalled {
+		t.Error("flow lookup called after store search failed")
+	}
+}
+
+func TestRetryDueStopsBetweenMessagesWhenCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	store := state.NewMemStore()
+	for _, id := range []string{"1", "2"} {
+		if err := store.Put(ctx, state.Message{ID: id, FlowID: "f", Status: state.StatusQueued, Transformed: []byte("x")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p := New(store, func(Destination) (Sink, error) { return &recordingSink{}, nil }, nil, Options{})
+	f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	lookups := 0
+	n, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) {
+		lookups++
+		cancel()
+		return f, nil
+	})
+	if n != 1 || err != nil {
+		t.Fatalf("RetryDue = %d, %v; want one completed message", n, err)
+	}
+	if lookups != 1 {
+		t.Fatalf("flow lookups = %d, want 1", lookups)
+	}
+	if m, _ := store.Get(context.Background(), "1"); m.Status != state.StatusSent {
+		t.Errorf("first message status = %s, want sent", m.Status)
+	}
+	if m, _ := store.Get(context.Background(), "2"); m.Status != state.StatusQueued {
+		t.Errorf("second message status = %s, want queued", m.Status)
+	}
+}
+
+type recordingGate struct {
+	mu          sync.Mutex
+	locked      bool
+	locks       int
+	unlockCalls int
+}
+
+func (g *recordingGate) RLock() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.locked = true
+	g.locks++
+}
+
+func (g *recordingGate) RUnlock() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.locked = false
+	g.unlockCalls++
+}
+
+func (g *recordingGate) isLocked() bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.locked
+}
+
+func TestRetryDueHoldsFlowGateDuringMessage(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	if err := store.Put(ctx, state.Message{ID: "m", FlowID: "f", Status: state.StatusQueued, Transformed: []byte("x")}); err != nil {
+		t.Fatal(err)
+	}
+	gate := &recordingGate{}
+	f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	p := New(store, func(Destination) (Sink, error) {
+		if !gate.isLocked() {
+			t.Error("flow gate not held while building sink")
+		}
+		return &recordingSink{}, nil
+	}, nil, Options{Gate: gate})
+	n, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) {
+		if !gate.isLocked() {
+			t.Error("flow gate not held during lookup")
+		}
+		return f, nil
+	})
+	if n != 1 || err != nil {
+		t.Fatalf("RetryDue = %d, %v; want one completed message", n, err)
+	}
+	if gate.isLocked() || gate.locks != 1 || gate.unlockCalls != 1 {
+		t.Errorf("gate after retry = locked %v, locks %d, unlocks %d", gate.isLocked(), gate.locks, gate.unlockCalls)
 	}
 }
 
