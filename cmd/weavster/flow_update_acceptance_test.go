@@ -45,6 +45,9 @@ func TestFlowUpdateAndEnable(t *testing.T) {
 			t.Errorf("%s: %d %q, want 400 %q", tc.name, code, body, tc.want)
 		}
 	}
+	if code, body, _ := c.do(http.MethodPut, "/api/v1/flows/f", `{"id":null,"name":"Null id"}`, admin); code != http.StatusOK || !strings.Contains(body, `"id":"f"`) {
+		t.Errorf("update with null id: %d %q", code, body)
+	}
 	if code, _, _ := c.do(http.MethodPut, "/api/v1/flows/nope", `{"name":"x"}`, admin); code != http.StatusNotFound {
 		t.Errorf("update unknown: %d, want 404", code)
 	}

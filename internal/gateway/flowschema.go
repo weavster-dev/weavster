@@ -12,9 +12,10 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
-// FlowSchema is the published flow-definition JSON Schema
-// (agent-docs/schemas/flow.schema.json).
+// FlowSchema is the flow-definition JSON Schema, published as
+// agent-docs/schemas/flow.schema.json (go generate copies it there).
 //
+//go:generate cp flow.schema.json ../../agent-docs/schemas/flow.schema.json
 //go:embed flow.schema.json
 var FlowSchema []byte
 
@@ -29,24 +30,29 @@ func mustCompileFlowSchema() *jsonschema.Schema {
 	return c.MustCompile("flow.schema.json")
 }
 
-// validateFlowJSON checks one flow definition document against FlowSchema
-// and returns a short, client-safe description of the first violations.
-func validateFlowJSON(raw []byte) error {
-	var probe struct {
-		ID any `json:"id"`
-	}
-	if json.Unmarshal(raw, &probe) == nil {
-		if id, ok := probe.ID.(string); ok && reservedFlowIDs[id] {
-			return fmt.Errorf("flow id %q is reserved; ids must not be export, import, or redeploy-all", id)
-		}
-	}
+// parseFlowDoc decodes a flow definition for validation, keeping numbers
+// exact.
+func parseFlowDoc(raw []byte) (map[string]any, error) {
 	var doc any
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
 	if err := dec.Decode(&doc); err != nil {
-		return fmt.Errorf("flow is not valid JSON: %w", err)
+		return nil, fmt.Errorf("flow is not valid JSON: %w", err)
 	}
-	err := flowSchema.Validate(doc)
+	obj, ok := doc.(map[string]any)
+	if !ok {
+		return nil, errors.New("the flow must be a JSON object")
+	}
+	return obj, nil
+}
+
+// validateFlowDoc checks a parsed flow definition against FlowSchema and
+// returns a short, client-safe description of the first violations.
+func validateFlowDoc(doc map[string]any) error {
+	if id, ok := doc["id"].(string); ok && reservedFlowIDs[id] {
+		return fmt.Errorf("flow id %q is reserved; ids must not be export, import, or redeploy-all", id)
+	}
+	err := flowSchema.Validate(any(doc))
 	if err == nil {
 		return nil
 	}
@@ -67,6 +73,15 @@ func validateFlowJSON(raw []byte) error {
 		msgs = append(msgs[:3], fmt.Sprintf("and %d more", len(msgs)-3))
 	}
 	return fmt.Errorf("flow does not match flow.schema.json: %s", strings.Join(msgs, "; "))
+}
+
+// validateFlowJSON parses and validates one flow definition document.
+func validateFlowJSON(raw []byte) error {
+	doc, err := parseFlowDoc(raw)
+	if err != nil {
+		return err
+	}
+	return validateFlowDoc(doc)
 }
 
 // leaves returns the most specific validation errors.

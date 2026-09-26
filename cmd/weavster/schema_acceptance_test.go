@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -11,7 +12,7 @@ import (
 // TestFlowSchemaEnforced: create, update, and import reject definitions that
 // do not match agent-docs/schemas/flow.schema.json.
 func TestFlowSchemaEnforced(t *testing.T) {
-	c := startComposed(t, serverconfig.Default(), noopWriter{})
+	c := startComposed(t, serverconfig.Default(), io.Discard)
 	admin := basic(bootstrapAdmin, testAdminPassword)
 	if code, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"ok","name":"OK"}`, admin); code != http.StatusCreated {
 		t.Fatalf("valid flow: %d %q", code, body)
@@ -34,7 +35,3 @@ func TestFlowSchemaEnforced(t *testing.T) {
 		}
 	}
 }
-
-type noopWriter struct{}
-
-func (noopWriter) Write(p []byte) (int, error) { return len(p), nil }
