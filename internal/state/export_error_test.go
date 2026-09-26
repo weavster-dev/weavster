@@ -64,3 +64,57 @@ func TestImportEncryptedTruncatedCiphertext(t *testing.T) {
 		t.Errorf("ImportEncrypted(truncated) = %v, want io.ErrUnexpectedEOF", err)
 	}
 }
+
+func TestExportPropagatesStoreErrors(t *testing.T) {
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		name  string
+		store exportErrorStore
+		ids   []string
+	}{
+		{name: "search all", store: exportErrorStore{searchErr: errExportStore}},
+		{name: "get selected", store: exportErrorStore{getErr: errExportStore}, ids: []string{"message"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := Export(ctx, tc.store, tc.ids, FormRaw); !errors.Is(err, errExportStore) {
+				t.Errorf("Export() error = %v, want %v", err, errExportStore)
+			}
+		})
+	}
+}
+
+func TestImportRejectsMalformedJSON(t *testing.T) {
+	archive, err := gzipBytes([]byte("{"))
+	if err != nil {
+		t.Fatalf("gzipBytes: %v", err)
+	}
+
+	count, err := Import(context.Background(), NewMemStore(), archive)
+	if err == nil {
+		t.Fatal("Import(malformed JSON) error = nil, want error")
+	}
+	if count != 0 {
+		t.Errorf("Import(malformed JSON) count = %d, want 0", count)
+	}
+}
+
+func TestImportPropagatesStoreWriteError(t *testing.T) {
+	source := NewMemStore()
+	ctx := context.Background()
+	if err := source.Put(ctx, sampleMessage()); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+	archive, err := Export(ctx, source, nil, FormRaw)
+	if err != nil {
+		t.Fatalf("Export: %v", err)
+	}
+
+	count, err := Import(ctx, exportErrorStore{putErr: errExportStore}, archive)
+	if !errors.Is(err, errExportStore) {
+		t.Errorf("Import() error = %v, want %v", err, errExportStore)
+	}
+	if count != 0 {
+		t.Errorf("Import() count = %d, want 0", count)
+	}
+}
