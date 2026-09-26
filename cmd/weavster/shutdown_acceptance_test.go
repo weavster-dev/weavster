@@ -1,15 +1,18 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
+	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
+
+	"github.com/weavster-dev/weavster/internal/gateway"
 )
 
 // TestGracefulShutdownRequeuesInFlightWork sends SIGTERM while a delivery is
@@ -47,46 +50,44 @@ func TestGracefulShutdownRequeuesInFlightWork(t *testing.T) {
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
 
-	done := make(chan int, 1)
-	errb := &syncBuffer{}
-	go func() { done <- run(args, strings.NewReader(""), io.Discard, errb) }()
-	waitReady(t, "http://"+addr+"/api/openapi.yaml")
+	stop, _ := startCLIWithStderr(t, args, "http://"+addr+"/api/openapi.yaml")
 	createFlow(t, c, `{"id":"f","destinations":[{"name":"ehr","type":"http","url":"`+downstream.URL+`"}]}`)
 
-	go func() { // blocks until the server gives up on it
-		c.do(http.MethodPost, "/api/v1/flows/f/messages", "x", basic(bootstrapAdmin, testAdminPassword))
+	// Send the message from a plain goroutine (no t calls): the old server
+	// abandons this request at the shutdown deadline.
+	go func() {
+		req, _ := http.NewRequest(http.MethodPost, c.base+"/api/v1/flows/f/messages", strings.NewReader("x"))
+		req.Header.Set(gateway.MarkerHeader, gateway.MarkerValue)
+		req.SetBasicAuth(bootstrapAdmin, testAdminPassword)
+		if resp, err := http.DefaultClient.Do(req); err == nil {
+			_ = resp.Body.Close()
+		}
 	}()
-	<-arrived
+	select {
+	case <-arrived:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the delivery never reached the downstream")
+	}
 
 	start := time.Now()
-	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case code := <-done:
-		if code != 0 {
-			t.Errorf("exit = %d (stderr %q)", code, errb.String())
-		}
-		if elapsed := time.Since(start); elapsed > 3*time.Second {
-			t.Errorf("shutdown took %v; want it bounded by the 200ms deadline", elapsed)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("server did not stop while a delivery was hanging")
+	stop() // SIGTERM; asserts a clean exit
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Errorf("shutdown took %v; want it bounded by the 200ms deadline", elapsed)
 	}
 
 	mu.Lock()
 	hanging = false
 	mu.Unlock()
 	time.Sleep(50 * time.Millisecond) // let the 10ms backoff elapse, if an attempt was recorded
-	stop := startCLI(t, args, "http://"+addr+"/api/openapi.yaml")
+	stop = startCLI(t, args, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
 
 	_, body, _ := c.do(http.MethodGet, "/api/v1/messages?flowId=f", "", basic(bootstrapAdmin, testAdminPassword))
-	id := between(body, `"id":"`, `"`)
-	if id == "" {
+	var msgs []struct{ ID string }
+	if err := json.Unmarshal([]byte(body), &msgs); err != nil || len(msgs) != 1 {
 		t.Fatalf("message was not stored before shutdown: %s", body)
 	}
-	waitStatus(t, c, id, "sent")
+	waitStatus(t, c, msgs[0].ID, "sent")
 	mu.Lock()
 	defer mu.Unlock()
 	if len(keys) < 2 || keys[0] == "" {
@@ -99,11 +100,48 @@ func TestGracefulShutdownRequeuesInFlightWork(t *testing.T) {
 	}
 }
 
-func between(s, start, end string) string {
-	_, rest, ok := strings.Cut(s, start)
-	if !ok {
-		return ""
+// TestShutdownIsBounded: a hung request or a busy retry worker cannot hold
+// shutdown past its deadline.
+func TestShutdownIsBounded(t *testing.T) {
+	logs := &syncBuffer{}
+	logger := slog.New(slog.NewTextHandler(logs, nil))
+
+	// A retry worker that never finishes.
+	start := time.Now()
+	if shutdown(nil, func() {}, make(chan struct{}), 50*time.Millisecond, logger) {
+		t.Error("reported a clean shutdown with the worker still running")
 	}
-	v, _, _ := strings.Cut(rest, end)
-	return v
+	if time.Since(start) > time.Second || !strings.Contains(logs.String(), "retry worker still delivering") {
+		t.Errorf("worker wait not bounded or not logged: %v %q", time.Since(start), logs.String())
+	}
+
+	// A request that never finishes: the listener is closed at the deadline.
+	hung := make(chan struct{})
+	defer close(hung)
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &http.Server{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-hung })}
+	go func() { _ = srv.Serve(ln) }()
+	go func() {
+		if resp, err := http.Get("http://" + ln.Addr().String()); err == nil {
+			_ = resp.Body.Close()
+		}
+	}()
+	time.Sleep(50 * time.Millisecond)
+	done := make(chan struct{})
+	close(done)
+	start = time.Now()
+	if shutdown([]*http.Server{srv}, func() {}, done, 50*time.Millisecond, logger) {
+		t.Error("reported a clean shutdown with a request still running")
+	}
+	if time.Since(start) > time.Second {
+		t.Errorf("request drain not bounded: %v", time.Since(start))
+	}
+
+	// Nothing running: clean.
+	if !shutdown(nil, func() {}, done, 50*time.Millisecond, logger) {
+		t.Error("idle shutdown not reported clean")
+	}
 }

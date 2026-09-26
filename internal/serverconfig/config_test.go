@@ -53,6 +53,8 @@ auth:
 		{name: "zero pool", yaml: "store: {maxConnections: 0}\n", wantErr: "store.maxConnections must be >= 1"},
 		{name: "negative retry", yaml: "store: {maxRetry: -1}\n", wantErr: "must be >= 0"},
 		{name: "zero shutdown timeout", yaml: "listen: {shutdownTimeoutMs: 0}\n", wantErr: "listen.shutdownTimeoutMs"},
+		{name: "huge shutdown timeout", yaml: "listen: {shutdownTimeoutMs: 600001}\n", wantErr: "listen.shutdownTimeoutMs"},
+		{name: "negative shutdown timeout", yaml: "listen: {shutdownTimeoutMs: -5}\n", wantErr: "listen.shutdownTimeoutMs"},
 		{name: "zero delivery attempts", yaml: "delivery: {maxAttempts: 0}\n", wantErr: "delivery.maxAttempts"},
 		{name: "huge retry interval", yaml: "delivery: {retryIntervalMs: 9223372036854775807}\n", wantErr: "delivery.retryIntervalMs must be between"},
 		{name: "zero backoff", yaml: "delivery: {backoffBaseMs: 0}\n", wantErr: "delivery.backoffBaseMs must be between"},
