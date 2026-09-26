@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -132,7 +133,8 @@ func TestLoginAndPasswordHandlers(t *testing.T) {
 		{"login ok", fakePasswords{}, "/api/v1/auth/login", `{"username":"viewer","password":"pw"}`, nil, http.StatusOK},
 		{"change unavailable", nil, "/api/v1/auth/password", `{}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusServiceUnavailable},
 		{"change bad json", fakePasswords{}, "/api/v1/auth/password", "x", func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusBadRequest},
-		{"change rejected", fakePasswords{err: errors.New("too short")}, "/api/v1/auth/password", `{}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusBadRequest},
+		{"change rejected", fakePasswords{err: fmt.Errorf("%w: too short", ErrPasswordRejected)}, "/api/v1/auth/password", `{}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusBadRequest},
+		{"change internal failure", fakePasswords{err: errors.New("database is locked")}, "/api/v1/auth/password", `{}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusInternalServerError},
 		{"change wrong old", fakePasswords{err: ErrWrongPassword}, "/api/v1/auth/password", `{}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusBadRequest},
 		{"change ok basic", fakePasswords{}, "/api/v1/auth/password", `{}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusNoContent},
 		{"logout", fakePasswords{}, "/api/v1/auth/logout", "", func(r *http.Request) { r.SetBasicAuth("viewer", "pw") }, http.StatusNoContent},

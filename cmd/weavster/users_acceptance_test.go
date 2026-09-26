@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/weavster-dev/weavster/internal/auth"
+	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/state"
 )
 
@@ -101,4 +103,41 @@ type failingUserRepo struct{ userRepository }
 
 func (failingUserRepo) ListUsers(context.Context) ([]state.UserDocument, error) {
 	return nil, errors.New("store down")
+}
+
+type failingSaveRepo struct{ userRepository }
+
+func (failingSaveRepo) PutUser(context.Context, state.UserDocument) error {
+	return errors.New("attempt to write a readonly database")
+}
+
+func TestBootstrapReportsStorageFailure(t *testing.T) {
+	p := auth.NewLocalProvider(auth.Options{Store: userStoreAdapter{repo: failingSaveRepo{}}})
+	err := bootstrapAdminUser(context.Background(), p, auth.PasswordPolicy{}, io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "bootstrap: saving the admin account") {
+		t.Errorf("err = %v, want a storage error", err)
+	}
+}
+
+func TestPasswordAdapterMapsErrors(t *testing.T) {
+	ctx := context.Background()
+	p := auth.NewLocalProvider(auth.Options{})
+	if err := p.CreateUser(ctx, auth.User{Username: "u", PasswordHash: "Pass-1"}); err != nil {
+		t.Fatal(err)
+	}
+	a := passwordAdapter{p}
+	tests := []struct {
+		name, user, old, new string
+		want                 error
+	}{
+		{"wrong old", "u", "nope", "Pass-2", gateway.ErrWrongPassword},
+		{"same password", "u", "Pass-1", "Pass-1", gateway.ErrPasswordRejected},
+		{"unknown user", "ghost", "x", "y", auth.ErrUserNotFound},
+		{"ok", "u", "Pass-1", "Pass-2", nil},
+	}
+	for _, tt := range tests {
+		if err := a.ChangePassword(ctx, tt.user, tt.old, tt.new); !errors.Is(err, tt.want) || (tt.want == nil && err != nil) {
+			t.Errorf("%s: err = %v, want %v", tt.name, err, tt.want)
+		}
+	}
 }

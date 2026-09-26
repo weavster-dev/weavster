@@ -46,14 +46,17 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 		MinLength: pp.MinLength, MinUpper: pp.MinUpper, MinLower: pp.MinLower,
 		MinNumeric: pp.MinNumeric, MinSpecial: pp.MinSpecial,
 	}
+	// Only durable stores persist users; the memory dialect would just
+	// duplicate the provider's own map.
 	var users auth.UserStore
-	if store != nil {
+	if cfg.Store.Dialect == serverconfig.DialectSQLite || cfg.Store.Dialect == serverconfig.DialectPostgres {
 		// Every state backend implements userRepository
 		// (TestStoresImplementUserRepository).
 		users = userStoreAdapter{repo: store.(userRepository)}
 	}
 	provider := auth.NewLocalProvider(auth.Options{
 		Store:  users,
+		Logger: logger,
 		Policy: policy,
 		Lockout: auth.LockoutPolicy{
 			RetryLimit: cfg.Auth.Lockout.RetryLimit, LockoutPeriod: cfg.Auth.Lockout.LockoutPeriodSeconds,
@@ -319,10 +322,16 @@ type passwordAdapter struct{ p *auth.LocalProvider }
 
 func (a passwordAdapter) ChangePassword(ctx context.Context, username, oldPassword, newPassword string) error {
 	err := a.p.ChangePassword(ctx, username, oldPassword, newPassword)
-	if errors.Is(err, auth.ErrPasswordWrong) {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, auth.ErrPasswordWrong):
 		return gateway.ErrWrongPassword
+	case errors.Is(err, auth.ErrStorage), errors.Is(err, auth.ErrUserNotFound):
+		return err // internal failure
+	default: // policy, reuse, or concurrent-change rejection
+		return fmt.Errorf("%w: %w", gateway.ErrPasswordRejected, err)
 	}
-	return err
 }
 
 type authorizerAdapter struct{}

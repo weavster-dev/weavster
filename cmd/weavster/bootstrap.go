@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -47,6 +48,9 @@ func bootstrapAdminUser(ctx context.Context, p *auth.LocalProvider, policy auth.
 		Username: bootstrapAdmin, PasswordHash: password,
 		Permissions: []string{auth.PermAdmin}, MustChangePassword: generated,
 	})
+	if errors.Is(err, auth.ErrStorage) {
+		return fmt.Errorf("bootstrap: saving the admin account: %w", err)
+	}
 	if err != nil {
 		return fmt.Errorf("bootstrap: admin password rejected by auth.passwordPolicy: %w", err)
 	}

@@ -3,6 +3,8 @@ package auth
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 )
 
@@ -112,5 +114,42 @@ func TestLocalProviderSaveFailureLeavesStateUnchanged(t *testing.T) {
 	}
 	if err := NewLocalProvider(Options{}).Load(ctx); err != nil {
 		t.Errorf("Load without store = %v", err)
+	}
+}
+
+func TestUpdateUserPreservesSecurityState(t *testing.T) {
+	ctx := context.Background()
+	store := &memUsers{users: map[string]User{}}
+	p := NewLocalProvider(Options{Store: store, Lockout: LockoutPolicy{RetryLimit: 1, LockoutPeriod: 60}})
+	if err := p.CreateUser(ctx, User{Username: "admin", PasswordHash: "Pass-1", MustChangePassword: true}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = p.Authenticate(ctx, "admin", "wrong", "") // locks
+	if err := p.UpdateUser(ctx, "admin", User{Permissions: []string{"admin"}}); err != nil {
+		t.Fatal(err)
+	}
+	saved := store.users["admin"]
+	if saved.Username != "admin" || !saved.MustChangePassword || saved.LockedUntil.IsZero() || len(store.users) != 1 {
+		t.Errorf("update changed security state or key: %+v (rows %d)", saved, len(store.users))
+	}
+}
+
+func TestSaveCountersLogsFailure(t *testing.T) {
+	ctx := context.Background()
+	var logs strings.Builder
+	store := &memUsers{users: map[string]User{}}
+	p := NewLocalProvider(Options{Store: store, Logger: slog.New(slog.NewTextHandler(&logs, nil))})
+	if err := p.CreateUser(ctx, User{Username: "u", PasswordHash: "Pass-1"}); err != nil {
+		t.Fatal(err)
+	}
+	store.failAll = errors.New("disk full")
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	_, _ = p.Authenticate(cancelled, "u", "wrong", "")
+	if !strings.Contains(logs.String(), "lockout state not persisted") || !strings.Contains(logs.String(), "disk full") {
+		t.Errorf("logs = %q", logs.String())
+	}
+	if u, _ := p.GetUser(ctx, "u"); u.FailedAttempts != 1 {
+		t.Error("in-memory strike lost")
 	}
 }

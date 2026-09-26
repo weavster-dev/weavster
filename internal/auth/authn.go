@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 )
@@ -16,6 +17,8 @@ var (
 	ErrUserNotFound  = errors.New("auth: user not found")
 	ErrUserExists    = errors.New("auth: user already exists")
 	ErrPasswordWrong = errors.New("auth: invalid credentials")
+	// ErrStorage wraps UserStore failures.
+	ErrStorage = errors.New("auth: user store failure")
 	// ErrPasswordConflict means the password changed while a change was in flight.
 	ErrPasswordConflict = errors.New("auth: password was changed concurrently; retry")
 )
@@ -66,6 +69,9 @@ type Options struct {
 	// Store, when set, persists every user change. Nil keeps users in
 	// memory only.
 	Store UserStore
+	// Logger reports best-effort persistence failures (lockout counters).
+	// Nil uses slog.Default().
+	Logger *slog.Logger
 }
 
 // LocalProvider is the MVP AuthProvider adapter (local user store).
@@ -87,7 +93,7 @@ func (p *LocalProvider) Load(ctx context.Context) error {
 	}
 	users, err := p.opts.Store.LoadUsers(ctx)
 	if err != nil {
-		return fmt.Errorf("auth: load users: %w", err)
+		return fmt.Errorf("%w: load users: %w", ErrStorage, err)
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -106,9 +112,22 @@ func (p *LocalProvider) save(ctx context.Context, u *User) error {
 		return nil
 	}
 	if err := p.opts.Store.SaveUser(ctx, u.clone()); err != nil {
-		return fmt.Errorf("auth: save user: %w", err)
+		return fmt.Errorf("%w: save user: %w", ErrStorage, err)
 	}
 	return nil
+}
+
+// saveCounters persists lockout counters best-effort: the save outlives a
+// cancelled request, and a failure is logged because the in-memory record
+// still enforces lockout.
+func (p *LocalProvider) saveCounters(ctx context.Context, u *User) {
+	if err := p.save(context.WithoutCancel(ctx), u); err != nil {
+		logger := p.opts.Logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		logger.Warn("auth: lockout state not persisted", "user", u.Username, "error", err)
+	}
 }
 
 func (p *LocalProvider) Authenticate(ctx context.Context, username, password, mfaCode string) (*User, error) {
@@ -195,7 +214,7 @@ func (p *LocalProvider) genericOr(err error) error {
 // recordFailure counts a failed attempt and persists the lockout state. A
 // save failure keeps the in-memory count, which still enforces lockout.
 func (p *LocalProvider) recordFailure(ctx context.Context, u *User) {
-	defer func() { _ = p.save(ctx, u) }()
+	defer p.saveCounters(ctx, u)
 	now := time.Now()
 	if p.opts.Lockout.expired(u.LockedUntil, now) {
 		u.FailedAttempts = 0 // strike decay
@@ -215,7 +234,7 @@ func (p *LocalProvider) recordSuccess(ctx context.Context, u *User) {
 	}
 	u.FailedAttempts = 0
 	u.LockedUntil = time.Time{}
-	_ = p.save(ctx, u)
+	p.saveCounters(ctx, u)
 }
 
 func (p *LocalProvider) isLocked(u *User) bool {
@@ -253,9 +272,14 @@ func (p *LocalProvider) UpdateUser(ctx context.Context, username string, u User)
 	if !ok {
 		return ErrUserNotFound
 	}
+	// Credentials and security state are never changed by an update.
+	u.Username = username
 	u.PasswordHash = existing.PasswordHash
 	u.PasswordChangedAt = existing.PasswordChangedAt
 	u.PasswordHistory = existing.PasswordHistory
+	u.FailedAttempts = existing.FailedAttempts
+	u.LockedUntil = existing.LockedUntil
+	u.MustChangePassword = existing.MustChangePassword
 	if err := p.save(ctx, &u); err != nil {
 		return err
 	}
@@ -271,7 +295,7 @@ func (p *LocalProvider) DeleteUser(ctx context.Context, username string) error {
 	}
 	if p.opts.Store != nil {
 		if err := p.opts.Store.DeleteUser(ctx, username); err != nil {
-			return fmt.Errorf("auth: delete user: %w", err)
+			return fmt.Errorf("%w: delete user: %w", ErrStorage, err)
 		}
 	}
 	delete(p.users, username)
@@ -317,7 +341,11 @@ func (p *LocalProvider) ChangePassword(ctx context.Context, username, oldPasswor
 
 	if !VerifyPassword(oldHash, oldPassword) {
 		p.mu.Lock()
-		p.recordFailure(ctx, u)
+		// Only count the strike on the current record: saving a stale one
+		// could resurrect a deleted user or undo an update.
+		if current, ok := p.users[username]; ok && current == u {
+			p.recordFailure(ctx, u)
+		}
 		p.mu.Unlock()
 		return ErrPasswordWrong
 	}
