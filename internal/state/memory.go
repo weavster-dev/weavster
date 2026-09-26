@@ -11,11 +11,12 @@ type MemStore struct {
 	mu    sync.RWMutex
 	m     map[string]Message
 	flows map[string]FlowDefinition
+	users map[string]UserDocument
 }
 
 // NewMemStore returns an empty in-memory store.
 func NewMemStore() *MemStore {
-	return &MemStore{m: make(map[string]Message), flows: make(map[string]FlowDefinition)}
+	return &MemStore{m: make(map[string]Message), flows: make(map[string]FlowDefinition), users: make(map[string]UserDocument)}
 }
 
 func (s *MemStore) Put(_ context.Context, m Message) error {

@@ -34,7 +34,8 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | `POST /api/v1/auth/login`, `/auth/logout`, `GET /auth/me`, `POST /auth/password` | Implemented (wired) | `TestLoginLogout`, `TestBootstrapGeneratedPassword`. Tokens are in memory and expire after 12 hours. |
 | First-run `admin` account (env var, secret file, or one-time generated password with forced change) | Implemented (wired) | `TestBootstrapGeneratedPassword`, `TestBootstrapPasswordSources` |
 | Password policy and lockout (`auth.*` config) | Implemented (wired) | `TestBootstrapPasswordSources` |
-| Durable users; user administration API | Unsupported | Users are in memory and re-created at every start. `admin` is the only account. |
+| Durable local users (password changes and lockout state included) | Implemented (wired) | `TestUsersSurviveRestart`. Durable with `store.dialect: sqlite`; the first-run `admin` is created once per database. |
+| User administration API | Unsupported | `admin` is the only account. |
 | Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction | Implemented (wired) | `TestAuditLog`. Written to stderr only; not stored or searchable. See [Audit log](audit-log.md). |
 | HTTPS listener (`listen.tlsAddress`, `tls.certFile/keyFile/minVersion`) | Implemented (wired) | `TestServerConfigTLS` |
 | mTLS | Unsupported | |

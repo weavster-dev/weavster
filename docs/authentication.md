@@ -35,10 +35,19 @@ This password is shown once and must be changed at first login (POST /api/v1/aut
 The password from option 1 or 2 must satisfy [`auth.passwordPolicy`](server-config.md#auth).
 If it doesn't, the server exits `1` with `Error: bootstrap: admin password rejected by auth.passwordPolicy`.
 
-!!! warning "Users are not persisted yet"
-    Users live in memory. Every restart repeats the first-start step, so a generated password
-    changes on every start and a changed password is lost. For a stable password, set
-    `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD` or `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE`.
+### Where users are stored
+
+Users, password changes, and lockout state are saved in the configured
+[store](server-config.md#store):
+
+| `store.dialect` | Users after a restart |
+|---|---|
+| `sqlite` | Kept. The first-start step runs only once per database. After that, the bootstrap variables are ignored and the printed password is never shown again. |
+| `memory`, `disabled` | Lost. Every start repeats the first-start step, so a generated password changes each time. To keep a stable password, set `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD` or `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE`. |
+
+If you lose a generated password on a `sqlite` store, there is no API to reset it. Stop the
+server and delete the database file (this also deletes flows and messages), or keep the
+password somewhere safe when it is first printed.
 
 ### Changing a generated password
 
@@ -63,6 +72,7 @@ This returns `204` on success. Errors:
 |---|---|
 | `400 {"error":{"code":"OLD_PASSWORD_INCORRECT",…}}` | `oldPassword` is wrong. It counts as a failed attempt toward lockout. |
 | `400 {"error":{"code":"PASSWORD_REJECTED",…}}` | `newPassword` fails `auth.passwordPolicy` or equals `oldPassword`. |
+| `500 {"error":{"code":"INTERNAL",…}}` | The new password could not be saved (for example, the database is read-only), or another password change for the same user happened at the same moment. The old password still works; retry. |
 
 A password change signs out every other session of that user. The token used for the change
 keeps working.
@@ -99,9 +109,9 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 
 !!! warning "Lockout can shut out the only admin"
     Anyone who can reach the API can lock `admin` by sending wrong passwords, and there is no
-    second account to unlock it. Restarting the server clears the lockout, but it also clears
-    flows stored with `store.dialect: memory`. Keep the server off untrusted networks. Setting `retryLimit: 0` removes this
-    risk but allows unlimited password guessing.
+    second account to unlock it. With `store.dialect: sqlite` the lockout also survives a
+    restart, so you have to wait `lockoutPeriodSeconds`. Keep the server off untrusted
+    networks. Setting `retryLimit: 0` removes this risk but allows unlimited password guessing.
 
 ## Permissions
 

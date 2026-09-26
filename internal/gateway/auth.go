@@ -15,9 +15,12 @@ import (
 // SessionTTL is how long a login token stays valid.
 const SessionTTL = 12 * time.Hour
 
-// ErrWrongPassword is returned by a PasswordChanger when the old password
-// does not match.
-var ErrWrongPassword = errors.New("old password is incorrect")
+// PasswordChanger errors the handler maps to 400 responses. Any other error
+// is an internal failure (500).
+var (
+	ErrWrongPassword    = errors.New("old password is incorrect")
+	ErrPasswordRejected = errors.New("new password rejected")
+)
 
 // PasswordChanger changes a user's password (spec §5 password change).
 type PasswordChanger interface {
@@ -247,11 +250,14 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.cfg.Passwords.ChangePassword(r.Context(), id.Username, req.OldPassword, req.NewPassword); err != nil {
-		if errors.Is(err, ErrWrongPassword) {
+		switch {
+		case errors.Is(err, ErrWrongPassword):
 			writeError(w, http.StatusBadRequest, "OLD_PASSWORD_INCORRECT", "oldPassword is incorrect")
-			return
+		case errors.Is(err, ErrPasswordRejected):
+			writeError(w, http.StatusBadRequest, "PASSWORD_REJECTED", err.Error())
+		default:
+			writeError(w, http.StatusInternalServerError, "INTERNAL", "could not change password")
 		}
-		writeError(w, http.StatusBadRequest, "PASSWORD_REJECTED", err.Error())
 		return
 	}
 	// Other sessions carry the old credentials' identity: revoke them, and

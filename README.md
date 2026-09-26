@@ -62,7 +62,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   read-only topology JSON built from those flows; message search against the configured
   store (`memory`, `sqlite`, or `disabled`), which is always empty because nothing writes messages.
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
-  account; security-relevant API calls are written to an audit log on stderr. Users are in memory.
+  account; security-relevant API calls are written to an audit log on stderr. Users persist
+  across restarts only with `store.dialect: sqlite`; otherwise they are kept in memory.
 - **CLI**: `weavster server`, `weavster test` (four built-in codec round-trip fixtures,
   JUnit/JSON output), and `-s` batch scripts with `help`, `status`, `version`, `flow list`,
   `user list`, `quit`. `-u`/`-p` send Basic credentials; `-c` is parsed but ignored; `-v` prints
