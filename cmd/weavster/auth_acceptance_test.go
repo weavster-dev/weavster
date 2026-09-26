@@ -37,6 +37,8 @@ var protectedRoutes = []struct {
 	{http.MethodPost, "/api/v1/flows/admit/messages", "messages:send"},
 	{http.MethodGet, "/api/v1/flows/admit/stats", "flows:view"},
 	{http.MethodGet, "/api/v1/events", "events:view"},
+	{http.MethodPost, "/api/v1/flows/admit/deploy", "flows:deploy"},
+	{http.MethodPost, "/api/v1/flows/redeploy-all", "flows:deploy"},
 }
 
 type apiClient struct {
@@ -168,7 +170,7 @@ func TestPermissionMatrix(t *testing.T) {
 		}
 	}
 	flows := flowAdapter{store: state.NewMemStore()}
-	if err := flows.Create(context.Background(), gateway.Flow{ID: "admit", Name: "Patient Admit"}); err != nil {
+	if _, err := flows.Create(context.Background(), gateway.Flow{ID: "admit", Name: "Patient Admit"}); err != nil {
 		t.Fatal(err)
 	}
 	gw := gateway.New(gateway.Config{

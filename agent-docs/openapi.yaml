@@ -109,6 +109,28 @@ paths:
       responses:
         "204":
           description: Deleted.
+  /api/v1/flows/{id}/{action}:
+    post:
+      summary: Change a flow's lifecycle state (requires flows:deploy)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: action
+          in: path
+          required: true
+          schema: {type: string, enum: [deploy, undeploy, start, stop, pause, halt, resume]}
+      responses:
+        "200": {description: The updated flow}
+        "404": {description: Unknown flow or action}
+        "409": {description: "Transition not allowed from the flow's status"}
+  /api/v1/flows/redeploy-all:
+    post:
+      summary: Undeploy and re-deploy every flow that is not undeployed (deployed, started, paused, halted, stopped); each ends deployed (requires flows:deploy)
+      responses:
+        "200": {description: The redeployed flows}
+        "500": {description: "Stopped part-way: {error: {code: REDEPLOY_INCOMPLETE}, redeployed: [flows already redeployed]}"}
   /api/v1/flows/{id}/messages:
     post:
       summary: Send a message into a flow (requires messages:send)
@@ -132,7 +154,7 @@ paths:
         "202": {description: "Processed: {id, status} with status sent, queued, dead-lettered, filtered, or errored"}
         "400": {description: The flow has a transform and the body is not a single JSON object, or the body could not be read}
         "404": {description: Unknown flow}
-        "409": {description: The flow is stopped, paused, halted, or undeployed}
+        "409": {description: The flow is not started}
         "413": {description: Body larger than 10 MiB}
   /api/v1/flows/{id}/stats:
     get:

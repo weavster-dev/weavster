@@ -61,7 +61,17 @@ below, in order, on the message as a JSON object.
 | `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a `POST` with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough), and it times out after 30 seconds. The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`. Created if missing. |
 
-## 2. Send a message
+## 2. Deploy and start the flow
+
+A new flow is `undeployed` and rejects messages until you deploy and start it (permission
+`flows:deploy`). See [Flow lifecycle](flow-lifecycle.md).
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/deploy
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/start
+```
+
+## 3. Send a message
 
 You need the `messages:send` permission (or `admin`).
 
@@ -93,10 +103,10 @@ Errors:
 |---|---|
 | `400` | The flow has a transform and the body is not a JSON object, or the body could not be read. |
 | `404` | Unknown flow. |
-| `409` | The flow's `status` is `stopped`, `paused`, `halted`, or `undeployed`. |
+| `409` | The flow is not `started`. |
 | `413` | Body larger than 10 MiB. |
 
-## 3. Find processed messages
+## 4. Find processed messages
 
 Every message is saved in the configured store with its final status:
 
@@ -105,7 +115,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
   'http://127.0.0.1:8080/api/v1/messages?flowId=adt&status=queued'
 ```
 
-## 4. Statistics and events
+## 5. Statistics and events
 
 Per-flow counters (permission `flows:view`):
 
@@ -166,8 +176,7 @@ point is already stored. The next start finishes it and sends the same `Idempote
 destination that already received it can ignore the repeat. A second SIGINT/SIGTERM during the
 wait stops the server immediately.
 
-Messages of a flow whose `status` is `stopped`, `paused`, `halted`, or `undeployed` are not
-retried; they stay `queued`.
+Messages of a flow that is not `started` are not retried; they stay `queued`.
 
 A retried message that later succeeds changes to `sent`. The statistics then count it once as
 `queued` and once as `sent`.
@@ -183,5 +192,3 @@ A retried message that later succeeds changes to `sent`. The statistics then cou
 - A `file` destination writes wherever `dir` points, with the server's permissions, and an
   `http` destination can target any address the server can reach, including internal ones.
   Only give `flows:edit` to trusted users.
-- A flow's `status` is whatever you set when you create it; lifecycle operations (deploy, start,
-  stop) do not exist yet.

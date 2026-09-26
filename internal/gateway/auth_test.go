@@ -50,10 +50,10 @@ func newAuthServer(passwords PasswordChanger) *Server {
 
 type stubFlows struct{}
 
-func (*stubFlows) List(context.Context) ([]Flow, error)      { return []Flow{}, nil }
-func (*stubFlows) Get(context.Context, string) (Flow, error) { return Flow{}, nil }
-func (*stubFlows) Create(context.Context, Flow) error        { return nil }
-func (*stubFlows) Delete(context.Context, string) error      { return nil }
+func (*stubFlows) List(context.Context) ([]Flow, error)           { return []Flow{}, nil }
+func (*stubFlows) Get(context.Context, string) (Flow, error)      { return Flow{}, nil }
+func (*stubFlows) Create(_ context.Context, f Flow) (Flow, error) { return f, nil }
+func (*stubFlows) Delete(context.Context, string) error           { return nil }
 
 func serve(s *Server, method, path, body string, set func(*http.Request)) *httptest.ResponseRecorder {
 	req := httptest.NewRequest(method, path, strings.NewReader(body))

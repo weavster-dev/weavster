@@ -93,17 +93,18 @@ func TestFlowAdapter(t *testing.T) {
 	if flows, err := a.List(ctx); err != nil || len(flows) != 0 {
 		t.Fatalf("empty List = %v, %v", flows, err)
 	}
-	want := gateway.Flow{ID: "f1", Name: "Flow One", SourceType: "file", Status: "idle", Enabled: true}
-	if err := a.Create(ctx, want); err != nil {
+	want := gateway.Flow{ID: "f1", Name: "Flow One", SourceType: "file", Enabled: true}
+	if _, err := a.Create(ctx, want); err != nil {
 		t.Fatal(err)
 	}
+	want.Status = "undeployed" // new flows are drafts (D-29)
 	if got, err := a.Get(ctx, "f1"); err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("Get = %+v, %v; want %+v", got, err, want)
 	}
 	if flows, err := a.List(ctx); err != nil || len(flows) != 1 || !reflect.DeepEqual(flows[0], want) {
 		t.Errorf("List = %+v, %v", flows, err)
 	}
-	if err := a.Create(ctx, want); !errors.Is(err, gateway.ErrFlowExists) {
+	if _, err := a.Create(ctx, want); !errors.Is(err, gateway.ErrFlowExists) {
 		t.Errorf("Create duplicate = %v, want gateway.ErrFlowExists", err)
 	}
 	if _, err := a.Get(ctx, "missing"); !errors.Is(err, gateway.ErrFlowNotFound) {
@@ -149,7 +150,7 @@ func TestStoresImplementFlowRepository(t *testing.T) {
 func TestTopologyAdapter(t *testing.T) {
 	ctx := context.Background()
 	flows := flowAdapter{store: state.NewMemStore()}
-	if err := flows.Create(ctx, gateway.Flow{ID: "admit", Name: "Patient Admit", SourceType: "file", Status: "started"}); err != nil {
+	if _, err := flows.Create(ctx, gateway.Flow{ID: "admit", Name: "Patient Admit", SourceType: "file"}); err != nil {
 		t.Fatal(err)
 	}
 	ta := topologyAdapter{flows: flows}
