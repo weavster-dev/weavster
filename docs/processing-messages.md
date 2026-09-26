@@ -32,6 +32,14 @@ reported as `400` with the reason, for example:
 invalid flow: dsl: normalize: step 1: build: dsl: step not supported yet
 ```
 
+Every flow definition you send (create, update, import) is checked against
+[`flow.schema.json`](https://github.com/weavster-dev/weavster/blob/main/agent-docs/schemas/flow.schema.json).
+Unknown fields and wrong types are rejected rather than ignored:
+
+```text
+400 flow does not match flow.schema.json: /destinations/0/type: value must be one of "http", "file"
+```
+
 ### `transform`
 
 `transform` is optional. Without it (or with `null` or no `steps`), messages pass through

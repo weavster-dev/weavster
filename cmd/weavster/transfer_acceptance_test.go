@@ -30,7 +30,7 @@ func TestFlowExportImport(t *testing.T) {
 	for _, tc := range []struct{ name, body, want string }{
 		{"unknown dependency", `{"id":"x","dependsOn":["nope"]}`, "depends on unknown flow nope"},
 		{"self dependency", `{"id":"x","dependsOn":["x"]}`, "cannot depend on itself"},
-		{"reserved id", `{"id":"export"}`, "not export, import"},
+		{"reserved id", `{"id":"export"}`, "is reserved"},
 	} {
 		if code, body, _ := src.do(http.MethodPost, "/api/v1/flows", tc.body, admin); code != http.StatusBadRequest || !strings.Contains(body, tc.want) {
 			t.Errorf("%s: %d %q", tc.name, code, body)

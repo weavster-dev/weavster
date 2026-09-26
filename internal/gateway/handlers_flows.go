@@ -82,11 +82,6 @@ func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, ma
 		http.Error(w, "could not read request body", http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
-	var f Flow
-	if err := json.Unmarshal(body, &f); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return Flow{}, nil, false
-	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
 		http.Error(w, "the body must be a JSON object", http.StatusBadRequest)
@@ -94,6 +89,21 @@ func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, ma
 	}
 	if _, present := fields["status"]; present {
 		http.Error(w, "status is managed by lifecycle operations (deploy, start, ...); omit it", http.StatusBadRequest)
+		return Flow{}, nil, false
+	}
+	if pathID != "" {
+		if _, present := fields["id"]; !present { // the schema requires id; it comes from the URL here
+			fields["id"], _ = json.Marshal(pathID)
+			body, _ = json.Marshal(fields)
+		}
+	}
+	if err := validateFlowJSON(body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return Flow{}, nil, false
+	}
+	var f Flow
+	if err := json.Unmarshal(body, &f); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
 	if pathID != "" {
@@ -299,9 +309,8 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 	}
 	flows := make([]Flow, 0, len(*bundle.Flows))
 	for i, raw := range *bundle.Flows {
-		var f Flow
 		var fields map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &f); err != nil || json.Unmarshal(raw, &fields) != nil || fields == nil {
+		if json.Unmarshal(raw, &fields) != nil || fields == nil {
 			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
 			return
 		}
@@ -309,8 +318,14 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("flows[%d]: status is managed by lifecycle operations; omit it", i), http.StatusBadRequest)
 			return
 		}
-		if !validFlowID.MatchString(f.ID) {
-			http.Error(w, fmt.Sprintf("flows[%d]: flow id must be 1-128 characters from A-Z a-z 0-9 . _ - and not export, import, or redeploy-all", i), http.StatusBadRequest)
+		// The schema also enforces the id format and reserved ids.
+		if err := validateFlowJSON(raw); err != nil {
+			http.Error(w, fmt.Sprintf("flows[%d]: %v", i, err), http.StatusBadRequest)
+			return
+		}
+		var f Flow
+		if err := json.Unmarshal(raw, &f); err != nil {
+			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
 			return
 		}
 		flows = append(flows, f)
