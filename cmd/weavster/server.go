@@ -72,6 +72,12 @@ func runServer(args []string, stderr io.Writer) int {
 	}
 	server := &http.Server{Addr: addr, Handler: handler}
 
+	// Register for signals before serving so a stop signal that arrives as
+	// soon as the listener is up is never lost.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sig)
+
 	errCh := make(chan error, 1)
 	go func() {
 		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -79,8 +85,6 @@ func runServer(args []string, stderr io.Writer) int {
 		}
 	}()
 
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	select {
 	case err := <-errCh:
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
@@ -92,7 +96,8 @@ func runServer(args []string, stderr io.Writer) int {
 }
 
 // isPrivileged reports whether the process runs under a privileged OS account.
-func isPrivileged() bool { return os.Geteuid() == 0 }
+// It is a variable so acceptance tests can simulate a root account.
+var isPrivileged = func() bool { return os.Geteuid() == 0 }
 
 // checkPrivileged refuses to run under a privileged account unless allowed
 // (spec §11).
