@@ -271,6 +271,14 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>POST /api/v1/flows/{id}/messages</code></td>
 <td><code>messages:send</code></td>
 </tr>
+<tr>
+<td><code>GET /api/v1/flows/{id}/stats</code></td>
+<td><code>flows:view</code></td>
+</tr>
+<tr>
+<td><code>GET /api/v1/events</code></td>
+<td><code>events:view</code></td>
+</tr>
 </tbody>
 </table>
 <p>The <code>admin</code> permission grants everything. A signed-in user without the permission gets:</p>

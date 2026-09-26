@@ -115,6 +115,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#4-statistics-and-events" class="nav-link">4. Statistics and events</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#limits-today" class="nav-link">Limits today</a>
               <ul class="nav flex-column">
               </ul>
@@ -286,8 +290,36 @@ statuses above.</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
   'http://127.0.0.1:8080/api/v1/messages?flowId=adt&amp;status=queued'
 </code></pre>
+<h2 id="4-statistics-and-events">4. Statistics and events</h2>
+<p>Per-flow counters (permission <code>flows:view</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/flows/adt/stats
+</code></pre>
+<pre><code class="language-json">{&quot;received&quot;:3,&quot;filtered&quot;:1,&quot;transformed&quot;:2,&quot;sent&quot;:1,&quot;errored&quot;:0,&quot;queued&quot;:1,
+ &quot;destinations&quot;:{&quot;ehr&quot;:{&quot;sent&quot;:1,&quot;errored&quot;:1}},&quot;lastMessageAt&quot;:&quot;2026-09-26T12:00:00Z&quot;}
+</code></pre>
+<ul>
+<li><code>transformed</code> counts messages that got past the transform (sent plus queued).</li>
+<li><code>destinations</code> counts successful and failed deliveries per destination.</li>
+<li><code>lastMessageAt</code> is the arrival time of the newest message, <code>null</code> until the first one.</li>
+<li>Deleting a flow clears its counters, so a new flow with the same <code>id</code> starts at zero.</li>
+<li>Add <code>?lifetime=true</code> for lifetime totals. Today both views are identical because no reset exists yet.</li>
+</ul>
+<p>Events (permission <code>events:view</code>). Each processed message adds one event of type
+<code>message.sent</code>, <code>message.queued</code>, <code>message.filtered</code>, or <code>message.errored</code>:</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/events?flowId=adt&amp;type=message.errored'
+</code></pre>
+<pre><code class="language-json">[{&quot;id&quot;:7,&quot;at&quot;:&quot;2026-09-26T12:00:00Z&quot;,&quot;type&quot;:&quot;message.errored&quot;,&quot;flowId&quot;:&quot;adt&quot;,&quot;data&quot;:{&quot;messageId&quot;:&quot;6f1c…&quot;}}]
+</code></pre>
+<p>Both filters are optional. <code>limit</code> (1–10000, default 1000) returns the newest matches; results
+are oldest first. Events never contain message content or transform error text, because both
+can hold patient data. The error is stored with the message instead.</p>
+<p>The topology overview (<code>GET /api/v1/topology</code>) shows each flow's <code>received</code>, <code>sent</code>,
+<code>errored</code>, and <code>queued</code> counts under <code>activity</code>. Zero counts are included.</p>
 <h2 id="limits-today">Limits today</h2>
 <ul>
+<li>Statistics and events are kept in memory: they restart from zero when the server restarts,
+  and only the newest 10,000 events are kept.</li>
 <li>Processing is synchronous and runs once. Failed deliveries are not retried, and <code>queued</code>
   messages stay queued.</li>
 <li>Only <code>http</code> and <code>file</code> destinations are available.</li>
