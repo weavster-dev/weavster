@@ -47,8 +47,13 @@ func TestDestinationStartStop(t *testing.T) {
 	}
 	stop()
 
-	stop = startCLI(t, args, c.base+"/api/openapi.yaml")
+	stop, stderr := startCLIWithStderr(t, args, c.base+"/api/openapi.yaml")
 	defer stop()
+	defer func() {
+		if t.Failed() {
+			t.Logf("server stderr:\n%s", stderr.String())
+		}
+	}()
 	if _, body, _ := c.do(http.MethodGet, "/api/v1/flows/f", "", admin); !strings.Contains(body, `"stoppedDestinations":["b"]`) {
 		t.Errorf("stopped set lost on restart: %s", body)
 	}

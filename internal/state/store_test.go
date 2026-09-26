@@ -3,6 +3,8 @@ package state
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -276,5 +278,39 @@ func TestNextAttemptAtRoundTrip(t *testing.T) {
 	got, err := s.Get(ctx, "n")
 	if err != nil || !got.Attempts["a"].NextAttemptAt.Equal(due) || !got.Attempts["b"].NextAttemptAt.IsZero() {
 		t.Errorf("attempts = %+v, %v", got.Attempts, err)
+	}
+}
+
+// TestSQLiteCancelReleasesFile: a statement cancelled by its context must
+// not keep the database file locked after Close, or the next open of the
+// same file (a restart) fails with SQLITE_BUSY.
+func TestSQLiteCancelReleasesFile(t *testing.T) {
+	for i := 0; i < 20; i++ {
+		dsn := filepath.Join(t.TempDir(), "x.db")
+		s, err := OpenSQLite(context.Background(), dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for j := 0; j < 20; j++ {
+			if err := s.Put(context.Background(), Message{ID: fmt.Sprint(j), FlowID: "f", Status: StatusQueued, Raw: []byte("x")}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		go func() { time.Sleep(time.Duration(i) * 50 * time.Microsecond); cancel() }()
+		for ctx.Err() == nil {
+			_, _ = s.Search(ctx, Query{Status: StatusQueued, Sort: "id", Limit: 100})
+		}
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		s2, err := OpenSQLite(context.Background(), dsn)
+		if err != nil {
+			t.Fatalf("iteration %d: reopen: %v", i, err)
+		}
+		if err := s2.Put(context.Background(), Message{ID: "z", FlowID: "f", Status: StatusQueued, Raw: []byte("x")}); err != nil {
+			t.Fatalf("iteration %d: write after a cancelled query and Close: %v", i, err)
+		}
+		_ = s2.Close()
 	}
 }

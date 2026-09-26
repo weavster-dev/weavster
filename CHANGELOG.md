@@ -72,6 +72,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- With `store.dialect: sqlite`, a restart could fail writes with `database is locked (SQLITE_BUSY)` when the previous run had stopped during a store query. SQLite statements now run to completion instead of being cancelled.
 - Flow API status codes (#151):
   - `DELETE /api/v1/flows/{id}` for an unknown flow returns `404`, not `204`.
   - `GET /api/v1/topology/flows/{flowId}` for an unknown flow returns `404`, not `500`.

@@ -338,7 +338,6 @@ const retryPage = 200
 // cancellation stops the pass between messages. An error on one message is
 // collected and the pass continues. It returns how many messages it resumed.
 func (p *Pipeline) RetryDue(ctx context.Context, lookup FlowLookup) (int, error) {
-	lookup = cachedLookup(lookup) // one flow lookup per flow per pass
 	var errs []error
 	n := 0
 	for _, status := range []state.Status{state.StatusQueued, state.StatusTransformed, state.StatusReceived} {
@@ -370,24 +369,6 @@ func (p *Pipeline) RetryDue(ctx context.Context, lookup FlowLookup) (int, error)
 		}
 	}
 	return n, errors.Join(errs...)
-}
-
-// cachedLookup memoizes a FlowLookup for one retry pass, so a backlog of
-// messages for the same flow costs one flow read.
-func cachedLookup(lookup FlowLookup) FlowLookup {
-	type entry struct {
-		f   Flow
-		err error
-	}
-	cache := map[string]entry{}
-	return func(ctx context.Context, flowID string) (Flow, error) {
-		if e, ok := cache[flowID]; ok {
-			return e.f, e.err
-		}
-		f, err := lookup(ctx, flowID)
-		cache[flowID] = entry{f, err}
-		return f, err
-	}
 }
 
 // retryOne resumes one message if it is not in flight, its flow is running,

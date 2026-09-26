@@ -263,3 +263,30 @@ func TestStoppedDestinationHoldsDespiteExhaustedPeer(t *testing.T) {
 		t.Errorf("b got %d deliveries, status %s; want b delivered, then dead-lettered for a", len(held.bodies), m.Status)
 	}
 }
+
+// TestRetryReadsFlowPerMessage: a destination stopped while a retry pass is
+// running is not delivered to for the rest of that pass.
+func TestRetryReadsFlowPerMessage(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	sink := &recordingSink{}
+	p := New(store, func(Destination) (Sink, error) { return sink, nil }, nil, Options{})
+	for _, id := range []string{"m1", "m2"} {
+		_ = store.Put(ctx, state.Message{ID: id, FlowID: "f", Status: state.StatusQueued, Transformed: []byte(id)})
+	}
+	lookups := 0
+	lookup := func(context.Context, string) (Flow, error) {
+		lookups++
+		// The destination is stopped after the first message is resumed.
+		return Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d", Stopped: lookups > 1}}}, nil
+	}
+	if _, err := p.RetryDue(ctx, lookup); err != nil {
+		t.Fatal(err)
+	}
+	if len(sink.bodies) != 1 {
+		t.Errorf("deliveries = %d, want 1: the stopped destination received a message", len(sink.bodies))
+	}
+	if m, _ := store.Get(ctx, "m2"); m.Status != state.StatusQueued {
+		t.Errorf("m2 status = %s, want queued (held)", m.Status)
+	}
+}
