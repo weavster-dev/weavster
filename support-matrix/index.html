@@ -187,7 +187,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>GET /api/openapi.yaml</code> (no marker header needed)</td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixWired/openapi</code>. The served document omits <code>/api/v1/flows/{id}</code> and the <code>X-Weavster-CSRF</code> header, so a client generated from it is incomplete.</td>
+<td><code>TestSupportMatrixWired/openapi</code>. The served document and <code>agent-docs/openapi.yaml</code> are maintained separately and can differ in detail.</td>
 </tr>
 <tr>
 <td><code>GET /api/v1/system</code> status document</td>
@@ -210,9 +210,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestSupportMatrixWired/security-headers</code>. HSTS is sent even over plain HTTP.</td>
 </tr>
 <tr>
-<td><code>GET/POST /api/v1/flows</code>, <code>GET/DELETE /api/v1/flows/{id}</code></td>
+<td><code>GET/POST /api/v1/flows</code>, <code>GET/PUT/DELETE /api/v1/flows/{id}</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixWired/flows-*</code>. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. Flows are stored but <strong>never run</strong>. A flow <code>id</code> must be 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>; anything else returns <code>400</code>. <code>POST</code> with an existing <code>id</code> returns <code>409</code>. <code>GET</code>/<code>DELETE</code> of an unknown ID returns <code>404</code>.</td>
+<td><code>TestSupportMatrixWired/flows-*</code>, <code>TestFlowUpdateAndEnable</code>. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. A flow processes messages once it is <code>started</code> (see Flow lifecycle below). A flow <code>id</code> must be 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>; anything else returns <code>400</code>. <code>POST</code> with an existing <code>id</code> returns <code>409</code>. <code>GET</code>/<code>DELETE</code> of an unknown ID returns <code>404</code>.</td>
 </tr>
 <tr>
 <td><code>GET /api/v1/topology</code>, <code>GET /api/v1/topology/flows/{flowId}</code></td>
@@ -327,9 +327,14 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 </thead>
 <tbody>
 <tr>
+<td>Flow update/rename (<code>PUT /api/v1/flows/{id}</code>), enable/disable, auto-deploy of enabled flows at startup (<code>flows.deployOnStartup</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestFlowUpdateAndEnable</code>, <code>TestDeployOnStartupDisabled</code></td>
+</tr>
+<tr>
 <td>Flow lifecycle: deploy, undeploy, start, stop, pause, halt, resume, redeploy-all, with transitions enforced</td>
 <td>Implemented (wired)</td>
-<td><code>TestFlowLifecycle</code>. API only; no per-destination start/stop, no auto-deploy, no dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
+<td><code>TestFlowLifecycle</code>. API only; no per-destination start/stop, no dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
 </tr>
 <tr>
 <td>Message intake: <code>POST /api/v1/flows/{id}/messages</code></td>

@@ -118,6 +118,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#enabled-flows-start-automatically" class="nav-link">Enabled flows start automatically</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#upgrading-from-a-version-without-the-lifecycle" class="nav-link">Upgrading from a version without the lifecycle</a>
               <ul class="nav flex-column">
               </ul>
@@ -249,14 +253,33 @@ redeployed. The rest keep their status.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="enabled-flows-start-automatically">Enabled flows start automatically</h2>
+<p><code>enabled</code> marks a flow as eligible for automatic deployment. It never changes the status by
+itself. When the server starts (with <code>flows.deployOnStartup</code>, the default; see
+<a href="../server-config/#flows">Server configuration</a>), every flow that is <code>enabled</code> <strong>and</strong>
+<code>undeployed</code> is deployed and started. Flows in any other status keep it, and disabled flows are
+left alone.</p>
+<p>Because <code>enabled</code> decides what runs after a restart, a flow you only <code>undeploy</code> comes back
+at the next start if it is still enabled. To keep a flow offline across restarts, <code>undeploy</code> it
+<strong>and</strong> <code>disable</code> it.</p>
+<p>Set it on create (<code>"enabled": true</code>), with an update that includes <code>enabled</code>, or with these
+endpoints (permission <code>flows:edit</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/enable
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/disable
+</code></pre>
+<p>Each returns <code>200</code> with the flow, or <code>404</code> for an unknown flow.</p>
+<p>If a flow cannot be auto-deployed (for example, its stored definition is unreadable), the
+server logs <code>auto-deploy failed</code> with the flow id and starts anyway. You can then fix or delete
+that flow over the API.</p>
 <h2 id="upgrading-from-a-version-without-the-lifecycle">Upgrading from a version without the lifecycle</h2>
 <p>Flows created before the lifecycle existed have no status, or a free-form one. They read as
-<code>undeployed</code> and stop accepting messages until you <code>deploy</code> and <code>start</code> them. Their <code>queued</code>
-messages are retried again once they are started.</p>
+<code>undeployed</code>. On the first start after the upgrade, those that are <code>enabled</code> are deployed and
+started automatically (with the default <code>flows.deployOnStartup: true</code>). The others reject
+messages until you <code>deploy</code> and <code>start</code> them. <code>queued</code> messages of a flow are retried again once
+it is started.</p>
 <h2 id="not-available-yet">Not available yet</h2>
 <ul>
 <li>Starting or stopping a single destination.</li>
-<li>Automatic deployment of <code>enabled</code> flows when the server starts.</li>
 <li>Flow dependencies (deploy does not deploy other flows).</li>
 <li>CLI commands for these operations.</li>
 </ul></div>

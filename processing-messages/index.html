@@ -233,6 +233,26 @@ below, in order, on the message as a JSON object.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="update-a-flow">Update a flow</h3>
+<p>Replace a flow's definition, or rename it by changing <code>name</code> (permission <code>flows:edit</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080/api/v1/flows/adt -d '{
+  &quot;name&quot;: &quot;ADT normalize v2&quot;, &quot;sourceType&quot;: &quot;http&quot;, &quot;enabled&quot;: true,
+  &quot;transform&quot;: {&quot;kind&quot;: &quot;Transform&quot;, &quot;name&quot;: &quot;normalize&quot;, &quot;inputs&quot;: [&quot;message&quot;], &quot;steps&quot;: [ … ]},
+  &quot;destinations&quot;: [ … ]
+}'
+</code></pre>
+<ul>
+<li>The body replaces the whole definition: fields you leave out are cleared. There are two
+  exceptions: the flow keeps its <code>status</code>, and it keeps <code>enabled</code> unless you include that field.</li>
+<li>Messages received after the update use the new definition. A running flow does not need a
+  restart.</li>
+<li><code>queued</code> messages are retried against the current definition. A changed destination URL is
+  used for them, and a removed destination is no longer retried for them.</li>
+<li>Statistics of a removed or renamed destination remain listed until the server restarts.</li>
+<li>The same checks as create apply (<code>400</code> with the reason).</li>
+<li><code>id</code> comes from the URL: a different <code>id</code> in the body, or any <code>status</code> field, returns <code>400</code>.</li>
+<li>Unknown flows return <code>404</code>.</li>
+</ul>
 <h2 id="2-deploy-and-start-the-flow">2. Deploy and start the flow</h2>
 <p>A new flow is <code>undeployed</code> and rejects messages until you deploy and start it (permission
 <code>flows:deploy</code>). See <a href="../flow-lifecycle/">Flow lifecycle</a>.</p>
