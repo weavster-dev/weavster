@@ -53,6 +53,8 @@ auth:
 		{name: "zero pool", yaml: "store: {maxConnections: 0}\n", wantErr: "store.maxConnections must be >= 1"},
 		{name: "negative retry", yaml: "store: {maxRetry: -1}\n", wantErr: "must be >= 0"},
 		{name: "zero delivery attempts", yaml: "delivery: {maxAttempts: 0}\n", wantErr: "delivery.maxAttempts"},
+		{name: "huge retry interval", yaml: "delivery: {retryIntervalMs: 9223372036854775807}\n", wantErr: "delivery.retryIntervalMs must be between"},
+		{name: "zero backoff", yaml: "delivery: {backoffBaseMs: 0}\n", wantErr: "delivery.backoffBaseMs must be between"},
 		{name: "negative lockout", yaml: "auth: {lockout: {retryLimit: -2}}\n", wantErr: "auth.lockout values must be >= 0"},
 		{name: "class count below -1", yaml: "auth: {passwordPolicy: {minUpper: -2}}\n", wantErr: "must be >= -1"},
 	}

@@ -114,13 +114,15 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 		} else {
 			cur.LastError = err.Error()
 		}
+		// The destination is exhausted at MaxAttempts (no next attempt). The
+		// message stays queued: the caller decides dead-lettering once it has
+		// considered every destination, so a crash here never strands work.
 		if cur.Attempts >= o.opts.MaxAttempts {
 			cur.NextAttemptAt = time.Time{}
-			m.Status = state.StatusDeadLettered
 		} else {
 			cur.NextAttemptAt = time.Now().Add(o.Backoff(cur.Attempts))
-			m.Status = state.StatusQueued
 		}
+		m.Status = state.StatusQueued
 		m.Attempts[dest] = cur
 		return o.store.Put(ctx, m)
 	}

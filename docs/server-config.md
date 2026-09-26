@@ -114,7 +114,7 @@ The store holds messages, flow definitions, and users. With `sqlite`, flows and 
 | `backoffBaseMs` | `1000` | Delay before the first retry; it doubles for each further retry, up to one minute. |
 | `retryIntervalMs` | `1000` | How often the server checks for retries that are due. |
 
-All three must be at least `1`. See [Processing messages](processing-messages.md#retries).
+`maxAttempts` must be 1–1000; the two intervals must be 1–3,600,000 ms (one hour). See [Processing messages](processing-messages.md#retries).
 
 ### `paths`
 

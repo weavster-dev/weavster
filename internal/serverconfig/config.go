@@ -170,8 +170,13 @@ func (c Config) Validate() error {
 	if c.Store.MaxRetry < 0 || c.Store.RetryWaitMs < 0 {
 		return errors.New("config: store.maxRetry and store.retryWaitMs must be >= 0")
 	}
-	if d := c.Delivery; d.MaxAttempts < 1 || d.BackoffBaseMs < 1 || d.RetryIntervalMs < 1 {
-		return errors.New("config: delivery.maxAttempts, delivery.backoffBaseMs, and delivery.retryIntervalMs must be >= 1")
+	if d := c.Delivery; d.MaxAttempts < 1 || d.MaxAttempts > 1000 {
+		return errors.New("config: delivery.maxAttempts must be between 1 and 1000")
+	}
+	for key, v := range map[string]int{"delivery.backoffBaseMs": c.Delivery.BackoffBaseMs, "delivery.retryIntervalMs": c.Delivery.RetryIntervalMs} {
+		if v < 1 || v > 3600000 {
+			return fmt.Errorf("config: %s must be between 1 and 3600000 (one hour)", key)
+		}
 	}
 	p := c.Auth.PasswordPolicy
 	for _, v := range []int{p.MinLength, c.Auth.Lockout.RetryLimit, c.Auth.Lockout.LockoutPeriodSeconds} {

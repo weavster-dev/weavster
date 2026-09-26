@@ -218,3 +218,20 @@ func TestRetryPagesThroughAllQueued(t *testing.T) {
 		t.Errorf("RetryDue = %d, %v; want %d", n, err, total)
 	}
 }
+
+// TestRetryRepairsStuckRollup: a crash between exhausting a destination and
+// the rollup leaves "queued" with nothing to deliver; the retry pass fixes it.
+func TestRetryRepairsStuckRollup(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	p := New(store, func(Destination) (Sink, error) { return &recordingSink{}, nil }, nil, Options{MaxAttempts: 2})
+	f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}, {Name: "b", Type: "file", Dir: "d"}}}
+	_ = store.Put(ctx, state.Message{ID: "m", FlowID: "f", Status: state.StatusQueued,
+		Attempts: map[string]state.DestinationAttempt{"a": {Attempts: 2, LastError: "x"}, "b": {Attempts: 1}}})
+	if n, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) { return f, nil }); err != nil || n != 1 {
+		t.Fatalf("RetryDue = %d, %v", n, err)
+	}
+	if m, _ := store.Get(ctx, "m"); m.Status != state.StatusDeadLettered {
+		t.Errorf("status = %s, want dead-lettered", m.Status)
+	}
+}

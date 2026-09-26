@@ -395,6 +395,12 @@ func (p *Pipeline) retryOne(ctx context.Context, m state.Message, lookup FlowLoo
 			due = due || p.pending(m.Attempts[d.Name], now)
 		}
 		if !due {
+			// Nothing to deliver; fix the status if a crash hit between the
+			// last delivery and the rollup (e.g. a destination exhausted).
+			if status := p.rollup(m, f); status != state.StatusQueued {
+				_, err := p.complete(ctx, m.ID, status, nil, true, nil)
+				return true, err
+			}
 			return false, nil
 		}
 	}

@@ -128,8 +128,16 @@ func TestDeadLetterAfterMaxAttempts(t *testing.T) {
 
 	id, _ := sendMessage(t, c, "f", "x")
 	waitStatus(t, c, id, "dead-lettered")
-	_, body, _ := c.do(http.MethodGet, "/api/v1/events?type=message.dead-lettered", "", basic(bootstrapAdmin, testAdminPassword))
-	if !strings.Contains(body, `"type":"message.dead-lettered"`) || !strings.Contains(body, id) {
-		t.Errorf("dead-letter event missing: %s", body)
+	// The event is logged right after the status is stored; poll briefly.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, body, _ := c.do(http.MethodGet, "/api/v1/events?type=message.dead-lettered", "", basic(bootstrapAdmin, testAdminPassword))
+		if strings.Contains(body, id) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("dead-letter event missing: %s", body)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 }
