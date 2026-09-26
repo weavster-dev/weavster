@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"strings"
+	"unicode"
 )
 
 // Action constants for audit log entries (spec §10).
@@ -13,14 +14,34 @@ const (
 	ActionConfig    = "config.apply"
 )
 
-// sensitiveKeys are parameters excluded from audit capture (spec §10). A key
-// is sensitive when it contains one of these, ignoring case.
-var sensitiveKeys = []string{"password", "token", "secret", "authorization", "credential", "ssn", "phi"}
+// sensitiveKeys are parameters excluded from audit capture (spec §10).
+var sensitiveKeys = map[string]bool{
+	"password": true, "token": true, "secret": true, "authorization": true,
+	"credential": true, "ssn": true, "phi": true,
+}
 
+// isSensitive reports whether any word of key is sensitive, ignoring case.
+// Words are split at non-alphanumerics and lower-to-upper case changes, so
+// "newPassword", "X-Token", and "client_secret" match but "className" does
+// not.
 func isSensitive(key string) bool {
-	k := strings.ToLower(key)
-	for _, s := range sensitiveKeys {
-		if strings.Contains(k, s) {
+	var words []string
+	start := 0
+	runes := []rune(key)
+	for i, c := range runes {
+		boundary := !unicode.IsLetter(c) && !unicode.IsDigit(c)
+		camel := i > 0 && unicode.IsUpper(c) && unicode.IsLower(runes[i-1])
+		if boundary || camel {
+			words = append(words, string(runes[start:i]))
+			start = i
+			if boundary {
+				start = i + 1
+			}
+		}
+	}
+	words = append(words, string(runes[start:]))
+	for _, w := range words {
+		if sensitiveKeys[strings.ToLower(w)] {
 			return true
 		}
 	}
@@ -28,7 +49,8 @@ func isSensitive(key string) bool {
 }
 
 // RedactSensitive returns a copy of detail with sensitive values redacted.
-// Keys match case-insensitively and by substring (e.g. "newPassword").
+// Any word of a key (see isSensitive) matching a sensitive name, in any
+// case, redacts the value.
 func RedactSensitive(detail map[string]string) map[string]string {
 	out := make(map[string]string, len(detail))
 	for k, v := range detail {

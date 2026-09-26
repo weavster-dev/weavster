@@ -285,7 +285,7 @@ func (authorizerAdapter) Authorize(ctx context.Context, id gateway.Identity, res
 type auditAdapter struct{ s *audit.LocalSink }
 
 func (a auditAdapter) Record(ctx context.Context, e gateway.AuditEvent) error {
-	return a.s.Record(ctx, audit.Entry{Actor: e.Actor, Action: e.Action, Resource: e.Resource, Detail: audit.RedactSensitive(e.Detail)})
+	return a.s.Record(ctx, audit.Entry{Actor: e.Actor, Action: e.Action, Resource: e.Resource, Detail: e.Detail})
 }
 
 // flowRepository is the durable flow-definition store (D-12), implemented by

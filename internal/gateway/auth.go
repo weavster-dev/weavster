@@ -128,21 +128,21 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			id Identity
 			ok bool
 		)
+		info := auditInfoFrom(r.Context())
 		if token := bearerToken(r); token != "" {
 			id, ok = s.sessions.lookup(token)
 		} else if user, pass, basic := r.BasicAuth(); basic {
+			info.attempted = user
 			var err error
 			id, err = s.cfg.Auth.Authenticate(r.Context(), user, pass, r.Header.Get("X-Weavster-MFA"))
 			ok = err == nil
-			if !ok {
-				s.record(r.Context(), user, AuditAuthFailure, r.URL.Path, http.StatusUnauthorized, r)
-			}
 		}
 		if !ok {
 			w.Header().Set("WWW-Authenticate", `Basic realm="weavster"`)
 			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
 			return
 		}
+		info.id = id
 		if id.MustChangePassword && r.URL.Path != "/api/v1/auth/password" &&
 			r.URL.Path != "/api/v1/auth/logout" && r.URL.Path != "/api/v1/auth/me" {
 			writeError(w, http.StatusForbidden, "PASSWORD_CHANGE_REQUIRED",
@@ -202,13 +202,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "body must be JSON with username and password")
 		return
 	}
+	auditInfoFrom(r.Context()).attempted = req.Username
 	id, err := s.cfg.Auth.Authenticate(r.Context(), req.Username, req.Password, req.MFACode)
 	if err != nil {
-		s.record(r.Context(), req.Username, AuditLogin, r.URL.Path, http.StatusUnauthorized, r)
 		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid username or password")
 		return
 	}
-	s.record(r.Context(), id.Username, AuditLogin, r.URL.Path, http.StatusOK, r)
 	token, err := s.sessions.create(id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "could not create session")

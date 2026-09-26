@@ -41,14 +41,22 @@ func NewLocalSink(logger *slog.Logger) *LocalSink {
 	return &LocalSink{logger: logger}
 }
 
-// Record appends an entry and emits a structured log line.
+// maxEntries bounds the in-memory history kept by LocalSink.
+const maxEntries = 10000
+
+// Record redacts sensitive detail, keeps the entry in a bounded in-memory
+// history, and emits a structured log line.
 func (s *LocalSink) Record(_ context.Context, e Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.seq++
 	e.ID = s.seq
 	e.At = time.Now()
+	e.Detail = RedactSensitive(e.Detail)
 	s.entries = append(s.entries, e)
+	if len(s.entries) >= 2*maxEntries { // amortized trim to the newest maxEntries
+		s.entries = append([]Entry(nil), s.entries[len(s.entries)-maxEntries:]...)
+	}
 
 	s.logger.Info("audit",
 		"id", e.ID,
@@ -60,12 +68,17 @@ func (s *LocalSink) Record(_ context.Context, e Entry) error {
 	return nil
 }
 
-// Entries returns a copy of all recorded entries (newest last).
+// Entries returns a copy of the newest (up to maxEntries) entries, newest
+// last.
 func (s *LocalSink) Entries() []Entry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]Entry, len(s.entries))
-	copy(out, s.entries)
+	kept := s.entries
+	if len(kept) > maxEntries {
+		kept = kept[len(kept)-maxEntries:]
+	}
+	out := make([]Entry, len(kept))
+	copy(out, kept)
 	return out
 }
 

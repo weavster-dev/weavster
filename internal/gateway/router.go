@@ -23,10 +23,10 @@ func (s *Server) Router() http.Handler {
 		if s.cfg.RequireCSRF {
 			r.Use(RequireMarkerHeader)
 		}
-		r.Post("/auth/login", s.handleLogin)
+		r.With(s.audited, s.auditAs(AuditLogin)).Post("/auth/login", s.handleLogin)
 		r.Group(func(r chi.Router) {
-			r.Use(s.authenticate)
 			r.Use(s.audited)
+			r.Use(s.authenticate)
 			r.Post("/auth/logout", s.handleLogout)
 			r.Get("/auth/me", s.handleMe)
 			r.Post("/auth/password", s.handleChangePassword)
@@ -37,7 +37,7 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("flows", "edit")).Post("/flows", s.handleFlowsCreate)
 			r.With(s.require("flows", "view")).Get("/flows/{id}", s.handleFlowsGet)
 			r.With(s.require("flows", "edit")).Delete("/flows/{id}", s.handleFlowsDelete)
-			r.With(s.require("messages", "view")).Get("/messages", s.handleMessagesSearch)
+			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "view")).Get("/messages", s.handleMessagesSearch)
 		})
 	})
 	return r

@@ -8,11 +8,21 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/weavster-dev/weavster/internal/audit"
+	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 )
 
 // TestAuditLog proves administrative actions, protected-content reads, and
 // logins are written to the audit log with sensitive parameters redacted.
+// TestAuditActionNames pins the gateway's audit action names to the audit
+// package's, which the hexagonal rule keeps the gateway from importing.
+func TestAuditActionNames(t *testing.T) {
+	if gateway.AuditLogin != audit.ActionLogin || gateway.AuditPHIAccess != audit.ActionPHIAccess {
+		t.Errorf("gateway actions %q/%q != audit actions %q/%q", gateway.AuditLogin, gateway.AuditPHIAccess, audit.ActionLogin, audit.ActionPHIAccess)
+	}
+}
+
 func TestAuditLog(t *testing.T) {
 	logs := &syncBuffer{}
 	handler, closeStore, err := buildServer(context.Background(), slog.New(slog.NewTextHandler(logs, nil)), logs, serverconfig.Default())

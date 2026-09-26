@@ -38,6 +38,10 @@ func TestAuditMiddleware(t *testing.T) {
 		{"bad basic", http.MethodGet, "/api/v1/flows", "", func(r *http.Request) { r.SetBasicAuth("viewer", "no") }, AuditAuthFailure, "viewer", "401"},
 		{"login ok", http.MethodPost, "/api/v1/auth/login", `{"username":"viewer","password":"pw"}`, nil, AuditLogin, "viewer", "200"},
 		{"login fail", http.MethodPost, "/api/v1/auth/login", `{"username":"viewer","password":"no"}`, nil, AuditLogin, "viewer", "401"},
+		{"login malformed", http.MethodPost, "/api/v1/auth/login", `not json`, nil, AuditLogin, "", "400"},
+		{"bad bearer", http.MethodGet, "/api/v1/flows", "", func(r *http.Request) { r.Header.Set("Authorization", "Bearer nope") }, AuditAuthFailure, "", "401"},
+		{"no credentials", http.MethodDelete, "/api/v1/flows/a", "", nil, AuditAuthFailure, "", "401"},
+		{"password change required", http.MethodPost, "/api/v1/flows", `{"id":"a"}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, "POST /api/v1/flows", "fresh", "403"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -65,8 +69,9 @@ func TestAuditMiddleware(t *testing.T) {
 func TestAuditQueryDetail(t *testing.T) {
 	sink := &captureSink{}
 	s := New(Config{Audit: sink})
-	serve(s, http.MethodGet, "/api/v1/messages?status=sent&Token=abc", "", nil)
-	if len(sink.events) != 1 || sink.events[0].Detail["query.status"] != "sent" || sink.events[0].Detail["query.Token"] != "abc" {
+	serve(s, http.MethodGet, "/api/v1/messages?status=sent&status=queued&Token=abc", "", nil)
+	if len(sink.events) != 1 || sink.events[0].Action != AuditPHIAccess ||
+		sink.events[0].Detail["query.status"] != "sent,queued" || sink.events[0].Detail["query.Token"] != "abc" {
 		t.Errorf("events = %+v; the gateway passes query parameters for the sink to redact", sink.events)
 	}
 }
