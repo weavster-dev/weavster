@@ -1,6 +1,9 @@
 package audit
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // Action constants for audit log entries (spec §10).
 const (
@@ -10,22 +13,26 @@ const (
 	ActionConfig    = "config.apply"
 )
 
-// sensitiveKeys are parameters excluded from audit capture (spec §10).
-var sensitiveKeys = map[string]bool{
-	"password":      true,
-	"token":         true,
-	"secret":        true,
-	"authorization": true,
-	"credential":    true,
-	"ssn":           true,
-	"phi":           true,
+// sensitiveKeys are parameters excluded from audit capture (spec §10). A key
+// is sensitive when it contains one of these, ignoring case.
+var sensitiveKeys = []string{"password", "token", "secret", "authorization", "credential", "ssn", "phi"}
+
+func isSensitive(key string) bool {
+	k := strings.ToLower(key)
+	for _, s := range sensitiveKeys {
+		if strings.Contains(k, s) {
+			return true
+		}
+	}
+	return false
 }
 
 // RedactSensitive returns a copy of detail with sensitive values redacted.
+// Keys match case-insensitively and by substring (e.g. "newPassword").
 func RedactSensitive(detail map[string]string) map[string]string {
 	out := make(map[string]string, len(detail))
 	for k, v := range detail {
-		if sensitiveKeys[k] {
+		if isSensitive(k) {
 			out[k] = "[redacted]"
 			continue
 		}

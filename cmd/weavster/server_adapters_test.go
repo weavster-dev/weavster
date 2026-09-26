@@ -77,7 +77,7 @@ func TestAuditAdapterRecord(t *testing.T) {
 	sink := audit.NewLocalSink(logger)
 	a := auditAdapter{s: sink}
 
-	if err := a.Record(context.Background(), "alice", "create", "flow/f1"); err != nil {
+	if err := a.Record(context.Background(), gateway.AuditEvent{Actor: "alice", Action: "create", Resource: "flow/f1"}); err != nil {
 		t.Errorf("Record: %v", err)
 	}
 }

@@ -55,6 +55,7 @@ func (s *LocalSink) Record(_ context.Context, e Entry) error {
 		"actor", e.Actor,
 		"action", e.Action,
 		"resource", e.Resource,
+		"detail", e.Detail,
 	)
 	return nil
 }

@@ -13,6 +13,7 @@ nav:
   - Support Matrix: support-matrix.md
   - Server Configuration: server-config.md
   - Authentication: authentication.md
+  - Audit Log: audit-log.md
   - Docs Site Guide: documentation.md
   - MVP Project Plan: mvp-project-plan.md
   - Agent Onboarding: agent-onboarding.md
