@@ -53,6 +53,9 @@
                                 <a href="../processing-messages/" class="nav-link">Processing Messages</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -270,6 +273,10 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <tr>
 <td><code>POST /api/v1/flows/{id}/messages</code></td>
 <td><code>messages:send</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}</code>, <code>POST /api/v1/flows/redeploy-all</code></td>
+<td><code>flows:deploy</code></td>
 </tr>
 <tr>
 <td><code>GET /api/v1/flows/{id}/stats</code></td>

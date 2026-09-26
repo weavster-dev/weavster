@@ -53,6 +53,9 @@
                                 <a href="../processing-messages/" class="nav-link">Processing Messages</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -323,6 +326,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>Flow lifecycle: deploy, undeploy, start, stop, pause, halt, resume, redeploy-all, with transitions enforced</td>
+<td>Implemented (wired)</td>
+<td><code>TestFlowLifecycle</code>. API only; no per-destination start/stop, no auto-deploy, no dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
+</tr>
 <tr>
 <td>Message intake: <code>POST /api/v1/flows/{id}/messages</code></td>
 <td>Implemented (wired)</td>

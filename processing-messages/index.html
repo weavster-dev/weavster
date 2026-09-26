@@ -53,6 +53,9 @@
                                 <a href="./" class="nav-link active" aria-current="page">Processing Messages</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -75,7 +78,7 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../documentation/" class="nav-link">
+                                <a rel="next" href="../flow-lifecycle/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
@@ -107,15 +110,19 @@
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#2-send-a-message" class="nav-link">2. Send a message</a>
+            <li class="nav-item" data-bs-level="2"><a href="#2-deploy-and-start-the-flow" class="nav-link">2. Deploy and start the flow</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#3-find-processed-messages" class="nav-link">3. Find processed messages</a>
+            <li class="nav-item" data-bs-level="2"><a href="#3-send-a-message" class="nav-link">3. Send a message</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#4-statistics-and-events" class="nav-link">4. Statistics and events</a>
+            <li class="nav-item" data-bs-level="2"><a href="#4-find-processed-messages" class="nav-link">4. Find processed messages</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#5-statistics-and-events" class="nav-link">5. Statistics and events</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -226,7 +233,13 @@ below, in order, on the message as a JSON object.</p>
 </tr>
 </tbody>
 </table>
-<h2 id="2-send-a-message">2. Send a message</h2>
+<h2 id="2-deploy-and-start-the-flow">2. Deploy and start the flow</h2>
+<p>A new flow is <code>undeployed</code> and rejects messages until you deploy and start it (permission
+<code>flows:deploy</code>). See <a href="../flow-lifecycle/">Flow lifecycle</a>.</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/deploy
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/start
+</code></pre>
+<h2 id="3-send-a-message">3. Send a message</h2>
 <p>You need the <code>messages:send</code> permission (or <code>admin</code>).</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
   http://127.0.0.1:8080/api/v1/flows/adt/messages -d '{&quot;PID&quot;:{&quot;5&quot;:{&quot;1&quot;:&quot;Doe&quot;}}}'
@@ -285,7 +298,7 @@ statuses above.</p>
 </tr>
 <tr>
 <td><code>409</code></td>
-<td>The flow's <code>status</code> is <code>stopped</code>, <code>paused</code>, <code>halted</code>, or <code>undeployed</code>.</td>
+<td>The flow is not <code>started</code>.</td>
 </tr>
 <tr>
 <td><code>413</code></td>
@@ -293,12 +306,12 @@ statuses above.</p>
 </tr>
 </tbody>
 </table>
-<h2 id="3-find-processed-messages">3. Find processed messages</h2>
+<h2 id="4-find-processed-messages">4. Find processed messages</h2>
 <p>Every message is saved in the configured store with its final status:</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
   'http://127.0.0.1:8080/api/v1/messages?flowId=adt&amp;status=queued'
 </code></pre>
-<h2 id="4-statistics-and-events">4. Statistics and events</h2>
+<h2 id="5-statistics-and-events">5. Statistics and events</h2>
 <p>Per-flow counters (permission <code>flows:view</code>):</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/flows/adt/stats
 </code></pre>
@@ -343,8 +356,7 @@ remaining connections and exits, logging a warning. A message still being delive
 point is already stored. The next start finishes it and sends the same <code>Idempotency-Key</code>, so a
 destination that already received it can ignore the repeat. A second SIGINT/SIGTERM during the
 wait stops the server immediately.</p>
-<p>Messages of a flow whose <code>status</code> is <code>stopped</code>, <code>paused</code>, <code>halted</code>, or <code>undeployed</code> are not
-retried; they stay <code>queued</code>.</p>
+<p>Messages of a flow that is not <code>started</code> are not retried; they stay <code>queued</code>.</p>
 <p>A retried message that later succeeds changes to <code>sent</code>. The statistics then count it once as
 <code>queued</code> and once as <code>sent</code>.</p>
 <h2 id="limits-today">Limits today</h2>
@@ -358,8 +370,6 @@ retried; they stay <code>queued</code>.</p>
 <li>A <code>file</code> destination writes wherever <code>dir</code> points, with the server's permissions, and an
   <code>http</code> destination can target any address the server can reach, including internal ones.
   Only give <code>flows:edit</code> to trusted users.</li>
-<li>A flow's <code>status</code> is whatever you set when you create it; lifecycle operations (deploy, start,
-  stop) do not exist yet.</li>
 </ul></div>
             </div>
         </div>

@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/audit-log/">
+        <link rel="canonical" href="https://docs.weavster.dev/flow-lifecycle/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Audit Log - Weavster</title>
+        <title>Flow Lifecycle - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -47,13 +47,13 @@
                                 <a href="../authentication/" class="nav-link">Authentication</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Audit Log</a>
+                                <a href="../audit-log/" class="nav-link">Audit Log</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../processing-messages/" class="nav-link">Processing Messages</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
+                                <a href="./" class="nav-link active" aria-current="page">Flow Lifecycle</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
@@ -73,17 +73,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../authentication/" class="nav-link">
+                                <a rel="prev" href="../processing-messages/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../processing-messages/" class="nav-link">
+                                <a rel="next" href="../documentation/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/audit-log.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/flow-lifecycle.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -104,17 +104,25 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#audit-log" class="nav-link">Audit log</a>
+            <li class="nav-item" data-bs-level="1"><a href="#flow-lifecycle" class="nav-link">Flow lifecycle</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#what-is-recorded" class="nav-link">What is recorded</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#redaction" class="nav-link">Redaction</a>
+            <li class="nav-item" data-bs-level="2"><a href="#run-an-operation" class="nav-link">Run an operation</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#retention" class="nav-link">Retention</a>
+            <li class="nav-item" data-bs-level="2"><a href="#redeploy-all-flows" class="nav-link">Redeploy all flows</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-each-status-means-for-messages" class="nav-link">What each status means for messages</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#upgrading-from-a-version-without-the-lifecycle" class="nav-link">Upgrading from a version without the lifecycle</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#not-available-yet" class="nav-link">Not available yet</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -125,84 +133,133 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="audit-log">Audit log</h1>
-<p>The server writes an audit entry for each security-relevant API call. Each entry is one
-structured <code>audit</code> line on stderr:</p>
-<pre><code class="language-text">time=2026-09-26T12:00:00Z level=INFO msg=audit id=3 actor=admin action=&quot;POST /api/v1/flows&quot; resource=/api/v1/flows detail=map[status:201]
+<h1 id="flow-lifecycle">Flow lifecycle</h1>
+<p>Every flow has a runtime <code>status</code>. A new flow starts <code>undeployed</code>, and only a <code>started</code> flow
+accepts messages. You change the status with lifecycle operations. You cannot set <code>status</code>
+when you create a flow: <code>POST /api/v1/flows</code> with a <code>status</code> field returns <code>400</code>.</p>
+<p>The normal path is <code>undeployed → deployed → started</code>; a started flow can be paused or halted
+(then resumed) and stopped (then started again).</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>From</th>
+<th>To</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>deploy</code></td>
+<td><code>undeployed</code></td>
+<td><code>deployed</code></td>
+</tr>
+<tr>
+<td><code>start</code></td>
+<td><code>deployed</code>, <code>stopped</code></td>
+<td><code>started</code></td>
+</tr>
+<tr>
+<td><code>pause</code></td>
+<td><code>started</code></td>
+<td><code>paused</code></td>
+</tr>
+<tr>
+<td><code>halt</code></td>
+<td><code>started</code></td>
+<td><code>halted</code></td>
+</tr>
+<tr>
+<td><code>resume</code></td>
+<td><code>paused</code>, <code>halted</code></td>
+<td><code>started</code></td>
+</tr>
+<tr>
+<td><code>stop</code></td>
+<td><code>started</code>, <code>paused</code>, <code>halted</code></td>
+<td><code>stopped</code></td>
+</tr>
+<tr>
+<td><code>undeploy</code></td>
+<td><code>deployed</code>, <code>started</code>, <code>paused</code>, <code>halted</code>, <code>stopped</code></td>
+<td><code>undeployed</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="run-an-operation">Run an operation</h2>
+<p>These operations need the <code>flows:deploy</code> permission (or <code>admin</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/deploy
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/start
+</code></pre>
+<p>Each returns <code>200</code> with the updated flow:</p>
+<pre><code class="language-json">{&quot;id&quot;:&quot;adt&quot;,&quot;name&quot;:&quot;ADT normalize&quot;,&quot;sourceType&quot;:&quot;http&quot;,&quot;status&quot;:&quot;started&quot;,&quot;enabled&quot;:false}
 </code></pre>
 <table>
 <thead>
 <tr>
-<th>Field</th>
-<th>Meaning</th>
+<th>Response</th>
+<th>Cause</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>actor</code></td>
-<td>Username from the request's credentials. For login and failed credentials, it is the username that was attempted.</td>
+<td><code>409 cannot pause a flow that is stopped</code></td>
+<td>The operation is not allowed from the flow's current status (see the table).</td>
 </tr>
 <tr>
-<td><code>action</code></td>
-<td>See the table below.</td>
+<td><code>404</code></td>
+<td>Unknown flow, or an operation name that is not one of the seven above.</td>
 </tr>
 <tr>
-<td><code>resource</code></td>
-<td>Request path.</td>
-</tr>
-<tr>
-<td><code>detail</code></td>
-<td><code>status</code> (HTTP status returned) plus <code>query.&lt;name&gt;</code> for each query parameter. Repeated parameters are joined with <code>,</code>.</td>
+<td><code>403</code></td>
+<td>You lack <code>flows:deploy</code>. This is checked first, so an unknown operation also returns <code>403</code> for such users.</td>
 </tr>
 </tbody>
 </table>
-<h2 id="what-is-recorded">What is recorded</h2>
+<p>Every operation except <code>halt</code> waits for that flow's messages that are being processed right
+now, then changes the status. <code>halt</code> is a force-stop: it changes the status at once, lets
+those messages finish, and accepts or retries nothing new. Operations on one flow never wait
+for another flow. The new status is saved and survives a restart.</p>
+<h2 id="redeploy-all-flows">Redeploy all flows</h2>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/redeploy-all
+</code></pre>
+<p>This undeploys and re-deploys every flow that is not <code>undeployed</code>, one flow at a time. Each
+of them ends <strong><code>deployed</code></strong>, so start the ones that should process messages again. The
+response lists the redeployed flows. If it fails part-way, it returns
+<code>500 {"error":{"code":"REDEPLOY_INCOMPLETE",…},"redeployed":[…]}</code>, listing the flows already
+redeployed. The rest keep their status.</p>
+<h2 id="what-each-status-means-for-messages">What each status means for messages</h2>
 <table>
 <thead>
 <tr>
-<th>Event</th>
-<th><code>action</code></th>
+<th>Status</th>
+<th>New messages (<code>POST /flows/{id}/messages</code>)</th>
+<th>Queued retries</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Any <code>POST</code>, <code>PUT</code>, <code>PATCH</code>, or <code>DELETE</code> under <code>/api/v1</code> by a signed-in user, <strong>including rejected ones</strong> (for example <code>403 FORBIDDEN</code> or <code>403 PASSWORD_CHANGE_REQUIRED</code>)</td>
-<td>method and route, e.g. <code>DELETE /api/v1/flows/{id}</code></td>
+<td><code>started</code></td>
+<td>processed</td>
+<td>retried</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/messages</code> (message content can hold protected health information), including rejected reads</td>
-<td><code>phi.access</code></td>
-</tr>
-<tr>
-<td>Every <code>POST /api/v1/auth/login</code>, with the outcome in <code>status</code>: <code>200</code>, <code>400</code> (malformed body), <code>401</code>, <code>500</code>, or <code>503</code></td>
-<td><code>auth.login</code></td>
-</tr>
-<tr>
-<td>Any other request rejected with <code>401</code>: missing credentials, wrong Basic password, or an unknown, expired, or revoked token</td>
-<td><code>auth.failure</code></td>
-</tr>
-<tr>
-<td>A non-GET request (including login) rejected with <code>400</code> for a missing <code>X-Weavster-CSRF</code> marker</td>
-<td>method and literal path, e.g. <code>POST /api/v1/auth/login</code></td>
+<td>any other</td>
+<td><code>409 flow … is &lt;status&gt;; start it first</code></td>
+<td>kept <code>queued</code>, not retried</td>
 </tr>
 </tbody>
 </table>
-<p>Other reads, such as <code>GET /api/v1/flows</code> and <code>GET /api/v1/topology</code>, are not recorded.</p>
-<h2 id="redaction">Redaction</h2>
-<p>Request bodies are never recorded, so passwords sent to <code>/auth/login</code> or <code>/auth/password</code>
-never reach the log. A query parameter is logged as <code>[redacted]</code> when, ignoring case:</p>
+<h2 id="upgrading-from-a-version-without-the-lifecycle">Upgrading from a version without the lifecycle</h2>
+<p>Flows created before the lifecycle existed have no status, or a free-form one. They read as
+<code>undeployed</code> and stop accepting messages until you <code>deploy</code> and <code>start</code> them. Their <code>queued</code>
+messages are retried again once they are started.</p>
+<h2 id="not-available-yet">Not available yet</h2>
 <ul>
-<li>its name contains <code>password</code>, <code>token</code>, <code>secret</code>, <code>authorization</code>, or <code>credential</code> anywhere
-  (<code>apiToken</code>, <code>X-Token</code>, <code>client_secret</code>, <code>newPassword</code>, <code>notpassword</code>), or</li>
-<li>one of its words is <code>ssn</code> or <code>phi</code> (<code>patient_ssn</code>, <code>phiFlag</code>). A new word starts at <code>-</code>,
-  <code>_</code>, <code>.</code>, or a lowercase-to-uppercase change, so <code>className</code> and <code>graphId</code> are not redacted.</li>
-</ul>
-<pre><code class="language-text">actor=admin action=phi.access resource=/api/v1/messages detail=&quot;map[query.apiToken:[redacted] query.status:sent status:200]&quot;
-</code></pre>
-<h2 id="retention">Retention</h2>
-<p>Audit entries exist only in the log output and in process memory, which keeps exactly the
-newest 10,000 entries. They are not stored and cannot be searched through the API yet. To keep them, collect stderr with your log shipper
-(for example journald or a container log driver).</p></div>
+<li>Starting or stopping a single destination.</li>
+<li>Automatic deployment of <code>enabled</code> flows when the server starts.</li>
+<li>Flow dependencies (deploy does not deploy other flows).</li>
+<li>CLI commands for these operations.</li>
+</ul></div>
             </div>
         </div>
 
