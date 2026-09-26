@@ -120,9 +120,8 @@ This setting stores **messages only**. Flow definitions are still kept in memory
 | `lockout.retryLimit` | `5` | Failed logins before lockout (`0` = never lock). |
 | `lockout.lockoutPeriodSeconds` | `300` | Lockout duration in seconds. |
 
-!!! note
-    The server has no login endpoint yet, so these settings have no visible effect today. They
-    apply to local users once authentication is wired.
+These settings apply to the first-run `admin` password and to every login. See
+[Authentication](authentication.md).
 
 ## Root accounts
 

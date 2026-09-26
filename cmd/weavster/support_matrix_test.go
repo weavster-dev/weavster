@@ -25,7 +25,7 @@ import (
 // TestSupportMatrixWired proves every "Implemented (wired)" server/API row in
 // docs/support-matrix.md against the composed server.
 func TestSupportMatrixWired(t *testing.T) {
-	handler, _, err := buildServer(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)), serverconfig.Default())
+	handler, _, err := buildServer(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)), io.Discard, serverconfig.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,6 +70,7 @@ func TestSupportMatrixWired(t *testing.T) {
 			if tt.marker {
 				req.Header.Set(gateway.MarkerHeader, gateway.MarkerValue)
 			}
+			req.SetBasicAuth(bootstrapAdmin, testAdminPassword)
 			resp, err := http.DefaultClient.Do(req)
 			if err != nil {
 				t.Fatal(err)
@@ -94,7 +95,7 @@ func TestSupportMatrixWired(t *testing.T) {
 // TestSupportMatrixCLI proves the wired CLI rows: -a/-s batch mode against
 // the composed server, and the no-subcommand default starting the server.
 func TestSupportMatrixCLI(t *testing.T) {
-	handler, _, err := buildServer(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)), serverconfig.Default())
+	handler, _, err := buildServer(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)), io.Discard, serverconfig.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +119,7 @@ func TestSupportMatrixCLI(t *testing.T) {
 				t.Fatal(err)
 			}
 			var out, errb bytes.Buffer
-			if code := run([]string{"-a", ts.URL, "-s", path}, strings.NewReader(""), &out, &errb); code != tt.want {
+			if code := run([]string{"-a", ts.URL, "-u", bootstrapAdmin, "-p", testAdminPassword, "-s", path}, strings.NewReader(""), &out, &errb); code != tt.want {
 				t.Fatalf("exit = %d, want %d (stderr %q)", code, tt.want, errb.String())
 			}
 			if !strings.Contains(out.String(), tt.contains) {

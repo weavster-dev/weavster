@@ -23,8 +23,8 @@ go build -o bin/weavster ./cmd/weavster
 ./bin/weavster server 127.0.0.1:8080
 ```
 
-> **Warning:** API routes are unauthenticated. Keep the server on `127.0.0.1`; do not expose it
-> to a network.
+On first start the server prints a one-time `admin` password to stderr (or set
+`WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD`, see [Authentication](docs/authentication.md)).
 
 Verify it's up by fetching the OpenAPI contract:
 
@@ -35,7 +35,7 @@ curl -s http://localhost:8080/api/openapi.yaml | head -n 5
 and the system status endpoint (API routes require the CSRF marker header):
 
 ```bash
-curl -s -H 'X-Weavster-CSRF: 1' http://localhost:8080/api/v1/system
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://localhost:8080/api/v1/system
 ```
 
 Run the test suite to confirm a healthy checkout:
@@ -56,11 +56,13 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   flow create/list/get/delete backed by an **in-memory** map (lost on restart, never executed);
   read-only topology JSON built from those flows; message search against the configured
   store (`memory`, `sqlite`, or `disabled`), which is always empty because nothing writes messages.
-  **API routes are unauthenticated** — no login, authorization, or audit is enforced.
+  Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
+  account. Users are in memory; API calls are not audited.
 - **CLI**: `weavster server`, `weavster test` (four built-in codec round-trip fixtures,
   JUnit/JSON output), and `-s` batch scripts with `help`, `status`, `version`, `flow list`,
-  `user list`, `quit`. `-u`, `-p`, and `-c` are parsed but ignored; `-v` prints the local version.
-- **Library-only** (source and unit tests exist, not used by the server): auth enforcement, audit,
+  `user list`, `quit`. `-u`/`-p` send Basic credentials; `-c` is parsed but ignored; `-v` prints
+  the local version.
+- **Library-only** (source and unit tests exist, not used by the server): audit,
   scheduler, adapters, outbox, codecs, WASM compiler/executor/registry, PostgreSQL
   store, config-as-code, Git store, alerts, notifiers, secrets, metrics/tracing.
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.

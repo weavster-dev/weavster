@@ -187,13 +187,14 @@ func TestPrivilegedGuard(t *testing.T) {
 
 func TestBuildServerServesSystem(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler, _, err := buildServer(context.Background(), logger, serverconfig.Default())
+	handler, _, err := buildServer(context.Background(), logger, io.Discard, serverconfig.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/system", nil)
 	req.Header.Set("X-Weavster-CSRF", "1")
+	req.SetBasicAuth(bootstrapAdmin, testAdminPassword)
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("system status = %d", rec.Code)

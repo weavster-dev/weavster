@@ -30,6 +30,9 @@ type User struct {
 	FailedAttempts    int
 	LockedUntil       time.Time
 	Permissions       []string
+	// MustChangePassword blocks API use until the user changes their
+	// password (first-run bootstrap, D-22). ChangePassword clears it.
+	MustChangePassword bool
 }
 
 // AuthProvider is the port for identity/authentication (arch §3.1).
@@ -230,6 +233,7 @@ func (p *LocalProvider) ChangePassword(ctx context.Context, username, oldPasswor
 	}
 	u.PasswordHash = hash
 	u.PasswordChangedAt = time.Now()
+	u.MustChangePassword = false
 	u.PasswordHistory = append([]string{hash}, u.PasswordHistory...)
 	if len(u.PasswordHistory) > p.opts.Policy.ReuseLimit {
 		u.PasswordHistory = u.PasswordHistory[:p.opts.Policy.ReuseLimit]

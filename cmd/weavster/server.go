@@ -27,8 +27,9 @@ import (
 )
 
 // buildServer wires the ports/adapters selected by cfg into the single binary
-// (arch §3). The returned func releases the message store.
-func buildServer(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config) (http.Handler, func() error, error) {
+// (arch §3). One-time bootstrap output goes to out. The returned func
+// releases the message store.
+func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg serverconfig.Config) (http.Handler, func() error, error) {
 	store, err := openStore(ctx, logger, cfg)
 	if err != nil {
 		return nil, nil, err
@@ -41,22 +42,28 @@ func buildServer(ctx context.Context, logger *slog.Logger, cfg serverconfig.Conf
 	}
 
 	pp := cfg.Auth.PasswordPolicy
+	policy := auth.PasswordPolicy{
+		MinLength: pp.MinLength, MinUpper: pp.MinUpper, MinLower: pp.MinLower,
+		MinNumeric: pp.MinNumeric, MinSpecial: pp.MinSpecial,
+	}
 	provider := auth.NewLocalProvider(auth.Options{
-		Policy: auth.PasswordPolicy{
-			MinLength: pp.MinLength, MinUpper: pp.MinUpper, MinLower: pp.MinLower,
-			MinNumeric: pp.MinNumeric, MinSpecial: pp.MinSpecial,
-		},
+		Policy: policy,
 		Lockout: auth.LockoutPolicy{
 			RetryLimit: cfg.Auth.Lockout.RetryLimit, LockoutPeriod: cfg.Auth.Lockout.LockoutPeriodSeconds,
 		},
 		AntiEnumeration: true,
 	})
+	if err := bootstrapAdminUser(ctx, provider, policy, out); err != nil {
+		_ = closeStore()
+		return nil, nil, err
+	}
 
 	sink := audit.NewLocalSink(logger)
 	flows := newMemFlowStore()
 
 	srv := gateway.New(gateway.Config{
 		Auth:        authAdapter{provider},
+		Passwords:   provider,
 		Authorizer:  authorizerAdapter{},
 		Audit:       auditAdapter{sink},
 		Flows:       flows,
@@ -155,7 +162,7 @@ func runServer(args []string, stderr io.Writer) int {
 	defer stop()
 
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
-	handler, closeStore, err := buildServer(ctx, logger, cfg)
+	handler, closeStore, err := buildServer(ctx, logger, stderr, cfg)
 	if err != nil {
 		if ctx.Err() != nil {
 			return 0
@@ -247,7 +254,7 @@ func (a authAdapter) Authenticate(ctx context.Context, username, password, mfaCo
 	if err != nil {
 		return gateway.Identity{}, err
 	}
-	return gateway.Identity{Username: u.Username, Permissions: u.Permissions}, nil
+	return gateway.Identity{Username: u.Username, Permissions: u.Permissions, MustChangePassword: u.MustChangePassword}, nil
 }
 
 type authorizerAdapter struct{}
