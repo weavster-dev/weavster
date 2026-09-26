@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -63,6 +64,10 @@ func (c *httpClient) FlowList(ctx context.Context) ([]string, error) {
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("server returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
 	var flows []gateway.Flow
 	if err := json.NewDecoder(resp.Body).Decode(&flows); err != nil {
 		return nil, err

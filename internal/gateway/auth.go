@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -13,6 +14,10 @@ import (
 
 // SessionTTL is how long a login token stays valid.
 const SessionTTL = 12 * time.Hour
+
+// ErrWrongPassword is returned by a PasswordChanger when the old password
+// does not match.
+var ErrWrongPassword = errors.New("old password is incorrect")
 
 // PasswordChanger changes a user's password (spec §5 password change).
 type PasswordChanger interface {
@@ -47,9 +52,15 @@ func (s *sessions) create(id Identity) (string, error) {
 		return "", err
 	}
 	token := hex.EncodeToString(b)
+	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.tokens[token] = session{id: id, expires: time.Now().Add(SessionTTL)}
+	for t, sess := range s.tokens { // sweep expired sessions
+		if now.After(sess.expires) {
+			delete(s.tokens, t)
+		}
+	}
+	s.tokens[token] = session{id: id, expires: now.Add(SessionTTL)}
 	return token, nil
 }
 
@@ -73,6 +84,17 @@ func (s *sessions) update(token string, id Identity) {
 	}
 }
 
+// revokeUser revokes every session of username except keep.
+func (s *sessions) revokeUser(username, keep string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for t, sess := range s.tokens {
+		if t != keep && sess.id.Username == username {
+			delete(s.tokens, t)
+		}
+	}
+}
+
 func (s *sessions) revoke(token string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -83,11 +105,14 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
 }
 
+// bearerToken returns the token of a Bearer Authorization header. The scheme
+// name is case-insensitive (RFC 7235).
 func bearerToken(r *http.Request) string {
-	if t, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer "); ok {
-		return t
+	scheme, token, ok := strings.Cut(r.Header.Get("Authorization"), " ")
+	if !ok || !strings.EqualFold(scheme, "Bearer") {
+		return ""
 	}
-	return ""
+	return strings.TrimSpace(token)
 }
 
 // authenticate resolves a Bearer token or Basic credentials into an Identity.
@@ -216,11 +241,19 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.cfg.Passwords.ChangePassword(r.Context(), id.Username, req.OldPassword, req.NewPassword); err != nil {
+		if errors.Is(err, ErrWrongPassword) {
+			writeError(w, http.StatusBadRequest, "OLD_PASSWORD_INCORRECT", "oldPassword is incorrect")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "PASSWORD_REJECTED", err.Error())
 		return
 	}
+	// Other sessions carry the old credentials' identity: revoke them, and
+	// keep only the token used for this change.
+	token := bearerToken(r)
+	s.sessions.revokeUser(id.Username, token)
 	id.MustChangePassword = false
-	if token := bearerToken(r); token != "" {
+	if token != "" {
 		s.sessions.update(token, id)
 	}
 	w.WriteHeader(http.StatusNoContent)

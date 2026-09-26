@@ -82,15 +82,22 @@ func (p *LocalProvider) Authenticate(ctx context.Context, username, password, mf
 
 	// External auth hook overrides built-in credential validation.
 	if p.opts.External != nil {
-		ok, err := p.opts.External.Authenticate(ctx, username, password)
+		snapshot := *u
 		p.mu.Unlock()
+		ok, err := p.opts.External.Authenticate(ctx, username, password)
 		if err != nil || !ok {
 			return nil, p.genericOr(ErrPasswordWrong)
 		}
-		return p.finishAuth(ctx, u, mfaCode)
+		return p.finishAuth(ctx, &snapshot, mfaCode)
 	}
 
-	if !VerifyPassword(u.PasswordHash, password) {
+	// Verify outside the lock: the Argon2id hash is deliberately expensive
+	// and must not serialize every authentication.
+	hash := u.PasswordHash
+	p.mu.Unlock()
+	valid := VerifyPassword(hash, password)
+	p.mu.Lock()
+	if !valid {
 		p.recordFailure(u)
 		p.mu.Unlock()
 		return nil, p.genericOr(ErrPasswordWrong)
@@ -103,9 +110,11 @@ func (p *LocalProvider) Authenticate(ctx context.Context, username, password, mf
 		p.mu.Unlock()
 		return nil, err
 	}
+	// Return a copy so callers never read the shared record without the lock.
+	snapshot := *u
 	p.mu.Unlock()
 
-	return p.finishAuth(ctx, u, mfaCode)
+	return p.finishAuth(ctx, &snapshot, mfaCode)
 }
 
 // finishAuth runs the MFA hook after successful primary authentication.
@@ -219,7 +228,11 @@ func (p *LocalProvider) ChangePassword(ctx context.Context, username, oldPasswor
 		return ErrUserNotFound
 	}
 	if !VerifyPassword(u.PasswordHash, oldPassword) {
+		p.recordFailure(u)
 		return ErrPasswordWrong
+	}
+	if newPassword == oldPassword {
+		return ErrPasswordReused
 	}
 	if err := p.opts.Policy.Validate(newPassword); err != nil {
 		return err

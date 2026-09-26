@@ -85,6 +85,7 @@ func TestAuthMiddleware(t *testing.T) {
 		{"wrong basic", http.MethodGet, "/api/v1/flows", func(r *http.Request) { r.SetBasicAuth("viewer", "no") }, http.StatusUnauthorized, ""},
 		{"basic ok", http.MethodGet, "/api/v1/flows", func(r *http.Request) { r.SetBasicAuth("viewer", "pw") }, http.StatusOK, ""},
 		{"bearer ok", http.MethodGet, "/api/v1/flows", func(r *http.Request) { r.Header.Set("Authorization", "Bearer "+token) }, http.StatusOK, ""},
+		{"bearer lowercase scheme", http.MethodGet, "/api/v1/flows", func(r *http.Request) { r.Header.Set("Authorization", "bearer "+token) }, http.StatusOK, ""},
 		{"bearer expired", http.MethodGet, "/api/v1/flows", func(r *http.Request) { r.Header.Set("Authorization", "Bearer "+expired) }, http.StatusUnauthorized, ""},
 		{"forbidden", http.MethodPost, "/api/v1/flows", func(r *http.Request) { r.SetBasicAuth("viewer", "pw") }, http.StatusForbidden, "missing permission flows:edit"},
 		{"must change blocks", http.MethodGet, "/api/v1/system", func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusForbidden, "PASSWORD_CHANGE_REQUIRED"},
@@ -125,6 +126,7 @@ func TestLoginAndPasswordHandlers(t *testing.T) {
 		{"change unavailable", nil, "/api/v1/auth/password", `{}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusServiceUnavailable},
 		{"change bad json", fakePasswords{}, "/api/v1/auth/password", "x", func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusBadRequest},
 		{"change rejected", fakePasswords{err: errors.New("too short")}, "/api/v1/auth/password", `{}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusBadRequest},
+		{"change wrong old", fakePasswords{err: ErrWrongPassword}, "/api/v1/auth/password", `{}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusBadRequest},
 		{"change ok basic", fakePasswords{}, "/api/v1/auth/password", `{}`, func(r *http.Request) { r.SetBasicAuth("fresh", "pw") }, http.StatusNoContent},
 		{"logout", fakePasswords{}, "/api/v1/auth/logout", "", func(r *http.Request) { r.SetBasicAuth("viewer", "pw") }, http.StatusNoContent},
 	}
@@ -157,6 +159,24 @@ func TestChangePasswordClearsSessionFlag(t *testing.T) {
 	}
 	if rec := serve(s, http.MethodGet, "/api/v1/system", "", withToken); rec.Code != http.StatusUnauthorized {
 		t.Errorf("after logout: %d, want 401", rec.Code)
+	}
+}
+
+func TestSessionsSweepAndRevokeUser(t *testing.T) {
+	s := newSessions()
+	old, _ := s.create(Identity{Username: "a"})
+	s.tokens[old] = session{id: Identity{Username: "a"}, expires: time.Now().Add(-time.Second)}
+	keep, _ := s.create(Identity{Username: "a"})
+	if _, ok := s.tokens[old]; ok {
+		t.Error("expired session not swept on create")
+	}
+	drop, _ := s.create(Identity{Username: "a"})
+	other, _ := s.create(Identity{Username: "b"})
+	s.revokeUser("a", keep)
+	for token, want := range map[string]bool{keep: true, drop: false, other: true} {
+		if _, ok := s.lookup(token); ok != want {
+			t.Errorf("token present = %v, want %v", ok, want)
+		}
 	}
 }
 

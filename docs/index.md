@@ -14,7 +14,7 @@ Config-driven, message-oriented integration platform — a single static Go bina
 **The server does not receive, transform, or deliver messages.**
 It serves an authenticated REST API (HTTP, plus HTTPS when configured) with in-memory flow records, a
 read-only topology view of them, and a system status endpoint. Most platform capabilities
-(adapters, transforms, durable storage, scheduler, auth enforcement) exist only as libraries
+(adapters, transforms, durable storage, scheduler, audit) exist only as libraries
 in the source tree.
 
 See the [support matrix](support-matrix.md) for exactly what is wired, library-only,

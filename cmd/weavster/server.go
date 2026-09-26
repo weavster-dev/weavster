@@ -63,7 +63,7 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 
 	srv := gateway.New(gateway.Config{
 		Auth:        authAdapter{provider},
-		Passwords:   provider,
+		Passwords:   passwordAdapter{provider},
 		Authorizer:  authorizerAdapter{},
 		Audit:       auditAdapter{sink},
 		Flows:       flows,
@@ -255,6 +255,16 @@ func (a authAdapter) Authenticate(ctx context.Context, username, password, mfaCo
 		return gateway.Identity{}, err
 	}
 	return gateway.Identity{Username: u.Username, Permissions: u.Permissions, MustChangePassword: u.MustChangePassword}, nil
+}
+
+type passwordAdapter struct{ p *auth.LocalProvider }
+
+func (a passwordAdapter) ChangePassword(ctx context.Context, username, oldPassword, newPassword string) error {
+	err := a.p.ChangePassword(ctx, username, oldPassword, newPassword)
+	if errors.Is(err, auth.ErrPasswordWrong) {
+		return gateway.ErrWrongPassword
+	}
+	return err
 }
 
 type authorizerAdapter struct{}

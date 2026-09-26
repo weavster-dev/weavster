@@ -57,8 +57,15 @@ curl -s -u 'admin:q7M!xR...' -H 'X-Weavster-CSRF: 1' \
   http://127.0.0.1:8080/api/v1/auth/password
 ```
 
-This returns `204` on success. A new password that fails the policy returns
-`400 {"error":{"code":"PASSWORD_REJECTED",…}}`.
+This returns `204` on success. Errors:
+
+| Response | Cause |
+|---|---|
+| `400 {"error":{"code":"OLD_PASSWORD_INCORRECT",…}}` | `oldPassword` is wrong. It counts as a failed attempt toward lockout. |
+| `400 {"error":{"code":"PASSWORD_REJECTED",…}}` | `newPassword` fails `auth.passwordPolicy` or equals `oldPassword`. |
+
+A password change signs out every other session of that user. The token used for the change
+keeps working.
 
 ## Log in, use a token, log out
 
@@ -72,7 +79,8 @@ curl -s -H 'X-Weavster-CSRF: 1' \
 {"expiresAt":"2026-09-27T04:00:00Z","token":"5f0c…","user":{"username":"admin","permissions":["admin"],"mustChangePassword":false}}
 ```
 
-A token is valid for 12 hours, or until you log out or the server restarts.
+A token is valid for 12 hours, or until you log out, change your password from another
+session, or the server restarts. The scheme name is case-insensitive (`bearer` works too).
 
 ```bash
 curl -s -H 'X-Weavster-CSRF: 1' -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/api/v1/auth/me
@@ -88,6 +96,12 @@ After `auth.lockout.retryLimit` failed attempts (default `5`), the account is lo
 `auth.lockout.lockoutPeriodSeconds` (default `300`). Failed attempts count on both the login
 endpoint and Basic credentials. While the account is locked, even the correct password
 returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration](server-config.md#auth).
+
+!!! warning "Lockout can shut out the only admin"
+    Anyone who can reach the API can lock `admin` by sending wrong passwords, and there is no
+    second account to unlock it. Restarting the server clears the lockout, but it also clears the
+    in-memory flows. Keep the server off untrusted networks. Setting `retryLimit: 0` removes this
+    risk but allows unlimited password guessing.
 
 ## Permissions
 
@@ -114,4 +128,8 @@ Batch mode sends `-u`/`-p` as Basic credentials:
 weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
 ```
 
-Without them, `flow list` fails with exit code `2`.
+Without them, `flow list` fails with exit code `2` and prints the server's reply:
+
+```text
+Error: server returned 401 Unauthorized: {"error":{"code":"UNAUTHORIZED","message":"authentication required"}}
+```

@@ -221,11 +221,23 @@ func TestBootstrapGeneratedPassword(t *testing.T) {
 	if status, _, _ := c.do(http.MethodPost, "/api/v1/auth/password", "not json", bearer(token)); status != http.StatusBadRequest {
 		t.Errorf("malformed change: %d, want 400", status)
 	}
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/auth/password", `{"oldPassword":"`+generated+`","newPassword":"`+generated+`"}`, bearer(token)); status != http.StatusBadRequest ||
+		!strings.Contains(body, "PASSWORD_REJECTED") {
+		t.Errorf("unchanged password: %d %q, want 400 PASSWORD_REJECTED", status, body)
+	}
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/auth/password", `{"oldPassword":"wrong","newPassword":"New-Admin-Pass-2"}`, bearer(token)); status != http.StatusBadRequest ||
+		!strings.Contains(body, "OLD_PASSWORD_INCORRECT") {
+		t.Errorf("wrong old password: %d %q, want 400 OLD_PASSWORD_INCORRECT", status, body)
+	}
+	_, other := c.login(bootstrapAdmin, generated)
 	if status, _, _ := c.do(http.MethodPost, "/api/v1/auth/password", `{"oldPassword":"`+generated+`","newPassword":"New-Admin-Pass-2"}`, bearer(token)); status != http.StatusNoContent {
 		t.Fatalf("change password: %d, want 204", status)
 	}
 	if status, _, _ := c.do(http.MethodGet, "/api/v1/flows", "", bearer(token)); status != http.StatusOK {
 		t.Errorf("token after change: %d, want 200", status)
+	}
+	if status, _, _ := c.do(http.MethodGet, "/api/v1/auth/me", "", bearer(other)); status != http.StatusUnauthorized {
+		t.Errorf("other session after change: %d, want 401 (revoked)", status)
 	}
 	if status, _, _ := c.do(http.MethodGet, "/api/v1/flows", "", basic(bootstrapAdmin, "New-Admin-Pass-2")); status != http.StatusOK {
 		t.Errorf("new password via Basic: %d, want 200", status)
@@ -313,18 +325,22 @@ func TestCLICredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	tests := []struct {
-		name string
-		args []string
-		want int
+		name   string
+		args   []string
+		want   int
+		stderr string
 	}{
 		{name: "with-credentials", args: []string{"-a", c.base, "-u", bootstrapAdmin, "-p", testAdminPassword, "-s", path}, want: 0},
-		{name: "without-credentials", args: []string{"-a", c.base, "-s", path}, want: 2},
+		{name: "without-credentials", args: []string{"-a", c.base, "-s", path}, want: 2, stderr: "401 Unauthorized"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out, errb bytes.Buffer
 			if code := run(tt.args, strings.NewReader(""), &out, &errb); code != tt.want {
 				t.Errorf("exit = %d, want %d (stderr %q)", code, tt.want, errb.String())
+			}
+			if !strings.Contains(errb.String(), tt.stderr) {
+				t.Errorf("stderr %q does not contain %q", errb.String(), tt.stderr)
 			}
 		})
 	}
