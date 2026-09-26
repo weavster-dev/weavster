@@ -120,3 +120,19 @@ func TestJSONNumbers(t *testing.T) {
 		t.Error("json.Number 0 should be falsy")
 	}
 }
+
+func TestExactNumberComparison(t *testing.T) {
+	p, err := Compile(mustParse(t, "name: t\nsteps:\n  - filter: { when: \"id == 12345678901234567890\", action: accept }\n  - filter: { when: tiny, action: accept }"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, filtered, _ := p.Run(map[string]any{"id": json.Number("12345678901234567891"), "tiny": json.Number("1")}); !filtered {
+		t.Error("different 20-digit numbers compared equal")
+	}
+	if _, filtered, _ := p.Run(map[string]any{"id": json.Number("12345678901234567890"), "tiny": json.Number("0.0000000000000000000001")}); filtered {
+		t.Error("a tiny non-zero number was treated as falsy, or equal numbers did not match")
+	}
+	if _, filtered, _ := p.Run(map[string]any{"id": 12345678901234567890.0, "tiny": 0.0}); !filtered {
+		t.Error("float64 zero should be falsy")
+	}
+}

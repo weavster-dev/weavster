@@ -97,7 +97,8 @@ paths:
       summary: Send a message into a flow (requires messages:send)
       description: >
         Persists the message, runs the flow's transform, and delivers it to each destination.
-        The body must be a JSON object when the flow has a transform.
+        The body must be a single JSON object when the flow has a transform; passthrough
+        flows (no transform) accept any bytes.
       parameters:
         - name: id
           in: path
@@ -108,10 +109,13 @@ paths:
         content:
           application/json:
             schema: {type: object}
+          application/octet-stream:
+            schema: {type: string, format: binary}
       responses:
         "202": {description: "Processed: {id, status} with status sent, queued, filtered, or errored"}
-        "400": {description: Body is not a JSON object}
+        "400": {description: The flow has a transform and the body is not a single JSON object, or the body could not be read}
         "404": {description: Unknown flow}
+        "409": {description: The flow is stopped, paused, halted, or undeployed}
         "413": {description: Body larger than 10 MiB}
   /api/v1/messages:
     get:

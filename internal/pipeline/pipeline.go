@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/url"
 
 	"github.com/weavster-dev/weavster/internal/compiler"
@@ -120,6 +121,9 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (Result, er
 		dec.UseNumber()
 		if err := dec.Decode(&doc); err != nil || doc == nil {
 			return Result{}, fmt.Errorf("%w: body must be a JSON object", ErrInvalidMessage)
+		}
+		if _, err := dec.Token(); err != io.EOF {
+			return Result{}, fmt.Errorf("%w: body must be a single JSON object", ErrInvalidMessage)
 		}
 	}
 

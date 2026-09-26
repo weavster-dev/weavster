@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/big"
 	"regexp"
 	"slices"
 	"strconv"
@@ -419,8 +420,7 @@ func parseOperand(s string) (operand, error) {
 	case s == "true" || s == "false":
 		return operand{literal: s == "true"}, nil
 	case numberLiteral.MatchString(s):
-		f, _ := strconv.ParseFloat(s, 64)
-		return operand{literal: f}, nil
+		return operand{literal: json.Number(s)}, nil // exact, like document numbers
 	}
 	p, err := parsePath(s)
 	if err != nil {
@@ -464,8 +464,8 @@ func truthy(v any) bool {
 	case float64:
 		return t != 0
 	case json.Number:
-		f, err := t.Float64()
-		return err != nil || f != 0
+		n, ok := number(t)
+		return !ok || n.Sign() != 0
 	}
 	return true
 }
@@ -473,23 +473,24 @@ func truthy(v any) bool {
 // equal compares values; a missing value equals "" (so "x == ”" matches an
 // absent field), and numbers compare numerically.
 func equal(a, b any) bool {
-	if af, ok := number(a); ok {
-		if bf, ok := number(b); ok {
-			return af == bf
+	if an, ok := number(a); ok {
+		if bn, ok := number(b); ok {
+			return an.Cmp(bn) == 0
 		}
 	}
 	return text(a) == text(b)
 }
 
-// number returns a numeric value as float64 (documents decoded with
-// json.Decoder.UseNumber hold json.Number).
-func number(v any) (float64, bool) {
+// number returns a numeric value exactly (documents decoded with
+// json.Decoder.UseNumber hold json.Number), so large identifiers and tiny
+// fractions compare without float64 rounding.
+func number(v any) (*big.Float, bool) {
 	switch n := v.(type) {
 	case float64:
-		return n, true
+		return new(big.Float).SetFloat64(n), !math.IsNaN(n) && !math.IsInf(n, 0)
 	case json.Number:
-		f, err := n.Float64()
-		return f, err == nil
+		f, ok := new(big.Float).SetPrec(1024).SetString(n.String())
+		return f, ok
 	}
-	return 0, false
+	return nil, false
 }

@@ -148,7 +148,7 @@ func TestProcessErrors(t *testing.T) {
 	ctx := context.Background()
 	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return nil, errors.New("no sink") })
 	f := Flow{ID: "f", Transform: transform(t, "name: t\nsteps:\n  - set: { field: a, expr: b }")}
-	for _, body := range []string{`not json`, `null`, `[1]`} {
+	for _, body := range []string{`not json`, `null`, `[1]`, `{} trailing`, `{}{}`} {
 		if _, err := p.Process(ctx, f, []byte(body)); !errors.Is(err, ErrInvalidMessage) {
 			t.Errorf("body %s: err = %v, want ErrInvalidMessage", body, err)
 		}
