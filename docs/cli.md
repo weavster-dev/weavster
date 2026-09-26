@@ -40,7 +40,7 @@ flow list
 
 | Command | What it does | API call |
 |---|---|---|
-| `flow list` | One line per flow: id, status, and name, separated by tabs. | `GET /api/v1/flows` |
+| `flow list` | One line per flow: id, status, and name, separated by tabs. Tabs, newlines, and other control characters in a name are printed as `\t`, `\n`, … | `GET /api/v1/flows` |
 | `flow get <id>` | Prints the flow as JSON. | `GET /api/v1/flows/{id}` |
 | `flow create <file>` | Creates a flow from a JSON file (a [flow definition](processing-messages.md#1-create-a-flow)). | `POST /api/v1/flows` |
 | `flow update <id> <file>` | Replaces a flow's definition. The flow keeps its status (and `enabled` unless the file sets it). | `PUT /api/v1/flows/{id}` |

@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/weavster-dev/weavster/internal/flowdef"
 	"github.com/weavster-dev/weavster/internal/gateway"
@@ -90,7 +92,7 @@ func flowCommand(ctx context.Context, client Client, args []string, stdout, stde
 			return shellError(stderr, debug, err)
 		}
 		for _, f := range flows {
-			_, _ = fmt.Fprintln(stdout, f.ID+"\t"+f.Status+"\t"+f.Name)
+			_, _ = fmt.Fprintln(stdout, f.ID+"\t"+f.Status+"\t"+escapeControl(f.Name))
 		}
 		return 0
 	case sub == "get" && len(rest) == 1:
@@ -185,4 +187,19 @@ func renamed(ctx context.Context, client Client, path, name string) ([]byte, err
 	delete(doc, "enabled")
 	doc["name"] = name
 	return json.Marshal(doc)
+}
+
+// escapeControl writes control characters (tabs, newlines, ...) as Go
+// escapes, so a name always fits on one tab-separated line.
+func escapeControl(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if unicode.IsControl(r) {
+			q := strconv.QuoteRune(r)
+			b.WriteString(q[1 : len(q)-1])
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }

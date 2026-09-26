@@ -149,3 +149,11 @@ func TestHTTPClientVersion(t *testing.T) {
 		t.Errorf("Version() = %q, want %q", got, version)
 	}
 }
+
+func TestEscapeControl(t *testing.T) {
+	for in, want := range map[string]string{"ADT": "ADT", "a\tb": `a\tb`, "a\nb": `a\nb`, "é\x01": `é\x01`} {
+		if got := escapeControl(in); got != want {
+			t.Errorf("escapeControl(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
