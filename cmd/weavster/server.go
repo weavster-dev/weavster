@@ -563,7 +563,7 @@ func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway
 		// Spec §6.1: deploy also deploys the flow's undeployed dependencies
 		// (D-31). Locks are taken along dependency edges, which are acyclic,
 		// so this cannot deadlock.
-		if err := a.deployDependencies(ctx, f, map[string]bool{f.ID: true}); err != nil {
+		if err := a.deployDependencies(ctx, f); err != nil {
 			return gateway.Flow{}, err
 		}
 	}
@@ -572,16 +572,18 @@ func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway
 
 // deployDependencies deploys every undeployed flow f depends on, directly or
 // indirectly, dependencies first. Flows in any other state are left alone
-// (D-31). A missing dependency is ErrDependency; on a store failure the
-// dependencies deployed so far stay deployed (visible via GET).
-func (a flowAdapter) deployDependencies(ctx context.Context, f gateway.Flow, visited map[string]bool) error {
-	for _, depID := range f.DependsOn {
-		if visited[depID] {
-			continue
-		}
-		visited[depID] = true
-		err := func() error {
-			defer a.lock(depID, true)()
+// (D-31). It first collects the dependency closure, then locks it in one
+// global (id-sorted) order, so concurrent deploys cannot deadlock. A missing
+// dependency is ErrDependency; on a store failure the dependencies deployed
+// so far stay deployed (visible via GET).
+func (a flowAdapter) deployDependencies(ctx context.Context, root gateway.Flow) error {
+	closure := map[string]gateway.Flow{}
+	var collect func(f gateway.Flow) error
+	collect = func(f gateway.Flow) error {
+		for _, depID := range f.DependsOn {
+			if _, seen := closure[depID]; seen || depID == root.ID {
+				continue
+			}
 			dep, err := a.Get(ctx, depID)
 			if errors.Is(err, gateway.ErrFlowNotFound) {
 				return fmt.Errorf("%w: flow %s depends on missing flow %s", gateway.ErrDependency, f.ID, depID)
@@ -589,16 +591,33 @@ func (a flowAdapter) deployDependencies(ctx context.Context, f gateway.Flow, vis
 			if err != nil {
 				return fmt.Errorf("dependency %s: %w", depID, err)
 			}
-			if err := a.deployDependencies(ctx, dep, visited); err != nil {
+			closure[depID] = dep
+			if err := collect(dep); err != nil {
 				return err
 			}
-			if dep.Status == flowlife.Undeployed {
-				_, err = a.setStatus(ctx, dep, flowlife.Deployed)
-			}
-			return err
-		}()
+		}
+		return nil
+	}
+	if err := collect(root); err != nil || len(closure) == 0 {
+		return err
+	}
+	ids := make([]string, 0, len(closure))
+	for id := range closure {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		defer a.lock(id, true)()
+	}
+	for _, id := range dependencyOrder(closure, ids) {
+		dep, err := a.Get(ctx, id) // re-read under the lock
 		if err != nil {
-			return err
+			return fmt.Errorf("dependency %s: %w", id, err)
+		}
+		if dep.Status == flowlife.Undeployed {
+			if _, err := a.setStatus(ctx, dep, flowlife.Deployed); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -663,34 +682,47 @@ func (a flowAdapter) DeployEnabled(ctx context.Context, logger *slog.Logger) {
 		logger.Warn("auto-deploy skipped: cannot list flows", "error", err)
 		return
 	}
-	var started []string
+	// Snapshot the startup set first: a flow in it may be deployed as another
+	// flow's dependency before its own turn, and must still be started.
+	var pending []string
+	inSet := map[string]bool{}
 	for _, d := range defs {
 		var f gateway.Flow
 		if err := json.Unmarshal(d.Document, &f); err != nil {
 			logger.Warn("auto-deploy failed: unreadable flow", "flow", d.ID, "error", err)
 			continue
 		}
-		if !f.Enabled || flowlife.Normalize(f.Status) != flowlife.Undeployed {
-			continue
+		if f.Enabled && flowlife.Normalize(f.Status) == flowlife.Undeployed {
+			pending = append(pending, f.ID)
+			inSet[f.ID] = true
 		}
+	}
+	var started []string
+	for _, id := range pending {
 		err := func() error {
-			defer a.lock(f.ID, false)()
-			current, err := a.Get(ctx, f.ID)
-			if err != nil || !current.Enabled || current.Status != flowlife.Undeployed {
+			defer a.lock(id, false)()
+			current, err := a.Get(ctx, id)
+			if err != nil || !current.Enabled {
 				return err
 			}
+			switch current.Status {
+			case flowlife.Undeployed:
+			case flowlife.Deployed: // deployed earlier in this pass as a dependency
+			default:
+				return nil
+			}
 			// Same as a manual deploy: undeployed dependencies are deployed.
-			if err := a.deployDependencies(ctx, current, map[string]bool{current.ID: true}); err != nil {
+			if err := a.deployDependencies(ctx, current); err != nil {
 				return err
 			}
 			_, err = a.setStatus(ctx, current, flowlife.Started)
 			return err
 		}()
 		if err != nil {
-			logger.Warn("auto-deploy failed", "flow", f.ID, "error", err)
+			logger.Warn("auto-deploy failed", "flow", id, "error", err)
 			continue
 		}
-		started = append(started, f.ID)
+		started = append(started, id)
 	}
 	if len(started) > 0 {
 		logger.Info("auto-deployed enabled flows", "flows", started)

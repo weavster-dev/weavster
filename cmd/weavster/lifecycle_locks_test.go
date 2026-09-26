@@ -346,3 +346,51 @@ func TestLifecycleEventsAndAutoDeployDependencies(t *testing.T) {
 		t.Errorf("events = %v", got)
 	}
 }
+
+// TestConcurrentDeploysDoNotDeadlock: two flows whose dependencies are listed
+// in opposite orders deploy concurrently without deadlocking.
+func TestConcurrentDeploysDoNotDeadlock(t *testing.T) {
+	for round := 0; round < 50; round++ {
+		ctx := context.Background()
+		mem := state.NewMemStore()
+		for id, doc := range map[string]string{
+			"a": `{"id":"a","status":"undeployed","dependsOn":["b","c"]}`,
+			"d": `{"id":"d","status":"undeployed","dependsOn":["c","b"]}`,
+			"b": `{"id":"b","status":"undeployed"}`,
+			"c": `{"id":"c","status":"undeployed"}`,
+		} {
+			_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: id, Document: []byte(doc)})
+		}
+		flows := flowAdapter{store: mem, locks: newFlowLocks()}
+		done := make(chan error, 2)
+		for _, id := range []string{"a", "d"} {
+			go func(id string) { _, err := flows.Transition(ctx, id, "deploy"); done <- err }(id)
+		}
+		for i := 0; i < 2; i++ {
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatalf("round %d: concurrent deploys deadlocked", round)
+			}
+		}
+	}
+}
+
+// TestAutoDeployOrderIndependent: an enabled flow that is also an enabled
+// flow's dependency is started even when the dependent is processed first.
+func TestAutoDeployOrderIndependent(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "a-top", Document: []byte(`{"id":"a-top","status":"undeployed","enabled":true,"dependsOn":["b-base"]}`)})
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "b-base", Document: []byte(`{"id":"b-base","status":"undeployed","enabled":true}`)})
+	flows := flowAdapter{store: mem, locks: newFlowLocks()}
+	flows.DeployEnabled(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for _, id := range []string{"a-top", "b-base"} {
+		if f, _ := flows.Get(ctx, id); f.Status != "started" {
+			t.Errorf("%s = %s, want started", id, f.Status)
+		}
+	}
+}
