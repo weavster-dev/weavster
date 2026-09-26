@@ -105,6 +105,9 @@ func TestQueuedWorkSurvivesRestart(t *testing.T) {
 	}
 	stop()
 
+	// Let the 10ms backoff elapse, so the retry is due at the restarted
+	// server's startup pass (the next pass is 10 minutes away).
+	time.Sleep(50 * time.Millisecond)
 	up.Store(true)
 	stop = startCLI(t, args, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
