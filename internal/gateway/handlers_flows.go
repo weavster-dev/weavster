@@ -59,39 +59,42 @@ func (s *Server) handleFlowsGet(w http.ResponseWriter, r *http.Request) {
 // decodeFlow reads a flow definition from the request body. Clients never
 // send status (lifecycle operations own it); pathID, when set, must match
 // any id in the body.
-func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, bool) {
+func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, map[string]json.RawMessage, bool) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "could not read request body", http.StatusBadRequest)
-		return Flow{}, false
+		return Flow{}, nil, false
 	}
 	var f Flow
 	if err := json.Unmarshal(body, &f); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
-		return Flow{}, false
+		return Flow{}, nil, false
 	}
 	var fields map[string]json.RawMessage
-	_ = json.Unmarshal(body, &fields) // an object: f decoded from it
+	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
+		http.Error(w, "the body must be a JSON object", http.StatusBadRequest)
+		return Flow{}, nil, false
+	}
 	if _, present := fields["status"]; present {
 		http.Error(w, "status is managed by lifecycle operations (deploy, start, ...); omit it", http.StatusBadRequest)
-		return Flow{}, false
+		return Flow{}, nil, false
 	}
 	if pathID != "" {
 		if f.ID != "" && f.ID != pathID {
 			http.Error(w, "flow id cannot be changed; the id in the body must match the URL", http.StatusBadRequest)
-			return Flow{}, false
+			return Flow{}, nil, false
 		}
 		f.ID = pathID
 	}
 	if f.ID == "" {
 		http.Error(w, "flow id is required", http.StatusBadRequest)
-		return Flow{}, false
+		return Flow{}, nil, false
 	}
 	if !validFlowID.MatchString(f.ID) {
 		http.Error(w, "flow id must be 1-128 characters from A-Z a-z 0-9 . _ -", http.StatusBadRequest)
-		return Flow{}, false
+		return Flow{}, nil, false
 	}
-	return f, true
+	return f, fields, true
 }
 
 func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +102,7 @@ func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "flows unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	f, ok := decodeFlow(w, r, "")
+	f, _, ok := decodeFlow(w, r, "")
 	if !ok {
 		return
 	}
@@ -116,11 +119,13 @@ func (s *Server) handleFlowsUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "flow updates unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	f, ok := decodeFlow(w, r, r.PathValue("id"))
+	f, fields, ok := decodeFlow(w, r, r.PathValue("id"))
 	if !ok {
 		return
 	}
-	updated, err := s.cfg.FlowUpdates.Update(r.Context(), f.ID, f)
+	// enable/disable own this flag; an update that omits it keeps it.
+	_, setsEnabled := fields["enabled"]
+	updated, err := s.cfg.FlowUpdates.Update(r.Context(), f.ID, f, !setsEnabled)
 	if err != nil {
 		writeFlowError(w, err)
 		return

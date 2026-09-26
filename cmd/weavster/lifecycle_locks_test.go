@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -143,4 +145,42 @@ func TestRedeployAllSkipsFlowsUndeployedMeanwhile(t *testing.T) {
 	if got, _ := flows.Get(ctx, "b"); got.Status != "undeployed" {
 		t.Errorf("b resurrected as %s", got.Status)
 	}
+}
+
+// TestDeployEnabledSkipsBadFlows: a flow that cannot be read or written is
+// logged and skipped; other enabled flows still start.
+func TestDeployEnabledSkipsBadFlows(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	for id, doc := range map[string]string{
+		"good":  `{"id":"good","enabled":true}`,
+		"fails": `{"id":"fails","enabled":true}`,
+		"off":   `{"id":"off","enabled":false}`,
+	} {
+		_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: id, Document: []byte(doc)})
+	}
+	logs := &syncBuffer{}
+	flows := flowAdapter{store: failingUpdateRepo{MemStore: mem, failID: "fails"}, locks: newFlowLocks()}
+	flows.DeployEnabled(ctx, slog.New(slog.NewTextHandler(logs, nil)))
+	for id, want := range map[string]string{"good": "started", "fails": "undeployed", "off": "undeployed"} {
+		if f, _ := flows.Get(ctx, id); f.Status != want {
+			t.Errorf("%s = %s, want %s", id, f.Status, want)
+		}
+	}
+	if !strings.Contains(logs.String(), "auto-deploy failed") || !strings.Contains(logs.String(), "flow=fails") {
+		t.Errorf("failure not logged: %s", logs.String())
+	}
+
+	// A store that cannot list flows: logged, nothing started.
+	logs = &syncBuffer{}
+	flowAdapter{store: listFailRepo{mem}}.DeployEnabled(ctx, slog.New(slog.NewTextHandler(logs, nil)))
+	if !strings.Contains(logs.String(), "cannot list flows") {
+		t.Errorf("list failure not logged: %s", logs.String())
+	}
+}
+
+type listFailRepo struct{ *state.MemStore }
+
+func (listFailRepo) ListFlows(context.Context) ([]state.FlowDefinition, error) {
+	return nil, errors.New("database is locked")
 }

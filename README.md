@@ -59,7 +59,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
 - **Running server** (`weavster server [--config FILE]`): REST API over HTTP and optional HTTPS,
   with the OpenAPI document,
   `/api/v1/system`, CSRF marker enforcement, security headers, and TRACE/TRACK blocking;
-  flow create/list/get/delete stored in the configured store (durable with `sqlite`) and a
+  flow create/list/get/update/delete stored in the configured store (durable with `sqlite`),
+  enable/disable with auto-deploy of enabled flows at startup, and a
   deploy/start/stop/pause/halt/resume/undeploy lifecycle;
   `POST /api/v1/flows/{id}/messages` runs a message through the flow's DSL transform and
   delivers it to each `http`/`file` destination, retrying failures with backoff (see

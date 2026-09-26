@@ -26,7 +26,17 @@ func TestFlowUpdateAndEnable(t *testing.T) {
 		t.Errorf("message after update: %s", status)
 	}
 
+	// Omitting "enabled" keeps it; sending it changes it.
+	c.do(http.MethodPost, "/api/v1/flows/f/enable", "", admin)
+	if _, body, _ := c.do(http.MethodPut, "/api/v1/flows/f", `{"name":"Renamed again"}`, admin); !strings.Contains(body, `"enabled":true`) {
+		t.Errorf("update without enabled dropped it: %s", body)
+	}
+	if _, body, _ := c.do(http.MethodPut, "/api/v1/flows/f", `{"name":"Renamed again","enabled":false}`, admin); !strings.Contains(body, `"enabled":false`) {
+		t.Errorf("update with enabled:false kept it: %s", body)
+	}
+
 	for _, tc := range []struct{ name, body, want string }{
+		{"null body", `null`, "must be a JSON object"},
 		{"status key", `{"name":"x","status":"stopped"}`, "status is managed"},
 		{"id change", `{"id":"g","name":"x"}`, "cannot be changed"},
 		{"bad transform", `{"transform":{"name":"t","steps":[{"build":{"template":"x"}}]}}`, "not supported yet"},

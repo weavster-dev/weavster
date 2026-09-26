@@ -58,7 +58,9 @@ type FlowDestination struct {
 // FlowUpdater changes a stored flow's definition; the runtime status is
 // never changed by these calls.
 type FlowUpdater interface {
-	Update(ctx context.Context, id string, f Flow) (Flow, error)
+	// Update replaces the definition; with keepEnabled the stored enabled
+	// flag is kept instead of f.Enabled.
+	Update(ctx context.Context, id string, f Flow, keepEnabled bool) (Flow, error)
 	SetEnabled(ctx context.Context, id string, enabled bool) (Flow, error)
 }
 

@@ -73,10 +73,13 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080
 }'
 ```
 
-- The body replaces the whole definition: fields you leave out are cleared. The flow keeps
-  its `status`.
+- The body replaces the whole definition: fields you leave out are cleared. There are two
+  exceptions: the flow keeps its `status`, and it keeps `enabled` unless you include that field.
 - Messages received after the update use the new definition. A running flow does not need a
   restart.
+- `queued` messages are retried against the current definition. A changed destination URL is
+  used for them, and a removed destination is no longer retried for them.
+- Statistics of a removed or renamed destination remain listed until the server restarts.
 - The same checks as create apply (`400` with the reason).
 - `id` comes from the URL: a different `id` in the body, or any `status` field, returns `400`.
 - Unknown flows return `404`.

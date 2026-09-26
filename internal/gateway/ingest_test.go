@@ -150,7 +150,9 @@ func TestRedeployAllPartialBody(t *testing.T) {
 
 type fakeUpdater struct{ err error }
 
-func (f fakeUpdater) Update(_ context.Context, id string, fl Flow) (Flow, error) { return fl, f.err }
+func (f fakeUpdater) Update(_ context.Context, id string, fl Flow, _ bool) (Flow, error) {
+	return fl, f.err
+}
 func (f fakeUpdater) SetEnabled(_ context.Context, id string, enabled bool) (Flow, error) {
 	return Flow{ID: id, Enabled: enabled}, f.err
 }
@@ -164,6 +166,7 @@ func TestFlowUpdateHandlers(t *testing.T) {
 		{"update", http.MethodPut, "/api/v1/flows/f", `{"name":"x"}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusOK},
 		{"update unavailable", http.MethodPut, "/api/v1/flows/f", `{}`, Config{}, http.StatusServiceUnavailable},
 		{"update bad json", http.MethodPut, "/api/v1/flows/f", `x`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
+		{"update null body", http.MethodPut, "/api/v1/flows/f", `null`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
 		{"update unknown", http.MethodPut, "/api/v1/flows/f", `{}`, Config{FlowUpdates: fakeUpdater{err: ErrFlowNotFound}}, http.StatusNotFound},
 		{"enable", http.MethodPost, "/api/v1/flows/f/enable", ``, Config{FlowUpdates: fakeUpdater{}}, http.StatusOK},
 		{"disable unavailable", http.MethodPost, "/api/v1/flows/f/disable", ``, Config{}, http.StatusServiceUnavailable},
