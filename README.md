@@ -70,9 +70,10 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   account; security-relevant API calls are written to an audit log on stderr. Users persist
   across restarts only with `store.dialect: sqlite`; otherwise they are kept in memory.
 - **CLI**: `weavster server`, `weavster test` (four built-in codec round-trip fixtures,
-  JUnit/JSON output), and `-s` batch scripts with `help`, `status`, `version`, `flow` commands
-  for every flow API operation (see `docs/cli.md`), `user list`, `quit`. `-u`/`-p` send Basic credentials; `-c` is parsed but ignored; `-v` prints
-  the local version.
+  JUnit/JSON output), and the command-line client: a bare `weavster` opens the interactive
+  shell, and `-s` runs batch scripts, with `help`, `status`, `version`, `flow` commands for every
+  flow API operation, `user list`, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
+  a connection file, and `-v` prints the server's version.
 - **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
   scheduler, adapters, outbox, codecs, WASM compiler/executor/registry, PostgreSQL
   store, config-as-code, Git store, alerts, notifiers, secrets, metrics/tracing.

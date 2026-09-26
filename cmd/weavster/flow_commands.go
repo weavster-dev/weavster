@@ -83,16 +83,8 @@ func flowCommand(ctx context.Context, client Client, args []string, stdout, stde
 		_, _ = fmt.Fprintln(stdout, flowUsage)
 		return 0
 	case sub == "list": // extra words are ignored, as before
-		out, err := client.Call(ctx, http.MethodGet, "/api/v1/flows", nil)
-		var flows []gateway.Flow
-		if err == nil {
-			err = json.Unmarshal(out, &flows)
-		}
-		if err != nil {
+		if _, err := printFlows(ctx, client, stdout, func(gateway.Flow) bool { return true }); err != nil {
 			return shellError(stderr, debug, err)
-		}
-		for _, f := range flows {
-			_, _ = fmt.Fprintln(stdout, f.ID+"\t"+f.Status+"\t"+escapeControl(f.Name))
 		}
 		return 0
 	case sub == "get" && len(rest) == 1:

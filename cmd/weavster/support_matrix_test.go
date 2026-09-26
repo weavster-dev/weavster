@@ -100,7 +100,7 @@ func TestSupportMatrixWired(t *testing.T) {
 }
 
 // TestSupportMatrixCLI proves the wired CLI rows: -a/-s batch mode against
-// the composed server, and the no-subcommand default starting the server.
+// the composed server, and the no-subcommand default opening the shell.
 func TestSupportMatrixCLI(t *testing.T) {
 	handler, _, err := buildServer(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)), io.Discard, serverconfig.Default())
 	if err != nil {
@@ -119,7 +119,7 @@ func TestSupportMatrixCLI(t *testing.T) {
 		want     int
 		contains string
 	}{
-		{name: "batch-status", script: "status\n", want: 0, contains: `"weavster"`},
+		{name: "batch-status", script: "status\n", want: 0, contains: "no deployed flows"},
 		{name: "batch-flow-list", script: "flow list\n", want: 0, contains: "Patient Admit"},
 		{name: "batch-unknown-command", script: "nonsense\n", want: 2},
 	}
@@ -150,19 +150,14 @@ func TestSupportMatrixCLI(t *testing.T) {
 	})
 
 	t.Run("no-subcommand", func(t *testing.T) {
-		const addr = "127.0.0.1:8080"
-		ln, err := net.Listen("tcp", addr)
-		if err != nil {
-			// The default address is taken on this host: a bare `weavster`
-			// must still try to start the server there and report the bind error.
-			var out, errb bytes.Buffer
-			if code := run(nil, strings.NewReader(""), &out, &errb); code != 1 || !strings.Contains(errb.String(), addr) {
-				t.Fatalf("exit = %d, stderr %q; want bind error on %s", code, errb.String(), addr)
-			}
-			return
+		// A bare `weavster` is the interactive shell, not the server.
+		var out, errb bytes.Buffer
+		if code := run([]string{"-a", ts.URL, "-u", bootstrapAdmin, "-p", testAdminPassword}, strings.NewReader("flow list\nquit\n"), &out, &errb); code != 0 {
+			t.Fatalf("exit = %d, stderr %q", code, errb.String())
 		}
-		_ = ln.Close()
-		runUntilSIGTERM(t, nil, "http://"+addr+"/api/openapi.yaml")
+		if !strings.Contains(out.String(), shellPrompt+"admit\tundeployed\tPatient Admit") {
+			t.Errorf("shell output = %q", out.String())
+		}
 	})
 }
 

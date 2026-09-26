@@ -81,15 +81,15 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | Capability | Tier | Proof / notes |
 |---|---|---|
 | `weavster server [--config FILE] [address]` | Implemented (wired) | `TestSupportMatrixCLI/server-subcommand`, `TestServerConfigListen` |
-| `weavster` with no subcommand | Implemented (wired) | `TestSupportMatrixCLI/no-subcommand`. Starts the server on `127.0.0.1:8080`, **not** an interactive shell. |
+| `weavster` with no subcommand | Implemented (wired) | `TestSupportMatrixCLI/no-subcommand`, `TestShell`. Opens the interactive remote shell (`weavster> ` prompt); `quit`, `exit`, or end of input ends it. Start the server with `weavster server`. |
 | `weavster -h` | Implemented (wired) | `TestRunHelpAndVersion` |
-| `weavster -v` | Implemented (wired) | `TestRunHelpAndVersion`. Prints the **local binary** version, not the server's. |
-| `weavster -s script.txt` batch mode | Implemented (wired) | `TestSupportMatrixCLI/batch-*`, `TestFlowCLI`. Commands: `help`, `status`, `version`, `flow` (list, get, create, update, update-all, rename, enable, disable, remove, export, import, lifecycle actions, redeploy-all, start/stop-destination, connectors, ports), `user list`, `quit`/`exit`. `user list` always prints nothing. Exits `2` if any line fails (unknown command, usage error, unreadable file, unreachable server, or an error reply). **`status` exits `0` even when the server answers with an HTTP error**; it prints the error body. See [Command-line client](cli.md). |
-| `-a address` | Implemented (wired) | `TestSupportMatrixCLI/batch-*`. Used only by `-s`. Include the scheme, for example `http://127.0.0.1:8080` (default). |
-| `-u`, `-p` | Implemented (wired) | `TestCLICredentials`. Sent as HTTP Basic credentials by `-s` batch mode. |
-| `-c connection-file` | Unsupported | Parsed and ignored. A missing file is not an error. |
-| `-d` | Unsupported | Parsed, but error output is identical with or without it. |
-| Interactive shell | Unsupported | |
+| `weavster -v` | Implemented (wired) | `TestRunHelpAndVersion`, `TestShell/server_version`. Prints the server's version (and the client's). Needs credentials (`-u/-p` or `-c`); exits `2` if the server cannot be reached or refuses them. |
+| `weavster -s script.txt` batch mode | Implemented (wired) | `TestSupportMatrixCLI/batch-*`, `TestFlowCLI`. Commands: `help`, `status`, `version`, `flow` (list, get, create, update, update-all, rename, enable, disable, remove, export, import, lifecycle actions, redeploy-all, start/stop-destination, connectors, ports), `user list`, `quit`/`exit`. `user list` always prints nothing. Exits `2` if any line fails (unknown command, usage error, unreadable file, unreachable server, or an error reply). See [Command-line client](cli.md). |
+| `-a address` | Implemented (wired) | `TestSupportMatrixCLI/batch-*`, `TestShell`. Include the scheme, for example `http://127.0.0.1:8080` (default). |
+| `-u`, `-p` | Implemented (wired) | `TestCLICredentials`, `TestShell`. Checked at startup; a failed login prints `Could not log in to server.` and continues. Sent as HTTP Basic credentials. |
+| `-c connection-file` | Implemented (wired) | `TestShell`. YAML with `address`, `user`, `password`; `-a/-u/-p` override it; a missing or invalid file exits `2`. |
+| `-d` | Implemented (wired) | `TestShell/debug_shows_causes`. Adds each underlying cause to error output. |
+| Interactive shell | Implemented (wired) | `TestShell`. Same commands as batch mode. See [Command-line client](cli.md). |
 | `weavster test [--filter NAME] [--format junit\|json] [--output DIR]` | Implemented (wired) | `TestRunTestCommand`. Runs four built-in codec round-trip fixtures (`identity/hl7`, `identity/json`, `identity/xml`, `identity/raw`). It does not discover your flows or fixtures. |
 
 Example:
