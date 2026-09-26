@@ -258,21 +258,21 @@ and serves nothing.</p>
 </tbody>
 </table>
 <ul>
-<li><strong><code>memory</code></strong>: messages and flow definitions live in process memory and are lost on restart.</li>
+<li><strong><code>memory</code></strong>: messages, flow definitions, and users live in process memory and are lost on restart.</li>
 <li><strong><code>sqlite</code></strong>: set <code>dsn</code> or <code>paths.dataDir</code>. <code>dsn</code> defaults to <code>&lt;paths.dataDir&gt;/weavster.db</code>.
   The parent directory is created (mode <code>0700</code>) if missing. Migrations run at startup. A SQLite
   failure is never retried.</li>
 <li><strong><code>postgres</code></strong>: <code>dsn</code> is required. <strong>PostgreSQL does not work yet:</strong> the schema uses
   SQLite-only SQL, so startup fails after the retries.</li>
 <li><strong><code>disabled</code></strong>: runs with no message store. <code>GET /api/v1/messages</code> returns <code>503 messages unavailable</code>.
-  Flow definitions are kept in memory.</li>
+  Flow definitions and users are kept in memory.</li>
 </ul>
 <p>If every PostgreSQL attempt fails, the server exits <code>1</code>. SIGINT/SIGTERM during the retries
 stops the server immediately with exit code <code>0</code>. When every attempt fails:</p>
 <pre><code class="language-text">Error: store: postgres: giving up after 4 attempts: ...
 </code></pre>
-<p>The store holds messages and flow definitions. With <code>sqlite</code>, flows created through the API
-survive a restart.</p>
+<p>The store holds messages, flow definitions, and users. With <code>sqlite</code>, flows and users
+(including password changes and lockouts) survive a restart.</p>
 <h3 id="paths"><code>paths</code></h3>
 <table>
 <thead>

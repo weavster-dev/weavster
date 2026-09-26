@@ -244,9 +244,14 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestBootstrapPasswordSources</code></td>
 </tr>
 <tr>
-<td>Durable users; user administration API</td>
+<td>Durable local users (password changes and lockout state included)</td>
+<td>Implemented (wired)</td>
+<td><code>TestUsersSurviveRestart</code>. Durable with <code>store.dialect: sqlite</code>; the first-run <code>admin</code> is created once per database.</td>
+</tr>
+<tr>
+<td>User administration API</td>
 <td>Unsupported</td>
-<td>Users are in memory and re-created at every start. <code>admin</code> is the only account.</td>
+<td><code>admin</code> is the only account.</td>
 </tr>
 <tr>
 <td>Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction</td>
