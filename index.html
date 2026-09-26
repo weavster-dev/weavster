@@ -50,6 +50,9 @@
                                 <a href="audit-log/" class="nav-link">Audit Log</a>
                             </li>
                             <li class="nav-item">
+                                <a href="processing-messages/" class="nav-link">Processing Messages</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -129,11 +132,11 @@
 <li><a href="agent-onboarding/">Agent Onboarding</a> — coding rules for contributors and agents</li>
 </ul>
 <h2 id="what-exists-now">What exists now</h2>
-<p><strong>The server does not receive, transform, or deliver messages.</strong>
-It serves an authenticated REST API (HTTP, plus HTTPS when configured) with stored flow records, a
-read-only topology view of them, and a system status endpoint. Most platform capabilities
-(adapters, transforms, scheduler, durable audit storage) exist only as libraries
-in the source tree.</p>
+<p>The server serves an authenticated REST API (HTTP, plus HTTPS when configured). Through it you
+define flows, send messages into them, transform messages with the YAML DSL, and deliver them
+once to HTTP and file destinations; every message is stored with its status. See
+<a href="processing-messages/">Processing messages</a>. Listening sources, retries, scheduling, and WASM
+modules exist only as libraries in the source tree.</p>
 <p>See the <a href="support-matrix/">support matrix</a> for exactly what is wired, library-only,
 Enterprise-deferred, or unsupported.</p>
 <h2 id="contracts">Contracts</h2>
@@ -223,5 +226,5 @@ Enterprise-deferred, or unsupported.</p>
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2026-09-26 18:00:50.941501+00:00
+Build Date UTC : 2026-09-26 18:20:38.319065+00:00
 -->

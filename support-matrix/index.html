@@ -50,6 +50,9 @@
                                 <a href="../audit-log/" class="nav-link">Audit Log</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../processing-messages/" class="nav-link">Processing Messages</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -214,9 +217,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestSupportMatrixWired/topology-*</code>. The graph is built from the stored flows above. Status is whatever the flow record says, and activity counters are always zero. An unknown <code>flowId</code> returns <code>404</code>.</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/messages</code> search</td>
+<td><code>GET /api/v1/messages</code> search (<code>flowId</code>, <code>status</code>)</td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixWired/messages</code>. Always returns <code>[]</code>, because nothing writes messages yet.</td>
+<td><code>TestSupportMatrixWired/messages</code>, <code>TestPipelineEndToEnd</code>. Returns messages sent into flows with their final status.</td>
 </tr>
 <tr>
 <td>Authentication (Basic or Bearer token) on every <code>/api/v1</code> route except login</td>
@@ -271,7 +274,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Message store selection: <code>memory</code> (default), <code>sqlite</code>, <code>disabled</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestServerConfigStore</code>. SQLite creates <code>&lt;dataDir&gt;/weavster.db</code> and runs migrations at startup. <code>disabled</code> makes message search return <code>503</code>. Nothing writes messages yet, so every store is empty.</td>
+<td><code>TestServerConfigStore</code>. SQLite creates <code>&lt;dataDir&gt;/weavster.db</code> and runs migrations at startup. <code>disabled</code> makes message search return <code>503</code> and message intake unavailable.</td>
 </tr>
 <tr>
 <td>PostgreSQL message store</td>
@@ -321,19 +324,29 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 </thead>
 <tbody>
 <tr>
-<td>Sources and destinations (file, HTTP, TCP/MLLP, database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>
-<td>Library-only</td>
-<td>Nothing in the server starts an adapter or receives a message.</td>
+<td>Message intake: <code>POST /api/v1/flows/{id}/messages</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestPipelineEndToEnd</code>. See <a href="../processing-messages/">Processing messages</a>.</td>
 </tr>
 <tr>
-<td>Receive → filter → transform → route → deliver pipeline</td>
-<td>Unsupported</td>
-<td></td>
+<td>Receive → persist → filter → transform → deliver to each destination, with per-destination results and aggregate status</td>
+<td>Implemented (wired)</td>
+<td><code>TestPipelineEndToEnd</code>. Synchronous, one attempt; no response processing.</td>
 </tr>
 <tr>
-<td>YAML DSL transforms</td>
+<td><code>http</code> and <code>file</code> destinations</td>
+<td>Implemented (wired)</td>
+<td><code>TestPipelineEndToEnd</code></td>
+</tr>
+<tr>
+<td>Other sources and destinations (file/HTTP/TCP-MLLP listeners, database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>
 <td>Library-only</td>
-<td>An interpreter for <code>map</code>, <code>set</code>, and <code>filter</code> steps exists, but the server does not run transforms on messages yet. <code>build</code> and <code>destinationSet</code> are not supported.</td>
+<td>Flows do not listen on their own ports or poll anything.</td>
+</tr>
+<tr>
+<td>YAML DSL <code>map</code>, <code>set</code>, <code>filter</code> steps</td>
+<td>Implemented (wired)</td>
+<td><code>TestPipelineEndToEnd</code>. <code>build</code> and <code>destinationSet</code> are not supported.</td>
 </tr>
 <tr>
 <td>WASM executor (wazero), module registry</td>
@@ -346,9 +359,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td></td>
 </tr>
 <tr>
-<td>Outbox, retries, dead-letter</td>
-<td>Library-only</td>
-<td></td>
+<td>Retries, backoff, dead-letter</td>
+<td>Unsupported</td>
+<td>A failed delivery leaves the message <code>queued</code>; nothing retries it.</td>
 </tr>
 <tr>
 <td>Alerts and SMTP/webhook notifiers</td>
@@ -578,9 +591,9 @@ Those are Enterprise items with no code in the source tree.</p>
 </tbody>
 </table>
 <h2 id="delivery-guarantees-per-adapter">Delivery guarantees per adapter</h2>
-<p><strong>The running server delivers nothing</strong>, so it makes no delivery guarantee. The table below
-describes the library adapters for when they are wired in later phases. No sink sends an
-idempotency key today, so no destination is exactly-once. The outbox library's
+<p>The server makes <strong>one</strong> delivery attempt per destination; a failure leaves the message
+<code>queued</code> and is not retried. So today every wired destination is at-most-once. Rows marked
+"library" describe adapters the server does not use yet. The outbox library's
 <code>SemanticsForAdapter</code> labels non-TCP sinks "exactly-once", but that label is not yet true.</p>
 <table>
 <thead>
@@ -588,65 +601,65 @@ idempotency key today, so no destination is exactly-once. The outbox library's
 <th>Adapter</th>
 <th>Source</th>
 <th>Sink</th>
-<th>Guarantee when retried through the outbox</th>
+<th>Guarantee</th>
 <th>Sends idempotency key</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>File</td>
-<td>yes</td>
-<td>yes</td>
-<td>at-least-once</td>
+<td>library</td>
+<td>wired</td>
+<td>at-most-once (one attempt)</td>
 <td>no</td>
 </tr>
 <tr>
 <td>HTTP</td>
-<td>yes</td>
-<td>yes</td>
-<td>at-least-once</td>
-<td>no</td>
+<td>library</td>
+<td>wired</td>
+<td>at-most-once (one attempt)</td>
+<td>yes: <code>Idempotency-Key</code> header, the same for every attempt to deliver a message to a destination</td>
 </tr>
 <tr>
 <td>TCP/MLLP</td>
-<td>yes</td>
-<td>yes</td>
-<td>at-least-once</td>
-<td>no</td>
+<td>library</td>
+<td>library</td>
+<td>not wired</td>
+<td>no (the protocol has no field for one)</td>
 </tr>
 <tr>
 <td>Database</td>
-<td>yes</td>
-<td>yes</td>
-<td>at-least-once</td>
+<td>library</td>
+<td>library</td>
+<td>not wired</td>
 <td>no</td>
 </tr>
 <tr>
 <td>SMTP</td>
 <td>—</td>
-<td>yes</td>
-<td>at-least-once</td>
+<td>library</td>
+<td>not wired</td>
 <td>no</td>
 </tr>
 <tr>
 <td>Web service (SOAP/REST)</td>
 <td>—</td>
-<td>yes</td>
-<td>at-least-once</td>
+<td>library</td>
+<td>not wired</td>
 <td>no</td>
 </tr>
 <tr>
 <td>Document</td>
 <td>—</td>
-<td>yes</td>
-<td>at-least-once</td>
+<td>library</td>
+<td>not wired</td>
 <td>no</td>
 </tr>
 <tr>
 <td>In-process inter-flow</td>
-<td>yes</td>
-<td>yes</td>
-<td>at-least-once</td>
+<td>library</td>
+<td>library</td>
+<td>not wired</td>
 <td>no</td>
 </tr>
 <tr>

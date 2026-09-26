@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/server-config/">
+        <link rel="canonical" href="https://docs.weavster.dev/processing-messages/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Server Configuration - Weavster</title>
+        <title>Processing Messages - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -41,7 +41,7 @@
                                 <a href="../support-matrix/" class="nav-link">Support Matrix</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Server Configuration</a>
+                                <a href="../server-config/" class="nav-link">Server Configuration</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../authentication/" class="nav-link">Authentication</a>
@@ -50,7 +50,7 @@
                                 <a href="../audit-log/" class="nav-link">Audit Log</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../processing-messages/" class="nav-link">Processing Messages</a>
+                                <a href="./" class="nav-link active" aria-current="page">Processing Messages</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
@@ -70,17 +70,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../support-matrix/" class="nav-link">
+                                <a rel="prev" href="../audit-log/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../authentication/" class="nav-link">
+                                <a rel="next" href="../documentation/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/server-config.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/processing-messages.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -101,17 +101,21 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#server-configuration" class="nav-link">Server configuration</a>
+            <li class="nav-item" data-bs-level="1"><a href="#processing-messages" class="nav-link">Processing messages</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#example" class="nav-link">Example</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#keys" class="nav-link">Keys</a>
+            <li class="nav-item" data-bs-level="2"><a href="#1-create-a-flow" class="nav-link">1. Create a flow</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#root-accounts" class="nav-link">Root accounts</a>
+            <li class="nav-item" data-bs-level="2"><a href="#2-send-a-message" class="nav-link">2. Send a message</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#3-find-processed-messages" class="nav-link">3. Find processed messages</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#limits-today" class="nav-link">Limits today</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -122,214 +126,178 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="server-configuration">Server configuration</h1>
-<p><code>weavster server</code> reads an optional YAML configuration file:</p>
-<pre><code class="language-bash">weavster server --config /etc/weavster/weavster.yaml
+<h1 id="processing-messages">Processing messages</h1>
+<p>A flow can transform each message it receives with the YAML DSL and deliver the result to
+one or more destinations. You send messages to the flow over the API.</p>
+<h2 id="1-create-a-flow">1. Create a flow</h2>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows -d '{
+  &quot;id&quot;: &quot;adt&quot;,
+  &quot;name&quot;: &quot;ADT normalize&quot;,
+  &quot;sourceType&quot;: &quot;http&quot;,
+  &quot;transform&quot;: {
+    &quot;kind&quot;: &quot;Transform&quot;, &quot;name&quot;: &quot;normalize&quot;, &quot;inputs&quot;: [&quot;message&quot;],
+    &quot;steps&quot;: [
+      {&quot;map&quot;:    {&quot;from&quot;: &quot;PID.5.1&quot;, &quot;to&quot;: &quot;patient.lastName&quot;, &quot;type&quot;: &quot;string&quot;}},
+      {&quot;filter&quot;: {&quot;when&quot;: &quot;patient.lastName == '&quot;''&quot;'&quot;, &quot;action&quot;: &quot;reject&quot;}},
+      {&quot;set&quot;:    {&quot;field&quot;: &quot;patient.label&quot;, &quot;expr&quot;: &quot;Patient {{patient.lastName}}&quot;}}
+    ]
+  },
+  &quot;destinations&quot;: [
+    {&quot;name&quot;: &quot;ehr&quot;,     &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://ehr.example.com/inbound&quot;},
+    {&quot;name&quot;: &quot;archive&quot;, &quot;type&quot;: &quot;file&quot;, &quot;dir&quot;: &quot;/var/lib/weavster/archive&quot;}
+  ]
+}'
 </code></pre>
-<p>Without <code>--config</code>, the server uses the defaults below. A positional address overrides
-<code>listen.address</code>, for example <code>weavster server --config weavster.yaml 127.0.0.1:9090</code>. Put
-<code>--config</code> <strong>before</strong> the address. Anything after the address is rejected with
-<code>Error: unexpected arguments</code>.</p>
-<p>The file is checked strictly at startup. It must contain exactly one YAML document. An unknown
-key, a value of the wrong type, an address that isn't <code>host:port</code>, or an invalid combination (for
-example a password policy that forbids every character class) stops the server with exit code <code>1</code> and a message like:</p>
-<pre><code class="language-text">Error: config: /etc/weavster/weavster.yaml: yaml: unmarshal errors:
-  line 3: field dialekt not found in type serverconfig.Store
+<p>The server checks the transform and destinations when you create the flow. A problem is
+reported as <code>400</code> with the reason, for example:</p>
+<pre><code class="language-text">invalid flow: dsl: normalize: step 1: build: dsl: step not supported yet
 </code></pre>
-<h2 id="example">Example</h2>
-<p>A single-node server with a durable SQLite store and HTTPS:</p>
-<pre><code class="language-yaml">listen:
-  address: 127.0.0.1:8080        # cleartext listener; &quot;&quot; disables it
-  tlsAddress: 0.0.0.0:8443       # HTTPS listener; &quot;&quot; disables it
-  requireMarkerHeader: true
-tls:
-  certFile: /etc/weavster/tls/cert.pem
-  keyFile: /etc/weavster/tls/key.pem
-  minVersion: &quot;1.2&quot;
-store:
-  dialect: sqlite
-  maxRetry: 3
-  retryWaitMs: 1000
-paths:
-  dataDir: /var/lib/weavster     # SQLite file: /var/lib/weavster/weavster.db
-auth:
-  passwordPolicy:
-    minLength: 12
-    minUpper: 1
-    minLower: 1
-    minNumeric: 1
-    minSpecial: 1
-  lockout:
-    retryLimit: 5
-    lockoutPeriodSeconds: 300
-</code></pre>
-<h2 id="keys">Keys</h2>
-<p>Keys you leave out keep their default.</p>
-<h3 id="listen"><code>listen</code></h3>
+<h3 id="transform"><code>transform</code></h3>
+<p><code>transform</code> is optional. Without it (or with <code>null</code> or no <code>steps</code>), messages pass through
+unchanged and may be any bytes. It uses the steps
+below, in order, on the message as a JSON object.</p>
 <table>
 <thead>
 <tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
+<th>Step</th>
+<th>Fields</th>
+<th>Effect</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>address</code></td>
-<td><code>127.0.0.1:8080</code></td>
-<td>Cleartext HTTP <code>host:port</code>. Set to <code>""</code> to serve HTTPS only.</td>
+<td><code>map</code></td>
+<td><code>from</code>, <code>to</code>, optional <code>type</code> (<code>string</code>, <code>number</code>, <code>boolean</code>)</td>
+<td>Copies the value at <code>from</code> to <code>to</code>, converting it if <code>type</code> is set. A missing <code>from</code> leaves <code>to</code> unchanged.</td>
 </tr>
 <tr>
-<td><code>tlsAddress</code></td>
-<td><code>""</code> (off)</td>
-<td>HTTPS <code>host:port</code>. Requires <code>tls.certFile</code> and <code>tls.keyFile</code>.</td>
+<td><code>set</code></td>
+<td><code>field</code>, <code>expr</code></td>
+<td>Sets <code>field</code> to <code>expr</code>, replacing each <code>{{path}}</code> with that value (an empty string when missing).</td>
 </tr>
 <tr>
-<td><code>requireMarkerHeader</code></td>
-<td><code>true</code></td>
-<td>Require <code>X-Weavster-CSRF: 1</code> on every <code>/api/v1</code> request. Requests without it get <code>400</code>.</td>
-</tr>
-</tbody>
-</table>
-<p>At least one of <code>address</code> and <code>tlsAddress</code> must be set.</p>
-<h3 id="tls"><code>tls</code></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>certFile</code></td>
-<td><code>""</code></td>
-<td>PEM certificate (chain) for the HTTPS listener.</td>
-</tr>
-<tr>
-<td><code>keyFile</code></td>
-<td><code>""</code></td>
-<td>PEM private key matching <code>certFile</code>.</td>
-</tr>
-<tr>
-<td><code>minVersion</code></td>
-<td><code>"1.2"</code></td>
-<td>Lowest accepted TLS version: <code>"1.2"</code> or <code>"1.3"</code>. Quote the value so YAML reads it as a string.</td>
-</tr>
-</tbody>
-</table>
-<p>With TLS 1.2, only ECDHE AES-GCM cipher suites are offered. The certificate and key are loaded
-before any listener starts. If they can't be read, the server exits <code>1</code> with <code>Error: tls: …</code>
-and serves nothing.</p>
-<h3 id="store"><code>store</code></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>dialect</code></td>
-<td><code>memory</code></td>
-<td><code>memory</code>, <code>sqlite</code>, <code>postgres</code>, or <code>disabled</code>.</td>
-</tr>
-<tr>
-<td><code>dsn</code></td>
-<td>see below</td>
-<td>Connection string. For <code>sqlite</code>, a file path. For <code>postgres</code>, a URL such as <code>postgres://user:pass@db:5432/weavster</code>.</td>
-</tr>
-<tr>
-<td><code>maxConnections</code></td>
-<td><code>10</code></td>
-<td>Maximum open PostgreSQL connections. SQLite always uses one.</td>
-</tr>
-<tr>
-<td><code>maxRetry</code></td>
-<td><code>3</code></td>
-<td>PostgreSQL only: extra connection attempts after the first failure.</td>
-</tr>
-<tr>
-<td><code>retryWaitMs</code></td>
-<td><code>1000</code></td>
-<td>PostgreSQL only: wait between attempts, in milliseconds.</td>
+<td><code>filter</code></td>
+<td><code>when</code>, <code>action</code> (<code>reject</code> or <code>accept</code>)</td>
+<td><code>reject</code> drops the message when <code>when</code> is true; <code>accept</code> drops it when <code>when</code> is false.</td>
 </tr>
 </tbody>
 </table>
 <ul>
-<li><strong><code>memory</code></strong>: messages, flow definitions, and users live in process memory and are lost on restart.</li>
-<li><strong><code>sqlite</code></strong>: set <code>dsn</code> or <code>paths.dataDir</code>. <code>dsn</code> defaults to <code>&lt;paths.dataDir&gt;/weavster.db</code>.
-  The parent directory is created (mode <code>0700</code>) if missing. Migrations run at startup. A SQLite
-  failure is never retried.</li>
-<li><strong><code>postgres</code></strong>: <code>dsn</code> is required. <strong>PostgreSQL does not work yet:</strong> the schema uses
-  SQLite-only SQL, so startup fails after the retries.</li>
-<li><strong><code>disabled</code></strong>: runs with no message store. <code>GET /api/v1/messages</code> returns <code>503 messages unavailable</code>.
-  Flow definitions and users are kept in memory.</li>
+<li><strong>Paths</strong> use dots: <code>patient.lastName</code>. A number indexes an array: <code>items.0.code</code>.</li>
+<li><strong><code>when</code></strong> is either a path (true when the value is present and not empty, <code>0</code>, <code>false</code>, or <code>null</code>),
+  or <code>&lt;operand&gt; == &lt;operand&gt;</code> / <code>&lt;operand&gt; != &lt;operand&gt;</code>. An operand is a path, a quoted string
+  (<code>'x'</code> or <code>"x"</code>), a number (<code>3</code>, <code>-1.5</code>), or <code>true</code>/<code>false</code>. A missing path compares equal
+  to <code>''</code>. No other operators exist.</li>
+<li><code>build</code> and <code>destinationSet</code> steps are not supported yet.</li>
+<li>Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.</li>
 </ul>
-<p>If every PostgreSQL attempt fails, the server exits <code>1</code>. SIGINT/SIGTERM during the retries
-stops the server immediately with exit code <code>0</code>. When every attempt fails:</p>
-<pre><code class="language-text">Error: store: postgres: giving up after 4 attempts: ...
+<h3 id="destinations"><code>destinations</code></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>Unique within the flow; used to report delivery results.</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td><code>http</code> (POST to <code>url</code>) or <code>file</code> (write one file per message into <code>dir</code>, named by message ID).</td>
+</tr>
+<tr>
+<td><code>url</code></td>
+<td>Required for <code>http</code>: an absolute <code>http://</code> or <code>https://</code> URL. Each delivery is a <code>POST</code> with <code>Content-Type: application/json</code> (transformed messages) or <code>application/octet-stream</code> (passthrough), and it times out after 30 seconds. The request carries an <code>Idempotency-Key</code> header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates.</td>
+</tr>
+<tr>
+<td><code>dir</code></td>
+<td>Required for <code>file</code>. Created if missing.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="2-send-a-message">2. Send a message</h2>
+<p>You need the <code>messages:send</code> permission (or <code>admin</code>).</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
+  http://127.0.0.1:8080/api/v1/flows/adt/messages -d '{&quot;PID&quot;:{&quot;5&quot;:{&quot;1&quot;:&quot;Doe&quot;}}}'
 </code></pre>
-<p>The store holds messages, flow definitions, and users. With <code>sqlite</code>, flows and users
-(including password changes and lockouts) survive a restart.</p>
-<h3 id="paths"><code>paths</code></h3>
+<pre><code class="language-json">{&quot;id&quot;:&quot;6f1c…&quot;,&quot;status&quot;:&quot;sent&quot;}
+</code></pre>
+<p>The request returns after processing finishes. <code>status</code> is one of:</p>
 <table>
 <thead>
 <tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
+<th>Status</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>dataDir</code></td>
-<td><code>""</code></td>
-<td>Directory for the default SQLite file. Use an absolute path; a relative one resolves against the working directory, which is <code>/</code> under most service managers.</td>
+<td><code>sent</code></td>
+<td>Delivered to every destination.</td>
+</tr>
+<tr>
+<td><code>queued</code></td>
+<td>At least one destination failed. The failure is recorded; the message is <strong>not retried yet</strong>.</td>
+</tr>
+<tr>
+<td><code>filtered</code></td>
+<td>A <code>filter</code> step dropped the message. Nothing was delivered.</td>
+</tr>
+<tr>
+<td><code>errored</code></td>
+<td>The transform failed (for example <code>"x" is not a number</code>). Nothing was delivered.</td>
 </tr>
 </tbody>
 </table>
-<h3 id="auth"><code>auth</code></h3>
+<p>Processing continues even if your client disconnects, so every message ends in one of the
+statuses above.</p>
+<p>Errors:</p>
 <table>
 <thead>
 <tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
+<th>Response</th>
+<th>Cause</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>passwordPolicy.minLength</code></td>
-<td><code>8</code></td>
-<td>Minimum password length (<code>0</code> = none).</td>
+<td><code>400</code></td>
+<td>The flow has a transform and the body is not a JSON object, or the body could not be read.</td>
 </tr>
 <tr>
-<td><code>passwordPolicy.minUpper</code> / <code>minLower</code> / <code>minNumeric</code> / <code>minSpecial</code></td>
-<td><code>1</code> / <code>1</code> / <code>1</code> / <code>0</code></td>
-<td>Required characters of each class. <code>-1</code> forbids the class.</td>
+<td><code>404</code></td>
+<td>Unknown flow.</td>
 </tr>
 <tr>
-<td><code>lockout.retryLimit</code></td>
-<td><code>5</code></td>
-<td>Failed logins before lockout (<code>0</code> = never lock).</td>
+<td><code>409</code></td>
+<td>The flow's <code>status</code> is <code>stopped</code>, <code>paused</code>, <code>halted</code>, or <code>undeployed</code>.</td>
 </tr>
 <tr>
-<td><code>lockout.lockoutPeriodSeconds</code></td>
-<td><code>300</code></td>
-<td>Lockout duration in seconds.</td>
+<td><code>413</code></td>
+<td>Body larger than 10 MiB.</td>
 </tr>
 </tbody>
 </table>
-<p>These settings apply to the first-run <code>admin</code> password and to every login. See
-<a href="../authentication/">Authentication</a>.</p>
-<h2 id="root-accounts">Root accounts</h2>
-<p>The server refuses to run as <code>root</code>. Set the environment variable <code>WEAVSTER_ALLOW_ROOT=1</code> to
-override this.</p></div>
+<h2 id="3-find-processed-messages">3. Find processed messages</h2>
+<p>Every message is saved in the configured store with its final status:</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/messages?flowId=adt&amp;status=queued'
+</code></pre>
+<h2 id="limits-today">Limits today</h2>
+<ul>
+<li>Processing is synchronous and runs once. Failed deliveries are not retried, and <code>queued</code>
+  messages stay queued.</li>
+<li>Only <code>http</code> and <code>file</code> destinations are available.</li>
+<li>Messages enter only through this API; flows do not listen on their own ports or read files yet.</li>
+<li>A <code>file</code> destination writes wherever <code>dir</code> points, with the server's permissions, and an
+  <code>http</code> destination can target any address the server can reach, including internal ones.
+  Only give <code>flows:edit</code> to trusted users.</li>
+<li>A flow's <code>status</code> is whatever you set when you create it; lifecycle operations (deploy, start,
+  stop) do not exist yet.</li>
+</ul></div>
             </div>
         </div>
 
