@@ -61,3 +61,40 @@ func TestIngestBodyReadError(t *testing.T) {
 		t.Errorf("read error: %d, want 400", rec.Code)
 	}
 }
+
+type fakeStats struct{ err error }
+
+func (f fakeStats) FlowStats(context.Context, string, bool) (FlowStats, error) {
+	return FlowStats{Received: 1}, f.err
+}
+
+type fakeEvents struct{ err error }
+
+func (f fakeEvents) SearchEvents(context.Context, EventQuery) ([]Event, error) {
+	return []Event{{ID: 1, Type: "message.sent"}}, f.err
+}
+
+func TestStatsAndEventsHandlers(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		path string
+		want int
+	}{
+		{"stats", Config{Stats: fakeStats{}}, "/api/v1/flows/f/stats", http.StatusOK},
+		{"stats unavailable", Config{}, "/api/v1/flows/f/stats", http.StatusServiceUnavailable},
+		{"stats unknown flow", Config{Stats: fakeStats{err: ErrFlowNotFound}}, "/api/v1/flows/f/stats", http.StatusNotFound},
+		{"events", Config{Events: fakeEvents{}}, "/api/v1/events", http.StatusOK},
+		{"events unavailable", Config{}, "/api/v1/events", http.StatusServiceUnavailable},
+		{"events error", Config{Events: fakeEvents{err: errors.New("boom")}}, "/api/v1/events", http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.path, nil))
+			if rec.Code != tt.want {
+				t.Errorf("got %d %q, want %d", rec.Code, rec.Body.String(), tt.want)
+			}
+		})
+	}
+}

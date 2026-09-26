@@ -61,15 +61,23 @@ type Result struct {
 	Status state.Status
 }
 
+// Observer is told about every message that finished processing, with its
+// final stored state (status, per-destination attempts, error metadata).
+type Observer interface {
+	Processed(m state.Message)
+}
+
 // Pipeline processes messages against a Store.
 type Pipeline struct {
-	store state.Store
-	sinks SinkFactory
+	store    state.Store
+	sinks    SinkFactory
+	observer Observer
 }
 
 // New returns a pipeline persisting to store and delivering through sinks.
-func New(store state.Store, sinks SinkFactory) *Pipeline {
-	return &Pipeline{store: store, sinks: sinks}
+// observer may be nil.
+func New(store state.Store, sinks SinkFactory, observer Observer) *Pipeline {
+	return &Pipeline{store: store, sinks: sinks, observer: observer}
 }
 
 // Validate checks a flow definition: the transform compiles and every
@@ -225,6 +233,9 @@ func (p *Pipeline) finish(ctx context.Context, id string, status state.Status, c
 	}
 	if err := p.store.Put(ctx, m); err != nil {
 		return Result{}, err
+	}
+	if p.observer != nil {
+		p.observer.Processed(m)
 	}
 	return Result{ID: id, Status: status}, nil
 }

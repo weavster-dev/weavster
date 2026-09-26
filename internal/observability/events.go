@@ -47,6 +47,9 @@ type EventLog struct {
 // NewEventLog returns an empty event log.
 func NewEventLog() *EventLog { return &EventLog{} }
 
+// MaxEvents bounds the in-memory event history; older events are dropped.
+const MaxEvents = 10000
+
 // Add records an event and returns it.
 func (l *EventLog) Add(typ, actor, flow string, data map[string]string) Event {
 	l.mu.Lock()
@@ -54,6 +57,9 @@ func (l *EventLog) Add(typ, actor, flow string, data map[string]string) Event {
 	l.seq++
 	e := Event{ID: l.seq, At: time.Now(), Type: typ, Actor: actor, Flow: flow, Data: data}
 	l.events = append(l.events, e)
+	if len(l.events) > MaxEvents {
+		l.events = append(l.events[:0:0], l.events[len(l.events)-MaxEvents:]...)
+	}
 	return e
 }
 

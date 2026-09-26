@@ -42,6 +42,8 @@ type FlowStats struct {
 	Errored     int64                     `json:"errored"`
 	Queued      int64                     `json:"queued"`
 	Connectors  map[string]ConnectorStats `json:"connectors,omitempty"`
+	// LastMessageAt is when the flow last received a message (zero if never).
+	LastMessageAt time.Time `json:"lastMessageAt"`
 }
 
 // StatsRegistry tracks per-flow current and lifetime statistics with reset
@@ -138,6 +140,9 @@ func (s *StatsRegistry) ensure(m map[string]*FlowStats, flow string) *FlowStats 
 }
 
 func apply(fs *FlowStats, k CounterKind, delta int64) {
+	if k == Received && delta > 0 {
+		fs.LastMessageAt = time.Now()
+	}
 	switch k {
 	case Received:
 		fs.Received += delta

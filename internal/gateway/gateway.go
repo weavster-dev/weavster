@@ -120,6 +120,8 @@ type Config struct {
 	Flows       FlowStore
 	Messages    MessageSearcher
 	Ingest      MessageIngester
+	Stats       StatsProvider
+	Events      EventSearcher
 	Topology    TopologyProvider
 	System      observability.SystemInfo
 	RequireCSRF bool
