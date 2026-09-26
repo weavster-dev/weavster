@@ -118,6 +118,9 @@ var (
 	// flow that is stopped".
 	ErrInvalidTransition = errors.New("invalid lifecycle transition")
 	ErrUnknownAction     = errors.New("unknown lifecycle action")
+	// ErrDependency: a flow's dependency is missing or cannot be deployed;
+	// wrapped with the reason.
+	ErrDependency = errors.New("dependency problem")
 	// ErrFlowInUse: another flow depends on this one.
 	ErrFlowInUse = errors.New("flow is a dependency of other flows")
 	// ErrImportConflict: the bundle contains flows that already exist.

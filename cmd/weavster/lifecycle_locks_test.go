@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"sync"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/observability"
 	"github.com/weavster-dev/weavster/internal/state"
 )
 
@@ -287,5 +289,108 @@ func TestImportDependencyErrorsBeatConflicts(t *testing.T) {
 	_, err := flows.Import(ctx, []gateway.Flow{{ID: "a", DependsOn: []string{"missing"}}}, false)
 	if !errors.Is(err, gateway.ErrInvalidFlow) {
 		t.Errorf("err = %v, want ErrInvalidFlow", err)
+	}
+}
+
+// TestDeployDependencyErrors: a missing dependency is a 409-class
+// ErrDependency naming it; a store failure part-way leaves earlier
+// dependencies deployed and returns the error.
+func TestDeployDependencyErrors(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	for id, doc := range map[string]string{
+		"orphan": `{"id":"orphan","status":"undeployed","dependsOn":["gone"]}`,
+		"top":    `{"id":"top","status":"undeployed","dependsOn":["mid"]}`,
+		"mid":    `{"id":"mid","status":"undeployed","dependsOn":["base"]}`,
+		"base":   `{"id":"base","status":"undeployed"}`,
+	} {
+		_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: id, Document: []byte(doc)})
+	}
+	flows := flowAdapter{store: failingUpdateRepo{MemStore: mem, failID: "mid"}, locks: newFlowLocks()}
+	if _, err := flows.Transition(ctx, "orphan", "deploy"); !errors.Is(err, gateway.ErrDependency) || !strings.Contains(err.Error(), "missing flow gone") {
+		t.Errorf("missing dependency: %v", err)
+	}
+	if _, err := flows.Transition(ctx, "top", "deploy"); err == nil {
+		t.Fatal("deploy with a failing dependency write: want error")
+	}
+	for id, want := range map[string]string{"base": "deployed", "mid": "undeployed", "top": "undeployed"} {
+		if f, _ := flows.Get(ctx, id); f.Status != want {
+			t.Errorf("%s = %s, want %s", id, f.Status, want)
+		}
+	}
+}
+
+// TestLifecycleEventsAndAutoDeployDependencies: every status change logs
+// flow.<status>; startup auto-deploy deploys dependencies like a manual deploy.
+func TestLifecycleEventsAndAutoDeployDependencies(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "base", Document: []byte(`{"id":"base","status":"undeployed"}`)})
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "top", Document: []byte(`{"id":"top","status":"undeployed","enabled":true,"dependsOn":["base"]}`)})
+	events := observability.NewEventLog()
+	flows := flowAdapter{store: mem, locks: newFlowLocks(), events: events}
+	flows.DeployEnabled(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for id, want := range map[string]string{"top": "started", "base": "deployed"} {
+		if f, _ := flows.Get(ctx, id); f.Status != want {
+			t.Errorf("%s = %s, want %s", id, f.Status, want)
+		}
+	}
+	if _, err := flows.Transition(ctx, "top", "pause"); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, e := range events.Search(observability.EventFilter{}) {
+		got = append(got, e.Flow+":"+e.Type)
+	}
+	if strings.Join(got, ",") != "base:flow.deployed,top:flow.started,top:flow.paused" {
+		t.Errorf("events = %v", got)
+	}
+}
+
+// TestConcurrentDeploysDoNotDeadlock: two flows whose dependencies are listed
+// in opposite orders deploy concurrently without deadlocking.
+func TestConcurrentDeploysDoNotDeadlock(t *testing.T) {
+	for round := 0; round < 50; round++ {
+		ctx := context.Background()
+		mem := state.NewMemStore()
+		for id, doc := range map[string]string{
+			"a": `{"id":"a","status":"undeployed","dependsOn":["b","c"]}`,
+			"d": `{"id":"d","status":"undeployed","dependsOn":["c","b"]}`,
+			"b": `{"id":"b","status":"undeployed"}`,
+			"c": `{"id":"c","status":"undeployed"}`,
+		} {
+			_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: id, Document: []byte(doc)})
+		}
+		flows := flowAdapter{store: mem, locks: newFlowLocks()}
+		done := make(chan error, 2)
+		for _, id := range []string{"a", "d"} {
+			go func(id string) { _, err := flows.Transition(ctx, id, "deploy"); done <- err }(id)
+		}
+		for i := 0; i < 2; i++ {
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatalf("round %d: concurrent deploys deadlocked", round)
+			}
+		}
+	}
+}
+
+// TestAutoDeployOrderIndependent: an enabled flow that is also an enabled
+// flow's dependency is started even when the dependent is processed first.
+func TestAutoDeployOrderIndependent(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "a-top", Document: []byte(`{"id":"a-top","status":"undeployed","enabled":true,"dependsOn":["b-base"]}`)})
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "b-base", Document: []byte(`{"id":"b-base","status":"undeployed","enabled":true}`)})
+	flows := flowAdapter{store: mem, locks: newFlowLocks()}
+	flows.DeployEnabled(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for _, id := range []string{"a-top", "b-base"} {
+		if f, _ := flows.Get(ctx, id); f.Status != "started" {
+			t.Errorf("%s = %s, want started", id, f.Status)
+		}
 	}
 }
