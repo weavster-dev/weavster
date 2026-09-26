@@ -374,9 +374,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td></td>
 </tr>
 <tr>
-<td>Retries, backoff, dead-letter</td>
-<td>Unsupported</td>
-<td>A failed delivery leaves the message <code>queued</code>; nothing retries it.</td>
+<td>Delivery retries with persisted backoff, <code>dead-lettered</code> status, restart recovery</td>
+<td>Implemented (wired)</td>
+<td><code>TestRetryRecoversQueuedMessage</code>, <code>TestQueuedWorkSurvivesRestart</code>, <code>TestDeadLetterAfterMaxAttempts</code>. No dead-letter list/inspect/requeue API.</td>
 </tr>
 <tr>
 <td>Alerts and SMTP/webhook notifiers</td>
@@ -606,10 +606,12 @@ Those are Enterprise items with no code in the source tree.</p>
 </tbody>
 </table>
 <h2 id="delivery-guarantees-per-adapter">Delivery guarantees per adapter</h2>
-<p>The server makes <strong>one</strong> delivery attempt per destination; a failure leaves the message
-<code>queued</code> and is not retried. So today every wired destination is at-most-once. Rows marked
-"library" describe adapters the server does not use yet. The outbox library's
-<code>SemanticsForAdapter</code> labels non-TCP sinks "exactly-once", but that label is not yet true.</p>
+<p>A failed destination is retried until <code>delivery.maxAttempts</code> (then <code>dead-lettered</code>), so wired
+destinations are at-least-once: an attempt whose response was lost is sent again. The HTTP
+destination sends the same <code>Idempotency-Key</code> on every attempt, so a receiver that honors it
+sees each message once. Rows marked "library" describe adapters the server does not use yet. The
+outbox library's <code>SemanticsForAdapter</code> labels non-TCP sinks "exactly-once", but that label is
+not yet true.</p>
 <table>
 <thead>
 <tr>
@@ -625,15 +627,15 @@ Those are Enterprise items with no code in the source tree.</p>
 <td>File</td>
 <td>library</td>
 <td>wired</td>
-<td>at-most-once (one attempt)</td>
+<td>at-least-once (a retry rewrites the same file name)</td>
 <td>no</td>
 </tr>
 <tr>
 <td>HTTP</td>
 <td>library</td>
 <td>wired</td>
-<td>at-most-once (one attempt)</td>
-<td>yes: <code>Idempotency-Key</code> header, the same for every attempt to deliver a message to a destination</td>
+<td>at-least-once; effectively once when the receiver honors <code>Idempotency-Key</code></td>
+<td>yes: <code>Idempotency-Key</code> header, the same for every attempt</td>
 </tr>
 <tr>
 <td>TCP/MLLP</td>

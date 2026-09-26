@@ -276,6 +276,34 @@ stops the server immediately with exit code <code>0</code>. When every attempt f
 </code></pre>
 <p>The store holds messages, flow definitions, and users. With <code>sqlite</code>, flows and users
 (including password changes and lockouts) survive a restart.</p>
+<h3 id="delivery"><code>delivery</code></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxAttempts</code></td>
+<td><code>5</code></td>
+<td>Attempts per destination, including the first, before a message is <code>dead-lettered</code>.</td>
+</tr>
+<tr>
+<td><code>backoffBaseMs</code></td>
+<td><code>1000</code></td>
+<td>Delay before the first retry; it doubles for each further retry, up to one minute.</td>
+</tr>
+<tr>
+<td><code>retryIntervalMs</code></td>
+<td><code>1000</code></td>
+<td>How often the server checks for retries that are due.</td>
+</tr>
+</tbody>
+</table>
+<p><code>maxAttempts</code> must be 1–1000; the two intervals must be 1–3,600,000 ms (one hour). See <a href="../processing-messages/#retries">Processing messages</a>.</p>
 <h3 id="paths"><code>paths</code></h3>
 <table>
 <thead>
