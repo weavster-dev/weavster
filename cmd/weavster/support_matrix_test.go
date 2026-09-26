@@ -11,7 +11,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/weavster-dev/weavster/internal/codecs"
 	"github.com/weavster-dev/weavster/internal/gateway"
@@ -41,6 +43,7 @@ func TestSupportMatrixWired(t *testing.T) {
 		{name: "system", method: http.MethodGet, path: "/api/v1/system", marker: true, want: http.StatusOK},
 		{name: "csrf-marker", method: http.MethodGet, path: "/api/v1/system", want: http.StatusBadRequest},
 		{name: "trace-blocked", method: http.MethodTrace, path: "/api/v1/system", marker: true, want: http.StatusMethodNotAllowed},
+		{name: "track-blocked", method: "TRACK", path: "/api/v1/system", marker: true, want: http.StatusMethodNotAllowed},
 		{name: "security-headers", method: http.MethodGet, path: "/api/v1/system", marker: true, want: http.StatusOK, headers: []string{"Strict-Transport-Security", "X-Frame-Options", "Content-Security-Policy", "X-Content-Type-Options"}},
 		{name: "flows-list", method: http.MethodGet, path: "/api/v1/flows", marker: true, want: http.StatusOK, contains: `"admit"`},
 		{name: "flows-create", method: http.MethodPost, path: "/api/v1/flows", marker: true, body: `{"id":"lab","name":"Lab Results"}`, want: http.StatusCreated},
@@ -117,19 +120,84 @@ func TestSupportMatrixCLI(t *testing.T) {
 	}
 
 	t.Run("no-subcommand", func(t *testing.T) {
-		// Occupy the default address (it may already be taken) so the server
-		// started by a bare `weavster` fails to bind instead of blocking.
-		if ln, err := net.Listen("tcp", "127.0.0.1:8080"); err == nil {
-			defer func() { _ = ln.Close() }()
+		const addr = "127.0.0.1:8080"
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			// The default address is taken on this host: a bare `weavster`
+			// must still try to start the server there and report the bind error.
+			var out, errb bytes.Buffer
+			if code := run(nil, strings.NewReader(""), &out, &errb); code != 1 || !strings.Contains(errb.String(), addr) {
+				t.Fatalf("exit = %d, stderr %q; want bind error on %s", code, errb.String(), addr)
+			}
+			return
 		}
+		_ = ln.Close()
+
+		done := make(chan int, 1)
 		var out, errb bytes.Buffer
-		if code := run(nil, strings.NewReader(""), &out, &errb); code != 1 {
-			t.Fatalf("exit = %d, want 1 (default address in use)", code)
+		go func() { done <- run(nil, strings.NewReader(""), &out, &errb) }()
+		waitReady(t, "http://"+addr+"/api/openapi.yaml")
+		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+			t.Fatal(err)
 		}
-		if !strings.Contains(errb.String(), "127.0.0.1:8080") {
-			t.Errorf("stderr %q does not mention the default address", errb.String())
+		select {
+		case code := <-done:
+			if code != 0 {
+				t.Errorf("exit = %d, want 0 after SIGTERM (stderr %q)", code, errb.String())
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("server did not shut down after SIGTERM")
 		}
 	})
+}
+
+// TestSupportMatrixPrivilegedGuard proves `weavster server` refuses a
+// privileged account and that WEAVSTER_ALLOW_ROOT=1 overrides the refusal.
+func TestSupportMatrixPrivilegedGuard(t *testing.T) {
+	orig := isPrivileged
+	isPrivileged = func() bool { return true }
+	t.Cleanup(func() { isPrivileged = orig })
+
+	// An occupied address makes an allowed server exit instead of blocking.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	tests := []struct {
+		name      string
+		allowRoot string
+		want      string
+	}{
+		{name: "refused", allowRoot: "", want: "refusing to run under a privileged OS account"},
+		{name: "override", allowRoot: "1", want: "address already in use"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("WEAVSTER_ALLOW_ROOT", tt.allowRoot)
+			var out, errb bytes.Buffer
+			if code := run([]string{"server", ln.Addr().String()}, strings.NewReader(""), &out, &errb); code != 1 {
+				t.Fatalf("exit = %d, want 1", code)
+			}
+			if !strings.Contains(errb.String(), tt.want) {
+				t.Errorf("stderr %q does not contain %q", errb.String(), tt.want)
+			}
+		})
+	}
+}
+
+func waitReady(t *testing.T, url string) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		if resp, err := http.Get(url); err == nil {
+			_ = resp.Body.Close()
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatalf("server at %s never became ready", url)
 }
 
 // TestSupportMatrixCodecs keeps the docs codec table in sync with

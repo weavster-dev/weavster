@@ -92,7 +92,8 @@ func runServer(args []string, stderr io.Writer) int {
 }
 
 // isPrivileged reports whether the process runs under a privileged OS account.
-func isPrivileged() bool { return os.Geteuid() == 0 }
+// It is a variable so acceptance tests can simulate a root account.
+var isPrivileged = func() bool { return os.Geteuid() == 0 }
 
 // checkPrivileged refuses to run under a privileged account unless allowed
 // (spec §11).

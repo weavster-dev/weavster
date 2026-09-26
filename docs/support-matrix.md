@@ -37,7 +37,7 @@ Start the server with `weavster server 127.0.0.1:8080`. It serves plain HTTP onl
 | mTLS | Unsupported | |
 | Persistent storage (SQLite / PostgreSQL) | Library-only | The server uses an in-memory store. The PostgreSQL backend cannot start (SQLite-only SQL). |
 | Server configuration file | Unsupported | The only setting is the listen address (positional argument, default `127.0.0.1:8080`). |
-| Refuse to run as root (override: `WEAVSTER_ALLOW_ROOT=1`) | Implemented (wired) | `TestPrivilegedGuard` (unit test; exercising it end-to-end requires running the suite as root). |
+| Refuse to run as root (override: `WEAVSTER_ALLOW_ROOT=1`) | Implemented (wired) | `TestSupportMatrixPrivilegedGuard` |
 | `/metrics` (Prometheus), OpenTelemetry | Library-only | Not mounted or initialized by the server. |
 | Web UI | Unsupported | Only the JSON topology API exists. |
 
