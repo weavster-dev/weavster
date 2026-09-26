@@ -44,6 +44,9 @@
                                 <a href="../server-config/" class="nav-link">Server Configuration</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../authentication/" class="nav-link">Authentication</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -162,9 +165,7 @@ delivery phase. When the README or any other page disagrees with this page, this
 <h2 id="server-and-api">Server and API</h2>
 <p>Start the server with <code>weavster server 127.0.0.1:8080</code>, or with a <a href="../server-config/">configuration file</a> using <code>weavster server --config weavster.yaml</code>. By default every <code>/api/v1</code> request must carry the
 header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false</code> removes that requirement.</p>
-<p>!!! warning
-    No API route checks credentials, and the CSRF marker is a fixed public value. Bind to
-    <code>127.0.0.1</code> and do not expose the server to a network.</p>
+<p>Every <code>/api/v1</code> route except login needs credentials. See <a href="../authentication/">Authentication</a>.</p>
 <table>
 <thead>
 <tr>
@@ -215,14 +216,39 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestSupportMatrixWired/messages</code>. Always returns <code>[]</code>, because nothing writes messages yet.</td>
 </tr>
 <tr>
-<td>Authentication, authorization, and audit of API calls</td>
-<td>Library-only</td>
-<td>The <code>auth</code> and <code>audit</code> packages exist, but request handlers never call them. Every <code>/api/v1</code> route, including <code>POST</code> and <code>DELETE</code>, is <strong>unauthenticated</strong>. No users exist.</td>
+<td>Authentication (Basic or Bearer token) on every <code>/api/v1</code> route except login</td>
+<td>Implemented (wired)</td>
+<td><code>TestAuthRequired</code></td>
 </tr>
 <tr>
-<td>Login / logout / session endpoints</td>
+<td>Per-route permissions (<code>flows:view</code>, <code>flows:edit</code>, <code>messages:view</code>, <code>admin</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestPermissionMatrix</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/auth/login</code>, <code>/auth/logout</code>, <code>GET /auth/me</code>, <code>POST /auth/password</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestLoginLogout</code>, <code>TestBootstrapGeneratedPassword</code>. Tokens are in memory and expire after 12 hours.</td>
+</tr>
+<tr>
+<td>First-run <code>admin</code> account (env var, secret file, or one-time generated password with forced change)</td>
+<td>Implemented (wired)</td>
+<td><code>TestBootstrapGeneratedPassword</code>, <code>TestBootstrapPasswordSources</code></td>
+</tr>
+<tr>
+<td>Password policy and lockout (<code>auth.*</code> config)</td>
+<td>Implemented (wired)</td>
+<td><code>TestBootstrapPasswordSources</code></td>
+</tr>
+<tr>
+<td>Durable users; user administration API</td>
 <td>Unsupported</td>
-<td></td>
+<td>Users are in memory and re-created at every start. <code>admin</code> is the only account.</td>
+</tr>
+<tr>
+<td>Audit of API calls</td>
+<td>Library-only</td>
+<td>The <code>audit</code> package exists, but request handlers never call it.</td>
 </tr>
 <tr>
 <td>HTTPS listener (<code>listen.tlsAddress</code>, <code>tls.certFile/keyFile/minVersion</code>)</td>
@@ -258,11 +284,6 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Server configuration file (<code>weavster server --config FILE</code>)</td>
 <td>Implemented (wired)</td>
 <td><code>TestServerConfigListen</code>, <code>TestServerConfigErrors</code>. Strict YAML: unknown keys and invalid values exit <code>1</code>. See <a href="../server-config/">Server configuration</a>.</td>
-</tr>
-<tr>
-<td>Password and lockout policy keys (<code>auth.*</code>)</td>
-<td>Library-only</td>
-<td>Validated and passed to the local auth provider, which no endpoint uses.</td>
 </tr>
 <tr>
 <td>Refuse to run as root (override: <code>WEAVSTER_ALLOW_ROOT=1</code>)</td>
@@ -380,8 +401,8 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 </tr>
 <tr>
 <td><code>-u</code>, <code>-p</code></td>
-<td>Unsupported</td>
-<td>Parsed but never sent to the server.</td>
+<td>Implemented (wired)</td>
+<td><code>TestCLICredentials</code>. Sent as HTTP Basic credentials by <code>-s</code> batch mode.</td>
 </tr>
 <tr>
 <td><code>-c connection-file</code></td>

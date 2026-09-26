@@ -44,6 +44,9 @@
                                 <a href="./" class="nav-link active" aria-current="page">Server Configuration</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../authentication/" class="nav-link">Authentication</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -66,7 +69,7 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../documentation/" class="nav-link">
+                                <a rel="next" href="../authentication/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
@@ -315,9 +318,8 @@ stops the server immediately with exit code <code>0</code>. When every attempt f
 </tr>
 </tbody>
 </table>
-<p>!!! note
-    The server has no login endpoint yet, so these settings have no visible effect today. They
-    apply to local users once authentication is wired.</p>
+<p>These settings apply to the first-run <code>admin</code> password and to every login. See
+<a href="../authentication/">Authentication</a>.</p>
 <h2 id="root-accounts">Root accounts</h2>
 <p>The server refuses to run as <code>root</code>. Set the environment variable <code>WEAVSTER_ALLOW_ROOT=1</code> to
 override this.</p></div>

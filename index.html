@@ -44,6 +44,9 @@
                                 <a href="server-config/" class="nav-link">Server Configuration</a>
                             </li>
                             <li class="nav-item">
+                                <a href="authentication/" class="nav-link">Authentication</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -124,9 +127,9 @@
 </ul>
 <h2 id="what-exists-now">What exists now</h2>
 <p><strong>The server does not receive, transform, or deliver messages.</strong>
-It serves an unauthenticated REST API (HTTP, plus HTTPS when configured) with in-memory flow records, a
+It serves an authenticated REST API (HTTP, plus HTTPS when configured) with in-memory flow records, a
 read-only topology view of them, and a system status endpoint. Most platform capabilities
-(adapters, transforms, durable storage, scheduler, auth enforcement) exist only as libraries
+(adapters, transforms, durable storage, scheduler, audit) exist only as libraries
 in the source tree.</p>
 <p>See the <a href="support-matrix/">support matrix</a> for exactly what is wired, library-only,
 Enterprise-deferred, or unsupported.</p>
@@ -217,5 +220,5 @@ Enterprise-deferred, or unsupported.</p>
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2026-09-26 16:39:58.794876+00:00
+Build Date UTC : 2026-09-26 16:59:49.964226+00:00
 -->
