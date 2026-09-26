@@ -62,7 +62,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | YAML DSL `map`, `set`, `filter` steps | Implemented (wired) | `TestPipelineEndToEnd`. `build` and `destinationSet` are not supported. |
 | WASM executor (wazero), module registry | Library-only | Not used by the server. The executor has no WASI host. |
 | Scheduler (durable jobs, leases, interval/cron) | Library-only | |
-| Retries, backoff, dead-letter | Unsupported | A failed delivery leaves the message `queued`; nothing retries it. |
+| Delivery retries with persisted backoff, `dead-lettered` status, restart recovery | Implemented (wired) | `TestRetryRecoversQueuedMessage`, `TestQueuedWorkSurvivesRestart`, `TestDeadLetterAfterMaxAttempts`. No dead-letter list/inspect/requeue API. |
 | Alerts and SMTP/webhook notifiers | Library-only | |
 | Config-as-code (validate/plan/apply/drift), Git store | Library-only | No CLI command or API endpoint exposes them. |
 | Legacy import | Unsupported | `internal/migrate` reads a made-up `<weavster-export>` XML schema, not any real legacy export format. |
@@ -137,15 +137,17 @@ Codecs are library-only: the server never parses a message. You can exercise the
 
 ## Delivery guarantees per adapter
 
-The server makes **one** delivery attempt per destination; a failure leaves the message
-`queued` and is not retried. So today every wired destination is at-most-once. Rows marked
-"library" describe adapters the server does not use yet. The outbox library's
-`SemanticsForAdapter` labels non-TCP sinks "exactly-once", but that label is not yet true.
+A failed destination is retried until `delivery.maxAttempts` (then `dead-lettered`), so wired
+destinations are at-least-once: an attempt whose response was lost is sent again. The HTTP
+destination sends the same `Idempotency-Key` on every attempt, so a receiver that honors it
+sees each message once. Rows marked "library" describe adapters the server does not use yet. The
+outbox library's `SemanticsForAdapter` labels non-TCP sinks "exactly-once", but that label is
+not yet true.
 
 | Adapter | Source | Sink | Guarantee | Sends idempotency key |
 |---|---|---|---|---|
-| File | library | wired | at-most-once (one attempt) | no |
-| HTTP | library | wired | at-most-once (one attempt) | yes: `Idempotency-Key` header, the same for every attempt to deliver a message to a destination |
+| File | library | wired | at-least-once (a retry rewrites the same file name) | no |
+| HTTP | library | wired | at-least-once; effectively once when the receiver honors `Idempotency-Key` | yes: `Idempotency-Key` header, the same for every attempt |
 | TCP/MLLP | library | library | not wired | no (the protocol has no field for one) |
 | Database | library | library | not wired | no |
 | SMTP | — | library | not wired | no |

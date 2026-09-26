@@ -92,7 +92,6 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 			cur.Attempts++
 			cur.LastError = ""
 			m.Attempts[dest] = cur
-			m.Status = state.StatusSent
 			return o.store.Put(ctx, m)
 		}
 	}
@@ -103,8 +102,10 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 	if err := o.deliver(ctx, m, dest, key); err == nil {
 		cur.Attempts = attempt
 		cur.LastError = ""
+		cur.NextAttemptAt = time.Time{}
 		m.Attempts[dest] = cur
-		m.Status = state.StatusSent
+		// The message status is left to the caller: other destinations may
+		// still be pending, so one success does not make the message sent.
 		return o.store.Put(ctx, m)
 	} else {
 		cur.Attempts = attempt
@@ -113,12 +114,16 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 		} else {
 			cur.LastError = err.Error()
 		}
-		m.Attempts[dest] = cur
+		// The destination is exhausted at MaxAttempts (no next attempt). The
+		// message stays queued: the caller decides dead-lettering once it has
+		// considered every destination, so a crash here never strands work.
 		if cur.Attempts >= o.opts.MaxAttempts {
-			m.Status = state.StatusErrored // dead-letter
+			cur.NextAttemptAt = time.Time{}
 		} else {
-			m.Status = state.StatusQueued
+			cur.NextAttemptAt = time.Now().Add(o.Backoff(cur.Attempts))
 		}
+		m.Status = state.StatusQueued
+		m.Attempts[dest] = cur
 		return o.store.Put(ctx, m)
 	}
 }

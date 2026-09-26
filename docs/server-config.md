@@ -106,6 +106,16 @@ Error: store: postgres: giving up after 4 attempts: ...
 The store holds messages, flow definitions, and users. With `sqlite`, flows and users
 (including password changes and lockouts) survive a restart.
 
+### `delivery`
+
+| Key | Default | Description |
+|---|---|---|
+| `maxAttempts` | `5` | Attempts per destination, including the first, before a message is `dead-lettered`. |
+| `backoffBaseMs` | `1000` | Delay before the first retry; it doubles for each further retry, up to one minute. |
+| `retryIntervalMs` | `1000` | How often the server checks for retries that are due. |
+
+`maxAttempts` must be 1–1000; the two intervals must be 1–3,600,000 ms (one hour). See [Processing messages](processing-messages.md#retries).
+
 ### `paths`
 
 | Key | Default | Description |

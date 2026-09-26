@@ -103,8 +103,8 @@ func TestDeliverSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _ := s.Get(ctx, "1")
-	if m.Status != state.StatusSent {
-		t.Errorf("status = %s, want sent", m.Status)
+	if m.Status != state.StatusReceived {
+		t.Errorf("status = %s; Deliver must leave the aggregate status to the caller", m.Status)
 	}
 	if m.Attempts["d1"].Attempts != 1 || m.Attempts["d1"].LastError != "" {
 		t.Errorf("attempts = %+v", m.Attempts)
@@ -127,11 +127,14 @@ func TestDeliverBoundedRetryAndDeadLetter(t *testing.T) {
 	}, Options{MaxAttempts: 3})
 
 	for i := 0; i < 3; i++ {
-		_ = o.Deliver(ctx, "1", "d1")
+		// A failed delivery is recorded, not returned: only store errors are.
+		if err := o.Deliver(ctx, "1", "d1"); err != nil {
+			t.Fatalf("Deliver returned the sink error: %v", err)
+		}
 	}
 	m, _ := s.Get(ctx, "1")
-	if m.Status != state.StatusErrored {
-		t.Errorf("status = %s, want errored (dead-letter)", m.Status)
+	if m.Status != state.StatusQueued || !m.Attempts["d1"].NextAttemptAt.IsZero() {
+		t.Errorf("status = %s, next = %v; want queued with the destination exhausted", m.Status, m.Attempts["d1"].NextAttemptAt)
 	}
 	if m.Attempts["d1"].Attempts != 3 {
 		t.Errorf("attempts = %d, want 3", m.Attempts["d1"].Attempts)
@@ -140,7 +143,9 @@ func TestDeliverBoundedRetryAndDeadLetter(t *testing.T) {
 		t.Errorf("deliver calls = %d, want 3", calls)
 	}
 
-	// Dead-letter surface.
+	// Dead-letter surface: the caller (the pipeline's rollup) sets the status.
+	m.Status = state.StatusDeadLettered
+	_ = s.Put(ctx, m)
 	dl, err := o.DeadLetter(ctx)
 	if err != nil || len(dl) != 1 {
 		t.Errorf("deadletter = %d results, err %v", len(dl), err)
@@ -184,8 +189,8 @@ func TestAmbiguousChecksStatusFirst(t *testing.T) {
 		t.Errorf("deliver called %d times, want 1 (status check must avoid re-send)", deliverCalls)
 	}
 	m, _ = s.Get(ctx, "1")
-	if m.Status != state.StatusSent {
-		t.Errorf("status = %s, want sent", m.Status)
+	if m.Status != state.StatusQueued || m.Attempts["d1"].LastError != "" {
+		t.Errorf("status = %s, attempts = %+v; want the delivery recorded and the status left to the caller", m.Status, m.Attempts)
 	}
 }
 

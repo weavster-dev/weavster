@@ -22,6 +22,8 @@ const (
 	StatusSent        Status = "sent"
 	StatusQueued      Status = "queued"
 	StatusErrored     Status = "errored"
+	// StatusDeadLettered: a destination exhausted its retry budget.
+	StatusDeadLettered Status = "dead-lettered"
 )
 
 // DestinationAttempt tracks per-(message,destination) send attempts and the
@@ -29,6 +31,8 @@ const (
 type DestinationAttempt struct {
 	Attempts  int    `json:"attempts"`
 	LastError string `json:"lastError"`
+	// NextAttemptAt is when a failed delivery is due for retry.
+	NextAttemptAt time.Time `json:"nextAttemptAt,omitempty"`
 }
 
 // Message is a persisted message with its content forms and metadata
@@ -137,8 +141,8 @@ func (s *sqlStore) Put(ctx context.Context, m Message) error {
 	}
 	for dest, a := range m.Attempts {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO message_attempts (message_id, destination, attempts, last_error) VALUES (?, ?, ?, ?)`,
-			m.ID, dest, a.Attempts, a.LastError); err != nil {
+			`INSERT INTO message_attempts (message_id, destination, attempts, last_error, next_attempt_at) VALUES (?, ?, ?, ?, ?)`,
+			m.ID, dest, a.Attempts, a.LastError, unixMilli(a.NextAttemptAt)); err != nil {
 			return err
 		}
 	}
@@ -250,7 +254,7 @@ func (s *sqlStore) loadMetadata(ctx context.Context, id string) (map[string]stri
 
 func (s *sqlStore) loadAttempts(ctx context.Context, id string) (map[string]DestinationAttempt, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT destination, attempts, last_error FROM message_attempts WHERE message_id = ?`, id)
+		`SELECT destination, attempts, last_error, next_attempt_at FROM message_attempts WHERE message_id = ?`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -259,12 +263,24 @@ func (s *sqlStore) loadAttempts(ctx context.Context, id string) (map[string]Dest
 	for rows.Next() {
 		var dest string
 		var a DestinationAttempt
-		if err := rows.Scan(&dest, &a.Attempts, &a.LastError); err != nil {
+		var next int64
+		if err := rows.Scan(&dest, &a.Attempts, &a.LastError, &next); err != nil {
 			return nil, err
+		}
+		if next != 0 {
+			a.NextAttemptAt = time.UnixMilli(next)
 		}
 		out[dest] = a
 	}
 	return out, rows.Err()
+}
+
+// unixMilli stores the zero time as 0.
+func unixMilli(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixMilli()
 }
 
 var _ Store = (*sqlStore)(nil)

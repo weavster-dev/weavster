@@ -79,7 +79,8 @@ The request returns after processing finishes. `status` is one of:
 | Status | Meaning |
 |---|---|
 | `sent` | Delivered to every destination. |
-| `queued` | At least one destination failed. The failure is recorded; the message is **not retried yet**. |
+| `queued` | At least one destination failed. It is retried automatically (see [Retries](#retries)). |
+| `dead-lettered` | A destination still failed after `delivery.maxAttempts` attempts, or the flow was deleted while the message was queued. Not retried again. |
 | `filtered` | A `filter` step dropped the message. Nothing was delivered. |
 | `errored` | The transform failed (for example `"x" is not a number`). Nothing was delivered. |
 
@@ -142,12 +143,33 @@ can hold patient data. The error is stored with the message instead.
 The topology overview (`GET /api/v1/topology`) shows each flow's `received`, `sent`,
 `errored`, and `queued` counts under `activity`. Zero counts are included.
 
+## Retries
+
+A failed destination is retried in the background. The delay before retry *n* is
+`delivery.backoffBaseMs × 2^(n-1)`, capped at one minute. The check for due retries runs every
+`delivery.retryIntervalMs`. Only the failed destinations are retried, and every retry sends the
+same `Idempotency-Key`, so an HTTP receiver can ignore duplicates. When a destination has failed
+`delivery.maxAttempts` times (default 5), the message becomes `dead-lettered` and a
+`message.dead-lettered` event is logged. See [Server configuration](server-config.md#delivery).
+
+Retry times are stored with the message. After a restart, the server resumes pending
+retries right away. With `store.dialect: sqlite`, a message that was `queued` when the server
+stopped is delivered once its destination is back. So is a message the server was still
+processing when it stopped or crashed: it is transformed if needed and delivered to every
+destination that has not received it.
+
+Messages of a flow whose `status` is `stopped`, `paused`, `halted`, or `undeployed` are not
+retried; they stay `queued`.
+
+A retried message that later succeeds changes to `sent`. The statistics then count it once as
+`queued` and once as `sent`.
+
 ## Limits today
 
 - Statistics and events are kept in memory: they restart from zero when the server restarts,
   and only the newest 10,000 events are kept.
-- Processing is synchronous and runs once. Failed deliveries are not retried, and `queued`
-  messages stay queued.
+- The first delivery attempt runs while your request waits; retries run in the background.
+- Dead-lettered messages cannot be listed, inspected, or requeued through the API yet.
 - Only `http` and `file` destinations are available.
 - Messages enter only through this API; flows do not listen on their own ports or read files yet.
 - A `file` destination writes wherever `dir` points, with the server's permissions, and an

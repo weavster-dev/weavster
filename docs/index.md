@@ -13,9 +13,9 @@ Config-driven, message-oriented integration platform — a single static Go bina
 
 The server serves an authenticated REST API (HTTP, plus HTTPS when configured). Through it you
 define flows, send messages into them, transform messages with the YAML DSL, and deliver them
-once to HTTP and file destinations; every message is stored with its status. See
-[Processing messages](processing-messages.md). Listening sources, retries, scheduling, and WASM
-modules exist only as libraries in the source tree.
+to HTTP and file destinations with automatic retries; every message is stored with its status. See
+[Processing messages](processing-messages.md). Listening sources, scheduling, and WASM modules exist only as
+libraries in the source tree.
 
 See the [support matrix](support-matrix.md) for exactly what is wired, library-only,
 Enterprise-deferred, or unsupported.

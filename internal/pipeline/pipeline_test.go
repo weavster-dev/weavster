@@ -34,10 +34,14 @@ func (s *recordingSink) Write(_ context.Context, d Delivery) error {
 type recordingObserver struct {
 	received int
 	seen     []state.Message
+	retried  []state.Message
 }
 
 func (o *recordingObserver) Received(string)           { o.received++ }
 func (o *recordingObserver) Processed(m state.Message) { o.seen = append(o.seen, m) }
+func (o *recordingObserver) Retried(m state.Message, _ []string) {
+	o.retried = append(o.retried, m)
+}
 
 func transform(t *testing.T, yaml string) *compiler.Transform {
 	t.Helper()
@@ -109,7 +113,7 @@ steps:
 					return a, nil
 				}
 				return b, nil
-			}, obs)
+			}, obs, Options{})
 			f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "x"}, {Name: "b", Type: "file", Dir: "y"}}}
 			if tt.transform != "" {
 				f.Transform = transform(t, tt.transform)
@@ -158,7 +162,7 @@ steps:
 
 func TestProcessErrors(t *testing.T) {
 	ctx := context.Background()
-	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return nil, errors.New("no sink") }, nil)
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return nil, errors.New("no sink") }, nil, Options{})
 	f := Flow{ID: "f", Transform: transform(t, "name: t\nsteps:\n  - set: { field: a, expr: b }")}
 	for _, body := range []string{`not json`, `null`, `[1]`, `{} trailing`, `{}{}`} {
 		if _, err := p.Process(ctx, f, []byte(body)); !errors.Is(err, ErrInvalidMessage) {
@@ -223,7 +227,7 @@ func TestProcessStoreFailures(t *testing.T) {
 					store.failPut = n
 				}
 				obs := &recordingObserver{}
-				_, err := New(store, sink, obs).Process(ctx, f, []byte(`{}`))
+				_, err := New(store, sink, obs, Options{}).Process(ctx, f, []byte(`{}`))
 				if err != nil && obs.received == 1 && (len(obs.seen) == 0 || obs.seen[len(obs.seen)-1].Status != state.StatusErrored) {
 					t.Errorf("%s: a received message that failed was not reported as errored: %+v", name, obs.seen)
 				}
@@ -242,7 +246,7 @@ func TestProcessStoreFailures(t *testing.T) {
 func TestProcessKeepsNumbersAndContentTypes(t *testing.T) {
 	ctx := context.Background()
 	sink := &recordingSink{}
-	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil }, nil)
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil }, nil, Options{})
 	f := Flow{ID: "f", Transform: transform(t, "name: t\nsteps:\n  - filter: { when: \"mrn == 12345678901234567890\", action: accept }\n  - set: { field: label, expr: '{{mrn}}' }"),
 		Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
 	res, err := p.Process(ctx, f, []byte(`{"mrn":12345678901234567890}`))
