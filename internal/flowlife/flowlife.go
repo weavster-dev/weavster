@@ -2,7 +2,14 @@
 // #107 D-29).
 package flowlife
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+)
+
+// ErrUnknownAction is returned by Next for a name that is not a lifecycle
+// action.
+var ErrUnknownAction = errors.New("unknown lifecycle action")
 
 // Flow lifecycle states.
 const (
@@ -39,12 +46,6 @@ var transitions = map[string]struct {
 	Undeploy: {[]string{Deployed, Started, Paused, Halted, Stopped}, Undeployed},
 }
 
-// IsAction reports whether action names a lifecycle action.
-func IsAction(action string) bool {
-	_, ok := transitions[action]
-	return ok
-}
-
 // Normalize maps a stored state to a known one; empty or unknown legacy
 // states are undeployed.
 func Normalize(state string) string {
@@ -60,7 +61,7 @@ func Normalize(state string) string {
 func Next(state, action string) (string, error) {
 	t, ok := transitions[action]
 	if !ok {
-		return "", fmt.Errorf("unknown lifecycle action %q", action)
+		return "", fmt.Errorf("%w %q", ErrUnknownAction, action)
 	}
 	state = Normalize(state)
 	for _, from := range t.from {

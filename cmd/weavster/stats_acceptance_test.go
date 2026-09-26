@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -124,8 +123,8 @@ func TestDeleteWaitsForInFlightIngest(t *testing.T) {
 	ctx := context.Background()
 	store := state.NewMemStore()
 	stats := observability.NewStatsRegistry()
-	flows := flowAdapter{store: store, stats: stats, gate: &sync.RWMutex{}}
-	if err := flows.Create(ctx, gateway.Flow{ID: "f", Destinations: []gateway.FlowDestination{{Name: "d", Type: "file", Dir: t.TempDir()}}}); err != nil {
+	flows := flowAdapter{store: store, stats: stats, locks: newFlowLocks()}
+	if _, err := flows.Create(ctx, gateway.Flow{ID: "f", Destinations: []gateway.FlowDestination{{Name: "d", Type: "file", Dir: t.TempDir()}}}); err != nil {
 		t.Fatal(err)
 	}
 	for _, action := range []string{"deploy", "start"} {

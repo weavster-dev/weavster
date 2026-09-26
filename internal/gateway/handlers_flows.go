@@ -17,6 +17,8 @@ func writeFlowError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrFlowNotFound):
 		http.Error(w, "flow not found", http.StatusNotFound)
+	case errors.Is(err, ErrUnknownAction):
+		http.Error(w, err.Error(), http.StatusNotFound)
 	case errors.Is(err, ErrFlowExists):
 		http.Error(w, "flow already exists", http.StatusConflict)
 	case errors.Is(err, ErrFlowNotRunning), errors.Is(err, ErrInvalidTransition):
@@ -76,15 +78,12 @@ func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "flow id must be 1-128 characters from A-Z a-z 0-9 . _ -", http.StatusBadRequest)
 		return
 	}
-	if err := s.cfg.Flows.Create(r.Context(), f); err != nil {
+	stored, err := s.cfg.Flows.Create(r.Context(), f)
+	if err != nil {
 		writeFlowError(w, err)
 		return
 	}
-	// Respond with the stored flow, which carries server-set fields (status).
-	if stored, err := s.cfg.Flows.Get(r.Context(), f.ID); err == nil {
-		f = stored
-	}
-	writeJSON(w, http.StatusCreated, f)
+	writeJSON(w, http.StatusCreated, stored)
 }
 
 func (s *Server) handleFlowsDelete(w http.ResponseWriter, r *http.Request) {
@@ -125,18 +124,8 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, res)
 }
 
-// lifecycleActions are the actions served at POST /flows/{id}/{action}.
-var lifecycleActions = map[string]bool{
-	"deploy": true, "undeploy": true, "start": true, "stop": true,
-	"halt": true, "pause": true, "resume": true,
-}
-
 func (s *Server) handleFlowAction(w http.ResponseWriter, r *http.Request) {
 	action := r.PathValue("action")
-	if !lifecycleActions[action] {
-		http.NotFound(w, r)
-		return
-	}
 	if s.cfg.Lifecycle == nil {
 		http.Error(w, "flow lifecycle unavailable", http.StatusServiceUnavailable)
 		return
@@ -156,7 +145,11 @@ func (s *Server) handleRedeployAll(w http.ResponseWriter, r *http.Request) {
 	}
 	flows, err := s.cfg.Lifecycle.RedeployAll(r.Context())
 	if err != nil {
-		writeFlowError(w, err)
+		// Report the flows already redeployed so the caller knows the state.
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error":      map[string]string{"code": "REDEPLOY_INCOMPLETE", "message": "redeploy-all stopped before finishing; see redeployed"},
+			"redeployed": flows,
+		})
 		return
 	}
 	writeJSON(w, http.StatusOK, flows)

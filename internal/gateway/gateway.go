@@ -84,13 +84,16 @@ var (
 	// ErrInvalidTransition is wrapped with the reason, e.g. "cannot pause a
 	// flow that is stopped".
 	ErrInvalidTransition = errors.New("invalid lifecycle transition")
+	ErrUnknownAction     = errors.New("unknown lifecycle action")
 )
 
 // FlowStore is the flow CRUD backend.
 type FlowStore interface {
 	List(ctx context.Context) ([]Flow, error)
 	Get(ctx context.Context, id string) (Flow, error)
-	Create(ctx context.Context, f Flow) error
+	// Create stores a new flow and returns it as stored (with server-set
+	// fields such as status).
+	Create(ctx context.Context, f Flow) (Flow, error)
 	Delete(ctx context.Context, id string) error
 }
 

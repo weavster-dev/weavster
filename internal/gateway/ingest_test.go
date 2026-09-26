@@ -120,12 +120,12 @@ func TestLifecycleHandlers(t *testing.T) {
 		want int
 	}{
 		{"transition", Config{Lifecycle: fakeLifecycle{}}, "/api/v1/flows/f/deploy", http.StatusOK},
-		{"unknown action", Config{Lifecycle: fakeLifecycle{}}, "/api/v1/flows/f/explode", http.StatusNotFound},
+		{"unknown action", Config{Lifecycle: fakeLifecycle{err: fmt.Errorf("%w: explode", ErrUnknownAction)}}, "/api/v1/flows/f/explode", http.StatusNotFound},
 		{"unavailable", Config{}, "/api/v1/flows/f/start", http.StatusServiceUnavailable},
 		{"invalid transition", Config{Lifecycle: fakeLifecycle{err: fmt.Errorf("%w: cannot pause a flow that is stopped", ErrInvalidTransition)}}, "/api/v1/flows/f/pause", http.StatusConflict},
 		{"redeploy-all", Config{Lifecycle: fakeLifecycle{}}, "/api/v1/flows/redeploy-all", http.StatusOK},
 		{"redeploy-all unavailable", Config{}, "/api/v1/flows/redeploy-all", http.StatusServiceUnavailable},
-		{"redeploy-all error", Config{Lifecycle: fakeLifecycle{err: errors.New("boom")}}, "/api/v1/flows/redeploy-all", http.StatusInternalServerError},
+		{"redeploy-all partial", Config{Lifecycle: fakeLifecycle{err: errors.New("boom")}}, "/api/v1/flows/redeploy-all", http.StatusInternalServerError},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -135,5 +135,15 @@ func TestLifecycleHandlers(t *testing.T) {
 				t.Errorf("got %d %q, want %d", rec.Code, rec.Body.String(), tt.want)
 			}
 		})
+	}
+}
+
+func TestRedeployAllPartialBody(t *testing.T) {
+	rec := httptest.NewRecorder()
+	New(Config{Lifecycle: fakeLifecycle{err: errors.New("database is locked")}}).Router().
+		ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/flows/redeploy-all", nil))
+	body := rec.Body.String()
+	if !strings.Contains(body, "REDEPLOY_INCOMPLETE") || !strings.Contains(body, `"redeployed":[{"id":"a"`) || strings.Contains(body, "database is locked") {
+		t.Errorf("partial redeploy body = %s", body)
 	}
 }

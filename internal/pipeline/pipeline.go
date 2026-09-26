@@ -80,11 +80,10 @@ type Observer interface {
 type Options struct {
 	MaxAttempts int           // attempts per destination before dead-lettering (default 5)
 	BackoffBase time.Duration // first retry delay, doubled per attempt, capped at 1 minute (default 1s)
-	// Gate, when set, is read-locked while RetryDue works on a message, so
-	// flow deletes (which write-lock it) are ordered after that work.
+	// Gate, when set, is held while RetryDue works on a message of a flow,
+	// so lifecycle changes and deletes of that flow are ordered after it.
 	Gate interface {
-		RLock()
-		RUnlock()
+		ProcessFlow(flowID string) (done func())
 	}
 }
 
@@ -369,8 +368,7 @@ func (p *Pipeline) retryOne(ctx context.Context, m state.Message, lookup FlowLoo
 	}
 	defer p.inflight.Delete(m.ID)
 	if p.opts.Gate != nil {
-		p.opts.Gate.RLock()
-		defer p.opts.Gate.RUnlock()
+		defer p.opts.Gate.ProcessFlow(m.FlowID)()
 	}
 	f, err := lookup(ctx, m.FlowID)
 	if errors.Is(err, ErrFlowGone) {

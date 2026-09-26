@@ -174,7 +174,7 @@ func TestPasswordAdapterMapsErrors(t *testing.T) {
 func TestIngestSurvivesCancellation(t *testing.T) {
 	store := state.NewMemStore()
 	flows := flowAdapter{store: store}
-	if err := flows.Create(context.Background(), gateway.Flow{ID: "f"}); err != nil {
+	if _, err := flows.Create(context.Background(), gateway.Flow{ID: "f"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, action := range []string{"deploy", "start"} {

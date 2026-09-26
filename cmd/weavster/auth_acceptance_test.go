@@ -170,7 +170,7 @@ func TestPermissionMatrix(t *testing.T) {
 		}
 	}
 	flows := flowAdapter{store: state.NewMemStore()}
-	if err := flows.Create(context.Background(), gateway.Flow{ID: "admit", Name: "Patient Admit"}); err != nil {
+	if _, err := flows.Create(context.Background(), gateway.Flow{ID: "admit", Name: "Patient Admit"}); err != nil {
 		t.Fatal(err)
 	}
 	gw := gateway.New(gateway.Config{

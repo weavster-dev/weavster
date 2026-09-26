@@ -34,9 +34,9 @@ func (f *fakeFlows) Get(_ context.Context, id string) (Flow, error) {
 	}
 	return Flow{}, nil
 }
-func (f *fakeFlows) Create(_ context.Context, fl Flow) error {
+func (f *fakeFlows) Create(_ context.Context, fl Flow) (Flow, error) {
 	f.flows = append(f.flows, fl)
-	return nil
+	return fl, nil
 }
 func (f *fakeFlows) Delete(_ context.Context, id string) error { return nil }
 
@@ -249,7 +249,9 @@ func (e *errFlows) List(_ context.Context) ([]Flow, error) {
 func (e *errFlows) Get(_ context.Context, _ string) (Flow, error) {
 	return Flow{}, errors.New("store unavailable")
 }
-func (e *errFlows) Create(_ context.Context, _ Flow) error { return errors.New("store unavailable") }
+func (e *errFlows) Create(_ context.Context, _ Flow) (Flow, error) {
+	return Flow{}, errors.New("store unavailable")
+}
 func (e *errFlows) Delete(_ context.Context, _ string) error {
 	return errors.New("store unavailable")
 }
@@ -325,9 +327,9 @@ func TestFlowsHandlerErrorPaths(t *testing.T) {
 // sentinelFlows returns the gateway's flow sentinels.
 type sentinelFlows struct{ *stubFlows }
 
-func (sentinelFlows) Get(context.Context, string) (Flow, error) { return Flow{}, ErrFlowNotFound }
-func (sentinelFlows) Create(context.Context, Flow) error        { return ErrFlowExists }
-func (sentinelFlows) Delete(context.Context, string) error      { return ErrFlowNotFound }
+func (sentinelFlows) Get(context.Context, string) (Flow, error)  { return Flow{}, ErrFlowNotFound }
+func (sentinelFlows) Create(context.Context, Flow) (Flow, error) { return Flow{}, ErrFlowExists }
+func (sentinelFlows) Delete(context.Context, string) error       { return ErrFlowNotFound }
 
 func TestErrorsDoNotLeakInternals(t *testing.T) {
 	srv := newErrServer().Router()

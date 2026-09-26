@@ -1,6 +1,9 @@
 package flowlife
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestNext(t *testing.T) {
 	states := []string{Undeployed, Deployed, Started, Paused, Halted, Stopped}
@@ -27,8 +30,8 @@ func TestNext(t *testing.T) {
 			})
 		}
 	}
-	if _, err := Next(Started, "explode"); err == nil || !IsAction(Start) || IsAction("explode") {
-		t.Error("unknown action accepted")
+	if _, err := Next(Started, "explode"); !errors.Is(err, ErrUnknownAction) {
+		t.Errorf("unknown action: err = %v", err)
 	}
 	if got, err := Next("", Deploy); err != nil || got != Deployed {
 		t.Errorf("legacy empty state = %q, %v", got, err)

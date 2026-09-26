@@ -95,14 +95,14 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		repo = store.(flowRepository)
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
-	flows := flowAdapter{store: repo, stats: stats, gate: &sync.RWMutex{}}
+	flows := flowAdapter{store: repo, stats: stats, locks: newFlowLocks()}
 	var ingest gateway.MessageIngester
 	workers := func(context.Context) {}
 	if store != nil {
 		pipe := pipeline.New(store, newSink, processingObserver{stats, events}, pipeline.Options{
 			MaxAttempts: cfg.Delivery.MaxAttempts,
 			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
-			Gate:        flows.gate,
+			Gate:        flows.locks,
 		})
 		ia := ingestAdapter{flows: flows, pipe: pipe}
 		ingest = ia
@@ -445,36 +445,89 @@ type flowRepository interface {
 	DeleteFlow(ctx context.Context, id string) error
 }
 
+// flowLocks serializes work per flow: message processing holds a flow's
+// proc lock for reading; lifecycle changes and deletes hold it for writing,
+// so they wait only for that flow's in-flight messages. change serializes
+// status updates, including halt, which does not wait for processing.
+type flowLocks struct {
+	mu    sync.Mutex
+	flows map[string]*flowLock
+}
+
+type flowLock struct {
+	proc   sync.RWMutex
+	change sync.Mutex
+}
+
+func newFlowLocks() *flowLocks { return &flowLocks{flows: map[string]*flowLock{}} }
+
+func (l *flowLocks) get(id string) *flowLock {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	fl, ok := l.flows[id]
+	if !ok {
+		fl = &flowLock{}
+		l.flows[id] = fl
+	}
+	return fl
+}
+
+// ProcessFlow read-locks the flow for processing one message
+// (pipeline.Options.Gate).
+func (l *flowLocks) ProcessFlow(id string) func() {
+	fl := l.get(id)
+	fl.proc.RLock()
+	return fl.proc.RUnlock
+}
+
+// exclusive locks the flow against status changes and, unless skipDrain,
+// waits for its in-flight messages.
+func (l *flowLocks) exclusive(id string, skipDrain bool) func() {
+	fl := l.get(id)
+	fl.change.Lock()
+	if skipDrain {
+		return fl.change.Unlock
+	}
+	fl.proc.Lock()
+	return func() { fl.proc.Unlock(); fl.change.Unlock() }
+}
+
 // flowAdapter stores gateway flows as JSON documents (D-12). stats, when
 // set, is cleared for a flow when it is deleted.
 type flowAdapter struct {
 	store flowRepository
 	stats *observability.StatsRegistry
-	// gate orders deletes after in-flight processing (ingest holds it for
-	// reading), so a reset is never followed by a stale message's counters.
-	gate *sync.RWMutex
+	locks *flowLocks // nil: no coordination (tests)
 }
 
-// Transition applies a lifecycle action (spec §6.1). It holds the flow gate
-// for writing, so it waits for in-flight messages of every flow.
-func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway.Flow, error) {
-	if a.gate != nil {
-		a.gate.Lock()
-		defer a.gate.Unlock()
+func (a flowAdapter) lock(id string, skipDrain bool) func() {
+	if a.locks == nil {
+		return func() {}
 	}
-	return a.transition(ctx, id, action)
+	return a.locks.exclusive(id, skipDrain)
 }
 
-func (a flowAdapter) transition(ctx context.Context, id, action string) (gateway.Flow, error) {
+// Transition applies a lifecycle action (spec §6.1). Every action except
+// halt waits for the flow's in-flight messages; halt takes effect at once
+// (force-stop, D-30).
+func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway.Flow, error) {
+	defer a.lock(id, action == flowlife.Halt)()
 	f, err := a.Get(ctx, id)
 	if err != nil {
 		return gateway.Flow{}, err
 	}
 	next, err := flowlife.Next(f.Status, action)
+	if errors.Is(err, flowlife.ErrUnknownAction) {
+		return gateway.Flow{}, fmt.Errorf("%w: %q is not deploy, undeploy, start, stop, pause, halt, or resume", gateway.ErrUnknownAction, action)
+	}
 	if err != nil {
 		return gateway.Flow{}, fmt.Errorf("%w: %w", gateway.ErrInvalidTransition, err)
 	}
-	f.Status = next
+	return a.setStatus(ctx, f, next)
+}
+
+func (a flowAdapter) setStatus(ctx context.Context, f gateway.Flow, status string) (gateway.Flow, error) {
+	f.Status = status
 	doc, err := json.Marshal(f)
 	if err != nil {
 		return gateway.Flow{}, err
@@ -486,27 +539,25 @@ func (a flowAdapter) transition(ctx context.Context, id, action string) (gateway
 }
 
 // RedeployAll undeploys and re-deploys every flow that is not undeployed;
-// each ends deployed (D-29).
+// each ends deployed (D-29). Flows are handled one at a time, each after
+// its in-flight messages finish, with a single status write. On error it
+// returns the flows already redeployed.
 func (a flowAdapter) RedeployAll(ctx context.Context) ([]gateway.Flow, error) {
-	if a.gate != nil {
-		a.gate.Lock()
-		defer a.gate.Unlock()
-	}
 	flows, err := a.List(ctx)
 	if err != nil {
 		return nil, err
 	}
 	out := []gateway.Flow{}
 	for _, f := range flows {
-		if flowlife.Normalize(f.Status) == flowlife.Undeployed {
+		if f.Status == flowlife.Undeployed {
 			continue
 		}
-		if _, err := a.transition(ctx, f.ID, flowlife.Undeploy); err != nil {
-			return nil, err
-		}
-		redeployed, err := a.transition(ctx, f.ID, flowlife.Deploy)
+		redeployed, err := func() (gateway.Flow, error) {
+			defer a.lock(f.ID, false)()
+			return a.setStatus(ctx, f, flowlife.Deployed)
+		}()
 		if err != nil {
-			return nil, err
+			return out, fmt.Errorf("redeploy %s: %w", f.ID, err)
 		}
 		out = append(out, redeployed)
 	}
@@ -544,9 +595,8 @@ type ingestAdapter struct {
 }
 
 func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (gateway.IngestResult, error) {
-	if a.flows.gate != nil {
-		a.flows.gate.RLock()
-		defer a.flows.gate.RUnlock()
+	if a.flows.locks != nil {
+		defer a.flows.locks.ProcessFlow(flowID)()
 	}
 	f, err := a.flows.Get(ctx, flowID)
 	if err != nil {
@@ -649,6 +699,7 @@ func (a flowAdapter) List(ctx context.Context) ([]gateway.Flow, error) {
 		if err := json.Unmarshal(d.Document, &f); err != nil {
 			return nil, fmt.Errorf("flow %s: %w", d.ID, err)
 		}
+		f.Status = flowlife.Normalize(f.Status) // legacy statuses read as undeployed
 		out = append(out, f)
 	}
 	return out, nil
@@ -663,30 +714,31 @@ func (a flowAdapter) Get(ctx context.Context, id string) (gateway.Flow, error) {
 	if err := json.Unmarshal(d.Document, &f); err != nil {
 		return gateway.Flow{}, fmt.Errorf("flow %s: %w", id, err)
 	}
+	f.Status = flowlife.Normalize(f.Status) // legacy statuses read as undeployed
 	return f, nil
 }
 
-func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) error {
+func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) (gateway.Flow, error) {
 	pf, err := toPipelineFlow(f)
 	if err == nil {
 		err = pipeline.Validate(pf)
 	}
 	if err != nil {
-		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+		return gateway.Flow{}, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
 	f.Status = flowlife.Undeployed // new flows are drafts (D-29)
 	doc, err := json.Marshal(f)
 	if err != nil {
-		return err
+		return gateway.Flow{}, err
 	}
-	return flowErr(a.store.CreateFlow(ctx, state.FlowDefinition{ID: f.ID, Document: doc}))
+	if err := a.store.CreateFlow(ctx, state.FlowDefinition{ID: f.ID, Document: doc}); err != nil {
+		return gateway.Flow{}, flowErr(err)
+	}
+	return f, nil
 }
 
 func (a flowAdapter) Delete(ctx context.Context, id string) error {
-	if a.gate != nil {
-		a.gate.Lock()
-		defer a.gate.Unlock()
-	}
+	defer a.lock(id, false)()
 	if err := a.store.DeleteFlow(ctx, id); err != nil {
 		return flowErr(err)
 	}
