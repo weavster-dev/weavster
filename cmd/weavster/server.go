@@ -97,7 +97,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		repo = store.(flowRepository)
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
-	flows := flowAdapter{store: repo, stats: stats, locks: newFlowLocks(), defs: &sync.Mutex{}}
+	flows := flowAdapter{store: repo, stats: stats, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events}
 	if cfg.Flows.DeployOnStartup && store != nil {
 		flows.DeployEnabled(ctx, logger)
 	}
@@ -522,6 +522,9 @@ type flowAdapter struct {
 	// defs serializes definition changes (create, update, import, delete),
 	// so dependency checks always see the flows they are written against.
 	defs *sync.Mutex
+	// events, when set, receives flow lifecycle events (flow.undeployed on
+	// removal of a running flow).
+	events *observability.EventLog
 }
 
 // definitions locks definition changes; it returns the unlock func.
@@ -556,7 +559,44 @@ func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway
 	if err != nil {
 		return gateway.Flow{}, fmt.Errorf("%w: %w", gateway.ErrInvalidTransition, err)
 	}
+	if action == flowlife.Deploy {
+		// Spec §6.1: deploy re-deploys the flow's dependencies. Locks are
+		// taken along dependency edges, which are acyclic, so this cannot
+		// deadlock.
+		if err := a.deployDependencies(ctx, f, map[string]bool{f.ID: true}); err != nil {
+			return gateway.Flow{}, err
+		}
+	}
 	return a.setStatus(ctx, f, next)
+}
+
+// deployDependencies deploys every undeployed flow f depends on, directly or
+// indirectly, dependencies first. Flows in any other state are left alone.
+func (a flowAdapter) deployDependencies(ctx context.Context, f gateway.Flow, visited map[string]bool) error {
+	for _, depID := range f.DependsOn {
+		if visited[depID] {
+			continue
+		}
+		visited[depID] = true
+		err := func() error {
+			defer a.lock(depID, true)()
+			dep, err := a.Get(ctx, depID)
+			if err != nil {
+				return fmt.Errorf("dependency %s: %w", depID, err)
+			}
+			if err := a.deployDependencies(ctx, dep, visited); err != nil {
+				return err
+			}
+			if dep.Status == flowlife.Undeployed {
+				_, err = a.setStatus(ctx, dep, flowlife.Deployed)
+			}
+			return err
+		}()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a flowAdapter) setStatus(ctx context.Context, f gateway.Flow, status string) (gateway.Flow, error) {
@@ -1098,7 +1138,7 @@ func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) (gateway.Flow, 
 
 func (a flowAdapter) Delete(ctx context.Context, id string) error {
 	defer a.definitions()()
-	defer a.lock(id, false)()
+	defer a.lock(id, false)() // waits for the flow's in-flight messages
 	// Fail closed: every other flow must be readable to prove nothing
 	// depends on this one. The flow being deleted may itself be unreadable,
 	// so a corrupt flow can always be removed.
@@ -1122,6 +1162,10 @@ func (a flowAdapter) Delete(ctx context.Context, id string) error {
 	if len(dependents) > 0 {
 		sort.Strings(dependents)
 		return fmt.Errorf("%w: %s depended on by %s", gateway.ErrFlowInUse, id, strings.Join(dependents, ", "))
+	}
+	// A running flow is undeployed before removal (spec §6.1).
+	if f, err := a.Get(ctx, id); err == nil && f.Status != flowlife.Undeployed && a.events != nil {
+		a.events.Add("flow.undeployed", "", id, map[string]string{"reason": "deleted"})
 	}
 	if err := a.store.DeleteFlow(ctx, id); err != nil {
 		return flowErr(err)

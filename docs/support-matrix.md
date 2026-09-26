@@ -52,7 +52,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 
 | Capability | Tier | Notes |
 |---|---|---|
-| Flow dependencies (`dependsOn`, validated, delete-protected), export (`GET /api/v1/flows/export`), import (`POST /api/v1/flows/import`, `overwrite`) | Implemented (wired) | `TestFlowExportImport`. Deploy does not deploy dependencies yet. See [Flow dependencies, export, and import](flow-export-import.md). |
+| Flow dependencies (`dependsOn`, validated, delete-protected), export (`GET /api/v1/flows/export`), import (`POST /api/v1/flows/import`, `overwrite`) | Implemented (wired) | `TestFlowExportImport`, `TestDeployDependenciesAndDeleteRunning`. Deploy also deploys undeployed dependencies; deleting a running flow undeploys it first. See [Flow dependencies, export, and import](flow-export-import.md). |
 | Flow update/rename (`PUT /api/v1/flows/{id}`), enable/disable, auto-deploy of enabled flows at startup (`flows.deployOnStartup`) | Implemented (wired) | `TestFlowUpdateAndEnable`, `TestDeployOnStartupDisabled` |
 | Flow lifecycle: deploy, undeploy, start, stop, pause, halt, resume, redeploy-all, with transitions enforced | Implemented (wired) | `TestFlowLifecycle`. API only; no per-destination start/stop, no dependencies. See [Flow lifecycle](flow-lifecycle.md). |
 | Message intake: `POST /api/v1/flows/{id}/messages` | Implemented (wired) | `TestPipelineEndToEnd`. See [Processing messages](processing-messages.md). |

@@ -9,7 +9,7 @@ The normal path is `undeployed → deployed → started`; a started flow can be 
 
 | Operation | From | To |
 |---|---|---|
-| `deploy` | `undeployed` | `deployed` |
+| `deploy` | `undeployed` | `deployed`; every `undeployed` flow it depends on (directly or indirectly) is deployed first |
 | `start` | `deployed`, `stopped` | `started` |
 | `pause` | `started` | `paused` |
 | `halt` | `started` | `halted` |
@@ -62,6 +62,14 @@ redeployed. The rest keep their status.
 | `started` | processed | retried |
 | any other | `409 flow … is <status>; start it first` | kept `queued`, not retried |
 
+## Deleting a running flow
+
+`DELETE /api/v1/flows/{id}` works in any status. For a flow that is not `undeployed`, the server
+waits for that flow's in-flight messages, undeploys it (logging a `flow.undeployed` event with
+`"reason":"deleted"`), and removes it. New messages for it return `404`. Its `queued` messages are
+`dead-lettered` by the next retry pass. A flow that other flows depend on cannot be deleted
+(`409`).
+
 ## Enabled flows start automatically
 
 `enabled` marks a flow as eligible for automatic deployment. It never changes the status by
@@ -99,5 +107,4 @@ it is started.
 ## Not available yet
 
 - Starting or stopping a single destination.
-- Flow dependencies (deploy does not deploy other flows).
 - CLI commands for these operations.

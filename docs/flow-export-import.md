@@ -26,8 +26,9 @@ To prove nothing depends on it, the server must be able to read every other flow
 unreadable, the delete returns `500` naming that flow; delete the unreadable flow first (a flow
 can always delete itself).
 
-Dependencies are checked and exported, but they do not change deployment yet: deploying a
-flow does not deploy the flows it depends on.
+Deploying a flow also deploys every `undeployed` flow it depends on, dependencies first.
+Dependencies in any other status are left as they are. Starting a flow does not start its
+dependencies. See [Flow lifecycle](flow-lifecycle.md).
 
 ## Export
 
