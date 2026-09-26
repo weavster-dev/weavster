@@ -340,6 +340,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestDestinationTransforms</code>. Same DSL steps as the flow transform, applied to the flow output per destination. See <a href="../processing-messages/#per-destination-transforms-and-filters">Processing messages</a>.</td>
 </tr>
 <tr>
+<td>Response transform and response selector (<code>responseTransform</code>, <code>responseSelector</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestResponseSelector</code>. The selected destination's reply to the first delivery attempt is returned by <code>POST /api/v1/flows/{id}/messages</code>; only <code>http</code> destinations reply. See <a href="../processing-messages/#return-a-destinations-reply">Processing messages</a>.</td>
+</tr>
+<tr>
 <td>Bulk update (<code>PUT /api/v1/flows</code>), connector names (<code>GET /api/v1/flows/connector-names</code>), ports in use (<code>GET /api/v1/flows/ports-in-use</code>), <code>initialState</code> for startup auto-deploy</td>
 <td>Implemented (wired)</td>
 <td><code>TestFlowOperations</code>. API only. Ports in use lists the server's API listeners; flows do not listen on ports yet. See <a href="../processing-messages/#update-several-flows-at-once">Processing messages</a> and <a href="../flow-lifecycle/#initial-state">Flow lifecycle</a>.</td>
@@ -372,7 +377,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Receive → persist → filter → transform → deliver to each destination, with per-destination results and aggregate status</td>
 <td>Implemented (wired)</td>
-<td><code>TestPipelineEndToEnd</code>. Synchronous, one attempt; no response processing.</td>
+<td><code>TestPipelineEndToEnd</code>. Synchronous, one attempt; response processing through <code>responseSelector</code>/<code>responseTransform</code> (below).</td>
 </tr>
 <tr>
 <td><code>http</code> and <code>file</code> destinations</td>

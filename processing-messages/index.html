@@ -239,6 +239,10 @@ below, in order, on the message as a JSON object.</p>
 <td><code>dependsOn</code></td>
 <td>Flows this flow requires; see <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
 </tr>
+<tr>
+<td><code>responseSelector</code></td>
+<td>The destination whose reply is returned to the sender; see <a href="#return-a-destinations-reply">Return a destination's reply</a>.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="destinations"><code>destinations</code></h3>
@@ -270,6 +274,10 @@ below, in order, on the message as a JSON object.</p>
 <td><code>transform</code></td>
 <td>Optional. This destination's own transform, with the same steps as the flow <code>transform</code>. See <a href="#per-destination-transforms-and-filters">Per-destination transforms and filters</a>.</td>
 </tr>
+<tr>
+<td><code>responseTransform</code></td>
+<td>Optional. Transform applied to this destination's reply. See <a href="#return-a-destinations-reply">Return a destination's reply</a>.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="per-destination-transforms-and-filters">Per-destination transforms and filters</h3>
@@ -298,6 +306,36 @@ for that destination only:</p>
   messages use the new definition.</li>
 <li>Retries, and deliveries after a restart, run the destination's current transform again on
   the stored flow output.</li>
+</ul>
+<h3 id="return-a-destinations-reply">Return a destination's reply</h3>
+<p>Set <code>responseSelector</code> to a destination name to get that destination's reply back in the
+response to <a href="#3-send-a-message"><code>POST /api/v1/flows/{id}/messages</code></a>. Add a
+<code>responseTransform</code> to that destination to reshape the reply first (same steps as <code>transform</code>):</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;adt&quot;,
+  &quot;responseSelector&quot;: &quot;ehr&quot;,
+  &quot;destinations&quot;: [
+    {&quot;name&quot;: &quot;ehr&quot;, &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://ehr.example.com/inbound&quot;,
+     &quot;responseTransform&quot;: {&quot;steps&quot;: [{&quot;map&quot;: {&quot;from&quot;: &quot;code&quot;, &quot;to&quot;: &quot;ack&quot;}}]}},
+    {&quot;name&quot;: &quot;archive&quot;, &quot;type&quot;: &quot;file&quot;, &quot;dir&quot;: &quot;/var/lib/weavster/archive&quot;}
+  ]
+}
+</code></pre>
+<pre><code class="language-json">{&quot;id&quot;:&quot;6f1c…&quot;,&quot;status&quot;:&quot;sent&quot;,&quot;response&quot;:{&quot;ack&quot;:&quot;AA&quot;,&quot;code&quot;:&quot;AA&quot;}}
+</code></pre>
+<ul>
+<li>The reply is the HTTP response body of a successful delivery. <code>responseSelector</code> must name
+  one of the flow's <code>http</code> destinations; naming an unknown or <code>file</code> destination returns <code>400</code>.</li>
+<li><code>responseTransform</code> is only allowed on the <code>responseSelector</code> destination (<code>400</code> elsewhere).</li>
+<li><code>response</code> is present only when the selected destination was delivered to while your request
+  waited. Retries in the background return nothing.</li>
+<li>Without a <code>responseTransform</code>, a reply whose <code>Content-Type</code> is JSON (<code>application/json</code> or
+  <code>…+json</code>) is returned as is. Any other reply is returned as a JSON string, for example
+  <code>"MSA|AA|123"</code>.</li>
+<li>With a <code>responseTransform</code>, the reply must be a JSON object. If it is not, or a step fails, or
+  a <code>filter</code> step drops it, <code>response</code> is left out.</li>
+<li><code>response</code> is also left out when the reply is empty, larger than 1 MiB, or cut off. In every
+  one of these cases the delivery still counts as successful.</li>
 </ul>
 <h3 id="update-a-flow">Update a flow</h3>
 <p>Replace a flow's definition, or rename it by changing <code>name</code> (permission <code>flows:edit</code>):</p>
@@ -368,7 +406,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 </code></pre>
 <pre><code class="language-json">{&quot;id&quot;:&quot;6f1c…&quot;,&quot;status&quot;:&quot;sent&quot;}
 </code></pre>
-<p>The request returns after processing finishes. <code>status</code> is one of:</p>
+<p>The request returns after processing finishes. With a <code>responseSelector</code>, the response also
+carries that destination's reply as <code>response</code> (see
+<a href="#return-a-destinations-reply">Return a destination's reply</a>). <code>status</code> is one of:</p>
 <table>
 <thead>
 <tr>
@@ -412,7 +452,7 @@ statuses above.</p>
 <tbody>
 <tr>
 <td><code>400</code></td>
-<td>The flow or one of its destinations has a transform and the body is not a JSON object, or the body could not be read.</td>
+<td>The flow or one of its destinations has a <code>transform</code> (a <code>responseTransform</code> does not count) and the body is not a JSON object, or the body could not be read.</td>
 </tr>
 <tr>
 <td><code>404</code></td>
