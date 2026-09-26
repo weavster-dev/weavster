@@ -26,9 +26,30 @@ func NewHTTPSink(url string) *HTTPSink {
 func (s *HTTPSink) Name() string { return "http" }
 
 func (s *HTTPSink) Write(ctx context.Context, m Message) error {
+	_, err := s.send(ctx, m, false)
+	return err
+}
+
+// MaxResponseBytes is the largest reply WriteResponse returns.
+const MaxResponseBytes = 1 << 20
+
+// Reply is the response to a successful HTTP delivery.
+type Reply struct {
+	Body        []byte
+	ContentType string
+}
+
+// WriteResponse is Write that also returns the reply of a successful
+// delivery. The reply is nil when it could not be read completely or is
+// larger than MaxResponseBytes; the delivery still succeeded.
+func (s *HTTPSink) WriteResponse(ctx context.Context, m Message) (*Reply, error) {
+	return s.send(ctx, m, true)
+}
+
+func (s *HTTPSink) send(ctx context.Context, m Message, wantReply bool) (*Reply, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url, bytes.NewReader(m.Body))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	contentType := m.Metadata[ContentTypeMetadata]
 	if contentType == "" {
@@ -40,14 +61,22 @@ func (s *HTTPSink) Write(ctx context.Context, m Message) error {
 	}
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	_, _ = io.Copy(io.Discard, resp.Body)
-	if resp.StatusCode >= 300 {
-		return &httpStatusError{code: resp.StatusCode}
+	if resp.StatusCode >= 300 || !wantReply {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		if resp.StatusCode >= 300 {
+			return nil, &httpStatusError{code: resp.StatusCode}
+		}
+		return nil, nil
 	}
-	return nil
+	body, err := io.ReadAll(io.LimitReader(resp.Body, MaxResponseBytes+1))
+	if err != nil || len(body) > MaxResponseBytes {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, nil // delivered; the reply is unusable
+	}
+	return &Reply{Body: body, ContentType: resp.Header.Get("Content-Type")}, nil
 }
 
 type httpStatusError struct{ code int }

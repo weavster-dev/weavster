@@ -68,6 +68,7 @@ below, in order, on the message as a JSON object.
 | `name`, `sourceType` | Free text shown in lists. |
 | `enabled`, `initialState` | Automatic deployment at startup; see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
 | `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). |
+| `responseSelector` | The destination whose reply is returned to the sender; see [Return a destination's reply](#return-a-destinations-reply). |
 
 ### `destinations`
 
@@ -78,6 +79,7 @@ below, in order, on the message as a JSON object.
 | `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a `POST` with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough), and it times out after 30 seconds. The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`. Created if missing. |
 | `transform` | Optional. This destination's own transform, with the same steps as the flow `transform`. See [Per-destination transforms and filters](#per-destination-transforms-and-filters). |
+| `responseTransform` | Optional. Transform applied to this destination's reply. See [Return a destination's reply](#return-a-destinations-reply). |
 
 ### Per-destination transforms and filters
 
@@ -108,6 +110,41 @@ for that destination only:
   messages use the new definition.
 - Retries, and deliveries after a restart, run the destination's current transform again on
   the stored flow output.
+
+### Return a destination's reply
+
+Set `responseSelector` to a destination name to get that destination's reply back in the
+response to [`POST /api/v1/flows/{id}/messages`](#3-send-a-message). Add a
+`responseTransform` to that destination to reshape the reply first (same steps as `transform`):
+
+```json
+{
+  "id": "adt",
+  "responseSelector": "ehr",
+  "destinations": [
+    {"name": "ehr", "type": "http", "url": "https://ehr.example.com/inbound",
+     "responseTransform": {"steps": [{"map": {"from": "code", "to": "ack"}}]}},
+    {"name": "archive", "type": "file", "dir": "/var/lib/weavster/archive"}
+  ]
+}
+```
+
+```json
+{"id":"6f1c…","status":"sent","response":{"ack":"AA","code":"AA"}}
+```
+
+- The reply is the HTTP response body of a successful delivery. `responseSelector` must name
+  one of the flow's `http` destinations; naming an unknown or `file` destination returns `400`.
+- `responseTransform` is only allowed on the `responseSelector` destination (`400` elsewhere).
+- `response` is present only when the selected destination was delivered to while your request
+  waited. Retries in the background return nothing.
+- Without a `responseTransform`, a reply whose `Content-Type` is JSON (`application/json` or
+  `…+json`) is returned as is. Any other reply is returned as a JSON string, for example
+  `"MSA|AA|123"`.
+- With a `responseTransform`, the reply must be a JSON object. If it is not, or a step fails, or
+  a `filter` step drops it, `response` is left out.
+- `response` is also left out when the reply is empty, larger than 1 MiB, or cut off. In every
+  one of these cases the delivery still counts as successful.
 
 ### Update a flow
 
@@ -209,7 +246,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
 {"id":"6f1c…","status":"sent"}
 ```
 
-The request returns after processing finishes. `status` is one of:
+The request returns after processing finishes. With a `responseSelector`, the response also
+carries that destination's reply as `response` (see
+[Return a destination's reply](#return-a-destinations-reply)). `status` is one of:
 
 | Status | Meaning |
 |---|---|

@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,6 +40,8 @@ type Destination struct {
 	// Transform, when set, runs on the flow's output before delivery to
 	// this destination; its filter steps drop the message for it alone.
 	Transform *compiler.Transform
+	// ResponseTransform, when set, runs on this destination's reply.
+	ResponseTransform *compiler.Transform
 }
 
 // Flow is the processing definition the pipeline runs.
@@ -46,6 +50,8 @@ type Flow struct {
 	Paused       bool                // stopped, paused, halted, or undeployed: RetryDue skips its messages
 	Transform    *compiler.Transform // nil passes messages through unchanged
 	Destinations []Destination
+	// ResponseSelector names the destination whose reply Process returns.
+	ResponseSelector string
 }
 
 // Delivery is one message sent to one destination.
@@ -61,6 +67,18 @@ type Sink interface {
 	Write(ctx context.Context, d Delivery) error
 }
 
+// Reply is a destination's response to a successful delivery.
+type Reply struct {
+	Body        []byte
+	ContentType string // MIME type of Body, as the destination declared it
+}
+
+// ResponseSink is a Sink whose destination replies (HTTP). The reply is nil
+// when the destination sent none it could use; the delivery still succeeded.
+type ResponseSink interface {
+	WriteResponse(ctx context.Context, d Delivery) (*Reply, error)
+}
+
 // SinkFactory builds the sink for a destination.
 type SinkFactory func(Destination) (Sink, error)
 
@@ -68,6 +86,9 @@ type SinkFactory func(Destination) (Sink, error)
 type Result struct {
 	ID     string
 	Status state.Status
+	// Response is the selected destination's (transformed) reply when it
+	// was delivered during this call; nil otherwise.
+	Response json.RawMessage
 }
 
 // Observer is told when a message is received and when it finishes
@@ -121,8 +142,8 @@ func New(store state.Store, sinks SinkFactory, observer Observer, opts Options) 
 	return &Pipeline{store: store, sinks: sinks, observer: observer, opts: opts}
 }
 
-func (p *Pipeline) outbox(f Flow, contentType string, outs map[string]destinationResult) *outbox.Outbox {
-	return outbox.New(p.store, p.deliverFunc(f, contentType, outs), outbox.Options{MaxAttempts: p.opts.MaxAttempts, BackoffBase: p.opts.BackoffBase})
+func (p *Pipeline) outbox(f Flow, contentType string, outs map[string]destinationResult, reply **Reply) *outbox.Outbox {
+	return outbox.New(p.store, p.deliverFunc(f, contentType, outs, reply), outbox.Options{MaxAttempts: p.opts.MaxAttempts, BackoffBase: p.opts.BackoffBase})
 }
 
 // Validate checks a flow definition: the transform compiles and every
@@ -133,12 +154,12 @@ func Validate(f Flow) error {
 			return err
 		}
 	}
-	seen := map[string]bool{}
+	seen := map[string]string{} // name -> type
 	for i, d := range f.Destinations {
 		switch {
 		case d.Name == "":
 			return fmt.Errorf("destinations[%d]: name is required", i)
-		case seen[d.Name]:
+		case seen[d.Name] != "":
 			return fmt.Errorf("destinations[%d]: duplicate name %q", i, d.Name)
 		case d.Type == "http" && !validHTTPURL(d.URL):
 			return fmt.Errorf("destination %s: url must be an absolute http:// or https:// URL, got %q", d.Name, d.URL)
@@ -149,10 +170,25 @@ func Validate(f Flow) error {
 		}
 		if d.Transform != nil {
 			if _, err := dsl.Compile(*d.Transform); err != nil {
-				return fmt.Errorf("destination %s: %w", d.Name, err)
+				return fmt.Errorf("destination %s: transform: %w", d.Name, err)
 			}
 		}
-		seen[d.Name] = true
+		if d.ResponseTransform != nil {
+			if d.Name != f.ResponseSelector {
+				return fmt.Errorf("destination %s: responseTransform is only used on the responseSelector destination", d.Name)
+			}
+			if _, err := dsl.Compile(*d.ResponseTransform); err != nil {
+				return fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
+			}
+		}
+		seen[d.Name] = d.Type
+	}
+	switch kind := seen[f.ResponseSelector]; {
+	case f.ResponseSelector == "":
+	case kind == "":
+		return fmt.Errorf("responseSelector: no destination named %q", f.ResponseSelector)
+	case kind != "http":
+		return fmt.Errorf("responseSelector: destination %s is type %s, which sends no reply; select an http destination", f.ResponseSelector, kind)
 	}
 	return nil
 }
@@ -190,7 +226,7 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, 
 		contentType = "json"
 	}
 	m := state.Message{ID: id, FlowID: f.ID, ContentType: contentType, Raw: body, Original: body}
-	if err := p.outbox(f, contentType, nil).Receive(ctx, m); err != nil {
+	if err := p.outbox(f, contentType, nil, nil).Receive(ctx, m); err != nil {
 		return Result{}, err
 	}
 	if p.observer != nil {
@@ -243,7 +279,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 	if err != nil {
 		return Result{}, err
 	}
-	ob := p.outbox(f, m.ContentType, nil)
+	ob := p.outbox(f, m.ContentType, nil, nil)
 	if m.Status == state.StatusReceived {
 		transformed := m.Raw
 		if f.Transform != nil {
@@ -275,7 +311,13 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 	now := time.Now()
 	outs := destinationOutputs(f, m)
 	skip := filteredSet(outs)
-	dob := p.outbox(f, m.ContentType, outs)
+	// Only a delivery made while the sender waits (not a retry) replies.
+	var reply *Reply
+	replyTo := &reply
+	if retry || f.ResponseSelector == "" {
+		replyTo = nil
+	}
+	dob := p.outbox(f, m.ContentType, outs, replyTo)
 	var attempted []string
 	for _, d := range f.Destinations {
 		if !d.Stopped && !skip[d.Name] && p.pending(m.Attempts[d.Name], now) {
@@ -289,7 +331,46 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 	if err != nil {
 		return Result{}, err
 	}
-	return p.complete(ctx, id, p.rollup(latest, f, skip), nil, retry, attempted)
+	res, err := p.complete(ctx, id, p.rollup(latest, f, skip), nil, retry, attempted)
+	if err == nil && reply != nil {
+		res.Response = responseOutput(f, reply)
+	}
+	return res, err
+}
+
+// responseOutput is the selected destination's reply as returned to the
+// sender: the response transform's result; without one, a JSON reply
+// (declared application/json or +json) as is and any other reply as a JSON
+// string. An empty reply, or one the transform cannot use (not a JSON
+// object, a failing step) or filters, returns nil.
+func responseOutput(f Flow, r *Reply) json.RawMessage {
+	var t *compiler.Transform
+	for _, d := range f.Destinations {
+		if d.Name == f.ResponseSelector {
+			t = d.ResponseTransform
+		}
+	}
+	if t != nil {
+		out, _, err := destinationOutput(*t, r.Body)
+		if err != nil {
+			return nil
+		}
+		return out
+	}
+	switch {
+	case len(r.Body) == 0:
+		return nil
+	case isJSONType(r.ContentType) && json.Valid(r.Body):
+		return r.Body
+	}
+	s, _ := json.Marshal(string(r.Body)) // a string always encodes
+	return s
+}
+
+// isJSONType reports whether a Content-Type declares JSON.
+func isJSONType(contentType string) bool {
+	mt, _, err := mime.ParseMediaType(contentType)
+	return err == nil && (mt == "application/json" || strings.HasSuffix(mt, "+json"))
 }
 
 // destinationResult is one destination's transform of a message's flow
@@ -366,7 +447,9 @@ func (p *Pipeline) pending(a state.DestinationAttempt, now time.Time) bool {
 // deliverFunc routes outbox deliveries to the flow's sinks, building each
 // sink once per message. A destination with a transform receives its entry
 // of outs.
-func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]destinationResult) outbox.DeliverFunc {
+// When reply is set, the reply to a successful delivery to the flow's
+// response selector is stored there.
+func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]destinationResult, reply **Reply) outbox.DeliverFunc {
 	mime := "application/octet-stream"
 	if contentType == "json" {
 		mime = "application/json"
@@ -397,7 +480,15 @@ func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]desti
 			}
 			body, destMime = out.body, "application/json"
 		}
-		return b.sink.Write(ctx, Delivery{MessageID: m.ID, Body: body, ContentType: destMime, IdempotencyKey: key})
+		d := Delivery{MessageID: m.ID, Body: body, ContentType: destMime, IdempotencyKey: key}
+		if rs, ok := b.sink.(ResponseSink); ok && reply != nil && dest == f.ResponseSelector {
+			r, err := rs.WriteResponse(ctx, d)
+			if err == nil {
+				*reply = r
+			}
+			return err
+		}
+		return b.sink.Write(ctx, d)
 	}
 }
 
