@@ -213,6 +213,13 @@ func runUntilSIGTERM(t *testing.T, args []string, readyURL string) {
 // answers. The returned stop func sends SIGTERM and expects a clean exit 0.
 func startCLI(t *testing.T, args []string, readyURL string) (stop func()) {
 	t.Helper()
+	stop, _ = startCLIWithStderr(t, args, readyURL)
+	return stop
+}
+
+// startCLIWithStderr is startCLI that also returns the process's stderr.
+func startCLIWithStderr(t *testing.T, args []string, readyURL string) (stop func(), stderr *syncBuffer) {
+	t.Helper()
 	done := make(chan int, 1)
 	errb := &syncBuffer{}
 	go func() { done <- run(args, strings.NewReader(""), io.Discard, errb) }()
@@ -230,7 +237,7 @@ func startCLI(t *testing.T, args []string, readyURL string) (stop func()) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("server did not shut down after SIGTERM")
 		}
-	}
+	}, errb
 }
 
 // syncBuffer is a bytes.Buffer safe for the server goroutine to write while

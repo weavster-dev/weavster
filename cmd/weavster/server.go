@@ -46,13 +46,24 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 		MinLength: pp.MinLength, MinUpper: pp.MinUpper, MinLower: pp.MinLower,
 		MinNumeric: pp.MinNumeric, MinSpecial: pp.MinSpecial,
 	}
+	var users auth.UserStore
+	if store != nil {
+		// Every state backend implements userRepository
+		// (TestStoresImplementUserRepository).
+		users = userStoreAdapter{repo: store.(userRepository)}
+	}
 	provider := auth.NewLocalProvider(auth.Options{
+		Store:  users,
 		Policy: policy,
 		Lockout: auth.LockoutPolicy{
 			RetryLimit: cfg.Auth.Lockout.RetryLimit, LockoutPeriod: cfg.Auth.Lockout.LockoutPeriodSeconds,
 		},
 		AntiEnumeration: true,
 	})
+	if err := provider.Load(ctx); err != nil {
+		_ = closeStore()
+		return nil, nil, err
+	}
 	if err := bootstrapAdminUser(ctx, provider, policy, out); err != nil {
 		_ = closeStore()
 		return nil, nil, err
@@ -263,6 +274,45 @@ func (a authAdapter) Authenticate(ctx context.Context, username, password, mfaCo
 		return gateway.Identity{}, err
 	}
 	return gateway.Identity{Username: u.Username, Permissions: u.Permissions, MustChangePassword: u.MustChangePassword}, nil
+}
+
+// userRepository is the durable local-user store, implemented by state's
+// SQL and in-memory stores.
+type userRepository interface {
+	PutUser(ctx context.Context, u state.UserDocument) error
+	ListUsers(ctx context.Context) ([]state.UserDocument, error)
+	DeleteUser(ctx context.Context, username string) error
+}
+
+// userStoreAdapter persists auth users as JSON documents.
+type userStoreAdapter struct{ repo userRepository }
+
+func (a userStoreAdapter) LoadUsers(ctx context.Context) ([]auth.User, error) {
+	docs, err := a.repo.ListUsers(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]auth.User, 0, len(docs))
+	for _, d := range docs {
+		var u auth.User
+		if err := json.Unmarshal(d.Document, &u); err != nil {
+			return nil, fmt.Errorf("user %s: %w", d.Username, err)
+		}
+		out = append(out, u)
+	}
+	return out, nil
+}
+
+func (a userStoreAdapter) SaveUser(ctx context.Context, u auth.User) error {
+	doc, err := json.Marshal(u)
+	if err != nil {
+		return err
+	}
+	return a.repo.PutUser(ctx, state.UserDocument{Username: u.Username, Document: doc})
+}
+
+func (a userStoreAdapter) DeleteUser(ctx context.Context, username string) error {
+	return a.repo.DeleteUser(ctx, username)
 }
 
 type passwordAdapter struct{ p *auth.LocalProvider }

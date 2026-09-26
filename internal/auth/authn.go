@@ -48,6 +48,14 @@ type AuthProvider interface {
 	ChangePassword(ctx context.Context, username, oldPassword, newPassword string) error
 }
 
+// UserStore persists local users (durable local users, spec §10).
+type UserStore interface {
+	LoadUsers(ctx context.Context) ([]User, error)
+	// SaveUser creates or replaces the user with u.Username.
+	SaveUser(ctx context.Context, u User) error
+	DeleteUser(ctx context.Context, username string) error
+}
+
 // Options configures the local auth provider.
 type Options struct {
 	Policy          PasswordPolicy
@@ -55,6 +63,9 @@ type Options struct {
 	AntiEnumeration bool
 	External        ExternalAuthHook
 	MFA             MFAHook
+	// Store, when set, persists every user change. Nil keeps users in
+	// memory only.
+	Store UserStore
 }
 
 // LocalProvider is the MVP AuthProvider adapter (local user store).
@@ -67,6 +78,37 @@ type LocalProvider struct {
 // NewLocalProvider returns an empty local user store with the given options.
 func NewLocalProvider(opts Options) *LocalProvider {
 	return &LocalProvider{users: make(map[string]*User), opts: opts}
+}
+
+// Load replaces the in-memory users with those in opts.Store.
+func (p *LocalProvider) Load(ctx context.Context) error {
+	if p.opts.Store == nil {
+		return nil
+	}
+	users, err := p.opts.Store.LoadUsers(ctx)
+	if err != nil {
+		return fmt.Errorf("auth: load users: %w", err)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.users = make(map[string]*User, len(users))
+	for i := range users {
+		u := users[i]
+		p.users[u.Username] = &u
+	}
+	return nil
+}
+
+// save persists u to opts.Store. Callers hold p.mu and apply a change to
+// the in-memory record only after save succeeds.
+func (p *LocalProvider) save(ctx context.Context, u *User) error {
+	if p.opts.Store == nil {
+		return nil
+	}
+	if err := p.opts.Store.SaveUser(ctx, u.clone()); err != nil {
+		return fmt.Errorf("auth: save user: %w", err)
+	}
+	return nil
 }
 
 func (p *LocalProvider) Authenticate(ctx context.Context, username, password, mfaCode string) (*User, error) {
@@ -106,12 +148,12 @@ func (p *LocalProvider) Authenticate(ctx context.Context, username, password, mf
 		return nil, p.genericOr(ErrPasswordWrong)
 	}
 	if !valid {
-		p.recordFailure(u)
+		p.recordFailure(ctx, u)
 		p.mu.Unlock()
 		return nil, p.genericOr(ErrPasswordWrong)
 	}
 
-	p.recordSuccess(u)
+	p.recordSuccess(ctx, u)
 
 	// Password expiration/grace enforcement.
 	if err := p.opts.Policy.CheckExpired(u.PasswordChangedAt); err != nil {
@@ -150,7 +192,10 @@ func (p *LocalProvider) genericOr(err error) error {
 	return err
 }
 
-func (p *LocalProvider) recordFailure(u *User) {
+// recordFailure counts a failed attempt and persists the lockout state. A
+// save failure keeps the in-memory count, which still enforces lockout.
+func (p *LocalProvider) recordFailure(ctx context.Context, u *User) {
+	defer func() { _ = p.save(ctx, u) }()
 	now := time.Now()
 	if p.opts.Lockout.expired(u.LockedUntil, now) {
 		u.FailedAttempts = 0 // strike decay
@@ -162,9 +207,15 @@ func (p *LocalProvider) recordFailure(u *User) {
 	}
 }
 
-func (p *LocalProvider) recordSuccess(u *User) {
+// recordSuccess clears the lockout counters, persisting only when they
+// changed.
+func (p *LocalProvider) recordSuccess(ctx context.Context, u *User) {
+	if u.FailedAttempts == 0 && u.LockedUntil.IsZero() {
+		return
+	}
 	u.FailedAttempts = 0
 	u.LockedUntil = time.Time{}
+	_ = p.save(ctx, u)
 }
 
 func (p *LocalProvider) isLocked(u *User) bool {
@@ -188,6 +239,9 @@ func (p *LocalProvider) CreateUser(ctx context.Context, u User) error {
 	u.PasswordHash = hash
 	u.PasswordChangedAt = time.Now()
 	u.PasswordHistory = []string{hash}
+	if err := p.save(ctx, &u); err != nil {
+		return err
+	}
 	p.users[u.Username] = &u
 	return nil
 }
@@ -202,6 +256,9 @@ func (p *LocalProvider) UpdateUser(ctx context.Context, username string, u User)
 	u.PasswordHash = existing.PasswordHash
 	u.PasswordChangedAt = existing.PasswordChangedAt
 	u.PasswordHistory = existing.PasswordHistory
+	if err := p.save(ctx, &u); err != nil {
+		return err
+	}
 	p.users[username] = &u
 	return nil
 }
@@ -211,6 +268,11 @@ func (p *LocalProvider) DeleteUser(ctx context.Context, username string) error {
 	defer p.mu.Unlock()
 	if _, ok := p.users[username]; !ok {
 		return ErrUserNotFound
+	}
+	if p.opts.Store != nil {
+		if err := p.opts.Store.DeleteUser(ctx, username); err != nil {
+			return fmt.Errorf("auth: delete user: %w", err)
+		}
 	}
 	delete(p.users, username)
 	return nil
@@ -255,7 +317,7 @@ func (p *LocalProvider) ChangePassword(ctx context.Context, username, oldPasswor
 
 	if !VerifyPassword(oldHash, oldPassword) {
 		p.mu.Lock()
-		p.recordFailure(u)
+		p.recordFailure(ctx, u)
 		p.mu.Unlock()
 		return ErrPasswordWrong
 	}
@@ -278,13 +340,18 @@ func (p *LocalProvider) ChangePassword(ctx context.Context, username, oldPasswor
 	if current, ok := p.users[username]; !ok || current != u || u.PasswordHash != oldHash {
 		return ErrPasswordConflict
 	}
-	u.PasswordHash = hash
-	u.PasswordChangedAt = time.Now()
-	u.MustChangePassword = false
-	u.PasswordHistory = append([]string{hash}, u.PasswordHistory...)
-	if len(u.PasswordHistory) > p.opts.Policy.ReuseLimit {
-		u.PasswordHistory = u.PasswordHistory[:p.opts.Policy.ReuseLimit]
+	next := u.clone()
+	next.PasswordHash = hash
+	next.PasswordChangedAt = time.Now()
+	next.MustChangePassword = false
+	next.PasswordHistory = append([]string{hash}, next.PasswordHistory...)
+	if len(next.PasswordHistory) > p.opts.Policy.ReuseLimit {
+		next.PasswordHistory = next.PasswordHistory[:p.opts.Policy.ReuseLimit]
 	}
+	if err := p.save(ctx, &next); err != nil {
+		return err
+	}
+	*u = next
 	return nil
 }
 
