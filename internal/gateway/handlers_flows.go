@@ -30,7 +30,7 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 	}
 	flows, err := s.cfg.Flows.List(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeFlowError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, flows)
@@ -59,8 +59,12 @@ func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if f.ID == "" {
+		http.Error(w, "flow id is required", http.StatusBadRequest)
+		return
+	}
 	if !validFlowID.MatchString(f.ID) {
-		http.Error(w, "flow id is required: 1-128 characters from A-Z a-z 0-9 . _ -", http.StatusBadRequest)
+		http.Error(w, "flow id must be 1-128 characters from A-Z a-z 0-9 . _ -", http.StatusBadRequest)
 		return
 	}
 	if err := s.cfg.Flows.Create(r.Context(), f); err != nil {

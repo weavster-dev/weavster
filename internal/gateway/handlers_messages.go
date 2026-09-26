@@ -16,7 +16,7 @@ func (s *Server) handleMessagesSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	msgs, err := s.cfg.Messages.Search(r.Context(), q)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 	writeJSON(w, http.StatusOK, msgs)

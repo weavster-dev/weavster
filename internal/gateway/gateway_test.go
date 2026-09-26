@@ -329,6 +329,16 @@ func (sentinelFlows) Get(context.Context, string) (Flow, error) { return Flow{},
 func (sentinelFlows) Create(context.Context, Flow) error        { return ErrFlowExists }
 func (sentinelFlows) Delete(context.Context, string) error      { return ErrFlowNotFound }
 
+func TestErrorsDoNotLeakInternals(t *testing.T) {
+	srv := newErrServer().Router()
+	for _, path := range []string{"/api/v1/flows", "/api/v1/topology", "/api/v1/messages"} {
+		rec := do(t, srv, http.MethodGet, path, false)
+		if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "unavailable") {
+			t.Errorf("GET %s = %d %q, want generic 500", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 func TestFlowsHandlerSentinels(t *testing.T) {
 	srv := New(Config{Flows: sentinelFlows{&stubFlows{}}}).Router()
 	tests := []struct {
@@ -339,6 +349,7 @@ func TestFlowsHandlerSentinels(t *testing.T) {
 		{http.MethodDelete, "/api/v1/flows/x", "", http.StatusNotFound},
 		{http.MethodPost, "/api/v1/flows", `{"id":"x"}`, http.StatusConflict},
 		{http.MethodPost, "/api/v1/flows", `{"id":"a b"}`, http.StatusBadRequest},
+		{http.MethodPost, "/api/v1/flows", `{"name":"no id"}`, http.StatusBadRequest},
 	}
 	for _, tt := range tests {
 		req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))

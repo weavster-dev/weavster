@@ -13,7 +13,7 @@ func (s *Server) handleTopologyOverview(w http.ResponseWriter, r *http.Request) 
 	}
 	g, err := s.cfg.Topology.Overview(r.Context())
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeFlowError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, g)

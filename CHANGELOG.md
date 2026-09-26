@@ -57,7 +57,7 @@ All notable changes to this project are documented here, following
   - `DELETE /api/v1/flows/{id}` for an unknown flow returns `404`, not `204`.
   - `GET /api/v1/topology/flows/{flowId}` for an unknown flow returns `404`, not `500`.
   - `POST /api/v1/flows` returns `409` for an existing `id` and `400` for a missing or invalid `id`.
-  - Store failures return a generic `500` instead of a `404` carrying internal error text.
+  - Store failures on the flow, topology, and message endpoints return a generic `500` with no internal error text.
 - SQL store: a failed migration now closes the database handle instead of leaking it (#147).
 - `weavster server` registers its SIGINT/SIGTERM handler before it starts listening, so a stop signal that arrives right after startup is no longer lost (#145).
 - `golangci-lint` errcheck findings on unchecked `Close` calls in `cmd/weavster/cli_test.go` and `cmd/weavster/server_lifecycle_test.go` (#142).
