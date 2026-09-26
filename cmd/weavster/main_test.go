@@ -165,13 +165,13 @@ type erroringClient struct{}
 func (erroringClient) Status(context.Context) (string, error) {
 	return "", fmt.Errorf("status unavailable")
 }
-func (erroringClient) FlowList(context.Context) ([]string, error) {
-	return nil, fmt.Errorf("flow list unavailable")
-}
 func (erroringClient) UserList(context.Context) ([]string, error) {
 	return nil, fmt.Errorf("user list unavailable")
 }
 func (erroringClient) Version(context.Context) string { return version }
+func (erroringClient) Call(context.Context, string, string, []byte) ([]byte, error) {
+	return nil, fmt.Errorf("call unavailable")
+}
 
 func TestPrivilegedGuard(t *testing.T) {
 	if err := checkPrivileged(false, func() bool { return true }); err == nil {
@@ -206,12 +206,12 @@ func TestBuildServerServesSystem(t *testing.T) {
 
 type fakeClient struct{}
 
-func (fakeClient) Status(context.Context) (string, error) { return "started", nil }
-func (fakeClient) FlowList(context.Context) ([]string, error) {
-	return []string{"Patient Admit"}, nil
-}
+func (fakeClient) Status(context.Context) (string, error)     { return "started", nil }
 func (fakeClient) UserList(context.Context) ([]string, error) { return []string{"admin"}, nil }
 func (fakeClient) Version(context.Context) string             { return version }
+func (fakeClient) Call(context.Context, string, string, []byte) ([]byte, error) {
+	return []byte(`[{"id":"admit","status":"started","name":"Patient Admit"}]`), nil
+}
 
 func TestShellError(t *testing.T) {
 	var errb bytes.Buffer

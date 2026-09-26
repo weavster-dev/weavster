@@ -1,10 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
-	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/weavster-dev/weavster/internal/gateway"
@@ -83,42 +85,49 @@ func TestHTTPClientStatusError(t *testing.T) {
 	}
 }
 
-func TestHTTPClientFlowList(t *testing.T) {
+func TestHTTPClientCall(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/flows" {
-			t.Errorf("path = %q, want /api/v1/flows", r.URL.Path)
+		if r.URL.Path == "/missing" {
+			http.Error(w, "flow not found", http.StatusNotFound)
+			return
 		}
-		_ = json.NewEncoder(w).Encode([]gateway.Flow{{Name: "flow-a"}, {Name: "flow-b"}})
+		body, _ := io.ReadAll(r.Body)
+		_, _ = w.Write([]byte(r.Method + " " + string(body)))
 	}))
 	defer srv.Close()
 
 	c := newHTTPClient(srv.URL, "", "")
-	names, err := c.FlowList(context.Background())
-	if err != nil {
-		t.Fatalf("FlowList() error = %v", err)
+	out, err := c.Call(context.Background(), http.MethodPut, "/x", []byte("doc"))
+	if err != nil || string(out) != "PUT doc" {
+		t.Errorf("Call = %q, %v", out, err)
 	}
-	if len(names) != 2 || names[0] != "flow-a" || names[1] != "flow-b" {
-		t.Errorf("FlowList() = %v", names)
+	if _, err := c.Call(context.Background(), http.MethodGet, "/missing", nil); err == nil || err.Error() != "server returned 404 Not Found: flow not found" {
+		t.Errorf("Call error = %v", err)
 	}
-}
-
-func TestHTTPClientFlowListRequestError(t *testing.T) {
-	c := newHTTPClient("http://[::1]:namedport", "", "")
-	if _, err := c.FlowList(context.Background()); err == nil {
-		t.Error("expected error, got nil")
+	if _, err := newHTTPClient("http://[::1]:namedport", "", "").Call(context.Background(), http.MethodGet, "/x", nil); err == nil {
+		t.Error("expected request error, got nil")
 	}
 }
 
-func TestHTTPClientFlowListDecodeError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("not json"))
-	}))
-	defer srv.Close()
-
-	c := newHTTPClient(srv.URL, "", "")
-	if _, err := c.FlowList(context.Background()); err == nil {
-		t.Error("expected decode error, got nil")
+func TestFlowListUnreadableReply(t *testing.T) {
+	var out, errb bytes.Buffer
+	if code := flowCommand(context.Background(), replyClient("not json"), []string{"list"}, &out, &errb, false); code != 2 {
+		t.Errorf("exit = %d, want 2 (stderr %q)", code, errb.String())
 	}
+	errb.Reset()
+	if code := flowCommand(context.Background(), replyClient("[1]"), []string{"rename", "a", "B"}, &out, &errb, false); code != 2 || !strings.Contains(errb.String(), "unreadable flow") {
+		t.Errorf("rename of an unreadable flow: exit %d, stderr %q", code, errb.String())
+	}
+}
+
+// replyClient answers every Call with the same body.
+type replyClient string
+
+func (replyClient) Status(context.Context) (string, error)     { return "", nil }
+func (replyClient) UserList(context.Context) ([]string, error) { return nil, nil }
+func (replyClient) Version(context.Context) string             { return version }
+func (r replyClient) Call(context.Context, string, string, []byte) ([]byte, error) {
+	return []byte(r), nil
 }
 
 // TestHTTPClientUserList documents the MVP behaviour: user listing is not
@@ -138,5 +147,13 @@ func TestHTTPClientVersion(t *testing.T) {
 	c := newHTTPClient("http://example.invalid", "", "")
 	if got := c.Version(context.Background()); got != version {
 		t.Errorf("Version() = %q, want %q", got, version)
+	}
+}
+
+func TestEscapeControl(t *testing.T) {
+	for in, want := range map[string]string{"ADT": "ADT", "a\tb": `a\tb`, "a\nb": `a\nb`, "é\x01": `é\x01`} {
+		if got := escapeControl(in); got != want {
+			t.Errorf("escapeControl(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

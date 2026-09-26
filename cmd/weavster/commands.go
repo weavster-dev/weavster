@@ -30,18 +30,7 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		_, _ = fmt.Fprintln(stdout, out)
 		return 0
 	case "flow":
-		if len(fields) >= 2 && fields[1] == "list" {
-			flows, err := client.FlowList(ctx)
-			if err != nil {
-				return shellError(stderr, debug, err)
-			}
-			for _, f := range flows {
-				_, _ = fmt.Fprintln(stdout, f)
-			}
-			return 0
-		}
-		_, _ = fmt.Fprintln(stderr, "Error: unknown flow subcommand")
-		return 2
+		return flowCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	case "user":
 		if len(fields) >= 2 && fields[1] == "list" {
 			users, err := client.UserList(ctx)
@@ -71,5 +60,5 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "commands: help, status, version, flow list, user list, quit")
+	_, _ = fmt.Fprintln(w, "commands: help, status, version, flow <subcommand> (flow help), user list, quit")
 }
