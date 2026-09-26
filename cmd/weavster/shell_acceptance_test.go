@@ -44,6 +44,7 @@ func TestShell(t *testing.T) {
 	good := file("good.yaml", "address: "+ts.URL+"\nuser: "+bootstrapAdmin+"\npassword: "+testAdminPassword+"\n")
 	wrongPass := file("wrong.yaml", "address: "+ts.URL+"\nuser: "+bootstrapAdmin+"\npassword: nope\n")
 	unknownKey := file("unknown.yaml", "address: "+ts.URL+"\nhost: x\n")
+	twoDocs := file("two.yaml", "address: "+ts.URL+"\n---\naddress: http://elsewhere\n")
 
 	tests := []struct {
 		name           string
@@ -64,6 +65,8 @@ func TestShell(t *testing.T) {
 			nil, []string{"Could not log in to server.", "401 Unauthorized"}},
 		{"missing connection file", []string{"-c", filepath.Join(dir, "none.yaml")}, "", 2, nil, []string{"Error: connection file"}},
 		{"unknown key in connection file", []string{"-c", unknownKey}, "", 2, nil, []string{"field host not found"}},
+		{"two documents in connection file", []string{"-c", twoDocs}, "", 2, nil, []string{"single YAML document"}},
+		{"line of exactly the limit", []string{"-c", good}, strings.Repeat("x", maxShellLine) + "\r\n", 0, nil, []string{`unknown command "xxx`}},
 		{"server version", []string{"-c", good, "-v"}, "", 0, []string{"weavster server " + version}, nil},
 		{"server version needs credentials", []string{"-a", ts.URL, "-v"}, "", 2, nil, []string{"401 Unauthorized"}},
 		{"server version with a bad login", []string{"-c", wrongPass, "-v"}, "", 2, nil, []string{"Could not log in to server.", "401 Unauthorized"}},

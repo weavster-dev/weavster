@@ -28,7 +28,7 @@ const maxShellLine = 1 << 20
 // shell continues; it exits 0.
 func runShell(in io.Reader, client Client, stdout, stderr io.Writer, debug bool) int {
 	sc := bufio.NewScanner(in)
-	sc.Buffer(make([]byte, 0, 64<<10), maxShellLine)
+	sc.Buffer(make([]byte, 0, 64<<10), maxShellLine+2) // room for "\r\n"
 	for {
 		_, _ = fmt.Fprint(stdout, shellPrompt)
 		if !sc.Scan() {
@@ -37,6 +37,10 @@ func runShell(in io.Reader, client Client, stdout, stderr io.Writer, debug bool)
 				return shellError(stderr, debug, fmt.Errorf("reading commands: %w", err))
 			}
 			return 0
+		}
+		if len(sc.Bytes()) > maxShellLine {
+			_, _ = fmt.Fprintln(stdout)
+			return shellError(stderr, debug, fmt.Errorf("reading commands: %w", bufio.ErrTooLong))
 		}
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -67,6 +71,10 @@ func loadConnection(path string) (connection, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(&c); err != nil && err != io.EOF {
 		return c, fmt.Errorf("connection file %s: %w", path, err)
+	}
+	var extra any
+	if err := dec.Decode(&extra); err != io.EOF {
+		return c, fmt.Errorf("connection file %s: must hold a single YAML document", path)
 	}
 	return c, nil
 }
