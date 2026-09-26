@@ -78,6 +78,14 @@ func TestValidateFlowJSONNullsAndErrors(t *testing.T) {
 	if err := validateFlowJSON([]byte(`[1]`)); err == nil || !strings.Contains(err.Error(), "JSON object") {
 		t.Errorf("non-object = %v", err)
 	}
+	if err := validateFlowJSON([]byte(`{"id":"a"} garbage`)); err == nil || !strings.Contains(err.Error(), "trailing data") {
+		t.Errorf("trailing data = %v", err)
+	}
+	for _, id := range []string{"export", "import", "redeploy-all"} {
+		if !reservedFlowIDs[id] {
+			t.Errorf("%s not read from the schema as reserved", id)
+		}
+	}
 }
 
 // TestFlowSchemaMatchesGoTypes guards the hand-written schema against drift

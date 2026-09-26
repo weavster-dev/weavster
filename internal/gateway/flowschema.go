@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"sort"
 	"strings"
 
@@ -20,6 +21,31 @@ import (
 var FlowSchema []byte
 
 var flowSchema = mustCompileFlowSchema()
+
+// reservedFlowIDs are the ids the schema forbids (properties.id.not.enum):
+// path segments used by /flows/<name> routes. Read from the schema so it
+// stays the single source.
+var reservedFlowIDs = mustReservedFlowIDs()
+
+func mustReservedFlowIDs() map[string]bool {
+	var s struct {
+		Properties struct {
+			ID struct {
+				Not struct {
+					Enum []string `json:"enum"`
+				} `json:"not"`
+			} `json:"id"`
+		} `json:"properties"`
+	}
+	if err := json.Unmarshal(FlowSchema, &s); err != nil || len(s.Properties.ID.Not.Enum) == 0 {
+		panic("flow.schema.json: properties.id.not.enum (reserved ids) is missing")
+	}
+	out := make(map[string]bool, len(s.Properties.ID.Not.Enum))
+	for _, id := range s.Properties.ID.Not.Enum {
+		out[id] = true
+	}
+	return out
+}
 
 func mustCompileFlowSchema() *jsonschema.Schema {
 	c := jsonschema.NewCompiler()
@@ -39,6 +65,9 @@ func parseFlowDoc(raw []byte) (map[string]any, error) {
 	if err := dec.Decode(&doc); err != nil {
 		return nil, fmt.Errorf("flow is not valid JSON: %w", err)
 	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("flow is not valid JSON: trailing data after the document")
+	}
 	obj, ok := doc.(map[string]any)
 	if !ok {
 		return nil, errors.New("the flow must be a JSON object")
@@ -50,7 +79,7 @@ func parseFlowDoc(raw []byte) (map[string]any, error) {
 // returns a short, client-safe description of the first violations.
 func validateFlowDoc(doc map[string]any) error {
 	if id, ok := doc["id"].(string); ok && reservedFlowIDs[id] {
-		return fmt.Errorf("flow id %q is reserved; ids must not be export, import, or redeploy-all", id)
+		return fmt.Errorf("flow id %q is reserved (it names an API route)", id)
 	}
 	err := flowSchema.Validate(any(doc))
 	if err == nil {

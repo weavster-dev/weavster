@@ -10,10 +10,6 @@ import (
 	"strings"
 )
 
-// reservedFlowIDs are path segments used by /flows/<name> routes; the flow
-// schema also rejects them.
-var reservedFlowIDs = map[string]bool{"export": true, "import": true, "redeploy-all": true}
-
 // writeFlowError maps FlowStore errors to 404/409, and anything else to a
 // 500 that does not leak internal detail.
 func writeFlowError(w http.ResponseWriter, err error) {
