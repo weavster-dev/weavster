@@ -31,6 +31,14 @@ func (s *recordingSink) Write(_ context.Context, d Delivery) error {
 	return nil
 }
 
+type recordingObserver struct {
+	received int
+	seen     []state.Message
+}
+
+func (o *recordingObserver) Received(string)           { o.received++ }
+func (o *recordingObserver) Processed(m state.Message) { o.seen = append(o.seen, m) }
+
 func transform(t *testing.T, yaml string) *compiler.Transform {
 	t.Helper()
 	tr, err := compiler.Parse([]byte(yaml))
@@ -95,12 +103,13 @@ steps:
 			ctx := context.Background()
 			store := state.NewMemStore()
 			a, b := &recordingSink{}, &recordingSink{fail: tt.failSinkB}
+			obs := &recordingObserver{}
 			p := New(store, func(d Destination) (Sink, error) {
 				if d.Name == "a" {
 					return a, nil
 				}
 				return b, nil
-			})
+			}, obs)
 			f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "x"}, {Name: "b", Type: "file", Dir: "y"}}}
 			if tt.transform != "" {
 				f.Transform = transform(t, tt.transform)
@@ -118,6 +127,9 @@ steps:
 			}
 			if m.Status != tt.wantStatus || m.FlowID != "f" || string(m.Raw) != tt.body {
 				t.Errorf("stored = %+v", m)
+			}
+			if obs.received != 1 || len(obs.seen) != 1 || obs.seen[0].ID != res.ID || obs.seen[0].Status != tt.wantStatus {
+				t.Errorf("observer saw %+v, want the final message", obs.seen)
 			}
 			if tt.wantError != "" && !strings.Contains(m.Metadata["error"], tt.wantError) {
 				t.Errorf("error metadata = %q, want %q", m.Metadata["error"], tt.wantError)
@@ -146,7 +158,7 @@ steps:
 
 func TestProcessErrors(t *testing.T) {
 	ctx := context.Background()
-	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return nil, errors.New("no sink") })
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return nil, errors.New("no sink") }, nil)
 	f := Flow{ID: "f", Transform: transform(t, "name: t\nsteps:\n  - set: { field: a, expr: b }")}
 	for _, body := range []string{`not json`, `null`, `[1]`, `{} trailing`, `{}{}`} {
 		if _, err := p.Process(ctx, f, []byte(body)); !errors.Is(err, ErrInvalidMessage) {
@@ -210,7 +222,11 @@ func TestProcessStoreFailures(t *testing.T) {
 				} else {
 					store.failPut = n
 				}
-				_, err := New(store, sink).Process(ctx, f, []byte(`{}`))
+				obs := &recordingObserver{}
+				_, err := New(store, sink, obs).Process(ctx, f, []byte(`{}`))
+				if err != nil && obs.received == 1 && (len(obs.seen) == 0 || obs.seen[len(obs.seen)-1].Status != state.StatusErrored) {
+					t.Errorf("%s: a received message that failed was not reported as errored: %+v", name, obs.seen)
+				}
 				calls := store.puts
 				if failGet {
 					calls = store.gets
@@ -226,7 +242,7 @@ func TestProcessStoreFailures(t *testing.T) {
 func TestProcessKeepsNumbersAndContentTypes(t *testing.T) {
 	ctx := context.Background()
 	sink := &recordingSink{}
-	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil })
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil }, nil)
 	f := Flow{ID: "f", Transform: transform(t, "name: t\nsteps:\n  - filter: { when: \"mrn == 12345678901234567890\", action: accept }\n  - set: { field: label, expr: '{{mrn}}' }"),
 		Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
 	res, err := p.Process(ctx, f, []byte(`{"mrn":12345678901234567890}`))

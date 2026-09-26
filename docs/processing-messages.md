@@ -104,8 +104,48 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
   'http://127.0.0.1:8080/api/v1/messages?flowId=adt&status=queued'
 ```
 
+## 4. Statistics and events
+
+Per-flow counters (permission `flows:view`):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/flows/adt/stats
+```
+
+```json
+{"received":3,"filtered":1,"transformed":2,"sent":1,"errored":0,"queued":1,
+ "destinations":{"ehr":{"sent":1,"errored":1}},"lastMessageAt":"2026-09-26T12:00:00Z"}
+```
+
+- `transformed` counts messages that got past the transform (sent plus queued).
+- `destinations` counts successful and failed deliveries per destination.
+- `lastMessageAt` is the arrival time of the newest message, `null` until the first one.
+- Deleting a flow clears its counters, so a new flow with the same `id` starts at zero.
+- Add `?lifetime=true` for lifetime totals. Today both views are identical because no reset exists yet.
+
+Events (permission `events:view`). Each processed message adds one event of type
+`message.sent`, `message.queued`, `message.filtered`, or `message.errored`:
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/events?flowId=adt&type=message.errored'
+```
+
+```json
+[{"id":7,"at":"2026-09-26T12:00:00Z","type":"message.errored","flowId":"adt","data":{"messageId":"6f1c…"}}]
+```
+
+Both filters are optional. `limit` (1–10000, default 1000) returns the newest matches; results
+are oldest first. Events never contain message content or transform error text, because both
+can hold patient data. The error is stored with the message instead.
+
+The topology overview (`GET /api/v1/topology`) shows each flow's `received`, `sent`,
+`errored`, and `queued` counts under `activity`. Zero counts are included.
+
 ## Limits today
 
+- Statistics and events are kept in memory: they restart from zero when the server restarts,
+  and only the newest 10,000 events are kept.
 - Processing is synchronous and runs once. Failed deliveries are not retried, and `queued`
   messages stay queued.
 - Only `http` and `file` destinations are available.

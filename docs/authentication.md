@@ -122,6 +122,8 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `POST /api/v1/flows`, `DELETE /api/v1/flows/{id}` | `flows:edit` |
 | `GET /api/v1/messages` | `messages:view` |
 | `POST /api/v1/flows/{id}/messages` | `messages:send` |
+| `GET /api/v1/flows/{id}/stats` | `flows:view` |
+| `GET /api/v1/events` | `events:view` |
 
 The `admin` permission grants everything. A signed-in user without the permission gets:
 

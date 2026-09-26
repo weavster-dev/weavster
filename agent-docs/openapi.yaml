@@ -134,6 +134,38 @@ paths:
         "404": {description: Unknown flow}
         "409": {description: The flow is stopped, paused, halted, or undeployed}
         "413": {description: Body larger than 10 MiB}
+  /api/v1/flows/{id}/stats:
+    get:
+      summary: Flow message counters (requires flows:view)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+        - name: lifetime
+          in: query
+          schema: {type: boolean}
+      responses:
+        "200": {description: "received, filtered, transformed, sent, errored, queued, destinations, lastMessageAt"}
+        "400": {description: lifetime is not a boolean}
+        "404": {description: Unknown flow}
+  /api/v1/events:
+    get:
+      summary: Search the event log (requires events:view)
+      parameters:
+        - name: type
+          in: query
+          schema: {type: string}
+        - name: flowId
+          in: query
+          schema: {type: string}
+        - name: limit
+          in: query
+          description: Newest N matching events (1-10000, default 1000)
+          schema: {type: integer, minimum: 1, maximum: 10000}
+      responses:
+        "200": {description: "Events, oldest first: id, at, type, flowId, data"}
+        "400": {description: Invalid limit}
   /api/v1/messages:
     get:
       summary: Search messages

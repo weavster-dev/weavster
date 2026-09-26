@@ -27,7 +27,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | `TRACE`/`TRACK` rejected with `405` | Implemented (wired) | `TestSupportMatrixWired/trace-blocked` |
 | `Strict-Transport-Security`, `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` headers | Implemented (wired) | `TestSupportMatrixWired/security-headers`. HSTS is sent even over plain HTTP. |
 | `GET/POST /api/v1/flows`, `GET/DELETE /api/v1/flows/{id}` | Implemented (wired) | `TestSupportMatrixWired/flows-*`. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. Flows are stored but **never run**. A flow `id` must be 1–128 characters from `A-Z a-z 0-9 . _ -`; anything else returns `400`. `POST` with an existing `id` returns `409`. `GET`/`DELETE` of an unknown ID returns `404`. |
-| `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | Implemented (wired) | `TestSupportMatrixWired/topology-*`. The graph is built from the stored flows above. Status is whatever the flow record says, and activity counters are always zero. An unknown `flowId` returns `404`. |
+| `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | Implemented (wired) | `TestSupportMatrixWired/topology-*`. The graph is built from the stored flows above. Status is whatever the flow record says. Flow nodes carry real activity counters (see below). An unknown `flowId` returns `404`. |
 | `GET /api/v1/messages` search (`flowId`, `status`) | Implemented (wired) | `TestSupportMatrixWired/messages`, `TestPipelineEndToEnd`. Returns messages sent into flows with their final status. |
 | Authentication (Basic or Bearer token) on every `/api/v1` route except login | Implemented (wired) | `TestAuthRequired` |
 | Per-route permissions (`flows:view`, `flows:edit`, `messages:view`, `admin`) | Implemented (wired) | `TestPermissionMatrix` |
@@ -56,6 +56,9 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | Receive → persist → filter → transform → deliver to each destination, with per-destination results and aggregate status | Implemented (wired) | `TestPipelineEndToEnd`. Synchronous, one attempt; no response processing. |
 | `http` and `file` destinations | Implemented (wired) | `TestPipelineEndToEnd` |
 | Other sources and destinations (file/HTTP/TCP-MLLP listeners, database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Flows do not listen on their own ports or poll anything. |
+| Per-flow and per-destination statistics (`GET /api/v1/flows/{id}/stats`) | Implemented (wired) | `TestStatsEventsTopology`. In memory; reset, dump, and time series are not available. |
+| Event log (`GET /api/v1/events`, `type`/`flowId`/`limit`) with processing events | Implemented (wired) | `TestStatsEventsTopology`. In memory, newest 10,000; no count, export, or max-ID operations. |
+| Topology flow-node `activity` from real counters, zeros included | Implemented (wired) | `TestStatsEventsTopology`. Edge activity is not reported. |
 | YAML DSL `map`, `set`, `filter` steps | Implemented (wired) | `TestPipelineEndToEnd`. `build` and `destinationSet` are not supported. |
 | WASM executor (wazero), module registry | Library-only | Not used by the server. The executor has no WASI host. |
 | Scheduler (durable jobs, leases, interval/cron) | Library-only | |

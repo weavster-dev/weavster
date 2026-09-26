@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -85,10 +86,11 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 	if store != nil {
 		repo = store.(flowRepository)
 	}
-	flows := flowAdapter{store: repo}
+	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
+	flows := flowAdapter{store: repo, stats: stats, gate: &sync.RWMutex{}}
 	var ingest gateway.MessageIngester
 	if store != nil {
-		ingest = ingestAdapter{flows: flows, pipe: pipeline.New(store, newSink)}
+		ingest = ingestAdapter{flows: flows, pipe: pipeline.New(store, newSink, processingObserver{stats, events})}
 	}
 
 	srv := gateway.New(gateway.Config{
@@ -99,7 +101,9 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 		Flows:       flows,
 		Messages:    messages,
 		Ingest:      ingest,
-		Topology:    topologyAdapter{flows: flows},
+		Stats:       statsAdapter{flows: flows, stats: stats},
+		Events:      eventsAdapter{events},
+		Topology:    topologyAdapter{flows: flows, stats: stats},
 		System:      observability.SystemStatus("weavster", version, buildDate),
 		RequireCSRF: cfg.Listen.RequireMarkerHeader,
 	})
@@ -378,8 +382,15 @@ type flowRepository interface {
 	DeleteFlow(ctx context.Context, id string) error
 }
 
-// flowAdapter stores gateway flows as JSON documents (D-12).
-type flowAdapter struct{ store flowRepository }
+// flowAdapter stores gateway flows as JSON documents (D-12). stats, when
+// set, is cleared for a flow when it is deleted.
+type flowAdapter struct {
+	store flowRepository
+	stats *observability.StatsRegistry
+	// gate orders deletes after in-flight processing (ingest holds it for
+	// reading), so a reset is never followed by a stale message's counters.
+	gate *sync.RWMutex
+}
 
 // toPipelineFlow converts a stored flow into the pipeline's definition,
 // strictly decoding its transform.
@@ -412,6 +423,10 @@ type ingestAdapter struct {
 }
 
 func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (gateway.IngestResult, error) {
+	if a.flows.gate != nil {
+		a.flows.gate.RLock()
+		defer a.flows.gate.RUnlock()
+	}
 	f, err := a.flows.Get(ctx, flowID)
 	if err != nil {
 		return gateway.IngestResult{}, err
@@ -514,10 +529,112 @@ func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) error {
 }
 
 func (a flowAdapter) Delete(ctx context.Context, id string) error {
-	return flowErr(a.store.DeleteFlow(ctx, id))
+	if a.gate != nil {
+		a.gate.Lock()
+		defer a.gate.Unlock()
+	}
+	if err := a.store.DeleteFlow(ctx, id); err != nil {
+		return flowErr(err)
+	}
+	if a.stats != nil { // a new flow with this id starts from zero
+		a.stats.Reset(id, false)
+		a.stats.Reset(id, true)
+	}
+	return nil
 }
 
-type topologyAdapter struct{ flows gateway.FlowStore }
+// processingObserver turns finished messages into flow/destination counters
+// and a message.<status> event.
+type processingObserver struct {
+	stats  *observability.StatsRegistry
+	events *observability.EventLog
+}
+
+// Received counts the message on arrival (and sets lastMessageAt).
+func (o processingObserver) Received(flowID string) {
+	o.stats.Inc(flowID, observability.Received)
+}
+
+// Processed records the outcome counters in one update and adds an event.
+// The event carries only the message ID: error text can quote message
+// content (PHI), and events are readable with events:view alone.
+func (o processingObserver) Processed(m state.Message) {
+	var kinds []observability.CounterKind
+	switch m.Status {
+	case state.StatusFiltered:
+		kinds = []observability.CounterKind{observability.Filtered}
+	case state.StatusErrored:
+		kinds = []observability.CounterKind{observability.Errored}
+	case state.StatusSent:
+		kinds = []observability.CounterKind{observability.Transformed, observability.Sent}
+	case state.StatusQueued:
+		kinds = []observability.CounterKind{observability.Transformed, observability.Queued}
+	}
+	connectors := map[string]observability.CounterKind{}
+	for dest, a := range m.Attempts {
+		if a.LastError == "" {
+			connectors[dest] = observability.Sent
+		} else {
+			connectors[dest] = observability.Errored
+		}
+	}
+	o.stats.Record(m.FlowID, kinds, connectors)
+	o.events.Add("message."+string(m.Status), "", m.FlowID, map[string]string{"messageId": m.ID})
+}
+
+type statsAdapter struct {
+	flows gateway.FlowStore
+	stats *observability.StatsRegistry
+}
+
+func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime bool) (gateway.FlowStats, error) {
+	if _, err := a.flows.Get(ctx, flowID); err != nil {
+		return gateway.FlowStats{}, err
+	}
+	s := a.stats.Snapshot(flowID, lifetime)
+	out := gateway.FlowStats{
+		Received: s.Received, Filtered: s.Filtered, Transformed: s.Transformed,
+		Sent: s.Sent, Errored: s.Errored, Queued: s.Queued,
+		Destinations: map[string]gateway.ConnectorStats{},
+	}
+	for name, c := range s.Connectors {
+		out.Destinations[name] = gateway.ConnectorStats{Sent: c.Sent, Errored: c.Errored}
+	}
+	if s.LastMessageAt != nil {
+		t := s.LastMessageAt.UTC()
+		out.LastMessageAt = &t
+	}
+	return out, nil
+}
+
+type eventsAdapter struct{ log *observability.EventLog }
+
+func (a eventsAdapter) SearchEvents(_ context.Context, q gateway.EventQuery) ([]gateway.Event, error) {
+	found := a.log.Search(observability.EventFilter{Type: q.Type, Flow: q.FlowID, Limit: q.Limit})
+	out := make([]gateway.Event, 0, len(found))
+	for _, e := range found {
+		out = append(out, gateway.Event{ID: e.ID, At: e.At.UTC(), Type: e.Type, FlowID: e.Flow, Data: e.Data})
+	}
+	return out, nil
+}
+
+type topologyAdapter struct {
+	flows gateway.FlowStore
+	stats *observability.StatsRegistry // nil: no activity
+}
+
+// activity is the flow's topology activity from its current counters.
+func (t topologyAdapter) activity(flowID string) *topology.Activity {
+	if t.stats == nil {
+		return nil
+	}
+	s := t.stats.Snapshot(flowID, false)
+	a := &topology.Activity{Received: s.Received, Sent: s.Sent, Errored: s.Errored, Queued: s.Queued}
+	if s.LastMessageAt != nil {
+		a.LastMessageAt = s.LastMessageAt.UTC().Format(time.RFC3339)
+	}
+	return a
+}
 
 func (t topologyAdapter) Overview(ctx context.Context) (topology.Graph, error) {
 	flows, err := t.flows.List(ctx)
@@ -526,7 +643,7 @@ func (t topologyAdapter) Overview(ctx context.Context) (topology.Graph, error) {
 	}
 	summaries := make([]topology.FlowSummary, 0, len(flows))
 	for _, f := range flows {
-		summaries = append(summaries, topology.FlowSummary{ID: f.ID, Name: f.Name, Status: f.Status})
+		summaries = append(summaries, topology.FlowSummary{ID: f.ID, Name: f.Name, Status: f.Status, Activity: t.activity(f.ID)})
 	}
 	return topology.Overview(summaries), nil
 }

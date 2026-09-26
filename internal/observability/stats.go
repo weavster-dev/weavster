@@ -42,6 +42,8 @@ type FlowStats struct {
 	Errored     int64                     `json:"errored"`
 	Queued      int64                     `json:"queued"`
 	Connectors  map[string]ConnectorStats `json:"connectors,omitempty"`
+	// LastMessageAt is when the flow last received a message (nil if never).
+	LastMessageAt *time.Time `json:"lastMessageAt,omitempty"`
 }
 
 // StatsRegistry tracks per-flow current and lifetime statistics with reset
@@ -66,6 +68,22 @@ func (s *StatsRegistry) Inc(flow string, k CounterKind) {
 	defer s.mu.Unlock()
 	apply(s.ensure(s.current, flow), k, 1)
 	apply(s.ensure(s.lifetime, flow), k, 1)
+}
+
+// Record applies several flow and connector increments for one message under
+// a single lock, so a concurrent Snapshot never sees a partial update.
+func (s *StatsRegistry) Record(flow string, kinds []CounterKind, connectors map[string]CounterKind) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, m := range []map[string]*FlowStats{s.current, s.lifetime} {
+		fs := s.ensure(m, flow)
+		for _, k := range kinds {
+			apply(fs, k, 1)
+		}
+		for c, k := range connectors {
+			applyConnector(fs, c, k, 1)
+		}
+	}
 }
 
 // IncConnector increments a connector-level counter for a flow.
@@ -138,6 +156,10 @@ func (s *StatsRegistry) ensure(m map[string]*FlowStats, flow string) *FlowStats 
 }
 
 func apply(fs *FlowStats, k CounterKind, delta int64) {
+	if k == Received && delta > 0 {
+		now := time.Now()
+		fs.LastMessageAt = &now
+	}
 	switch k {
 	case Received:
 		fs.Received += delta

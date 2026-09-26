@@ -5,10 +5,10 @@ import "time"
 
 // Activity is the rolling traffic snapshot (contract §4).
 type Activity struct {
-	Received      int64  `json:"received,omitempty"`
-	Sent          int64  `json:"sent,omitempty"`
-	Errored       int64  `json:"errored,omitempty"`
-	Queued        int64  `json:"queued,omitempty"`
+	Received      int64  `json:"received"`
+	Sent          int64  `json:"sent"`
+	Errored       int64  `json:"errored"`
+	Queued        int64  `json:"queued"`
 	LastMessageAt string `json:"lastMessageAt,omitempty"`
 }
 
