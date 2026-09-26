@@ -190,6 +190,11 @@ auth:
 <td><code>true</code></td>
 <td>Require <code>X-Weavster-CSRF: 1</code> on every <code>/api/v1</code> request. Requests without it get <code>400</code>.</td>
 </tr>
+<tr>
+<td><code>shutdownTimeoutMs</code></td>
+<td><code>10000</code></td>
+<td>On SIGINT/SIGTERM, how long to wait for in-flight requests and the retry worker before closing connections and exiting (1–600000).</td>
+</tr>
 </tbody>
 </table>
 <p>At least one of <code>address</code> and <code>tlsAddress</code> must be set.</p>

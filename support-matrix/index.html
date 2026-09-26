@@ -374,6 +374,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td></td>
 </tr>
 <tr>
+<td>Graceful shutdown bounded by <code>listen.shutdownTimeoutMs</code>; unfinished work resumes on the next start</td>
+<td>Implemented (wired)</td>
+<td><code>TestGracefulShutdownRequeuesInFlightWork</code></td>
+</tr>
+<tr>
 <td>Delivery retries with persisted backoff, <code>dead-lettered</code> status, restart recovery</td>
 <td>Implemented (wired)</td>
 <td><code>TestRetryRecoversQueuedMessage</code>, <code>TestQueuedWorkSurvivesRestart</code>, <code>TestDeadLetterAfterMaxAttempts</code>. No dead-letter list/inspect/requeue API.</td>

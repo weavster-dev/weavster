@@ -336,6 +336,13 @@ retries right away. With <code>store.dialect: sqlite</code>, a message that was 
 stopped is delivered once its destination is back. So is a message the server was still
 processing when it stopped or crashed: it is transformed if needed and delivered to every
 destination that has not received it.</p>
+<p>On SIGINT or SIGTERM the server stops accepting connections on every listener and stops the
+retry worker once its current message is done. It then waits up to <code>listen.shutdownTimeoutMs</code>
+(default 10 seconds) for requests in progress and that message. At the deadline it closes the
+remaining connections and exits, logging a warning. A message still being delivered at that
+point is already stored. The next start finishes it and sends the same <code>Idempotency-Key</code>, so a
+destination that already received it can ignore the repeat. A second SIGINT/SIGTERM during the
+wait stops the server immediately.</p>
 <p>Messages of a flow whose <code>status</code> is <code>stopped</code>, <code>paused</code>, <code>halted</code>, or <code>undeployed</code> are not
 retried; they stay <code>queued</code>.</p>
 <p>A retried message that later succeeds changes to <code>sent</code>. The statistics then count it once as
