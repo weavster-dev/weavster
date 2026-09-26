@@ -35,15 +35,22 @@ All notable changes to this project are documented here, following
 - `scripts/check-coverage.sh`: fails when any package is below the coverage threshold (default 90%), counting packages with no test files as 0%; run in the `coverage-gate` workflow.
 - Tests raising `cmd/weavster` (88.5% → 92.9%) and `internal/state` (87.9% → 90.4%) coverage: `weavster test` error paths, `server` subcommand dispatch, message search flow/status filtering, SQLite/in-memory search filter parity, and closed-database errors.
 - Support matrix (`docs/support-matrix.md`, in the docs nav): every capability classified as implemented (wired), library-only, Enterprise-deferred, or unsupported, with codec versions and per-adapter delivery guarantees. `TestSupportMatrixWired`, `TestSupportMatrixCLI`, and `TestSupportMatrixPrivilegedGuard` prove the wired API and CLI rows against the composed server, and `TestSupportMatrixCodecs` checks every codec-table cell against `codecs.CoverageMatrix()` (#145).
+- `weavster server --config FILE`: strict YAML server configuration (`docs/server-config.md`). It covers the cleartext and HTTPS listeners (`listen.*`, `tls.certFile/keyFile/minVersion`), the CSRF marker toggle, message-store selection (`store.dialect: memory|sqlite|postgres|disabled`, `dsn`, `maxConnections`, `maxRetry`, `retryWaitMs`), `paths.dataDir`, and the `auth.passwordPolicy`/`auth.lockout` values. An unknown key, invalid value, or failed store connection exits `1` with `Error: …`. Acceptance tests: `TestServerConfigStore`, `TestServerConfigListen`, `TestServerConfigTLS`, `TestServerConfigErrors` (#147).
 
 ### Changed
 
+- `state.OpenPostgres` takes a maximum-connections argument (`store.maxConnections`) (#147).
 - `README.md` and `docs/index.md` now describe composed runtime behavior instead of package presence: the server does not process messages, API routes are unauthenticated, and flows are in-memory. Quick Start and Run examples bind to `127.0.0.1` instead of `0.0.0.0` (#145).
 - Coverage policy raised to 90% for every package and the aggregate (#142, #107 D-08): `.octocov.yml` `acceptable: 90%`, `AGENTS.md`, `CONTRIBUTING.md`.
 - Specs amended with the #107 decisions (§0A): YAML DSL runs in an embedded, prebuilt WASM interpreter instead of per-transform TinyGo codegen (D-03); the MVP CPU limit is a wall-clock deadline, with instruction metering deferred to Enterprise (D-02); all mutation is API-first and the UI stays read-only (D-04); idempotency keys are stable across retries (D-10); scheduler leases carry a fencing token (D-11); topology drill-down node IDs follow contract §3.2 (D-13); install is signed binaries + a verifying `curl | bash` installer (D-07); open questions on mTLS, blob storage, and UI views resolved, and legacy import deferred (D-01, D-06, D-18, D-19). The Enterprise list now also covers broker adapters, KMS/Vault rotation, and object storage. Updated `specs/`, `docs/mvp-project-plan.md`, `docs/agent-onboarding.md`, and `agentic-manifest.json`.
 
+### Removed
+
+- The hard-coded `admin`/`admin123!` seed user in the composition root. It never passed the default password policy, and a relaxed `auth.passwordPolicy` would have created it (#147).
+
 ### Fixed
 
+- SQL store: a failed migration now closes the database handle instead of leaking it (#147).
 - `weavster server` registers its SIGINT/SIGTERM handler before it starts listening, so a stop signal that arrives right after startup is no longer lost (#145).
 - `golangci-lint` errcheck findings on unchecked `Close` calls in `cmd/weavster/cli_test.go` and `cmd/weavster/server_lifecycle_test.go` (#142).
 - Duplicate test function declarations breaking `go vet`/`go test` on main: renamed `TestAdapterNames` (in `adapters_gap_test.go`) to `TestAdapterNamesGap` and `TestSchedulerReconcile` (in `heartbeat_reconcile_test.go`) to `TestSchedulerReconcileExpiredLease`, preserving both test cases.

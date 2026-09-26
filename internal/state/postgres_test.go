@@ -16,7 +16,7 @@ func TestOpenPostgresUnreachable(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	store, err := OpenPostgres(ctx, "host=127.0.0.1 port=1 connect_timeout=1")
+	store, err := OpenPostgres(ctx, "host=127.0.0.1 port=1 connect_timeout=1", 5)
 	if err == nil {
 		if store != nil {
 			_ = store.Close()
