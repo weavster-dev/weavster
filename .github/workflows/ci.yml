@@ -21,3 +21,66 @@ jobs:
         run: go test -race ./...
       - name: Build
         run: go build ./...
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.6.2
+      - name: No lint suppressions
+        run: |
+          if grep -rn --include='*.go' '//nolint' .; then
+            echo "::error::remove //nolint directives; fix the finding instead"
+            exit 1
+          fi
+
+  cross-build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: darwin, goarch: arm64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build ${{ matrix.target.goos }}/${{ matrix.target.goarch }}
+        env:
+          CGO_ENABLED: '0'
+          GOOS: ${{ matrix.target.goos }}
+          GOARCH: ${{ matrix.target.goarch }}
+        run: go build -o weavster ./cmd/weavster
+      - name: Verify no CGo
+        run: go version -m weavster | grep -q 'CGO_ENABLED=0'
+      - name: Verify static linking (linux)
+        if: matrix.target.goos == 'linux'
+        run: file weavster | tee /dev/stderr | grep -q 'statically linked'
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t weavster:ci .
+      - name: Verify non-root user
+        run: test "$(docker inspect --format '{{.Config.User}}' weavster:ci)" = "nonroot:nonroot"
+      - name: Smoke test
+        run: |
+          docker run -d --name weavster -p 8080:8080 weavster:ci
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:8080/api/openapi.yaml | grep -q '^openapi:'; then
+              echo "server is up"; exit 0
+            fi
+            sleep 1
+          done
+          docker logs weavster
+          exit 1

@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/weavster-dev/weavster/internal/audit"
 	"github.com/weavster-dev/weavster/internal/auth"
@@ -214,5 +215,55 @@ func TestMessageAdapterSearchError(t *testing.T) {
 	ma := messageAdapter{store: erroringStore{}}
 	if _, err := ma.Search(context.Background(), gateway.MessageQuery{Limit: 10}); !errors.Is(err, errSearchFailed) {
 		t.Errorf("Search error = %v, want %v", err, errSearchFailed)
+	}
+}
+
+func TestMessageAdapterSearchFilters(t *testing.T) {
+	store := state.NewMemStore()
+	ctx := context.Background()
+	now := time.Now()
+	for _, m := range []state.Message{
+		{ID: "m1", FlowID: "admit", Status: state.StatusSent, ContentType: "hl7v2", ReceivedAt: now, UpdatedAt: now},
+		{ID: "m2", FlowID: "billing", Status: state.StatusSent, ContentType: "x12", ReceivedAt: now, UpdatedAt: now},
+		{ID: "m3", FlowID: "admit", Status: state.StatusErrored, ContentType: "hl7v2", ReceivedAt: now, UpdatedAt: now},
+	} {
+		if err := store.Put(ctx, m); err != nil {
+			t.Fatalf("Put %s: %v", m.ID, err)
+		}
+	}
+	ma := messageAdapter{store: store}
+
+	tests := []struct {
+		name    string
+		query   gateway.MessageQuery
+		wantIDs []string
+	}{
+		{name: "flow filter", query: gateway.MessageQuery{FlowID: "admit", Limit: 10}, wantIDs: []string{"m1", "m3"}},
+		{name: "status and flow", query: gateway.MessageQuery{FlowID: "admit", Status: "sent", Limit: 10}, wantIDs: []string{"m1"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msgs, err := ma.Search(ctx, tt.query)
+			if err != nil {
+				t.Fatalf("Search: %v", err)
+			}
+			got := map[string]gateway.Message{}
+			for _, m := range msgs {
+				got[m.ID] = m
+			}
+			if len(got) != len(tt.wantIDs) {
+				t.Fatalf("got %d messages %v, want %v", len(got), msgs, tt.wantIDs)
+			}
+			for _, id := range tt.wantIDs {
+				m, ok := got[id]
+				if !ok {
+					t.Errorf("missing message %s", id)
+					continue
+				}
+				if m.FlowID != "admit" || m.ContentType != "hl7v2" {
+					t.Errorf("message %s = %+v, fields not mapped", id, m)
+				}
+			}
+		})
 	}
 }

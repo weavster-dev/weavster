@@ -89,7 +89,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## Coverage
 
-- Tests cover all acceptance criteria; generated code reaches at least 90% unit-test coverage.
+- Tests cover all acceptance criteria; every non-test package and the repository aggregate reach at least 90% unit-test statement coverage (enforced in CI by `scripts/check-coverage.sh` and octocov).
 
 ## Documentation
 
