@@ -116,20 +116,27 @@ func TestShutdownIsBounded(t *testing.T) {
 	}
 
 	// A request that never finishes: the listener is closed at the deadline.
-	hung := make(chan struct{})
+	hung, inHandler := make(chan struct{}), make(chan struct{})
 	defer close(hung)
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &http.Server{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-hung })}
+	srv := &http.Server{Handler: http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		close(inHandler)
+		<-hung
+	})}
 	go func() { _ = srv.Serve(ln) }()
 	go func() {
 		if resp, err := http.Get("http://" + ln.Addr().String()); err == nil {
 			_ = resp.Body.Close()
 		}
 	}()
-	time.Sleep(50 * time.Millisecond)
+	select {
+	case <-inHandler:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request never reached the handler")
+	}
 	done := make(chan struct{})
 	close(done)
 	start = time.Now()
