@@ -106,3 +106,17 @@ func TestRejectsUnsupportedSyntaxAndValues(t *testing.T) {
 		t.Errorf("out-of-range array set: err = %v", err)
 	}
 }
+
+func TestJSONNumbers(t *testing.T) {
+	p, err := Compile(mustParse(t, "name: t\nsteps:\n  - filter: { when: n, action: accept }\n  - filter: { when: \"n == 2\", action: accept }\n  - map: { from: n, to: m, type: number }\n  - map: { from: n, to: s, type: string }"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, filtered, err := p.Run(map[string]any{"n": json.Number("2")})
+	if err != nil || filtered || out["m"] != json.Number("2") || out["s"] != "2" {
+		t.Errorf("out = %v, filtered = %v, err = %v", out, filtered, err)
+	}
+	if _, filtered, _ := p.Run(map[string]any{"n": json.Number("0")}); !filtered {
+		t.Error("json.Number 0 should be falsy")
+	}
+}

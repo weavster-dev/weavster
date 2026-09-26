@@ -74,6 +74,7 @@ var (
 	ErrFlowExists     = errors.New("flow already exists")
 	ErrInvalidFlow    = errors.New("invalid flow")
 	ErrInvalidMessage = errors.New("invalid message")
+	ErrFlowNotRunning = errors.New("flow is not accepting messages")
 )
 
 // FlowStore is the flow CRUD backend.

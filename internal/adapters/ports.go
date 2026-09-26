@@ -16,6 +16,10 @@ var ErrNotImplemented = errors.New("adapters: enterprise adapter not implemented
 // support idempotency send downstream (the HTTP sink: Idempotency-Key header).
 const IdempotencyKeyMetadata = "idempotency-key"
 
+// ContentTypeMetadata is the Message.Metadata key holding the body's MIME
+// type (the HTTP sink: Content-Type header).
+const ContentTypeMetadata = "content-type"
+
 // Message is the unit moved by sources and sinks.
 type Message struct {
 	ID       string

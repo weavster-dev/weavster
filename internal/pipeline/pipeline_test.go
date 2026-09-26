@@ -15,17 +15,19 @@ type recordingSink struct {
 	mu     sync.Mutex
 	bodies []string
 	keys   []string
+	types  []string
 	fail   error
 }
 
-func (s *recordingSink) Write(_ context.Context, _ string, body []byte, key string) error {
+func (s *recordingSink) Write(_ context.Context, d Delivery) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.fail != nil {
 		return s.fail
 	}
-	s.bodies = append(s.bodies, string(body))
-	s.keys = append(s.keys, key)
+	s.bodies = append(s.bodies, string(d.Body))
+	s.keys = append(s.keys, d.IdempotencyKey)
+	s.types = append(s.types, d.ContentType)
 	return nil
 }
 
@@ -44,11 +46,13 @@ func TestValidate(t *testing.T) {
 		flow Flow
 		want string
 	}{
-		{"ok", Flow{Destinations: []Destination{{Name: "a", Type: "http", URL: "http://x"}, {Name: "b", Type: "file", Dir: "/tmp/x"}}}, ""},
+		{"ok", Flow{Destinations: []Destination{{Name: "a", Type: "http", URL: "https://x.example"}, {Name: "b", Type: "file", Dir: "/tmp/x"}}}, ""},
 		{"bad transform", Flow{Transform: &compiler.Transform{Name: "t", Steps: []compiler.Step{{}}}}, "exactly one of"},
 		{"no name", Flow{Destinations: []Destination{{Type: "http", URL: "u"}}}, "name is required"},
 		{"duplicate", Flow{Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}, {Name: "a", Type: "file", Dir: "d"}}}, "duplicate name"},
-		{"http without url", Flow{Destinations: []Destination{{Name: "a", Type: "http"}}}, "url is required"},
+		{"http without url", Flow{Destinations: []Destination{{Name: "a", Type: "http"}}}, "absolute http:// or https:// URL"},
+		{"http without scheme", Flow{Destinations: []Destination{{Name: "a", Type: "http", URL: "ehr.example.com/in"}}}, "absolute http:// or https:// URL"},
+		{"ftp url", Flow{Destinations: []Destination{{Name: "a", Type: "http", URL: "ftp://x"}}}, "absolute http:// or https:// URL"},
 		{"file without dir", Flow{Destinations: []Destination{{Name: "a", Type: "file"}}}, "dir is required"},
 		{"bad type", Flow{Destinations: []Destination{{Name: "a", Type: "smtp"}}}, "type must be http or file"},
 	}
@@ -216,5 +220,27 @@ func TestProcessStoreFailures(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestProcessKeepsNumbersAndContentTypes(t *testing.T) {
+	ctx := context.Background()
+	sink := &recordingSink{}
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil })
+	f := Flow{ID: "f", Transform: transform(t, "name: t\nsteps:\n  - filter: { when: \"mrn == 12345678901234567890\", action: accept }\n  - set: { field: label, expr: '{{mrn}}' }"),
+		Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	res, err := p.Process(ctx, f, []byte(`{"mrn":12345678901234567890}`))
+	if err != nil || res.Status != state.StatusSent {
+		t.Fatalf("res = %+v, err = %v", res, err)
+	}
+	if sink.bodies[0] != `{"label":"12345678901234567890","mrn":12345678901234567890}` || sink.types[0] != "application/json" {
+		t.Errorf("delivered %s as %s; want exact digits as application/json", sink.bodies[0], sink.types[0])
+	}
+	pass := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	if _, err := p.Process(ctx, pass, []byte("MSH|^~\\&|")); err != nil {
+		t.Fatal(err)
+	}
+	if sink.types[1] != "application/octet-stream" {
+		t.Errorf("passthrough content type = %s", sink.types[1])
 	}
 }

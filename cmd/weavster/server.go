@@ -385,7 +385,7 @@ type flowAdapter struct{ store flowRepository }
 // strictly decoding its transform.
 func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 	pf := pipeline.Flow{ID: f.ID}
-	if len(f.Transform) > 0 {
+	if raw := bytes.TrimSpace(f.Transform); len(raw) > 0 && !bytes.Equal(raw, []byte("null")) {
 		dec := json.NewDecoder(bytes.NewReader(f.Transform))
 		dec.DisallowUnknownFields()
 		var t compiler.Transform
@@ -395,7 +395,9 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 		if t.Name == "" {
 			t.Name = f.ID
 		}
-		pf.Transform = &t
+		if len(t.Steps) > 0 { // a transform without steps is a passthrough
+			pf.Transform = &t
+		}
 	}
 	for _, d := range f.Destinations {
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir})
@@ -414,11 +416,18 @@ func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (
 	if err != nil {
 		return gateway.IngestResult{}, err
 	}
+	switch f.Status {
+	case "stopped", "paused", "halted", "undeployed":
+		return gateway.IngestResult{}, fmt.Errorf("%w: flow %s is %s", gateway.ErrFlowNotRunning, f.ID, f.Status)
+	}
 	pf, err := toPipelineFlow(f)
 	if err != nil {
 		return gateway.IngestResult{}, err
 	}
-	res, err := a.pipe.Process(ctx, pf, body)
+	// Processing is durable work: finish it even if the client disconnects,
+	// so the stored message never stops half-way. HTTP deliveries are
+	// bounded by adapters.HTTPSinkTimeout.
+	res, err := a.pipe.Process(context.WithoutCancel(ctx), pf, body)
 	if errors.Is(err, pipeline.ErrInvalidMessage) {
 		return gateway.IngestResult{}, fmt.Errorf("%w: body must be a JSON object", gateway.ErrInvalidMessage)
 	}
@@ -432,8 +441,11 @@ func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (
 // as message metadata.
 type adapterSink struct{ sink adapters.Sink }
 
-func (s adapterSink) Write(ctx context.Context, id string, body []byte, key string) error {
-	return s.sink.Write(ctx, adapters.Message{ID: id, Body: body, Metadata: map[string]string{adapters.IdempotencyKeyMetadata: key}})
+func (s adapterSink) Write(ctx context.Context, d pipeline.Delivery) error {
+	return s.sink.Write(ctx, adapters.Message{ID: d.MessageID, Body: d.Body, Metadata: map[string]string{
+		adapters.IdempotencyKeyMetadata: d.IdempotencyKey,
+		adapters.ContentTypeMetadata:    d.ContentType,
+	}})
 }
 
 // newSink builds the adapter for a flow destination.

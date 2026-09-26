@@ -109,6 +109,27 @@ func TestPipelineEndToEnd(t *testing.T) {
 		t.Errorf("unknown flow: %d, want 404", status)
 	}
 
+	// 5. A stopped flow rejects messages; a flow with "transform": null passes
+	// raw bodies through.
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"stopped","status":"stopped"}`, admin); status != http.StatusCreated {
+		t.Fatalf("create stopped flow: %d %q", status, body)
+	}
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows/stopped/messages", `{}`, admin); status != http.StatusConflict || !strings.Contains(body, "is stopped") {
+		t.Errorf("stopped flow: %d %q, want 409", status, body)
+	}
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"raw","transform":null,"destinations":[{"name":"archive","type":"file","dir":"`+outDir+`"}]}`, admin); status != http.StatusCreated {
+		t.Fatalf("create passthrough flow: %d %q", status, body)
+	}
+	status, raw, _ := c.do(http.MethodPost, "/api/v1/flows/raw/messages", "MSH|^~\\&|RAW", admin)
+	var rawRes map[string]string
+	_ = json.Unmarshal([]byte(raw), &rawRes)
+	if file, err := os.ReadFile(filepath.Join(outDir, rawRes["id"])); status != http.StatusAccepted || err != nil || string(file) != "MSH|^~\\&|RAW" {
+		t.Errorf("passthrough: %d %q file=%q err=%v", status, raw, file, err)
+	}
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"ftp","destinations":[{"name":"x","type":"http","url":"ftp://x"}]}`, admin); status != http.StatusBadRequest {
+		t.Errorf("ftp destination: %d %q, want 400", status, body)
+	}
+
 	// Persistence: every processed message is searchable with its final status.
 	for _, s := range []string{"sent", "filtered", "queued"} {
 		_, body, _ := c.do(http.MethodGet, "/api/v1/messages?flowId=adt&status="+s, "", admin)

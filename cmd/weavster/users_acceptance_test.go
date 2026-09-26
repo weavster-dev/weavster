@@ -11,6 +11,7 @@ import (
 
 	"github.com/weavster-dev/weavster/internal/auth"
 	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/pipeline"
 	"github.com/weavster-dev/weavster/internal/state"
 )
 
@@ -165,5 +166,22 @@ func TestPasswordAdapterMapsErrors(t *testing.T) {
 		if err := a.ChangePassword(ctx, tt.user, tt.old, tt.new); !errors.Is(err, tt.want) || (tt.want == nil && err != nil) {
 			t.Errorf("%s: err = %v, want %v", tt.name, err, tt.want)
 		}
+	}
+}
+
+// TestIngestSurvivesCancellation proves processing finishes even when the
+// request context is cancelled, so no message is left half-processed.
+func TestIngestSurvivesCancellation(t *testing.T) {
+	store := state.NewMemStore()
+	flows := flowAdapter{store: store}
+	if err := flows.Create(context.Background(), gateway.Flow{ID: "f"}); err != nil {
+		t.Fatal(err)
+	}
+	a := ingestAdapter{flows: flows, pipe: pipeline.New(store, newSink)}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	res, err := a.Ingest(ctx, "f", []byte("x"))
+	if err != nil || res.Status != "sent" {
+		t.Errorf("Ingest with cancelled ctx = %+v, %v; want sent", res, err)
 	}
 }

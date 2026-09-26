@@ -4,12 +4,14 @@
 package pipeline
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 
 	"github.com/weavster-dev/weavster/internal/compiler"
 	"github.com/weavster-dev/weavster/internal/dsl"
@@ -36,9 +38,17 @@ type Flow struct {
 	Destinations []Destination
 }
 
-// Sink delivers one message body to a destination.
+// Delivery is one message sent to one destination.
+type Delivery struct {
+	MessageID      string
+	Body           []byte
+	ContentType    string // MIME type of Body
+	IdempotencyKey string // stable across retries (D-10)
+}
+
+// Sink delivers messages to a destination.
 type Sink interface {
-	Write(ctx context.Context, messageID string, body []byte, idempotencyKey string) error
+	Write(ctx context.Context, d Delivery) error
 }
 
 // SinkFactory builds the sink for a destination.
@@ -76,8 +86,8 @@ func Validate(f Flow) error {
 			return fmt.Errorf("destinations[%d]: name is required", i)
 		case seen[d.Name]:
 			return fmt.Errorf("destinations[%d]: duplicate name %q", i, d.Name)
-		case d.Type == "http" && d.URL == "":
-			return fmt.Errorf("destination %s: url is required for type http", d.Name)
+		case d.Type == "http" && !validHTTPURL(d.URL):
+			return fmt.Errorf("destination %s: url must be an absolute http:// or https:// URL, got %q", d.Name, d.URL)
 		case d.Type == "file" && d.Dir == "":
 			return fmt.Errorf("destination %s: dir is required for type file", d.Name)
 		case d.Type != "http" && d.Type != "file":
@@ -86,6 +96,11 @@ func Validate(f Flow) error {
 		seen[d.Name] = true
 	}
 	return nil
+}
+
+func validHTTPURL(s string) bool {
+	u, err := url.Parse(s)
+	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }
 
 // Process runs body through flow f and returns the stored message's id and
@@ -99,7 +114,11 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (Result, er
 		if prog, err = dsl.Compile(*f.Transform); err != nil {
 			return Result{}, err
 		}
-		if err := json.Unmarshal(body, &doc); err != nil || doc == nil {
+		// UseNumber keeps numbers exact (e.g. 20-digit identifiers) in fields
+		// the transform does not touch.
+		dec := json.NewDecoder(bytes.NewReader(body))
+		dec.UseNumber()
+		if err := dec.Decode(&doc); err != nil || doc == nil {
 			return Result{}, fmt.Errorf("%w: body must be a JSON object", ErrInvalidMessage)
 		}
 	}
@@ -108,8 +127,12 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (Result, er
 	if err != nil {
 		return Result{}, err
 	}
-	m := state.Message{ID: id, FlowID: f.ID, ContentType: "json", Raw: body, Original: body}
-	ob := outbox.New(p.store, p.deliverFunc(f), outbox.Options{})
+	contentType := "raw"
+	if prog != nil {
+		contentType = "json"
+	}
+	m := state.Message{ID: id, FlowID: f.ID, ContentType: contentType, Raw: body, Original: body}
+	ob := outbox.New(p.store, p.deliverFunc(f, contentType), outbox.Options{})
 	if err := ob.Receive(ctx, m); err != nil {
 		return Result{}, err
 	}
@@ -141,18 +164,28 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (Result, er
 	return p.aggregate(ctx, id, f)
 }
 
-// deliverFunc routes outbox deliveries to the flow's sinks.
-func (p *Pipeline) deliverFunc(f Flow) outbox.DeliverFunc {
-	byName := map[string]Destination{}
+// deliverFunc routes outbox deliveries to the flow's sinks, building each
+// sink once per message.
+func (p *Pipeline) deliverFunc(f Flow, contentType string) outbox.DeliverFunc {
+	mime := "application/octet-stream"
+	if contentType == "json" {
+		mime = "application/json"
+	}
+	type built struct {
+		sink Sink
+		err  error
+	}
+	sinks := map[string]built{}
 	for _, d := range f.Destinations {
-		byName[d.Name] = d
+		s, err := p.sinks(d)
+		sinks[d.Name] = built{s, err}
 	}
 	return func(ctx context.Context, m state.Message, dest, key string) error {
-		sink, err := p.sinks(byName[dest])
-		if err != nil {
-			return err
+		b := sinks[dest]
+		if b.err != nil {
+			return b.err
 		}
-		return sink.Write(ctx, m.ID, m.Transformed, key)
+		return b.sink.Write(ctx, Delivery{MessageID: m.ID, Body: m.Transformed, ContentType: mime, IdempotencyKey: key})
 	}
 }
 

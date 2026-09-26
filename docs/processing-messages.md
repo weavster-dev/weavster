@@ -34,7 +34,8 @@ invalid flow: dsl: normalize: step 1: build: dsl: step not supported yet
 
 ### `transform`
 
-`transform` is optional; without it, messages pass through unchanged. It uses the steps
+`transform` is optional. Without it (or with `null` or no `steps`), messages pass through
+unchanged and may be any bytes. It uses the steps
 below, in order, on the message as a JSON object.
 
 | Step | Fields | Effect |
@@ -49,6 +50,7 @@ below, in order, on the message as a JSON object.
   (`'x'` or `"x"`), a number (`3`, `-1.5`), or `true`/`false`. A missing path compares equal
   to `''`. No other operators exist.
 - `build` and `destinationSet` steps are not supported yet.
+- Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.
 
 ### `destinations`
 
@@ -56,7 +58,7 @@ below, in order, on the message as a JSON object.
 |---|---|
 | `name` | Unique within the flow; used to report delivery results. |
 | `type` | `http` (POST to `url`) or `file` (write one file per message into `dir`, named by message ID). |
-| `url` | Required for `http`. The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
+| `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a `POST` with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough), and it times out after 30 seconds. The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`. Created if missing. |
 
 ## 2. Send a message
@@ -81,12 +83,16 @@ The request returns after processing finishes. `status` is one of:
 | `filtered` | A `filter` step dropped the message. Nothing was delivered. |
 | `errored` | The transform failed (for example `"x" is not a number`). Nothing was delivered. |
 
+Processing continues even if your client disconnects, so every message ends in one of the
+statuses above.
+
 Errors:
 
 | Response | Cause |
 |---|---|
-| `400` | The flow has a transform and the body is not a JSON object. |
+| `400` | The flow has a transform and the body is not a JSON object, or the body could not be read. |
 | `404` | Unknown flow. |
+| `409` | The flow's `status` is `stopped`, `paused`, `halted`, or `undeployed`. |
 | `413` | Body larger than 10 MiB. |
 
 ## 3. Find processed messages
@@ -104,5 +110,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
   messages stay queued.
 - Only `http` and `file` destinations are available.
 - Messages enter only through this API; flows do not listen on their own ports or read files yet.
-- A `file` destination writes wherever `dir` points, with the server's permissions. Only give
-  `flows:edit` to trusted users.
+- A `file` destination writes wherever `dir` points, with the server's permissions, and an
+  `http` destination can target any address the server can reach, including internal ones.
+  Only give `flows:edit` to trusted users.
+- A flow's `status` is whatever you set when you create it; lifecycle operations (deploy, start,
+  stop) do not exist yet.

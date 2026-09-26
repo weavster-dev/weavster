@@ -19,6 +19,8 @@ func writeFlowError(w http.ResponseWriter, err error) {
 		http.Error(w, "flow not found", http.StatusNotFound)
 	case errors.Is(err, ErrFlowExists):
 		http.Error(w, "flow already exists", http.StatusConflict)
+	case errors.Is(err, ErrFlowNotRunning):
+		http.Error(w, err.Error(), http.StatusConflict)
 	case errors.Is(err, ErrInvalidFlow), errors.Is(err, ErrInvalidMessage):
 		http.Error(w, err.Error(), http.StatusBadRequest)
 	default:
@@ -99,7 +101,12 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxMessageBytes))
 	if err != nil {
-		http.Error(w, "message body too large or unreadable", http.StatusRequestEntityTooLarge)
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "message body larger than 10 MiB", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, "could not read message body", http.StatusBadRequest)
 		return
 	}
 	res, err := s.cfg.Ingest.Ingest(r.Context(), r.PathValue("id"), body)

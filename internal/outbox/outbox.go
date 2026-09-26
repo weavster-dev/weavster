@@ -69,8 +69,9 @@ func (o *Outbox) Transform(ctx context.Context, id string, fn func([]byte) ([]by
 }
 
 // Deliver sends the message to one destination and records the outcome. It
-// re-enters the same message id after a crash, so a retry never duplicates a
-// message with the same (message_id, destination, attempt) idempotency key.
+// re-enters the same message id after a crash, and every attempt carries the
+// same (message_id, destination) idempotency key, so the sink can drop
+// duplicates (D-10).
 func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 	m, err := o.store.Get(ctx, id)
 	if err != nil {

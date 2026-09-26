@@ -237,6 +237,8 @@ func convert(v any, typ string) (any, error) {
 				return nil, fmt.Errorf("%v is not a finite number", n)
 			}
 			return n, nil
+		case json.Number:
+			return n, nil
 		case string:
 			f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
 			if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
@@ -271,6 +273,8 @@ func text(v any) string {
 		return t
 	case float64:
 		return strconv.FormatFloat(t, 'f', -1, 64)
+	case json.Number:
+		return t.String()
 	case bool:
 		return strconv.FormatBool(t)
 	}
@@ -459,6 +463,9 @@ func truthy(v any) bool {
 		return t
 	case float64:
 		return t != 0
+	case json.Number:
+		f, err := t.Float64()
+		return err != nil || f != 0
 	}
 	return true
 }
@@ -466,10 +473,23 @@ func truthy(v any) bool {
 // equal compares values; a missing value equals "" (so "x == ”" matches an
 // absent field), and numbers compare numerically.
 func equal(a, b any) bool {
-	if af, ok := a.(float64); ok {
-		if bf, ok := b.(float64); ok {
+	if af, ok := number(a); ok {
+		if bf, ok := number(b); ok {
 			return af == bf
 		}
 	}
 	return text(a) == text(b)
+}
+
+// number returns a numeric value as float64 (documents decoded with
+// json.Decoder.UseNumber hold json.Number).
+func number(v any) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case json.Number:
+		f, err := n.Float64()
+		return f, err == nil
+	}
+	return 0, false
 }
