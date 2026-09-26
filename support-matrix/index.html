@@ -437,7 +437,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Config-as-code (validate/plan/apply/drift), Git store</td>
 <td>Library-only</td>
-<td>No CLI command or API endpoint exposes them.</td>
+<td>No CLI command or API endpoint exposes them. Flows in a config document (<code>flows.&lt;id&gt;</code>) use the same definition as the flow API and are validated against <code>flow.schema.json</code> (<code>TestConfigFlowIsAPIFlow</code>).</td>
 </tr>
 <tr>
 <td>Legacy import</td>
