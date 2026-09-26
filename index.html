@@ -38,6 +38,9 @@
                                 <a href="." class="nav-link active" aria-current="page">Home</a>
                             </li>
                             <li class="nav-item">
+                                <a href="support-matrix/" class="nav-link">Support Matrix</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -60,7 +63,7 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="documentation/" class="nav-link">
+                                <a rel="next" href="support-matrix/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
@@ -112,14 +115,18 @@
 (no CGo, no external runtime).</p>
 <h2 id="reference">Reference</h2>
 <ul>
+<li><a href="support-matrix/">Support matrix</a> — what the binary does today</li>
 <li><a href="mvp-project-plan/">MVP Project Plan</a> — scope, stack, build sequence</li>
 <li><a href="agent-onboarding/">Agent Onboarding</a> — coding rules for contributors and agents</li>
 </ul>
 <h2 id="what-exists-now">What exists now</h2>
-<p>The MVP source tree is implemented: control plane (gateway, auth, audit, scheduler, alerts,
-notify, secrets, observability), data plane (codecs, adapters, outbox), WASM layer (compiler,
-registry, executor), durable state (SQLite/Postgres/in-memory), config-as-code + Git store,
-legacy migration ETL, and the CLI/server entrypoint. See <code>README.md</code> for a full map.</p>
+<p><strong>The server does not receive, transform, or deliver messages.</strong>
+It serves a plain-HTTP, unauthenticated REST API with in-memory flow records, a
+read-only topology view of them, and a system status endpoint. Most platform capabilities
+(adapters, transforms, durable storage, scheduler, auth enforcement) exist only as libraries
+in the source tree.</p>
+<p>See the <a href="support-matrix/">support matrix</a> for exactly what is wired, library-only,
+Enterprise-deferred, or unsupported.</p>
 <h2 id="contracts">Contracts</h2>
 <ul>
 <li><code>agent-docs/openapi.yaml</code> — REST + OpenAPI 3.1 contract</li>
@@ -207,5 +214,5 @@ legacy migration ETL, and the CLI/server entrypoint. See <code>README.md</code> 
 
 <!--
 MkDocs version : 1.6.1
-Build Date UTC : 2026-09-26 15:50:09.757504+00:00
+Build Date UTC : 2026-09-26 16:24:08.013450+00:00
 -->

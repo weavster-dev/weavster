@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://docs.weavster.dev/support-matrix/">
+        <link rel="shortcut icon" href="../img/favicon.ico">
+        <title>Support Matrix - Weavster</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="..">Weavster</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href=".." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="./" class="nav-link active" aria-current="page">Support Matrix</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../documentation/" class="nav-link">Docs Site Guide</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../mvp-project-plan/" class="nav-link">MVP Project Plan</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../agent-onboarding/" class="nav-link">Agent Onboarding</a>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href=".." class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../documentation/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/support-matrix.md" class="nav-link">Edit on weavster-dev/weavster
+                                    </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#support-matrix" class="nav-link">Support matrix</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#server-and-api" class="nav-link">Server and API</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#message-processing" class="nav-link">Message processing</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#cli" class="nav-link">CLI</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#build-and-packaging" class="nav-link">Build and packaging</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#enterprise-deferred-stubs" class="nav-link">Enterprise-deferred stubs</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#codecs" class="nav-link">Codecs</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#delivery-guarantees-per-adapter" class="nav-link">Delivery guarantees per adapter</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="support-matrix">Support matrix</h1>
+<p>This page lists what the <code>weavster</code> binary does <strong>today</strong>. It is re-checked at the end of every
+delivery phase. When the README or any other page disagrees with this page, this page is correct.</p>
+<p>Every capability sits in exactly one tier:</p>
+<table>
+<thead>
+<tr>
+<th>Tier</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Implemented (wired)</strong></td>
+<td>Reachable from <code>weavster server</code> or the CLI and covered by an acceptance test that exercises the public API/CLI.</td>
+</tr>
+<tr>
+<td><strong>Library-only</strong></td>
+<td>Code and unit tests exist in the source tree, but the running server does not use it. You cannot reach it from the API or CLI.</td>
+</tr>
+<tr>
+<td><strong>Enterprise-deferred</strong></td>
+<td>An interface stub exists and returns a deterministic "not available" error. There is no MVP implementation.</td>
+</tr>
+<tr>
+<td><strong>Unsupported</strong></td>
+<td>No working implementation exists, in the running binary or in the source tree.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="server-and-api">Server and API</h2>
+<p>Start the server with <code>weavster server 127.0.0.1:8080</code>. It serves plain HTTP only. Every
+<code>/api/v1</code> request must carry the header <code>X-Weavster-CSRF: 1</code>.</p>
+<p>!!! warning
+    No API route checks credentials, and the CSRF marker is a fixed public value. Bind to
+    <code>127.0.0.1</code> and do not expose the server to a network.</p>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Tier</th>
+<th>Proof / notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/openapi.yaml</code> (no marker header needed)</td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixWired/openapi</code>. The served document omits <code>/api/v1/flows/{id}</code> and the <code>X-Weavster-CSRF</code> header, so a client generated from it is incomplete.</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/system</code> status document</td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixWired/system</code></td>
+</tr>
+<tr>
+<td>CSRF marker enforcement (<code>400</code> without <code>X-Weavster-CSRF: 1</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixWired/csrf-marker</code></td>
+</tr>
+<tr>
+<td><code>TRACE</code>/<code>TRACK</code> rejected with <code>405</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixWired/trace-blocked</code></td>
+</tr>
+<tr>
+<td><code>Strict-Transport-Security</code>, <code>X-Frame-Options: DENY</code>, <code>Content-Security-Policy: frame-ancestors 'none'</code>, <code>X-Content-Type-Options: nosniff</code> headers</td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixWired/security-headers</code>. HSTS is sent even over plain HTTP.</td>
+</tr>
+<tr>
+<td><code>GET/POST /api/v1/flows</code>, <code>GET/DELETE /api/v1/flows/{id}</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixWired/flows-*</code>. Flows live <strong>in memory</strong> and are lost on restart. The server starts with one sample flow, <code>admit</code>. Flows are stored but <strong>never run</strong>. <code>DELETE</code> of an unknown ID returns <code>204</code>, not <code>404</code>.</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/topology</code>, <code>GET /api/v1/topology/flows/{flowId}</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixWired/topology-*</code>. The graph is built from the in-memory flows above. Status is whatever the flow record says, and activity counters are always zero. An unknown <code>flowId</code> returns <code>500</code>, not <code>404</code>.</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/messages</code> search</td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixWired/messages</code>. Always returns <code>[]</code>, because nothing writes messages yet.</td>
+</tr>
+<tr>
+<td>Authentication, authorization, and audit of API calls</td>
+<td>Library-only</td>
+<td>The <code>auth</code> and <code>audit</code> packages exist, but request handlers never call them. Every <code>/api/v1</code> route, including <code>POST</code> and <code>DELETE</code>, is <strong>unauthenticated</strong>. The server tries to seed an <code>admin</code> user, but the password fails its own policy, so no user exists.</td>
+</tr>
+<tr>
+<td>Login / logout / session endpoints</td>
+<td>Unsupported</td>
+<td></td>
+</tr>
+<tr>
+<td>HTTPS / TLS listener</td>
+<td>Library-only</td>
+<td><code>gateway.TLSOptions</code> exists, but the server only listens on plain HTTP.</td>
+</tr>
+<tr>
+<td>mTLS</td>
+<td>Unsupported</td>
+<td></td>
+</tr>
+<tr>
+<td>Persistent storage (SQLite / PostgreSQL)</td>
+<td>Library-only</td>
+<td>The server uses an in-memory store. The PostgreSQL backend cannot start (SQLite-only SQL).</td>
+</tr>
+<tr>
+<td>Server configuration file</td>
+<td>Unsupported</td>
+<td>The only setting is the listen address (positional argument, default <code>127.0.0.1:8080</code>).</td>
+</tr>
+<tr>
+<td>Refuse to run as root (override: <code>WEAVSTER_ALLOW_ROOT=1</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixPrivilegedGuard</code></td>
+</tr>
+<tr>
+<td><code>/metrics</code> (Prometheus), OpenTelemetry</td>
+<td>Library-only</td>
+<td>Not mounted or initialized by the server.</td>
+</tr>
+<tr>
+<td>Web UI</td>
+<td>Unsupported</td>
+<td>Only the JSON topology API exists.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="message-processing">Message processing</h2>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Tier</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Sources and destinations (file, HTTP, TCP/MLLP, database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>
+<td>Library-only</td>
+<td>Nothing in the server starts an adapter or receives a message.</td>
+</tr>
+<tr>
+<td>Receive → filter → transform → route → deliver pipeline</td>
+<td>Unsupported</td>
+<td></td>
+</tr>
+<tr>
+<td>YAML DSL transforms</td>
+<td>Library-only</td>
+<td>The compiler validates DSL, but its generated code discards the steps and returns the input unchanged.</td>
+</tr>
+<tr>
+<td>WASM executor (wazero), module registry</td>
+<td>Library-only</td>
+<td>Not used by the server. The executor has no WASI host.</td>
+</tr>
+<tr>
+<td>Scheduler (durable jobs, leases, interval/cron)</td>
+<td>Library-only</td>
+<td></td>
+</tr>
+<tr>
+<td>Outbox, retries, dead-letter</td>
+<td>Library-only</td>
+<td></td>
+</tr>
+<tr>
+<td>Alerts and SMTP/webhook notifiers</td>
+<td>Library-only</td>
+<td></td>
+</tr>
+<tr>
+<td>Config-as-code (validate/plan/apply/drift), Git store</td>
+<td>Library-only</td>
+<td>No CLI command or API endpoint exposes them.</td>
+</tr>
+<tr>
+<td>Legacy import</td>
+<td>Unsupported</td>
+<td><code>internal/migrate</code> reads a made-up <code>&lt;weavster-export&gt;</code> XML schema, not any real legacy export format.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="cli">CLI</h2>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Tier</th>
+<th>Proof / notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>weavster server [address]</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixCLI/server-subcommand</code></td>
+</tr>
+<tr>
+<td><code>weavster</code> with no subcommand</td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixCLI/no-subcommand</code>. Starts the server on <code>127.0.0.1:8080</code>, <strong>not</strong> an interactive shell.</td>
+</tr>
+<tr>
+<td><code>weavster -h</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestRunHelpAndVersion</code></td>
+</tr>
+<tr>
+<td><code>weavster -v</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestRunHelpAndVersion</code>. Prints the <strong>local binary</strong> version, not the server's.</td>
+</tr>
+<tr>
+<td><code>weavster -s script.txt</code> batch mode</td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixCLI/batch-*</code>. Commands: <code>help</code>, <code>status</code>, <code>version</code>, <code>flow list</code>, <code>user list</code>, <code>quit</code>/<code>exit</code>. <code>user list</code> always prints nothing. Exits <code>2</code> if any line is an unknown command, cannot reach the server, or <code>flow list</code> gets an unreadable reply. <strong><code>status</code> exits <code>0</code> even when the server answers with an HTTP error</strong>; it prints the error body.</td>
+</tr>
+<tr>
+<td><code>-a address</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestSupportMatrixCLI/batch-*</code>. Used only by <code>-s</code>. Include the scheme, for example <code>http://127.0.0.1:8080</code> (default).</td>
+</tr>
+<tr>
+<td><code>-u</code>, <code>-p</code></td>
+<td>Unsupported</td>
+<td>Parsed but never sent to the server.</td>
+</tr>
+<tr>
+<td><code>-c connection-file</code></td>
+<td>Unsupported</td>
+<td>Parsed and ignored. A missing file is not an error.</td>
+</tr>
+<tr>
+<td><code>-d</code></td>
+<td>Unsupported</td>
+<td>Parsed, but error output is identical with or without it.</td>
+</tr>
+<tr>
+<td>Interactive shell</td>
+<td>Unsupported</td>
+<td></td>
+</tr>
+<tr>
+<td><code>weavster test [--filter NAME] [--format junit\|json] [--output DIR]</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestRunTestCommand</code>. Runs four built-in codec round-trip fixtures (<code>identity/hl7</code>, <code>identity/json</code>, <code>identity/xml</code>, <code>identity/raw</code>). It does not discover your flows or fixtures.</td>
+</tr>
+</tbody>
+</table>
+<p>Example:</p>
+<pre><code class="language-bash">cat &gt; smoke.txt &lt;&lt;'EOF'
+status
+flow list
+EOF
+weavster -a http://127.0.0.1:8080 -s smoke.txt
+</code></pre>
+<p>Expected output: the <code>/api/v1/system</code> JSON document, followed by <code>Patient Admit</code>.</p>
+<h2 id="build-and-packaging">Build and packaging</h2>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Tier</th>
+<th>Proof / notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Static <code>CGO_ENABLED=0</code> builds for <code>linux/amd64</code>, <code>linux/arm64</code>, <code>darwin/arm64</code></td>
+<td>Implemented (wired)</td>
+<td>CI <code>cross-build</code> job. No release binaries are published yet.</td>
+</tr>
+<tr>
+<td>Distroless non-root container image</td>
+<td>Implemented (wired)</td>
+<td>CI <code>docker</code> job. Build it yourself with <code>docker build -t weavster .</code>. No image is published.</td>
+</tr>
+<tr>
+<td>Signed releases, <code>curl \| bash</code> installer</td>
+<td>Unsupported</td>
+<td></td>
+</tr>
+<tr>
+<td>Terraform / Pulumi samples (<code>iac/</code>)</td>
+<td>Library-only</td>
+<td>The binary does not read any value the samples emit.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="enterprise-deferred-stubs">Enterprise-deferred stubs</h2>
+<p>Only these stubs exist in the source tree. None of them can be selected from configuration yet.</p>
+<table>
+<thead>
+<tr>
+<th>Stub</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Broker queue/topic source and sink</td>
+<td>Returns <code>adapters: enterprise adapter not implemented in MVP</code></td>
+</tr>
+<tr>
+<td>DICOM source and sink</td>
+<td>Returns <code>adapters: enterprise adapter not implemented in MVP</code></td>
+</tr>
+<tr>
+<td>DICOM codec</td>
+<td>Returns <code>codec: enterprise feature requires a licensed library</code></td>
+</tr>
+<tr>
+<td>KMS/Vault key rotation</td>
+<td>Returns <code>secrets: enterprise feature not available</code></td>
+</tr>
+</tbody>
+</table>
+<p>There are <strong>no</strong> OIDC/SAML, OPA/Cedar, SIEM, Kubernetes, Redis/NATS, or object-storage stubs.
+Those are Enterprise items with no code in the source tree.</p>
+<h2 id="codecs">Codecs</h2>
+<p>Codecs are library-only: the server never parses a message. You can exercise them with
+<code>weavster test</code>, which covers HL7 v2, JSON, XML, and raw.</p>
+<!-- codec-table: every cell is checked against codecs.CoverageMatrix() by TestSupportMatrixCodecs -->
+<table>
+<thead>
+<tr>
+<th>Codec</th>
+<th>Tier</th>
+<th>Versions / segments</th>
+<th>Acknowledgment</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>delimited</code></td>
+<td>Library-only</td>
+<td>any (configurable delimiter)</td>
+<td>no</td>
+<td>tab/pipe/comma; optional header</td>
+</tr>
+<tr>
+<td><code>hl7v2</code></td>
+<td>Library-only</td>
+<td>2.x segment/field/component/repetition</td>
+<td>yes</td>
+<td>MSH/MSA ACK</td>
+</tr>
+<tr>
+<td><code>json</code></td>
+<td>Library-only</td>
+<td>RFC 8259</td>
+<td>no</td>
+<td>stdlib encoding/json</td>
+</tr>
+<tr>
+<td><code>xml</code></td>
+<td>Library-only</td>
+<td>XML 1.0 (XXE-safe)</td>
+<td>no</td>
+<td>no DTD/external-entity resolution by construction</td>
+</tr>
+<tr>
+<td><code>x12</code></td>
+<td>Library-only</td>
+<td>ISA/GS/ST envelope</td>
+<td>yes</td>
+<td>997 functional acknowledgment</td>
+</tr>
+<tr>
+<td><code>ncpdp</code></td>
+<td>Library-only</td>
+<td>Telecommunication (FS/GS/RS delimiters)</td>
+<td>no</td>
+<td>fixed-width amount formatting; response limited</td>
+</tr>
+<tr>
+<td><code>raw</code></td>
+<td>Library-only</td>
+<td>any binary</td>
+<td>no</td>
+<td>passthrough</td>
+</tr>
+<tr>
+<td><code>dicom</code></td>
+<td>Enterprise-deferred</td>
+<td></td>
+<td>no</td>
+<td>requires a licensed library; interface stub only (gap #12)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="delivery-guarantees-per-adapter">Delivery guarantees per adapter</h2>
+<p><strong>The running server delivers nothing</strong>, so it makes no delivery guarantee. The table below
+describes the library adapters for when they are wired in later phases. No sink sends an
+idempotency key today, so no destination is exactly-once. The outbox library's
+<code>SemanticsForAdapter</code> labels non-TCP sinks "exactly-once", but that label is not yet true.</p>
+<table>
+<thead>
+<tr>
+<th>Adapter</th>
+<th>Source</th>
+<th>Sink</th>
+<th>Guarantee when retried through the outbox</th>
+<th>Sends idempotency key</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>File</td>
+<td>yes</td>
+<td>yes</td>
+<td>at-least-once</td>
+<td>no</td>
+</tr>
+<tr>
+<td>HTTP</td>
+<td>yes</td>
+<td>yes</td>
+<td>at-least-once</td>
+<td>no</td>
+</tr>
+<tr>
+<td>TCP/MLLP</td>
+<td>yes</td>
+<td>yes</td>
+<td>at-least-once</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Database</td>
+<td>yes</td>
+<td>yes</td>
+<td>at-least-once</td>
+<td>no</td>
+</tr>
+<tr>
+<td>SMTP</td>
+<td>—</td>
+<td>yes</td>
+<td>at-least-once</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Web service (SOAP/REST)</td>
+<td>—</td>
+<td>yes</td>
+<td>at-least-once</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Document</td>
+<td>—</td>
+<td>yes</td>
+<td>at-least-once</td>
+<td>no</td>
+</tr>
+<tr>
+<td>In-process inter-flow</td>
+<td>yes</td>
+<td>yes</td>
+<td>at-least-once</td>
+<td>no</td>
+</tr>
+<tr>
+<td>Broker, DICOM</td>
+<td>Enterprise-deferred</td>
+<td>Enterprise-deferred</td>
+<td>—</td>
+<td>—</td>
+</tr>
+</tbody>
+</table></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+        <script src="../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>
