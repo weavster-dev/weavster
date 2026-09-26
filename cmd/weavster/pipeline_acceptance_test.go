@@ -58,9 +58,7 @@ func TestPipelineEndToEnd(t *testing.T) {
 	    {"name": "archive", "type": "file", "dir": "` + outDir + `"}
 	  ]
 	}`
-	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", flow, admin); status != http.StatusCreated {
-		t.Fatalf("create flow: %d %q", status, body)
-	}
+	createFlow(t, c, flow)
 	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"bad","transform":{"name":"t","steps":[{"build":{"template":"x"}}]}}`, admin); status != http.StatusBadRequest || !strings.Contains(body, "not supported yet") {
 		t.Errorf("invalid flow: %d %q, want 400", status, body)
 	}
@@ -111,15 +109,12 @@ func TestPipelineEndToEnd(t *testing.T) {
 
 	// 5. A stopped flow rejects messages; a flow with "transform": null passes
 	// raw bodies through.
-	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"stopped","status":"stopped"}`, admin); status != http.StatusCreated {
-		t.Fatalf("create stopped flow: %d %q", status, body)
-	}
+	createFlow(t, c, `{"id":"stopped"}`)
+	c.do(http.MethodPost, "/api/v1/flows/stopped/stop", "", admin)
 	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows/stopped/messages", `{}`, admin); status != http.StatusConflict || !strings.Contains(body, "is stopped") {
 		t.Errorf("stopped flow: %d %q, want 409", status, body)
 	}
-	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"raw","transform":null,"destinations":[{"name":"archive","type":"file","dir":"`+outDir+`"}]}`, admin); status != http.StatusCreated {
-		t.Fatalf("create passthrough flow: %d %q", status, body)
-	}
+	createFlow(t, c, `{"id":"raw","transform":null,"destinations":[{"name":"archive","type":"file","dir":"`+outDir+`"}]}`)
 	status, raw, _ := c.do(http.MethodPost, "/api/v1/flows/raw/messages", "MSH|^~\\&|RAW", admin)
 	var rawRes map[string]string
 	_ = json.Unmarshal([]byte(raw), &rawRes)

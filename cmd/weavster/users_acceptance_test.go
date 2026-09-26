@@ -177,6 +177,11 @@ func TestIngestSurvivesCancellation(t *testing.T) {
 	if err := flows.Create(context.Background(), gateway.Flow{ID: "f"}); err != nil {
 		t.Fatal(err)
 	}
+	for _, action := range []string{"deploy", "start"} {
+		if _, err := flows.Transition(context.Background(), "f", action); err != nil {
+			t.Fatal(err)
+		}
+	}
 	a := ingestAdapter{flows: flows, pipe: pipeline.New(store, newSink, nil, pipeline.Options{})}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

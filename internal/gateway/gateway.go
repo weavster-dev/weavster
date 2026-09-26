@@ -55,6 +55,12 @@ type FlowDestination struct {
 	Dir  string `json:"dir,omitempty"`
 }
 
+// FlowLifecycle changes a flow's runtime state (spec §6.1).
+type FlowLifecycle interface {
+	Transition(ctx context.Context, id, action string) (Flow, error)
+	RedeployAll(ctx context.Context) ([]Flow, error)
+}
+
 // IngestResult is the outcome of processing one received message.
 type IngestResult struct {
 	ID     string `json:"id"`
@@ -75,6 +81,9 @@ var (
 	ErrInvalidFlow    = errors.New("invalid flow")
 	ErrInvalidMessage = errors.New("invalid message")
 	ErrFlowNotRunning = errors.New("flow is not accepting messages")
+	// ErrInvalidTransition is wrapped with the reason, e.g. "cannot pause a
+	// flow that is stopped".
+	ErrInvalidTransition = errors.New("invalid lifecycle transition")
 )
 
 // FlowStore is the flow CRUD backend.
@@ -120,6 +129,7 @@ type Config struct {
 	Flows       FlowStore
 	Messages    MessageSearcher
 	Ingest      MessageIngester
+	Lifecycle   FlowLifecycle
 	Stats       StatsProvider
 	Events      EventSearcher
 	Topology    TopologyProvider

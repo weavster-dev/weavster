@@ -37,9 +37,7 @@ func TestStatsEventsTopology(t *testing.T) {
 	}
 	flow := `{"id":"lab","name":"Lab","transform":{"name":"t","steps":[{"filter":{"when":"skip","action":"reject"}}]},
 	  "destinations":[{"name":"ehr","type":"http","url":"` + downstream.URL + `"}]}`
-	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", flow, admin); status != http.StatusCreated {
-		t.Fatalf("create flow: %d %q", status, body)
-	}
+	createFlow(t, c, flow)
 
 	// Zeros before any traffic.
 	status, body, _ := c.do(http.MethodGet, "/api/v1/flows/lab/stats", "", admin)
@@ -91,9 +89,7 @@ func TestStatsEventsTopology(t *testing.T) {
 
 	// A transform error's text can quote message content, so the event
 	// carries only the message id.
-	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"conv","transform":{"name":"t","steps":[{"map":{"from":"name","to":"n","type":"number"}}]}}`, admin); status != http.StatusCreated {
-		t.Fatalf("create conv: %d %q", status, body)
-	}
+	createFlow(t, c, `{"id":"conv","transform":{"name":"t","steps":[{"map":{"from":"name","to":"n","type":"number"}}]}}`)
 	c.do(http.MethodPost, "/api/v1/flows/conv/messages", `{"name":"John Smith"}`, admin)
 	_, body, _ = c.do(http.MethodGet, "/api/v1/events?flowId=conv&type=message.errored", "", admin)
 	if !strings.Contains(body, `"messageId"`) || strings.Contains(body, "John Smith") {
@@ -132,6 +128,11 @@ func TestDeleteWaitsForInFlightIngest(t *testing.T) {
 	if err := flows.Create(ctx, gateway.Flow{ID: "f", Destinations: []gateway.FlowDestination{{Name: "d", Type: "file", Dir: t.TempDir()}}}); err != nil {
 		t.Fatal(err)
 	}
+	for _, action := range []string{"deploy", "start"} {
+		if _, err := flows.Transition(ctx, "f", action); err != nil {
+			t.Fatal(err)
+		}
+	}
 	sink := blockingSink{release: make(chan struct{})}
 	ingest := ingestAdapter{flows: flows, pipe: pipeline.New(store, func(pipeline.Destination) (pipeline.Sink, error) { return sink, nil },
 		processingObserver{stats, observability.NewEventLog()}, pipeline.Options{})}
@@ -141,7 +142,10 @@ func TestDeleteWaitsForInFlightIngest(t *testing.T) {
 		_, _ = ingest.Ingest(ctx, "f", []byte("x"))
 		close(ingested)
 	}()
-	for stats.Snapshot("f", false).Received == 0 { // wait until processing is in flight
+	for deadline := time.Now().Add(5 * time.Second); stats.Snapshot("f", false).Received == 0; { // wait until processing is in flight
+		if time.Now().After(deadline) {
+			t.Fatal("message never started processing")
+		}
 		time.Sleep(time.Millisecond)
 	}
 	deleted := make(chan error, 1)

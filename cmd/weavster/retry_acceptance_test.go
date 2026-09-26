@@ -55,10 +55,25 @@ func sendMessage(t *testing.T, c apiClient, flowID, body string) (id, status str
 	return out["id"], out["status"]
 }
 
+// createFlow creates a flow and deploys and starts it, so it accepts messages.
 func createFlow(t *testing.T, c apiClient, flow string) {
 	t.Helper()
-	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", flow, basic(bootstrapAdmin, testAdminPassword)); status != http.StatusCreated {
+	status, body, _ := c.do(http.MethodPost, "/api/v1/flows", flow, basic(bootstrapAdmin, testAdminPassword))
+	if status != http.StatusCreated {
 		t.Fatalf("create flow: %d %q", status, body)
+	}
+	var f struct{ ID string }
+	_ = json.Unmarshal([]byte(body), &f)
+	startFlow(t, c, f.ID)
+}
+
+// startFlow deploys and starts an undeployed flow.
+func startFlow(t *testing.T, c apiClient, id string) {
+	t.Helper()
+	for _, action := range []string{"deploy", "start"} {
+		if status, body, _ := c.do(http.MethodPost, "/api/v1/flows/"+id+"/"+action, "", basic(bootstrapAdmin, testAdminPassword)); status != http.StatusOK {
+			t.Fatalf("%s flow %s: %d %q", action, id, status, body)
+		}
 	}
 }
 

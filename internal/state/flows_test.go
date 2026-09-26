@@ -11,6 +11,7 @@ func TestFlowStore(t *testing.T) {
 	type flowStore interface {
 		Store
 		CreateFlow(context.Context, FlowDefinition) error
+		UpdateFlow(context.Context, FlowDefinition) error
 		GetFlow(context.Context, string) (FlowDefinition, error)
 		ListFlows(context.Context) ([]FlowDefinition, error)
 		DeleteFlow(context.Context, string) error
@@ -45,6 +46,15 @@ func TestFlowStore(t *testing.T) {
 			if err != nil || string(got.Document) != `{"v":1}` {
 				t.Errorf("GetFlow(b) = %+v, %v; want the original document", got, err)
 			}
+			if err := s.UpdateFlow(ctx, FlowDefinition{ID: "b", Document: []byte(`{"v":9}`)}); err != nil {
+				t.Fatal(err)
+			}
+			if got, _ := s.GetFlow(ctx, "b"); string(got.Document) != `{"v":9}` {
+				t.Errorf("after update: %s", got.Document)
+			}
+			if err := s.UpdateFlow(ctx, FlowDefinition{ID: "zz"}); !errors.Is(err, ErrFlowNotFound) {
+				t.Errorf("update missing = %v", err)
+			}
 			flows, err := s.ListFlows(ctx)
 			if err != nil || len(flows) != 2 || flows[0].ID != "a" || flows[1].ID != "b" {
 				t.Errorf("ListFlows = %+v, %v; want [a b]", flows, err)
@@ -72,6 +82,9 @@ func TestFlowStoreClosedDB(t *testing.T) {
 	_ = s.Close()
 	if err := s.CreateFlow(ctx, FlowDefinition{ID: "x"}); err == nil {
 		t.Error("CreateFlow on closed db: want error")
+	}
+	if err := s.UpdateFlow(ctx, FlowDefinition{ID: "x"}); err == nil || errors.Is(err, ErrFlowNotFound) {
+		t.Errorf("UpdateFlow on closed db = %v", err)
 	}
 	if _, err := s.GetFlow(ctx, "x"); err == nil || errors.Is(err, ErrFlowNotFound) {
 		t.Errorf("GetFlow on closed db = %v, want driver error", err)

@@ -19,7 +19,7 @@ func writeFlowError(w http.ResponseWriter, err error) {
 		http.Error(w, "flow not found", http.StatusNotFound)
 	case errors.Is(err, ErrFlowExists):
 		http.Error(w, "flow already exists", http.StatusConflict)
-	case errors.Is(err, ErrFlowNotRunning):
+	case errors.Is(err, ErrFlowNotRunning), errors.Is(err, ErrInvalidTransition):
 		http.Error(w, err.Error(), http.StatusConflict)
 	case errors.Is(err, ErrInvalidFlow), errors.Is(err, ErrInvalidMessage):
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -68,6 +68,10 @@ func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "flow id is required", http.StatusBadRequest)
 		return
 	}
+	if f.Status != "" {
+		http.Error(w, "status is managed by lifecycle operations (deploy, start, ...); omit it", http.StatusBadRequest)
+		return
+	}
 	if !validFlowID.MatchString(f.ID) {
 		http.Error(w, "flow id must be 1-128 characters from A-Z a-z 0-9 . _ -", http.StatusBadRequest)
 		return
@@ -75,6 +79,10 @@ func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
 	if err := s.cfg.Flows.Create(r.Context(), f); err != nil {
 		writeFlowError(w, err)
 		return
+	}
+	// Respond with the stored flow, which carries server-set fields (status).
+	if stored, err := s.cfg.Flows.Get(r.Context(), f.ID); err == nil {
+		f = stored
 	}
 	writeJSON(w, http.StatusCreated, f)
 }
@@ -115,4 +123,41 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusAccepted, res)
+}
+
+// lifecycleActions are the actions served at POST /flows/{id}/{action}.
+var lifecycleActions = map[string]bool{
+	"deploy": true, "undeploy": true, "start": true, "stop": true,
+	"halt": true, "pause": true, "resume": true,
+}
+
+func (s *Server) handleFlowAction(w http.ResponseWriter, r *http.Request) {
+	action := r.PathValue("action")
+	if !lifecycleActions[action] {
+		http.NotFound(w, r)
+		return
+	}
+	if s.cfg.Lifecycle == nil {
+		http.Error(w, "flow lifecycle unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	f, err := s.cfg.Lifecycle.Transition(r.Context(), r.PathValue("id"), action)
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, f)
+}
+
+func (s *Server) handleRedeployAll(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Lifecycle == nil {
+		http.Error(w, "flow lifecycle unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	flows, err := s.cfg.Lifecycle.RedeployAll(r.Context())
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, flows)
 }

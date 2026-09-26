@@ -103,3 +103,37 @@ func TestStatsAndEventsHandlers(t *testing.T) {
 		})
 	}
 }
+
+type fakeLifecycle struct{ err error }
+
+func (f fakeLifecycle) Transition(_ context.Context, id, action string) (Flow, error) {
+	return Flow{ID: id, Status: action + "ed"}, f.err
+}
+
+func (f fakeLifecycle) RedeployAll(context.Context) ([]Flow, error) { return []Flow{{ID: "a"}}, f.err }
+
+func TestLifecycleHandlers(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  Config
+		path string
+		want int
+	}{
+		{"transition", Config{Lifecycle: fakeLifecycle{}}, "/api/v1/flows/f/deploy", http.StatusOK},
+		{"unknown action", Config{Lifecycle: fakeLifecycle{}}, "/api/v1/flows/f/explode", http.StatusNotFound},
+		{"unavailable", Config{}, "/api/v1/flows/f/start", http.StatusServiceUnavailable},
+		{"invalid transition", Config{Lifecycle: fakeLifecycle{err: fmt.Errorf("%w: cannot pause a flow that is stopped", ErrInvalidTransition)}}, "/api/v1/flows/f/pause", http.StatusConflict},
+		{"redeploy-all", Config{Lifecycle: fakeLifecycle{}}, "/api/v1/flows/redeploy-all", http.StatusOK},
+		{"redeploy-all unavailable", Config{}, "/api/v1/flows/redeploy-all", http.StatusServiceUnavailable},
+		{"redeploy-all error", Config{Lifecycle: fakeLifecycle{err: errors.New("boom")}}, "/api/v1/flows/redeploy-all", http.StatusInternalServerError},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, tt.path, nil))
+			if rec.Code != tt.want {
+				t.Errorf("got %d %q, want %d", rec.Code, rec.Body.String(), tt.want)
+			}
+		})
+	}
+}

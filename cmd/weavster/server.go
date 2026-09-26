@@ -23,6 +23,7 @@ import (
 	"github.com/weavster-dev/weavster/internal/audit"
 	"github.com/weavster-dev/weavster/internal/auth"
 	"github.com/weavster-dev/weavster/internal/compiler"
+	"github.com/weavster-dev/weavster/internal/flowlife"
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/observability"
 	"github.com/weavster-dev/weavster/internal/pipeline"
@@ -118,6 +119,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Flows:       flows,
 		Messages:    messages,
 		Ingest:      ingest,
+		Lifecycle:   flows,
 		Stats:       statsAdapter{flows: flows, stats: stats},
 		Events:      eventsAdapter{events},
 		Topology:    topologyAdapter{flows: flows, stats: stats},
@@ -437,6 +439,7 @@ func (a auditAdapter) Record(ctx context.Context, e gateway.AuditEvent) error {
 // state's SQL and in-memory stores.
 type flowRepository interface {
 	CreateFlow(ctx context.Context, f state.FlowDefinition) error
+	UpdateFlow(ctx context.Context, f state.FlowDefinition) error
 	GetFlow(ctx context.Context, id string) (state.FlowDefinition, error)
 	ListFlows(ctx context.Context) ([]state.FlowDefinition, error)
 	DeleteFlow(ctx context.Context, id string) error
@@ -452,14 +455,68 @@ type flowAdapter struct {
 	gate *sync.RWMutex
 }
 
+// Transition applies a lifecycle action (spec §6.1). It holds the flow gate
+// for writing, so it waits for in-flight messages of every flow.
+func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway.Flow, error) {
+	if a.gate != nil {
+		a.gate.Lock()
+		defer a.gate.Unlock()
+	}
+	return a.transition(ctx, id, action)
+}
+
+func (a flowAdapter) transition(ctx context.Context, id, action string) (gateway.Flow, error) {
+	f, err := a.Get(ctx, id)
+	if err != nil {
+		return gateway.Flow{}, err
+	}
+	next, err := flowlife.Next(f.Status, action)
+	if err != nil {
+		return gateway.Flow{}, fmt.Errorf("%w: %w", gateway.ErrInvalidTransition, err)
+	}
+	f.Status = next
+	doc, err := json.Marshal(f)
+	if err != nil {
+		return gateway.Flow{}, err
+	}
+	if err := a.store.UpdateFlow(ctx, state.FlowDefinition{ID: f.ID, Document: doc}); err != nil {
+		return gateway.Flow{}, flowErr(err)
+	}
+	return f, nil
+}
+
+// RedeployAll undeploys and re-deploys every flow that is not undeployed;
+// each ends deployed (D-29).
+func (a flowAdapter) RedeployAll(ctx context.Context) ([]gateway.Flow, error) {
+	if a.gate != nil {
+		a.gate.Lock()
+		defer a.gate.Unlock()
+	}
+	flows, err := a.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := []gateway.Flow{}
+	for _, f := range flows {
+		if flowlife.Normalize(f.Status) == flowlife.Undeployed {
+			continue
+		}
+		if _, err := a.transition(ctx, f.ID, flowlife.Undeploy); err != nil {
+			return nil, err
+		}
+		redeployed, err := a.transition(ctx, f.ID, flowlife.Deploy)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, redeployed)
+	}
+	return out, nil
+}
+
 // toPipelineFlow converts a stored flow into the pipeline's definition,
 // strictly decoding its transform.
 func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
-	pf := pipeline.Flow{ID: f.ID}
-	switch f.Status {
-	case "stopped", "paused", "halted", "undeployed":
-		pf.Paused = true
-	}
+	pf := pipeline.Flow{ID: f.ID, Paused: !flowlife.AcceptsMessages(f.Status)}
 	if raw := bytes.TrimSpace(f.Transform); len(raw) > 0 && !bytes.Equal(raw, []byte("null")) {
 		dec := json.NewDecoder(bytes.NewReader(f.Transform))
 		dec.DisallowUnknownFields()
@@ -497,7 +554,7 @@ func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (
 	}
 	pf, err := toPipelineFlow(f)
 	if err == nil && pf.Paused {
-		return gateway.IngestResult{}, fmt.Errorf("%w: flow %s is %s", gateway.ErrFlowNotRunning, f.ID, f.Status)
+		return gateway.IngestResult{}, fmt.Errorf("%w: flow %s is %s; start it first", gateway.ErrFlowNotRunning, f.ID, flowlife.Normalize(f.Status))
 	}
 	if err != nil {
 		return gateway.IngestResult{}, err
@@ -617,6 +674,7 @@ func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) error {
 	if err != nil {
 		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
+	f.Status = flowlife.Undeployed // new flows are drafts (D-29)
 	doc, err := json.Marshal(f)
 	if err != nil {
 		return err

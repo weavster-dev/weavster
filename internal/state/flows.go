@@ -15,8 +15,8 @@ var (
 
 // FlowDefinition is a stored flow definition document (D-12). The store
 // treats Document as opaque bytes; the owner of the flow model encodes it.
-// The SQL and in-memory stores implement CreateFlow, GetFlow, ListFlows
-// (ordered by ID), and DeleteFlow.
+// The SQL and in-memory stores implement CreateFlow, UpdateFlow, GetFlow,
+// ListFlows (ordered by ID), and DeleteFlow.
 type FlowDefinition struct {
 	ID       string
 	Document []byte
@@ -49,6 +49,23 @@ func (s *sqlStore) CreateFlow(ctx context.Context, f FlowDefinition) error {
 	}
 	if n == 0 {
 		return ErrFlowExists
+	}
+	return nil
+}
+
+// UpdateFlow replaces an existing definition, returning ErrFlowNotFound if
+// f.ID does not exist.
+func (s *sqlStore) UpdateFlow(ctx context.Context, f FlowDefinition) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE flows SET document = ? WHERE id = ?`, string(f.Document), f.ID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrFlowNotFound
 	}
 	return nil
 }
@@ -105,6 +122,19 @@ func (s *MemStore) CreateFlow(_ context.Context, f FlowDefinition) error {
 	defer s.mu.Unlock()
 	if _, ok := s.flows[f.ID]; ok {
 		return ErrFlowExists
+	}
+	f.Document = append([]byte(nil), f.Document...)
+	s.flows[f.ID] = f
+	return nil
+}
+
+// UpdateFlow replaces an existing definition, returning ErrFlowNotFound if
+// f.ID does not exist.
+func (s *MemStore) UpdateFlow(_ context.Context, f FlowDefinition) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.flows[f.ID]; !ok {
+		return ErrFlowNotFound
 	}
 	f.Document = append([]byte(nil), f.Document...)
 	s.flows[f.ID] = f

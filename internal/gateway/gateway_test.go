@@ -163,7 +163,7 @@ func TestFlowsGetCreateDelete(t *testing.T) {
 	}
 
 	// POST /api/v1/flows — create a new flow.
-	body := `{"id":"f2","name":"Discharge","sourceType":"file","status":"stopped","enabled":false}`
+	body := `{"id":"f2","name":"Discharge","sourceType":"file","enabled":false}`
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/flows", strings.NewReader(body))
 	req.Header.Set(MarkerHeader, MarkerValue)
 	req.Header.Set("Content-Type", "application/json")
@@ -306,7 +306,7 @@ func TestFlowsHandlerErrorPaths(t *testing.T) {
 	}
 
 	// Create store error → 500
-	body := `{"id":"x","name":"X","sourceType":"file","status":"stopped","enabled":false}`
+	body := `{"id":"x","name":"X","sourceType":"file","enabled":false}`
 	req = httptest.NewRequest(http.MethodPost, "/api/v1/flows", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec3 := httptest.NewRecorder()
