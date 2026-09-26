@@ -152,6 +152,33 @@ paths:
         "200": {description: The updated flow}
         "404": {description: Unknown flow or action}
         "409": {description: "Transition not allowed from the flow's status"}
+  /api/v1/flows/export:
+    get:
+      summary: Export flow definitions plus their transitive dependencies (requires flows:view)
+      parameters:
+        - name: ids
+          in: query
+          description: Comma-separated flow ids; omit for all flows
+          schema: {type: string}
+      responses:
+        "200": {description: "{version: 1, flows: [definitions without status]}"}
+        "404": {description: Unknown flow id}
+  /api/v1/flows/import:
+    post:
+      summary: Import an export document, validated as a whole before writing (requires flows:edit)
+      parameters:
+        - name: overwrite
+          in: query
+          schema: {type: boolean}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        "200": {description: "{created: [ids], updated: [ids]}"}
+        "400": {description: Invalid document, flow, or dependencies; nothing written}
+        "409": {description: Flows already exist and overwrite is not set; nothing written}
   /api/v1/flows/redeploy-all:
     post:
       summary: Undeploy and re-deploy every flow that is not undeployed (deployed, started, paused, halted, stopped); each ends deployed (requires flows:deploy)

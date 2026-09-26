@@ -185,3 +185,29 @@ type listFailRepo struct{ *state.MemStore }
 func (listFailRepo) ListFlows(context.Context) ([]state.FlowDefinition, error) {
 	return nil, errors.New("database is locked")
 }
+
+func TestCheckDependencies(t *testing.T) {
+	flow := func(id string, deps ...string) gateway.Flow { return gateway.Flow{ID: id, DependsOn: deps} }
+	tests := []struct {
+		name  string
+		flows []gateway.Flow
+		want  string
+	}{
+		{"none", []gateway.Flow{flow("a"), flow("b")}, ""},
+		{"chain", []gateway.Flow{flow("a", "b"), flow("b", "c"), flow("c")}, ""},
+		{"diamond", []gateway.Flow{flow("a", "b", "c"), flow("b", "d"), flow("c", "d"), flow("d")}, ""},
+		{"unknown", []gateway.Flow{flow("a", "zz")}, "unknown flow zz"},
+		{"self", []gateway.Flow{flow("a", "a")}, "itself"},
+		{"cycle", []gateway.Flow{flow("a", "b"), flow("b", "c"), flow("c", "a")}, "dependency cycle"},
+	}
+	for _, tt := range tests {
+		all := map[string]gateway.Flow{}
+		for _, f := range tt.flows {
+			all[f.ID] = f
+		}
+		err := checkDependencies(all)
+		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
+			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
+		}
+	}
+}

@@ -3,13 +3,30 @@ package gateway
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
+	"strings"
 )
 
-// validFlowID restricts flow IDs to one URL path segment.
-var validFlowID = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+// flowIDPattern restricts flow IDs to one URL path segment.
+var flowIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
+
+// reservedFlowIDs are path segments used by /flows/<name> routes.
+var reservedFlowIDs = map[string]bool{"export": true, "import": true, "redeploy-all": true}
+
+type flowIDValidator struct{}
+
+// MatchString reports whether id is a usable flow id.
+func (flowIDValidator) MatchString(id string) bool {
+	return flowIDPattern.MatchString(id) && !reservedFlowIDs[id]
+}
+
+// validFlowID accepts 1-128 characters from A-Z a-z 0-9 . _ - except the
+// reserved route names.
+var validFlowID = flowIDValidator{}
 
 // writeFlowError maps FlowStore errors to 404/409, and anything else to a
 // 500 that does not leak internal detail.
@@ -21,7 +38,7 @@ func writeFlowError(w http.ResponseWriter, err error) {
 		http.Error(w, err.Error(), http.StatusNotFound)
 	case errors.Is(err, ErrFlowExists):
 		http.Error(w, "flow already exists", http.StatusConflict)
-	case errors.Is(err, ErrFlowNotRunning), errors.Is(err, ErrInvalidTransition):
+	case errors.Is(err, ErrFlowNotRunning), errors.Is(err, ErrInvalidTransition), errors.Is(err, ErrFlowInUse), errors.Is(err, ErrImportConflict):
 		http.Error(w, err.Error(), http.StatusConflict)
 	case errors.Is(err, ErrInvalidFlow), errors.Is(err, ErrInvalidMessage):
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -91,7 +108,7 @@ func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, ma
 		return Flow{}, nil, false
 	}
 	if !validFlowID.MatchString(f.ID) {
-		http.Error(w, "flow id must be 1-128 characters from A-Z a-z 0-9 . _ -", http.StatusBadRequest)
+		http.Error(w, "flow id must be 1-128 characters from A-Z a-z 0-9 . _ - and not export, import, or redeploy-all", http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
 	return f, fields, true
@@ -215,4 +232,75 @@ func (s *Server) handleRedeployAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, flows)
+}
+
+// FlowBundleVersion is the export/import document version.
+const FlowBundleVersion = 1
+
+func (s *Server) handleFlowsExport(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Transfer == nil {
+		http.Error(w, "flow export unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	var ids []string
+	if v := r.URL.Query().Get("ids"); v != "" {
+		ids = strings.Split(v, ",")
+	}
+	flows, err := s.cfg.Transfer.Export(r.Context(), ids)
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, FlowBundle{Version: FlowBundleVersion, Flows: flows})
+}
+
+func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Transfer == nil {
+		http.Error(w, "flow import unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	overwrite := false
+	if v := r.URL.Query().Get("overwrite"); v != "" {
+		var err error
+		if overwrite, err = strconv.ParseBool(v); err != nil {
+			http.Error(w, "overwrite must be true or false", http.StatusBadRequest)
+			return
+		}
+	}
+	var bundle struct {
+		Version int               `json:"version"`
+		Flows   []json.RawMessage `json:"flows"`
+	}
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxMessageBytes)).Decode(&bundle); err != nil {
+		http.Error(w, "body must be an export document: {\"version\":1,\"flows\":[...]}", http.StatusBadRequest)
+		return
+	}
+	if bundle.Version != FlowBundleVersion {
+		http.Error(w, fmt.Sprintf("unsupported export version %d; expected %d", bundle.Version, FlowBundleVersion), http.StatusBadRequest)
+		return
+	}
+	flows := make([]Flow, 0, len(bundle.Flows))
+	for i, raw := range bundle.Flows {
+		var f Flow
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &f); err != nil || json.Unmarshal(raw, &fields) != nil || fields == nil {
+			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
+			return
+		}
+		if _, present := fields["status"]; present {
+			http.Error(w, fmt.Sprintf("flows[%d]: status is managed by lifecycle operations; omit it", i), http.StatusBadRequest)
+			return
+		}
+		if !validFlowID.MatchString(f.ID) {
+			http.Error(w, fmt.Sprintf("flows[%d]: flow id must be 1-128 characters from A-Z a-z 0-9 . _ - and not export, import, or redeploy-all", i), http.StatusBadRequest)
+			return
+		}
+		flows = append(flows, f)
+	}
+	res, err := s.cfg.Transfer.Import(r.Context(), flows, overwrite)
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, res)
 }

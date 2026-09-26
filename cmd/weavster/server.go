@@ -14,6 +14,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -124,6 +126,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Ingest:      ingest,
 		Lifecycle:   flows,
 		FlowUpdates: flows,
+		Transfer:    flows,
 		Stats:       statsAdapter{flows: flows, stats: stats},
 		Events:      eventsAdapter{events},
 		Topology:    topologyAdapter{flows: flows, stats: stats},
@@ -568,14 +571,10 @@ func (a flowAdapter) Update(ctx context.Context, id string, f gateway.Flow, keep
 	if keepEnabled {
 		f.Enabled = current.Enabled
 	}
-	pf, err := toPipelineFlow(f)
-	if err == nil {
-		err = pipeline.Validate(pf)
-	}
-	if err != nil {
-		return gateway.Flow{}, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
-	}
 	f.ID = id
+	if err := a.validateDefinition(ctx, f); err != nil {
+		return gateway.Flow{}, err
+	}
 	return a.setStatus(ctx, f, current.Status)
 }
 
@@ -666,6 +665,207 @@ func (a flowAdapter) RedeployAll(ctx context.Context) ([]gateway.Flow, error) {
 		}
 	}
 	return out, nil
+}
+
+// checkDependencies validates dependsOn across all flows (by id): every
+// dependency exists, no flow depends on itself, and there are no cycles.
+func checkDependencies(all map[string]gateway.Flow) error {
+	for id, f := range all {
+		for _, dep := range f.DependsOn {
+			if dep == id {
+				return fmt.Errorf("flow %s cannot depend on itself", id)
+			}
+			if _, ok := all[dep]; !ok {
+				return fmt.Errorf("flow %s depends on unknown flow %s", id, dep)
+			}
+		}
+	}
+	const (
+		unvisited = iota
+		visiting
+		done
+	)
+	mark := map[string]int{}
+	var visit func(id string, path []string) error
+	visit = func(id string, path []string) error {
+		switch mark[id] {
+		case visiting:
+			return fmt.Errorf("dependency cycle: %s", strings.Join(append(path, id), " -> "))
+		case done:
+			return nil
+		}
+		mark[id] = visiting
+		for _, dep := range all[id].DependsOn {
+			if err := visit(dep, append(path, id)); err != nil {
+				return err
+			}
+		}
+		mark[id] = done
+		return nil
+	}
+	ids := make([]string, 0, len(all))
+	for id := range all {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if err := visit(id, nil); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// withFlows returns all stored flows by id, with the given flows replacing
+// or adding to them.
+func (a flowAdapter) withFlows(ctx context.Context, changed ...gateway.Flow) (map[string]gateway.Flow, error) {
+	stored, err := a.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	all := make(map[string]gateway.Flow, len(stored)+len(changed))
+	for _, f := range stored {
+		all[f.ID] = f
+	}
+	for _, f := range changed {
+		all[f.ID] = f
+	}
+	return all, nil
+}
+
+// validateDefinition checks a flow's transform and destinations, and its
+// dependencies against the other flows.
+func (a flowAdapter) validateDefinition(ctx context.Context, f gateway.Flow) error {
+	pf, err := toPipelineFlow(f)
+	if err == nil {
+		err = pipeline.Validate(pf)
+	}
+	if err == nil && len(f.DependsOn) > 0 {
+		var all map[string]gateway.Flow
+		if all, err = a.withFlows(ctx, f); err == nil {
+			err = checkDependencies(all)
+		}
+	}
+	if err != nil {
+		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+	}
+	return nil
+}
+
+// Export returns the selected flows (all when ids is empty) and their
+// transitive dependencies, without runtime status, sorted by id.
+func (a flowAdapter) Export(ctx context.Context, ids []string) ([]gateway.Flow, error) {
+	all, err := a.withFlows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	selected := map[string]bool{}
+	var add func(id string) error
+	add = func(id string) error {
+		if selected[id] {
+			return nil
+		}
+		f, ok := all[id]
+		if !ok {
+			return fmt.Errorf("%w: %s", gateway.ErrFlowNotFound, id)
+		}
+		selected[id] = true
+		for _, dep := range f.DependsOn {
+			if err := add(dep); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	if len(ids) == 0 {
+		for id := range all {
+			selected[id] = true
+		}
+	}
+	for _, id := range ids {
+		if err := add(strings.TrimSpace(id)); err != nil {
+			return nil, err
+		}
+	}
+	out := make([]gateway.Flow, 0, len(selected))
+	for id := range selected {
+		f := all[id]
+		f.Status = ""
+		out = append(out, f)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+// Import validates the whole bundle, then writes it: new flows are created
+// undeployed; existing flows are replaced (keeping their status) only with
+// overwrite. On a write failure it returns what was already written.
+func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite bool) (gateway.ImportResult, error) {
+	res := gateway.ImportResult{Created: []string{}, Updated: []string{}}
+	seen := map[string]bool{}
+	for _, f := range flows {
+		if seen[f.ID] {
+			return res, fmt.Errorf("%w: flow %s appears twice", gateway.ErrInvalidFlow, f.ID)
+		}
+		seen[f.ID] = true
+		pf, err := toPipelineFlow(f)
+		if err == nil {
+			err = pipeline.Validate(pf)
+		}
+		if err != nil {
+			return res, fmt.Errorf("%w: flow %s: %w", gateway.ErrInvalidFlow, f.ID, err)
+		}
+	}
+	all, err := a.withFlows(ctx)
+	if err != nil {
+		return res, err
+	}
+	var conflicts []string
+	for _, f := range flows {
+		if _, exists := all[f.ID]; exists {
+			conflicts = append(conflicts, f.ID)
+		}
+	}
+	if len(conflicts) > 0 && !overwrite {
+		return res, fmt.Errorf("%w: %s (use overwrite=true to replace them)", gateway.ErrImportConflict, strings.Join(conflicts, ", "))
+	}
+	existing := make(map[string]gateway.Flow, len(all))
+	for id, f := range all {
+		existing[id] = f
+	}
+	for _, f := range flows {
+		all[f.ID] = f
+	}
+	if err := checkDependencies(all); err != nil {
+		return res, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+	}
+	for _, f := range flows {
+		if cur, ok := existing[f.ID]; ok {
+			if _, err := a.replace(ctx, f.ID, f, cur.Status); err != nil {
+				return res, fmt.Errorf("import %s: %w", f.ID, err)
+			}
+			res.Updated = append(res.Updated, f.ID)
+			continue
+		}
+		f.Status = flowlife.Undeployed
+		doc, err := json.Marshal(f)
+		if err != nil {
+			return res, err
+		}
+		if err := a.store.CreateFlow(ctx, state.FlowDefinition{ID: f.ID, Document: doc}); err != nil {
+			return res, fmt.Errorf("import %s: %w", f.ID, flowErr(err))
+		}
+		res.Created = append(res.Created, f.ID)
+	}
+	return res, nil
+}
+
+// replace stores f under id with the given status, holding the flow's
+// lock.
+func (a flowAdapter) replace(ctx context.Context, id string, f gateway.Flow, status string) (gateway.Flow, error) {
+	defer a.lock(id, true)()
+	f.ID = id
+	return a.setStatus(ctx, f, status)
 }
 
 // toPipelineFlow converts a stored flow into the pipeline's definition,
@@ -823,12 +1023,8 @@ func (a flowAdapter) Get(ctx context.Context, id string) (gateway.Flow, error) {
 }
 
 func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) (gateway.Flow, error) {
-	pf, err := toPipelineFlow(f)
-	if err == nil {
-		err = pipeline.Validate(pf)
-	}
-	if err != nil {
-		return gateway.Flow{}, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+	if err := a.validateDefinition(ctx, f); err != nil {
+		return gateway.Flow{}, err
 	}
 	f.Status = flowlife.Undeployed // new flows are drafts (D-29)
 	doc, err := json.Marshal(f)
@@ -843,6 +1039,20 @@ func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) (gateway.Flow, 
 
 func (a flowAdapter) Delete(ctx context.Context, id string) error {
 	defer a.lock(id, false)()
+	// If the flows cannot be read (e.g. one is corrupt), allow the delete:
+	// it is how an operator removes an unreadable flow.
+	if all, err := a.withFlows(ctx); err == nil {
+		var dependents []string
+		for _, f := range all {
+			if slices.Contains(f.DependsOn, id) {
+				dependents = append(dependents, f.ID)
+			}
+		}
+		if len(dependents) > 0 {
+			sort.Strings(dependents)
+			return fmt.Errorf("%w: %s depended on by %s", gateway.ErrFlowInUse, id, strings.Join(dependents, ", "))
+		}
+	}
 	if err := a.store.DeleteFlow(ctx, id); err != nil {
 		return flowErr(err)
 	}

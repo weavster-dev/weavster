@@ -39,8 +39,10 @@ type Flow struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	SourceType string `json:"sourceType"`
-	Status     string `json:"status"`
+	Status     string `json:"status,omitempty"`
 	Enabled    bool   `json:"enabled"`
+	// DependsOn lists flows this flow requires (ids); kept acyclic.
+	DependsOn []string `json:"dependsOn,omitempty"`
 	// Transform is the flow's YAML DSL transform as a JSON object (the
 	// transform.schema.json shape); the gateway passes it through unparsed.
 	Transform    json.RawMessage   `json:"transform,omitempty"`
@@ -62,6 +64,28 @@ type FlowUpdater interface {
 	// flag is kept instead of f.Enabled.
 	Update(ctx context.Context, id string, f Flow, keepEnabled bool) (Flow, error)
 	SetEnabled(ctx context.Context, id string, enabled bool) (Flow, error)
+}
+
+// FlowBundle is an export/import document.
+type FlowBundle struct {
+	Version int    `json:"version"`
+	Flows   []Flow `json:"flows"`
+}
+
+// ImportResult lists the flows an import created and updated.
+type ImportResult struct {
+	Created []string `json:"created"`
+	Updated []string `json:"updated"`
+}
+
+// FlowTransfer exports and imports flow definitions.
+type FlowTransfer interface {
+	// Export returns the selected flows (all when ids is empty) plus their
+	// transitive dependencies, without status.
+	Export(ctx context.Context, ids []string) ([]Flow, error)
+	// Import validates every flow first, then writes them. Existing flows
+	// are only replaced when overwrite is set (ErrImportConflict otherwise).
+	Import(ctx context.Context, flows []Flow, overwrite bool) (ImportResult, error)
 }
 
 // FlowLifecycle changes a flow's runtime state (spec §6.1).
@@ -94,6 +118,10 @@ var (
 	// flow that is stopped".
 	ErrInvalidTransition = errors.New("invalid lifecycle transition")
 	ErrUnknownAction     = errors.New("unknown lifecycle action")
+	// ErrFlowInUse: another flow depends on this one.
+	ErrFlowInUse = errors.New("flow is a dependency of other flows")
+	// ErrImportConflict: the bundle contains flows that already exist.
+	ErrImportConflict = errors.New("flows already exist")
 )
 
 // FlowStore is the flow CRUD backend.
@@ -143,6 +171,7 @@ type Config struct {
 	Ingest      MessageIngester
 	Lifecycle   FlowLifecycle
 	FlowUpdates FlowUpdater
+	Transfer    FlowTransfer
 	Stats       StatsProvider
 	Events      EventSearcher
 	Topology    TopologyProvider
