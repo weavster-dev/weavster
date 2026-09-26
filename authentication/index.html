@@ -209,8 +209,8 @@ endpoint and Basic credentials. While the account is locked, even the correct pa
 returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See <a href="../server-config/#auth">Server configuration</a>.</p>
 <p>!!! warning "Lockout can shut out the only admin"
     Anyone who can reach the API can lock <code>admin</code> by sending wrong passwords, and there is no
-    second account to unlock it. Restarting the server clears the lockout, but it also clears the
-    in-memory flows. Keep the server off untrusted networks. Setting <code>retryLimit: 0</code> removes this
+    second account to unlock it. Restarting the server clears the lockout, but it also clears
+    flows stored with <code>store.dialect: memory</code>. Keep the server off untrusted networks. Setting <code>retryLimit: 0</code> removes this
     risk but allows unlimited password guessing.</p>
 <h2 id="permissions">Permissions</h2>
 <table>
