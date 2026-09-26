@@ -15,7 +15,8 @@ func TestLoad(t *testing.T) {
 		check   func(t *testing.T, c Config)
 	}{
 		{name: "empty file keeps defaults", yaml: "", check: func(t *testing.T, c Config) {
-			if c.Listen.Address != "127.0.0.1:8080" || c.Store.Dialect != DialectMemory || !c.Listen.RequireMarkerHeader {
+			if c.Listen.Address != "127.0.0.1:8080" || c.Store.Dialect != DialectMemory || !c.Listen.RequireMarkerHeader ||
+				c.Listen.ShutdownTimeoutMs != 10000 || c.Delivery != (Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000}) {
 				t.Errorf("defaults not applied: %+v", c)
 			}
 		}},
@@ -52,6 +53,9 @@ auth:
 		{name: "sqlite without dsn or dataDir", yaml: "store: {dialect: sqlite}\n", wantErr: "store.dsn or paths.dataDir"},
 		{name: "zero pool", yaml: "store: {maxConnections: 0}\n", wantErr: "store.maxConnections must be >= 1"},
 		{name: "negative retry", yaml: "store: {maxRetry: -1}\n", wantErr: "must be >= 0"},
+		{name: "zero shutdown timeout", yaml: "listen: {shutdownTimeoutMs: 0}\n", wantErr: "listen.shutdownTimeoutMs"},
+		{name: "huge shutdown timeout", yaml: "listen: {shutdownTimeoutMs: 600001}\n", wantErr: "listen.shutdownTimeoutMs"},
+		{name: "negative shutdown timeout", yaml: "listen: {shutdownTimeoutMs: -5}\n", wantErr: "listen.shutdownTimeoutMs"},
 		{name: "zero delivery attempts", yaml: "delivery: {maxAttempts: 0}\n", wantErr: "delivery.maxAttempts"},
 		{name: "huge retry interval", yaml: "delivery: {retryIntervalMs: 9223372036854775807}\n", wantErr: "delivery.retryIntervalMs must be between"},
 		{name: "zero backoff", yaml: "delivery: {backoffBaseMs: 0}\n", wantErr: "delivery.backoffBaseMs must be between"},

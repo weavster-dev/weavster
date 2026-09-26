@@ -62,6 +62,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | YAML DSL `map`, `set`, `filter` steps | Implemented (wired) | `TestPipelineEndToEnd`. `build` and `destinationSet` are not supported. |
 | WASM executor (wazero), module registry | Library-only | Not used by the server. The executor has no WASI host. |
 | Scheduler (durable jobs, leases, interval/cron) | Library-only | |
+| Graceful shutdown bounded by `listen.shutdownTimeoutMs`; unfinished work resumes on the next start | Implemented (wired) | `TestGracefulShutdownRequeuesInFlightWork` |
 | Delivery retries with persisted backoff, `dead-lettered` status, restart recovery | Implemented (wired) | `TestRetryRecoversQueuedMessage`, `TestQueuedWorkSurvivesRestart`, `TestDeadLetterAfterMaxAttempts`. No dead-letter list/inspect/requeue API. |
 | Alerts and SMTP/webhook notifiers | Library-only | |
 | Config-as-code (validate/plan/apply/drift), Git store | Library-only | No CLI command or API endpoint exposes them. |

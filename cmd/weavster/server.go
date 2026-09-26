@@ -228,10 +228,12 @@ func runServer(args []string, stderr io.Writer) int {
 	workerCtx, stopWorkers := context.WithCancel(ctx)
 	workersDone := make(chan struct{})
 	go func() { workers(workerCtx); close(workersDone) }()
-	defer func() { stopWorkers(); <-workersDone }()
+	defer stopWorkers()
 
 	servers, err := listen(cfg, handler)
 	if err != nil {
+		stopWorkers()
+		<-workersDone // no deliveries can be in progress this early
 		return fail(err)
 	}
 	errCh := make(chan error, len(servers))
@@ -255,12 +257,46 @@ func runServer(args []string, stderr io.Writer) int {
 		code = fail(err)
 	case <-ctx.Done():
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	for _, s := range servers {
-		_ = s.Shutdown(shutdownCtx)
+	stop() // a second SIGINT/SIGTERM now terminates immediately
+	if !shutdown(servers, stopWorkers, workersDone, time.Duration(cfg.Listen.ShutdownTimeoutMs)*time.Millisecond, logger) {
+		logger.Warn("shutdown deadline reached; unfinished messages are stored and resume on the next start",
+			"timeout", time.Duration(cfg.Listen.ShutdownTimeoutMs)*time.Millisecond)
 	}
 	return code
+}
+
+// shutdown stops every listener at once and the retry worker (after its
+// current message), then waits for in-flight requests and the worker until
+// the deadline. It reports whether everything finished in time; on timeout
+// the listeners are closed. Work still unfinished is already stored and is
+// resumed by the next start's recovery pass with the same idempotency keys.
+func shutdown(servers []*http.Server, stopWorkers context.CancelFunc, workersDone <-chan struct{}, timeout time.Duration, logger *slog.Logger) bool {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	stopWorkers()
+	var wg sync.WaitGroup
+	clean := true
+	var mu sync.Mutex
+	for _, s := range servers {
+		wg.Add(1)
+		go func(s *http.Server) {
+			defer wg.Done()
+			if err := s.Shutdown(ctx); err != nil {
+				_ = s.Close()
+				mu.Lock()
+				clean = false
+				mu.Unlock()
+			}
+		}(s)
+	}
+	wg.Wait()
+	select {
+	case <-workersDone:
+	case <-ctx.Done():
+		logger.Warn("retry worker still delivering at the shutdown deadline; its message resumes on the next start")
+		return false
+	}
+	return clean
 }
 
 // listen builds the cleartext and TLS listeners enabled in cfg.
