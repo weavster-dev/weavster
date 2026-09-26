@@ -31,9 +31,17 @@ All notable changes to this project are documented here, following
 - octocov PR coverage report + coverage badge: `coverage-gate.yml` now comments a coverage report on PRs and pushes a self-updating `docs/coverage.svg` badge to `main`, linked from the `README.md`.
 - Alert delivery regression coverage: verify `Manager.Handle` preserves notifier failures and identifies the affected alert.
 - Config artifact coverage: tests now verify `Config.Artifacts` flattens every supported artifact kind and preserves serializable flow and alert content.
+- CI quality gates (#142): `golangci-lint` job (pinned v2.6.2) with a no-`//nolint` check, `CGO_ENABLED=0` cross-build matrix for linux/amd64, linux/arm64, darwin/arm64 with no-CGo and static-link verification, and a Docker image build + non-root + smoke-test job.
+- `scripts/check-coverage.sh`: fails when any package is below the coverage threshold (default 90%), counting packages with no test files as 0%; run in the `coverage-gate` workflow.
+- Tests raising `cmd/weavster` (88.5% → 92.9%) and `internal/state` (87.9% → 90.4%) coverage: `weavster test` error paths, `server` subcommand dispatch, message search flow/status filtering, SQLite/in-memory search filter parity, and closed-database errors.
+
+### Changed
+
+- Coverage policy raised to 90% for every package and the aggregate (#142, #107 D-08): `.octocov.yml` `acceptable: 90%`, `AGENTS.md`, `CONTRIBUTING.md`.
 
 ### Fixed
 
+- `golangci-lint` errcheck findings on unchecked `Close` calls in `cmd/weavster/cli_test.go` and `cmd/weavster/server_lifecycle_test.go` (#142).
 - Duplicate test function declarations breaking `go vet`/`go test` on main: renamed `TestAdapterNames` (in `adapters_gap_test.go`) to `TestAdapterNamesGap` and `TestSchedulerReconcile` (in `heartbeat_reconcile_test.go`) to `TestSchedulerReconcileExpiredLease`, preserving both test cases.
 - `weavster test --format junit`: exclude the internal `passed` flag from JUnit XML so output is valid `<testcase name=.../>` elements.
 - MkDocs: complete `mkdocs.yml` (site_url, full nav, exclude internal kickoff doc, lenient link validation), add `requirements.txt`, and a `docs.yml` workflow that deploys to GitHub Pages via `mkdocs gh-deploy` on the `gh-pages` branch.

@@ -44,7 +44,7 @@ func TestHTTPClientGetSetsMarkerHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get() error = %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if gotHeader != gateway.MarkerValue {
 		t.Errorf("marker header = %q, want %q", gotHeader, gateway.MarkerValue)
 	}

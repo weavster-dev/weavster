@@ -63,6 +63,7 @@ GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build ./cmd/weavster
    go vet ./...               # MUST pass clean
    golangci-lint run          # MUST pass (fix, don't //nolint)
    go test -race ./...        # MUST pass
+   scripts/check-coverage.sh  # MUST pass (every package >= 90%)
    ```
 
 5. Add a `CHANGELOG.md` entry under `[Unreleased]` (Added/Changed/Fixed/Removed).

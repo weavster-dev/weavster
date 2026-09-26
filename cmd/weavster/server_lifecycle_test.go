@@ -5,6 +5,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func TestRunServerBindFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("listen: %v", err)
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	addr := ln.Addr().String()
 
 	var stderr bytes.Buffer
@@ -50,7 +51,7 @@ func TestRunServerShutsDownOnSignal(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	addr := ln.Addr().String()
-	ln.Close() // free the port for runServer to bind synchronously
+	_ = ln.Close() // free the port for runServer to bind synchronously
 
 	done := make(chan int, 1)
 	var stderr bytes.Buffer
@@ -85,5 +86,21 @@ func TestRunServerShutsDownOnSignal(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("runServer did not shut down after SIGTERM")
+	}
+}
+
+// TestRunServerSubcommand covers `weavster server ADDR` dispatch through run:
+// an address already in use makes the server exit 1 instead of blocking.
+func TestRunServerSubcommand(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	var out, stderr bytes.Buffer
+	code := run([]string{"server", ln.Addr().String()}, strings.NewReader(""), &out, &stderr)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1 (address in use), stderr = %q", code, stderr.String())
 	}
 }
