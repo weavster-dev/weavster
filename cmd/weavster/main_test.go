@@ -25,12 +25,20 @@ func TestRunHelpAndVersion(t *testing.T) {
 		t.Errorf("help output = %q", out.String())
 	}
 
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"id":"weavster","version":"9.9.9"}`))
+	}))
+	defer srv.Close()
 	out.Reset()
-	if code := run([]string{"-v"}, strings.NewReader(""), &out, &errb); code != 0 {
-		t.Errorf("version exit = %d", code)
+	if code := run([]string{"-a", srv.URL, "-v"}, strings.NewReader(""), &out, &errb); code != 0 {
+		t.Errorf("version exit = %d (stderr %q)", code, errb.String())
 	}
-	if !strings.Contains(out.String(), version) {
+	if !strings.Contains(out.String(), "weavster server 9.9.9 (client "+version+")") {
 		t.Errorf("version output = %q", out.String())
+	}
+	errb.Reset()
+	if code := run([]string{"-a", "http://127.0.0.1:1", "-v"}, strings.NewReader(""), &out, &errb); code != 2 || !strings.Contains(errb.String(), "Error:") {
+		t.Errorf("unreachable server: exit %d, stderr %q", code, errb.String())
 	}
 }
 
@@ -162,9 +170,6 @@ func TestDispatchClientErrors(t *testing.T) {
 
 type erroringClient struct{}
 
-func (erroringClient) Status(context.Context) (string, error) {
-	return "", fmt.Errorf("status unavailable")
-}
 func (erroringClient) UserList(context.Context) ([]string, error) {
 	return nil, fmt.Errorf("user list unavailable")
 }
@@ -206,7 +211,6 @@ func TestBuildServerServesSystem(t *testing.T) {
 
 type fakeClient struct{}
 
-func (fakeClient) Status(context.Context) (string, error)     { return "started", nil }
 func (fakeClient) UserList(context.Context) ([]string, error) { return []string{"admin"}, nil }
 func (fakeClient) Version(context.Context) string             { return version }
 func (fakeClient) Call(context.Context, string, string, []byte) ([]byte, error) {

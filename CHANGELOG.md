@@ -58,6 +58,7 @@ All notable changes to this project are documented here, following
 
 ### Changed
 
+- CLI (#198): `weavster` with no subcommand opens the interactive shell instead of starting the server (use `weavster server`). `-v` prints the server's version, `status` lists deployed flows, `-u/-p` are checked at startup (`Could not log in to server.` on failure), `-c` reads a YAML connection file (missing or invalid exits 2), and `-d` adds the error's causes.
 - CLI `flow list` prints one line per flow with id, status, and name separated by tabs, instead of only the name (#196). Scripts that parse its output need updating.
 - One flow model (#194): config-as-code flows (`flows.<id>` in a config document) are the same definition as the flow API, validated against `flow.schema.json` (runtime fields such as `status` are rejected), and `config.schema.json` refers to it. The previous `source`/`transforms`/`filters` flow shape is gone. Legacy migration flags destinations other than `http`/`file` and source paths for review instead of carrying them over.
 - **Stricter flow input:** unknown fields in flow definitions (previously ignored) now return `400` (#180).

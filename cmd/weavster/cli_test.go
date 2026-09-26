@@ -31,9 +31,9 @@ func TestNewHTTPClientExplicitAddr(t *testing.T) {
 	}
 }
 
-// TestHTTPClientGetSetsMarkerHeader ensures every outbound request carries
+// TestHTTPClientSetsMarkerHeader ensures every outbound request carries
 // the CSRF marker header required by the gateway (spec §2.13.45, §10).
-func TestHTTPClientGetSetsMarkerHeader(t *testing.T) {
+func TestHTTPClientSetsMarkerHeader(t *testing.T) {
 	var gotHeader string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotHeader = r.Header.Get(gateway.MarkerHeader)
@@ -42,46 +42,18 @@ func TestHTTPClientGetSetsMarkerHeader(t *testing.T) {
 	defer srv.Close()
 
 	c := newHTTPClient(srv.URL, "", "")
-	resp, err := c.get(context.Background(), "/anything")
-	if err != nil {
-		t.Fatalf("get() error = %v", err)
+	if _, err := c.Call(context.Background(), http.MethodGet, "/anything", nil); err != nil {
+		t.Fatalf("Call() error = %v", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
 	if gotHeader != gateway.MarkerValue {
 		t.Errorf("marker header = %q, want %q", gotHeader, gateway.MarkerValue)
 	}
 }
 
-func TestHTTPClientGetInvalidURL(t *testing.T) {
+func TestHTTPClientInvalidURL(t *testing.T) {
 	c := newHTTPClient("http://[::1]:namedport", "", "")
-	if _, err := c.get(context.Background(), "/x"); err == nil {
+	if _, err := c.Call(context.Background(), http.MethodGet, "/x", nil); err == nil {
 		t.Error("expected error for invalid request URL, got nil")
-	}
-}
-
-func TestHTTPClientStatus(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/api/v1/system" {
-			t.Errorf("path = %q, want /api/v1/system", r.URL.Path)
-		}
-		_, _ = w.Write([]byte(`{"name":"weavster"}`))
-	}))
-	defer srv.Close()
-
-	c := newHTTPClient(srv.URL, "", "")
-	out, err := c.Status(context.Background())
-	if err != nil {
-		t.Fatalf("Status() error = %v", err)
-	}
-	if out != `{"name":"weavster"}` {
-		t.Errorf("Status() = %q", out)
-	}
-}
-
-func TestHTTPClientStatusError(t *testing.T) {
-	c := newHTTPClient("http://[::1]:namedport", "", "")
-	if _, err := c.Status(context.Background()); err == nil {
-		t.Error("expected error, got nil")
 	}
 }
 
@@ -123,7 +95,6 @@ func TestFlowListUnreadableReply(t *testing.T) {
 // replyClient answers every Call with the same body.
 type replyClient string
 
-func (replyClient) Status(context.Context) (string, error)     { return "", nil }
 func (replyClient) UserList(context.Context) ([]string, error) { return nil, nil }
 func (replyClient) Version(context.Context) string             { return version }
 func (r replyClient) Call(context.Context, string, string, []byte) ([]byte, error) {

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -33,14 +34,14 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("weavster", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	var (
-		addr     = fs.String("a", "", "server address to connect to")
+		addr     = fs.String("a", "", "server address to connect to (default http://127.0.0.1:8080)")
 		user     = fs.String("u", "", "login username")
 		password = fs.String("p", "", "login password")
 		script   = fs.String("s", "", "script file (batch mode)")
-		ver      = fs.Bool("v", false, "print server version")
-		config   = fs.String("c", "", "path to default connection/config file")
+		ver      = fs.Bool("v", false, "print the server's version")
+		config   = fs.String("c", "", "connection file (YAML: address, user, password)")
 		help     = fs.Bool("h", false, "print usage and exit")
-		debug    = fs.Bool("d", false, "debug mode (print stack traces on error)")
+		debug    = fs.Bool("d", false, "debug mode (print the cause chain of errors)")
 	)
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -49,8 +50,34 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		printUsage(stdout)
 		return 0
 	}
+	conn := connection{Address: *addr, User: *user, Password: *password}
+	if *config != "" {
+		file, err := loadConnection(*config)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 2
+		}
+		conn = file.override(conn)
+	}
+	if conn.User == "" && conn.Password != "" {
+		_, _ = fmt.Fprintln(stderr, "Error: a password needs a user (-u, or user: in the connection file)")
+		return 2
+	}
+	client := newHTTPClient(conn.Address, conn.User, conn.Password)
+	ctx := context.Background()
+	if conn.User != "" {
+		if err := client.login(ctx); err != nil {
+			// Spec §3.3: report and carry on (the prompt, or the script).
+			_, _ = fmt.Fprintln(stderr, "Could not log in to server.")
+			_ = shellError(stderr, *debug, err)
+		}
+	}
 	if *ver {
-		_, _ = fmt.Fprintf(stdout, "weavster %s (built %s)\n", version, buildDate)
+		v, err := serverVersion(ctx, client)
+		if err != nil {
+			return shellError(stderr, *debug, err)
+		}
+		_, _ = fmt.Fprintf(stdout, "weavster server %s (client %s)\n", v, version)
 		return 0
 	}
 	if *script != "" {
@@ -59,24 +86,24 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 			return 2
 		}
-		client := newHTTPClient(*addr, *user, *password)
 		return runScript(data, client, stdout, stderr, *debug)
 	}
-	_ = config
-	return runServer(nil, stderr)
+	return runShell(stdin, client, stdout, stderr, *debug)
 }
 
 func printUsage(w io.Writer) {
-	_, _ = fmt.Fprintf(w, `Usage: weavster [flags] | weavster test [--filter NAME] [--format junit|json] [--output DIR]
+	_, _ = fmt.Fprintf(w, `Usage: weavster [flags]            interactive shell (or batch mode with -s)
+       weavster server [--config FILE] [address]
+       weavster test [--filter NAME] [--format junit|json] [--output DIR]
 
 Flags:
-  -a address   Server address to connect to
+  -a address   Server address to connect to (default http://127.0.0.1:8080)
   -u user      Login username
   -p password  Login password
   -s script    Script file (batch mode)
-  -v           Print server version
-  -c config    Path to default connection/config file
+  -v           Print the server's version
+  -c file      Connection file (YAML: address, user, password); flags override it
   -h           Print usage and exit
-  -d           Debug mode (print stack traces on error)
+  -d           Debug mode (print the cause chain of errors)
 `)
 }

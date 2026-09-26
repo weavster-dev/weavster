@@ -1,18 +1,47 @@
 # Command-line client
 
-`weavster` without `server` is the command-line client. It talks to a running server over the
-REST API. Today it runs commands from a script file (batch mode):
+`weavster` without `server` or `test` is the command-line client. It talks to a running server
+over the REST API, either as an interactive shell or running a script file (batch mode).
 
 ```bash
+# Interactive shell
+weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd'
+weavster> flow list
+adt	started	ADT normalize
+weavster> quit
+
+# Batch mode
 weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
 ```
 
 | Flag | Meaning |
 |---|---|
-| `-a` | Server address (default `http://127.0.0.1:8080`). |
-| `-u`, `-p` | Username and password, sent as Basic credentials. |
-| `-s` | Script file: one command per line. Empty lines and lines starting with `#` are skipped. |
-| `-d` | Accepted; errors look the same with or without it. |
+| `-a address` | Server address (default `http://127.0.0.1:8080`). Include the scheme. |
+| `-u user`, `-p password` | Log in as this user. The credentials are checked at startup. If they are wrong, or the account must change its password first, the client prints `Could not log in to server.` and the server's reason, then continues (commands then fail with `401` or `403`). A password without a user exits `2`. |
+| `-c file` | Connection file with the address and credentials (see below). `-a`, `-u`, and `-p` override its values. A missing or invalid file exits `2`. |
+| `-s file` | Script file: one command per line. Empty lines and lines starting with `#` are skipped. |
+| `-v` | Print the server's version and exit. It needs `-u`/`-p` (or `-c`), because the server only answers signed-in users; it exits `2` if the server cannot be reached or refuses the credentials. |
+| `-h` | Print usage and exit. |
+| `-d` | Debug mode: error messages also list each underlying cause. |
+
+Connection file (`-c`), YAML with only these keys:
+
+```yaml
+address: http://127.0.0.1:8080
+user: admin
+password: A-Strong-Passw0rd
+```
+
+Keep it readable only by you (`chmod 600`), because it holds a password.
+
+## Interactive shell
+
+The shell prints the prompt `weavster> `, runs each command you type, and shows errors without
+leaving. `quit`, `exit`, or end of input (Ctrl-D) ends it with exit code `0`. A line longer than
+1 MiB, or a read error, ends it with exit code `2`. It accepts the same
+commands as batch mode.
+
+## Batch mode
 
 Commands are split on spaces: arguments (such as file names) cannot contain spaces, and there is
 no quoting. File names are relative to the directory you run `weavster` from.
@@ -67,13 +96,12 @@ Commands that change a flow print the server's reply (the flow, or the import/up
 
 | Command | What it does |
 |---|---|
-| `status` | Prints the server's `GET /api/v1/system` reply. |
+| `status` | Lists deployed flows (every status except `undeployed`): id, status, and name per line, or `no deployed flows`. |
 | `version` | Prints the client version. |
 | `user list` | Prints nothing yet. |
 | `help` | Lists the commands. |
-| `quit`, `exit` | Do nothing in batch mode. |
+| `quit`, `exit` | End the interactive shell; ignored in batch mode. |
 
 ## Limits today
 
-- There is no interactive shell yet: without `-s`, `weavster` starts the server.
-- `status` exits `0` even when the server answers with an error; it prints the reply.
+- `user list` prints nothing yet.

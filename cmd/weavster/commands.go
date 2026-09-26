@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -23,12 +24,7 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		_, _ = fmt.Fprintln(stdout, client.Version(ctx))
 		return 0
 	case "status":
-		out, err := client.Status(ctx)
-		if err != nil {
-			return shellError(stderr, debug, err)
-		}
-		_, _ = fmt.Fprintln(stdout, out)
-		return 0
+		return deployedStatus(ctx, client, stdout, stderr, debug)
 	case "flow":
 		return flowCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	case "user":
@@ -50,11 +46,14 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 	}
 }
 
+// shellError prints err; in debug mode it adds each wrapped cause with its
+// type. It returns exit code 2.
 func shellError(stderr io.Writer, debug bool, err error) int {
+	_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 	if debug {
-		_, _ = fmt.Fprintf(stderr, "Error: %+v\n", err)
-	} else {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		for cause := errors.Unwrap(err); cause != nil; cause = errors.Unwrap(cause) {
+			_, _ = fmt.Fprintf(stderr, "  caused by %T: %v\n", cause, cause)
+		}
 	}
 	return 2
 }

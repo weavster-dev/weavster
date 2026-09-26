@@ -14,7 +14,6 @@ import (
 
 // Client is the network-API surface used by the scriptable shell (spec §3).
 type Client interface {
-	Status(ctx context.Context) (string, error)
 	UserList(ctx context.Context) ([]string, error)
 	Version(ctx context.Context) string
 	// Call sends one REST request and returns the response body. A reply
@@ -37,10 +36,6 @@ func newHTTPClient(addr, user, pass string) *httpClient {
 	return &httpClient{base: addr, user: user, pass: pass, http: http.DefaultClient}
 }
 
-func (c *httpClient) get(ctx context.Context, path string) (*http.Response, error) {
-	return c.request(ctx, http.MethodGet, path, nil)
-}
-
 func (c *httpClient) request(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
 	var r io.Reader
 	if body != nil {
@@ -55,16 +50,6 @@ func (c *httpClient) request(ctx context.Context, method, path string, body []by
 		req.SetBasicAuth(c.user, c.pass)
 	}
 	return c.http.Do(req)
-}
-
-func (c *httpClient) Status(ctx context.Context) (string, error) {
-	resp, err := c.get(ctx, "/api/v1/system")
-	if err != nil {
-		return "", err
-	}
-	defer func() { _ = resp.Body.Close() }()
-	body, _ := io.ReadAll(resp.Body)
-	return string(body), nil
 }
 
 func (c *httpClient) Call(ctx context.Context, method, path string, body []byte) ([]byte, error) {
