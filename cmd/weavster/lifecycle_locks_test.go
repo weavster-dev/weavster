@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -92,5 +94,53 @@ func TestRedeployAllPartialAndLegacyStatus(t *testing.T) {
 	done, err := flows.RedeployAll(ctx)
 	if err == nil || len(done) != 1 || done[0].ID != "a" || done[0].Status != "deployed" {
 		t.Errorf("RedeployAll = %+v, %v; want a redeployed, then the error for b", done, err)
+	}
+}
+
+func TestFlowLocksDoNotAccumulate(t *testing.T) {
+	l := newFlowLocks()
+	for i := 0; i < 100; i++ {
+		l.ProcessFlow(fmt.Sprintf("unknown-%d", i))()
+		l.exclusive(fmt.Sprintf("x-%d", i), i%2 == 0)()
+	}
+	if len(l.flows) != 0 {
+		t.Errorf("%d lock entries left after release", len(l.flows))
+	}
+	held := l.ProcessFlow("f")
+	if len(l.flows) != 1 {
+		t.Error("held lock entry missing")
+	}
+	held()
+}
+
+func TestRedeployAllSkipsFlowsUndeployedMeanwhile(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	for _, doc := range []string{`{"id":"a","status":"started"}`, `{"id":"b","status":"started"}`} {
+		var f struct{ ID string }
+		_ = json.Unmarshal([]byte(doc), &f)
+		_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: f.ID, Document: []byte(doc)})
+	}
+	flows := flowAdapter{store: mem, locks: newFlowLocks()}
+	// b is undeployed between RedeployAll's List and its per-flow lock: hold
+	// b's lock so RedeployAll must wait, then undeploy b and release.
+	release := flows.locks.exclusive("b", false)
+	result := make(chan []gateway.Flow, 1)
+	go func() {
+		out, _ := flows.RedeployAll(ctx)
+		result <- out
+	}()
+	time.Sleep(50 * time.Millisecond)
+	f, _ := flows.Get(ctx, "b")
+	f.Status = "undeployed"
+	doc, _ := json.Marshal(f)
+	_ = mem.UpdateFlow(ctx, state.FlowDefinition{ID: "b", Document: doc})
+	release()
+	out := <-result
+	if len(out) != 1 || out[0].ID != "a" {
+		t.Errorf("redeployed %+v; want only a", out)
+	}
+	if got, _ := flows.Get(ctx, "b"); got.Status != "undeployed" {
+		t.Errorf("b resurrected as %s", got.Status)
 	}
 }

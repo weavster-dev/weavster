@@ -61,8 +61,13 @@ func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "flows unavailable", http.StatusServiceUnavailable)
 		return
 	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "could not read request body", http.StatusBadRequest)
+		return
+	}
 	var f Flow
-	if err := json.NewDecoder(r.Body).Decode(&f); err != nil {
+	if err := json.Unmarshal(body, &f); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -70,7 +75,9 @@ func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "flow id is required", http.StatusBadRequest)
 		return
 	}
-	if f.Status != "" {
+	var fields map[string]json.RawMessage
+	_ = json.Unmarshal(body, &fields) // an object: f decoded from it
+	if _, present := fields["status"]; present {
 		http.Error(w, "status is managed by lifecycle operations (deploy, start, ...); omit it", http.StatusBadRequest)
 		return
 	}

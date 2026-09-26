@@ -18,8 +18,10 @@ func TestFlowLifecycle(t *testing.T) {
 	admin := basic(bootstrapAdmin, testAdminPassword)
 	stop := startCLI(t, args, c.base+"/api/openapi.yaml")
 
-	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"f","status":"started"}`, admin); status != http.StatusBadRequest || !strings.Contains(body, "status is managed") {
-		t.Errorf("create with status: %d %q, want 400", status, body)
+	for _, status := range []string{`"started"`, `""`, `null`} {
+		if code, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"f","status":`+status+`}`, admin); code != http.StatusBadRequest || !strings.Contains(body, "status is managed") {
+			t.Errorf("create with status %s: %d %q, want 400", status, code, body)
+		}
 	}
 	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"f"}`, admin); status != http.StatusCreated || !strings.Contains(body, `"status":"undeployed"`) {
 		t.Fatalf("create: %d %q", status, body)

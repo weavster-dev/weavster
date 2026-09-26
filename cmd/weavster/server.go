@@ -457,11 +457,14 @@ type flowLocks struct {
 type flowLock struct {
 	proc   sync.RWMutex
 	change sync.Mutex
+	refs   int // holders and waiters; the entry is removed at zero
 }
 
 func newFlowLocks() *flowLocks { return &flowLocks{flows: map[string]*flowLock{}} }
 
-func (l *flowLocks) get(id string) *flowLock {
+// acquire returns the flow's lock entry, counting the caller as a user.
+// Entries are removed when unused, so unknown flow ids never accumulate.
+func (l *flowLocks) acquire(id string) *flowLock {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	fl, ok := l.flows[id]
@@ -469,27 +472,38 @@ func (l *flowLocks) get(id string) *flowLock {
 		fl = &flowLock{}
 		l.flows[id] = fl
 	}
+	fl.refs++
 	return fl
+}
+
+func (l *flowLocks) release(id string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if fl := l.flows[id]; fl != nil {
+		if fl.refs--; fl.refs == 0 {
+			delete(l.flows, id)
+		}
+	}
 }
 
 // ProcessFlow read-locks the flow for processing one message
 // (pipeline.Options.Gate).
 func (l *flowLocks) ProcessFlow(id string) func() {
-	fl := l.get(id)
+	fl := l.acquire(id)
 	fl.proc.RLock()
-	return fl.proc.RUnlock
+	return func() { fl.proc.RUnlock(); l.release(id) }
 }
 
 // exclusive locks the flow against status changes and, unless skipDrain,
 // waits for its in-flight messages.
 func (l *flowLocks) exclusive(id string, skipDrain bool) func() {
-	fl := l.get(id)
+	fl := l.acquire(id)
 	fl.change.Lock()
 	if skipDrain {
-		return fl.change.Unlock
+		return func() { fl.change.Unlock(); l.release(id) }
 	}
 	fl.proc.Lock()
-	return func() { fl.proc.Unlock(); fl.change.Unlock() }
+	return func() { fl.proc.Unlock(); fl.change.Unlock(); l.release(id) }
 }
 
 // flowAdapter stores gateway flows as JSON documents (D-12). stats, when
@@ -552,14 +566,26 @@ func (a flowAdapter) RedeployAll(ctx context.Context) ([]gateway.Flow, error) {
 		if f.Status == flowlife.Undeployed {
 			continue
 		}
-		redeployed, err := func() (gateway.Flow, error) {
+		redeployed, ok, err := func() (gateway.Flow, bool, error) {
 			defer a.lock(f.ID, false)()
-			return a.setStatus(ctx, f, flowlife.Deployed)
+			// Re-read under the lock: the flow may have been undeployed or
+			// deleted since List.
+			current, err := a.Get(ctx, f.ID)
+			if errors.Is(err, gateway.ErrFlowNotFound) || (err == nil && current.Status == flowlife.Undeployed) {
+				return gateway.Flow{}, false, nil
+			}
+			if err != nil {
+				return gateway.Flow{}, false, err
+			}
+			updated, err := a.setStatus(ctx, current, flowlife.Deployed)
+			return updated, err == nil, err
 		}()
 		if err != nil {
 			return out, fmt.Errorf("redeploy %s: %w", f.ID, err)
 		}
-		out = append(out, redeployed)
+		if ok {
+			out = append(out, redeployed)
+		}
 	}
 	return out, nil
 }

@@ -127,9 +127,10 @@ paths:
         "409": {description: "Transition not allowed from the flow's status"}
   /api/v1/flows/redeploy-all:
     post:
-      summary: Undeploy and re-deploy every deployed flow; each ends deployed (requires flows:deploy)
+      summary: Undeploy and re-deploy every flow that is not undeployed (deployed, started, paused, halted, stopped); each ends deployed (requires flows:deploy)
       responses:
         "200": {description: The redeployed flows}
+        "500": {description: "Stopped part-way: {error: {code: REDEPLOY_INCOMPLETE}, redeployed: [flows already redeployed]}"}
   /api/v1/flows/{id}/messages:
     post:
       summary: Send a message into a flow (requires messages:send)
