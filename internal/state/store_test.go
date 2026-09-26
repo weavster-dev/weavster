@@ -257,3 +257,24 @@ func TestExportSpecificIDs(t *testing.T) {
 		t.Errorf("imported %d, want 1", n)
 	}
 }
+
+func TestNextAttemptAtRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	s, err := OpenSQLite(ctx, ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = s.Close() }()
+	due := time.UnixMilli(time.Now().Add(time.Minute).UnixMilli())
+	m := Message{ID: "n", FlowID: "f", Status: StatusQueued, Attempts: map[string]DestinationAttempt{
+		"a": {Attempts: 1, LastError: "x", NextAttemptAt: due},
+		"b": {Attempts: 1},
+	}}
+	if err := s.Put(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Get(ctx, "n")
+	if err != nil || !got.Attempts["a"].NextAttemptAt.Equal(due) || !got.Attempts["b"].NextAttemptAt.IsZero() {
+		t.Errorf("attempts = %+v, %v", got.Attempts, err)
+	}
+}

@@ -103,6 +103,7 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 	if err := o.deliver(ctx, m, dest, key); err == nil {
 		cur.Attempts = attempt
 		cur.LastError = ""
+		cur.NextAttemptAt = time.Time{}
 		m.Attempts[dest] = cur
 		m.Status = state.StatusSent
 		return o.store.Put(ctx, m)
@@ -113,12 +114,14 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 		} else {
 			cur.LastError = err.Error()
 		}
-		m.Attempts[dest] = cur
 		if cur.Attempts >= o.opts.MaxAttempts {
-			m.Status = state.StatusErrored // dead-letter
+			cur.NextAttemptAt = time.Time{}
+			m.Status = state.StatusDeadLettered
 		} else {
+			cur.NextAttemptAt = time.Now().Add(o.Backoff(cur.Attempts))
 			m.Status = state.StatusQueued
 		}
+		m.Attempts[dest] = cur
 		return o.store.Put(ctx, m)
 	}
 }

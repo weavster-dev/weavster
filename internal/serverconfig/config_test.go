@@ -52,6 +52,7 @@ auth:
 		{name: "sqlite without dsn or dataDir", yaml: "store: {dialect: sqlite}\n", wantErr: "store.dsn or paths.dataDir"},
 		{name: "zero pool", yaml: "store: {maxConnections: 0}\n", wantErr: "store.maxConnections must be >= 1"},
 		{name: "negative retry", yaml: "store: {maxRetry: -1}\n", wantErr: "must be >= 0"},
+		{name: "zero delivery attempts", yaml: "delivery: {maxAttempts: 0}\n", wantErr: "delivery.maxAttempts"},
 		{name: "negative lockout", yaml: "auth: {lockout: {retryLimit: -2}}\n", wantErr: "auth.lockout values must be >= 0"},
 		{name: "class count below -1", yaml: "auth: {passwordPolicy: {minUpper: -2}}\n", wantErr: "must be >= -1"},
 	}

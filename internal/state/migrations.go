@@ -57,6 +57,14 @@ func Migrations() []Migration {
 		},
 		flowsMigration(),
 		usersMigration(),
+		{
+			Version: 4,
+			Name:    "attempt-next-attempt-at",
+			Apply: func(ctx context.Context, tx *sql.Tx) error {
+				_, err := tx.ExecContext(ctx, `ALTER TABLE message_attempts ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0`)
+				return err
+			},
+		},
 	}
 }
 

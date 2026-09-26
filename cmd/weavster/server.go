@@ -35,9 +35,16 @@ import (
 // (arch §3). One-time bootstrap output goes to out. The returned func
 // releases the message store.
 func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg serverconfig.Config) (http.Handler, func() error, error) {
+	h, closeFn, _, err := buildServerWithWorkers(ctx, logger, out, cfg)
+	return h, closeFn, err
+}
+
+// buildServerWithWorkers is buildServer that also returns the background
+// workers (delivery retries) for runServer to run for the server's lifetime.
+func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Writer, cfg serverconfig.Config) (http.Handler, func() error, func(context.Context), error) {
 	store, err := openStore(ctx, logger, cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	closeStore := func() error { return nil }
 	var messages gateway.MessageSearcher
@@ -70,11 +77,11 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 	})
 	if err := provider.Load(ctx); err != nil {
 		_ = closeStore()
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if err := bootstrapAdminUser(ctx, provider, policy, out); err != nil {
 		_ = closeStore()
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	sink := audit.NewLocalSink(logger)
@@ -89,8 +96,17 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
 	flows := flowAdapter{store: repo, stats: stats, gate: &sync.RWMutex{}}
 	var ingest gateway.MessageIngester
+	workers := func(context.Context) {}
 	if store != nil {
-		ingest = ingestAdapter{flows: flows, pipe: pipeline.New(store, newSink, processingObserver{stats, events})}
+		pipe := pipeline.New(store, newSink, processingObserver{stats, events}, pipeline.Options{
+			MaxAttempts: cfg.Delivery.MaxAttempts,
+			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
+		})
+		ia := ingestAdapter{flows: flows, pipe: pipe}
+		ingest = ia
+		workers = func(ctx context.Context) {
+			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
+		}
 	}
 
 	srv := gateway.New(gateway.Config{
@@ -107,7 +123,7 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 		System:      observability.SystemStatus("weavster", version, buildDate),
 		RequireCSRF: cfg.Listen.RequireMarkerHeader,
 	})
-	return srv.Router(), closeStore, nil
+	return srv.Router(), closeStore, workers, nil
 }
 
 // openStore connects the configured message store. Only PostgreSQL
@@ -197,7 +213,7 @@ func runServer(args []string, stderr io.Writer) int {
 	defer stop()
 
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
-	handler, closeStore, err := buildServer(ctx, logger, stderr, cfg)
+	handler, closeStore, workers, err := buildServerWithWorkers(ctx, logger, stderr, cfg)
 	if err != nil {
 		if ctx.Err() != nil {
 			return 0
@@ -205,6 +221,13 @@ func runServer(args []string, stderr io.Writer) int {
 		return fail(err)
 	}
 	defer func() { _ = closeStore() }()
+
+	// Background workers run until runServer returns, and stop before the
+	// store closes.
+	workerCtx, stopWorkers := context.WithCancel(ctx)
+	workersDone := make(chan struct{})
+	go func() { workers(workerCtx); close(workersDone) }()
+	defer func() { stopWorkers(); <-workersDone }()
 
 	servers, err := listen(cfg, handler)
 	if err != nil {
@@ -452,6 +475,42 @@ func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (
 	return gateway.IngestResult{ID: res.ID, Status: string(res.Status)}, nil
 }
 
+// retryLoop runs delivery retries immediately (resuming work queued before a
+// restart) and then every interval until ctx is cancelled.
+func retryLoop(ctx context.Context, ia ingestAdapter, interval time.Duration, logger *slog.Logger) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if err := ia.retryDue(ctx); err != nil && ctx.Err() == nil {
+			logger.Warn("delivery retry pass failed", "error", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// retryDue runs one retry pass, ordered with flow deletes like ingestion.
+func (a ingestAdapter) retryDue(ctx context.Context) error {
+	if a.flows.gate != nil {
+		a.flows.gate.RLock()
+		defer a.flows.gate.RUnlock()
+	}
+	_, err := a.pipe.RetryDue(ctx, func(ctx context.Context, id string) (pipeline.Flow, error) {
+		f, err := a.flows.Get(ctx, id)
+		if errors.Is(err, gateway.ErrFlowNotFound) {
+			return pipeline.Flow{}, pipeline.ErrFlowGone
+		}
+		if err != nil {
+			return pipeline.Flow{}, err
+		}
+		return toPipelineFlow(f)
+	})
+	return err
+}
+
 // adapterSink delivers through an adapters.Sink, passing the idempotency key
 // as message metadata.
 type adapterSink struct{ sink adapters.Sink }
@@ -550,6 +609,31 @@ type processingObserver struct {
 	events *observability.EventLog
 }
 
+// Retried records a retry pass: per-destination outcomes for the attempted
+// destinations, and the new status (sent or dead-lettered; still-queued
+// messages are not counted again).
+func (o processingObserver) Retried(m state.Message, attempted []string) {
+	var kinds []observability.CounterKind
+	switch m.Status {
+	case state.StatusSent:
+		kinds = []observability.CounterKind{observability.Sent}
+	case state.StatusDeadLettered:
+		kinds = []observability.CounterKind{observability.Errored}
+	}
+	connectors := map[string]observability.CounterKind{}
+	for _, dest := range attempted {
+		if m.Attempts[dest].LastError == "" {
+			connectors[dest] = observability.Sent
+		} else {
+			connectors[dest] = observability.Errored
+		}
+	}
+	o.stats.Record(m.FlowID, kinds, connectors)
+	if m.Status != state.StatusQueued {
+		o.events.Add("message."+string(m.Status), "", m.FlowID, map[string]string{"messageId": m.ID})
+	}
+}
+
 // Received counts the message on arrival (and sets lastMessageAt).
 func (o processingObserver) Received(flowID string) {
 	o.stats.Inc(flowID, observability.Received)
@@ -565,6 +649,8 @@ func (o processingObserver) Processed(m state.Message) {
 		kinds = []observability.CounterKind{observability.Filtered}
 	case state.StatusErrored:
 		kinds = []observability.CounterKind{observability.Errored}
+	case state.StatusDeadLettered:
+		kinds = []observability.CounterKind{observability.Transformed, observability.Errored}
 	case state.StatusSent:
 		kinds = []observability.CounterKind{observability.Transformed, observability.Sent}
 	case state.StatusQueued:

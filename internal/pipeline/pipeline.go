@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"time"
 
 	"github.com/weavster-dev/weavster/internal/compiler"
 	"github.com/weavster-dev/weavster/internal/dsl"
@@ -68,19 +69,46 @@ type Result struct {
 type Observer interface {
 	Received(flowID string)
 	Processed(m state.Message)
+	// Retried reports a queued message after a retry pass, with the
+	// destinations that were attempted.
+	Retried(m state.Message, attempted []string)
 }
+
+// Options configures delivery retries.
+type Options struct {
+	MaxAttempts int           // attempts per destination before dead-lettering (default 5)
+	BackoffBase time.Duration // first retry delay, doubled per attempt, capped at 1 minute (default 1s)
+}
+
+// ErrFlowGone is returned by a FlowLookup when the message's flow no longer
+// exists; RetryDue dead-letters such messages.
+var ErrFlowGone = errors.New("pipeline: flow no longer exists")
+
+// FlowLookup returns the current definition of a flow.
+type FlowLookup func(ctx context.Context, flowID string) (Flow, error)
 
 // Pipeline processes messages against a Store.
 type Pipeline struct {
 	store    state.Store
 	sinks    SinkFactory
 	observer Observer
+	opts     Options
 }
 
 // New returns a pipeline persisting to store and delivering through sinks.
 // observer may be nil.
-func New(store state.Store, sinks SinkFactory, observer Observer) *Pipeline {
-	return &Pipeline{store: store, sinks: sinks, observer: observer}
+func New(store state.Store, sinks SinkFactory, observer Observer, opts Options) *Pipeline {
+	if opts.MaxAttempts <= 0 {
+		opts.MaxAttempts = 5
+	}
+	if opts.BackoffBase <= 0 {
+		opts.BackoffBase = time.Second
+	}
+	return &Pipeline{store: store, sinks: sinks, observer: observer, opts: opts}
+}
+
+func (p *Pipeline) outbox(f Flow, contentType string) *outbox.Outbox {
+	return outbox.New(p.store, p.deliverFunc(f, contentType), outbox.Options{MaxAttempts: p.opts.MaxAttempts, BackoffBase: p.opts.BackoffBase})
 }
 
 // Validate checks a flow definition: the transform compiles and every
@@ -147,7 +175,7 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, 
 		contentType = "json"
 	}
 	m := state.Message{ID: id, FlowID: f.ID, ContentType: contentType, Raw: body, Original: body}
-	ob := outbox.New(p.store, p.deliverFunc(f, contentType), outbox.Options{})
+	ob := p.outbox(f, contentType)
 	if err := ob.Receive(ctx, m); err != nil {
 		return Result{}, err
 	}
@@ -212,20 +240,108 @@ func (p *Pipeline) deliverFunc(f Flow, contentType string) outbox.DeliverFunc {
 	}
 }
 
-// aggregate sets the message status from the per-destination results: sent
-// when every destination succeeded, otherwise queued.
+// aggregate sets the message status from the per-destination results.
 func (p *Pipeline) aggregate(ctx context.Context, id string, f Flow) (Result, error) {
 	m, err := p.store.Get(ctx, id)
 	if err != nil {
 		return Result{}, err
 	}
+	return p.finish(ctx, id, p.rollup(m, f), nil)
+}
+
+// rollup is sent when every destination succeeded, dead-lettered when a
+// destination exhausted its attempts, and otherwise queued.
+func (p *Pipeline) rollup(m state.Message, f Flow) state.Status {
 	status := state.StatusSent
 	for _, d := range f.Destinations {
-		if a := m.Attempts[d.Name]; a.Attempts == 0 || a.LastError != "" {
+		a := m.Attempts[d.Name]
+		switch {
+		case a.Attempts > 0 && a.LastError == "":
+		case a.Attempts >= p.opts.MaxAttempts:
+			return state.StatusDeadLettered
+		default:
 			status = state.StatusQueued
 		}
 	}
-	return p.finish(ctx, id, status, nil)
+	return status
+}
+
+// RetryDue re-delivers every queued message whose failed destinations are
+// due, and returns how many messages it attempted. Deliveries reuse the
+// message's idempotency keys. It is safe to call at startup to resume work
+// left queued before a restart.
+func (p *Pipeline) RetryDue(ctx context.Context, lookup FlowLookup) (int, error) {
+	queued, err := p.store.Search(ctx, state.Query{Status: state.StatusQueued, Limit: 500})
+	if err != nil {
+		return 0, err
+	}
+	now := time.Now()
+	n := 0
+	for _, m := range queued {
+		if !anyDue(m, now) {
+			continue
+		}
+		n++
+		f, err := lookup(ctx, m.FlowID)
+		if errors.Is(err, ErrFlowGone) {
+			if _, err := p.finishRetry(ctx, m.ID, state.StatusDeadLettered, ErrFlowGone, nil); err != nil {
+				return n, err
+			}
+			continue
+		}
+		if err != nil {
+			return n, err
+		}
+		ob := p.outbox(f, m.ContentType)
+		var attempted []string
+		for _, d := range f.Destinations {
+			if a, ok := m.Attempts[d.Name]; ok && a.LastError != "" && !a.NextAttemptAt.After(now) {
+				if err := ob.Deliver(ctx, m.ID, d.Name); err != nil {
+					return n, err
+				}
+				attempted = append(attempted, d.Name)
+			}
+		}
+		latest, err := p.store.Get(ctx, m.ID)
+		if err != nil {
+			return n, err
+		}
+		if _, err := p.finishRetry(ctx, m.ID, p.rollup(latest, f), nil, attempted); err != nil {
+			return n, err
+		}
+	}
+	return n, nil
+}
+
+func anyDue(m state.Message, now time.Time) bool {
+	for _, a := range m.Attempts {
+		if a.LastError != "" && !a.NextAttemptAt.After(now) {
+			return true
+		}
+	}
+	return false
+}
+
+// finishRetry stores a retry pass's status and reports it to the observer.
+func (p *Pipeline) finishRetry(ctx context.Context, id string, status state.Status, cause error, attempted []string) (Result, error) {
+	m, err := p.store.Get(ctx, id)
+	if err != nil {
+		return Result{}, err
+	}
+	m.Status = status
+	if cause != nil {
+		if m.Metadata == nil {
+			m.Metadata = map[string]string{}
+		}
+		m.Metadata["error"] = cause.Error()
+	}
+	if err := p.store.Put(ctx, m); err != nil {
+		return Result{}, err
+	}
+	if p.observer != nil {
+		p.observer.Retried(m, attempted)
+	}
+	return Result{ID: id, Status: status}, nil
 }
 
 // finish records the aggregate status, and a processing error in the

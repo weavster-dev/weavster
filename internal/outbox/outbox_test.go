@@ -130,7 +130,7 @@ func TestDeliverBoundedRetryAndDeadLetter(t *testing.T) {
 		_ = o.Deliver(ctx, "1", "d1")
 	}
 	m, _ := s.Get(ctx, "1")
-	if m.Status != state.StatusErrored {
+	if m.Status != state.StatusDeadLettered {
 		t.Errorf("status = %s, want errored (dead-letter)", m.Status)
 	}
 	if m.Attempts["d1"].Attempts != 3 {

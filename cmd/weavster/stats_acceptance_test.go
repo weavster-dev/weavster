@@ -134,7 +134,7 @@ func TestDeleteWaitsForInFlightIngest(t *testing.T) {
 	}
 	sink := blockingSink{release: make(chan struct{})}
 	ingest := ingestAdapter{flows: flows, pipe: pipeline.New(store, func(pipeline.Destination) (pipeline.Sink, error) { return sink, nil },
-		processingObserver{stats, observability.NewEventLog()})}
+		processingObserver{stats, observability.NewEventLog()}, pipeline.Options{})}
 
 	ingested := make(chan struct{})
 	go func() {

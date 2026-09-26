@@ -9,7 +9,7 @@ import (
 // DeadLetter returns messages that exhausted their retry budget
 // (the deadletter admin surface, gap #5).
 func (o *Outbox) DeadLetter(ctx context.Context) ([]state.Message, error) {
-	return o.store.Search(ctx, state.Query{Status: state.StatusErrored, Limit: 1000})
+	return o.store.Search(ctx, state.Query{Status: state.StatusDeadLettered, Limit: 1000})
 }
 
 // Requeue returns a dead-lettered message to the queue, resetting its attempt

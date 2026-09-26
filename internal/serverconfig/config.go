@@ -24,11 +24,19 @@ const (
 
 // Config is the server configuration file.
 type Config struct {
-	Listen Listen `yaml:"listen"`
-	TLS    TLS    `yaml:"tls"`
-	Store  Store  `yaml:"store"`
-	Paths  Paths  `yaml:"paths"`
-	Auth   Auth   `yaml:"auth"`
+	Listen   Listen   `yaml:"listen"`
+	TLS      TLS      `yaml:"tls"`
+	Store    Store    `yaml:"store"`
+	Paths    Paths    `yaml:"paths"`
+	Auth     Auth     `yaml:"auth"`
+	Delivery Delivery `yaml:"delivery"`
+}
+
+// Delivery configures delivery retries (spec §2.5).
+type Delivery struct {
+	MaxAttempts     int `yaml:"maxAttempts"`
+	BackoffBaseMs   int `yaml:"backoffBaseMs"`
+	RetryIntervalMs int `yaml:"retryIntervalMs"`
 }
 
 // Listen configures the cleartext and TLS listeners.
@@ -91,6 +99,7 @@ func Default() Config {
 			PasswordPolicy: PasswordPolicy{MinLength: 8, MinUpper: 1, MinLower: 1, MinNumeric: 1},
 			Lockout:        Lockout{RetryLimit: 5, LockoutPeriodSeconds: 300},
 		},
+		Delivery: Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000},
 	}
 }
 
@@ -160,6 +169,9 @@ func (c Config) Validate() error {
 	}
 	if c.Store.MaxRetry < 0 || c.Store.RetryWaitMs < 0 {
 		return errors.New("config: store.maxRetry and store.retryWaitMs must be >= 0")
+	}
+	if d := c.Delivery; d.MaxAttempts < 1 || d.BackoffBaseMs < 1 || d.RetryIntervalMs < 1 {
+		return errors.New("config: delivery.maxAttempts, delivery.backoffBaseMs, and delivery.retryIntervalMs must be >= 1")
 	}
 	p := c.Auth.PasswordPolicy
 	for _, v := range []int{p.MinLength, c.Auth.Lockout.RetryLimit, c.Auth.Lockout.LockoutPeriodSeconds} {
