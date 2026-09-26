@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/weavster-dev/weavster/internal/config"
+	"github.com/weavster-dev/weavster/internal/flowdef"
 )
 
 // failingStore is a config.Store whose Put always fails, exercising the
@@ -21,12 +22,13 @@ func (f *failingStore) Put(context.Context, string, []byte) error { return f.put
 func validConfig() *config.Config {
 	return &config.Config{
 		Version: "1",
-		Flows: map[string]config.Flow{
+		Flows: map[string]flowdef.Flow{
 			"admit": {
-				Name:   "admit",
-				Source: config.Source{Type: "file"},
-				Destinations: []config.Destination{
-					{Name: "his-mllp", Type: "tcp"},
+				ID:         "admit",
+				Name:       "admit",
+				SourceType: "file",
+				Destinations: []flowdef.Destination{
+					{Name: "his", Type: "http", URL: "https://his.example.com"},
 				},
 			},
 		},

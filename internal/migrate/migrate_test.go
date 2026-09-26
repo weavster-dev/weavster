@@ -2,6 +2,7 @@ package migrate
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/weavster-dev/weavster/internal/config"
@@ -42,10 +43,10 @@ func TestDryRun(t *testing.T) {
 	if rep.Flows != 1 || rep.Snippets != 1 || rep.Scripts != 1 || rep.Users != 1 || rep.ConfigMapEntry != 1 || rep.Messages != 1 {
 		t.Errorf("counts = %+v", rep)
 	}
-	if len(rep.ReviewRequired) != 2 {
-		t.Errorf("review list = %v, want 2 (script filter + global script)", rep.ReviewRequired)
+	if len(rep.ReviewRequired) != 4 {
+		t.Errorf("review list = %v, want 4 (source path, tcp destination, script filter, global script)", rep.ReviewRequired)
 	}
-	if rep.Config.Flows["admit"].Source.Type != "file" {
+	if rep.Config.Flows["admit"].SourceType != "file" {
 		t.Errorf("transformed flow = %+v", rep.Config.Flows["admit"])
 	}
 }
@@ -91,11 +92,11 @@ func TestTransformDeclarativeFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	flow := cfg.Flows["admit"]
-	if len(flow.Transforms) != 1 || flow.Transforms[0].Kind != "map" {
-		t.Errorf("transforms = %+v", flow.Transforms)
+	if string(flow.Transform) != `{"steps":[{"map":{"from":"PID.5.1","to":"patient.lastName"}}]}` {
+		t.Errorf("transform = %s", flow.Transform)
 	}
-	if len(flow.Destinations) != 1 || flow.Destinations[0].Type != "tcp" {
-		t.Errorf("destinations = %+v", flow.Destinations)
+	if len(flow.Destinations) != 0 {
+		t.Errorf("destinations = %+v; the tcp destination must be flagged, not kept", flow.Destinations)
 	}
 }
 
@@ -106,5 +107,36 @@ func TestMappingTableVersioned(t *testing.T) {
 	}
 	if _, _, err := Transform(&LegacyExport{}, "bogus"); err == nil {
 		t.Error("unknown mapping version must be rejected")
+	}
+}
+
+func TestTransformNamesAndEnabled(t *testing.T) {
+	le := &LegacyExport{Flows: []LegacyFlow{
+		{Name: "ADT Inbound", Enabled: true, Destinations: []LegacyDestination{{Name: "HIS main", Type: "http"}}},
+		{Name: "import"},
+		{Name: "ADT/Inbound"},
+		{Name: ""},
+	}}
+	cfg, review, err := Transform(le, MappingVersion)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"ADT-Inbound", "import-flow", "ADT-Inbound-2", "unnamed"} {
+		if cfg.Flows[id].ID != id {
+			t.Errorf("flow %s missing: %v", id, cfg.Flows)
+		}
+	}
+	if f := cfg.Flows["ADT-Inbound"]; !f.Enabled || f.Name != "ADT Inbound" || f.Destinations[0].Name != "HIS-main" {
+		t.Errorf("ADT-Inbound = %+v", f)
+	}
+	if len(review) != 5 { // four flow renames, one destination rename
+		t.Errorf("review = %v", review)
+	}
+	store := config.NewMemStore()
+	if err := Load(context.Background(), store, cfg); err != nil {
+		t.Errorf("Load of renamed flows: %v", err)
+	}
+	if got := validName(strings.Repeat("a", 200)); len(got) != 128 {
+		t.Errorf("validName length = %d", len(got))
 	}
 }

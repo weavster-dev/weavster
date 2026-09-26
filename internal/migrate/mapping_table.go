@@ -15,10 +15,10 @@ const MappingVersion = "1"
 // (gap #1).
 func MappingTable() []Mapping {
 	return []Mapping{
-		{Legacy: "flow/channel", New: "config.Flow (YAML DSL)", AutoTranslated: true},
-		{Legacy: "source connector", New: "config.Source", AutoTranslated: true},
-		{Legacy: "destination connector", New: "config.Destination", AutoTranslated: true},
-		{Legacy: "declarative filter (from/to)", New: "config.Transform (map step)", AutoTranslated: true},
+		{Legacy: "flow/channel", New: "flow definition (flow.schema.json)", AutoTranslated: true},
+		{Legacy: "source connector", New: "flow sourceType (source path flagged for review)", AutoTranslated: false},
+		{Legacy: "destination connector", New: "flow destination (http and file; other types flagged for review)", AutoTranslated: false},
+		{Legacy: "declarative filter (from/to)", New: "flow transform (map step)", AutoTranslated: true},
 		{Legacy: "scripted filter", New: "WASI module stub (flagged for review)", AutoTranslated: false},
 		{Legacy: "code snippet", New: "config.Snippets", AutoTranslated: true},
 		{Legacy: "global script", New: "config.Scripts (flagged for review)", AutoTranslated: false},

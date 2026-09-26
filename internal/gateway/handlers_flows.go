@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/weavster-dev/weavster/internal/flowdef"
 )
 
 // writeFlowError maps FlowStore errors to 404/409, and anything else to a
@@ -75,7 +77,7 @@ func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, ma
 		http.Error(w, "could not read request body", http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
-	doc, err := parseFlowDoc(body)
+	doc, err := flowdef.ParseDoc(body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return Flow{}, nil, false
@@ -96,7 +98,7 @@ func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, ma
 		}
 	}
 	// The schema enforces the id format and reserved ids too.
-	if err := validateFlowDoc(doc); err != nil {
+	if err := flowdef.ValidateDoc(doc); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
@@ -235,7 +237,7 @@ func decodeFlowList(w http.ResponseWriter, raws []json.RawMessage) ([]Flow, []bo
 	flows := make([]Flow, 0, len(raws))
 	setsEnabled := make([]bool, 0, len(raws))
 	for i, raw := range raws {
-		doc, err := parseFlowDoc(raw)
+		doc, err := flowdef.ParseDoc(raw)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
 			return nil, nil, false
@@ -245,7 +247,7 @@ func decodeFlowList(w http.ResponseWriter, raws []json.RawMessage) ([]Flow, []bo
 			return nil, nil, false
 		}
 		// The schema also enforces the id format and reserved ids.
-		if err := validateFlowDoc(doc); err != nil {
+		if err := flowdef.ValidateDoc(doc); err != nil {
 			http.Error(w, fmt.Sprintf("flows[%d]: %v", i, err), http.StatusBadRequest)
 			return nil, nil, false
 		}

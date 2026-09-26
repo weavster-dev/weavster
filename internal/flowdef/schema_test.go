@@ -1,4 +1,4 @@
-package gateway
+package flowdef
 
 import (
 	"bytes"
@@ -18,8 +18,8 @@ func TestFlowSchemaPublished(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(published, FlowSchema) {
-		t.Error("agent-docs/schemas/flow.schema.json differs from internal/gateway/flow.schema.json; run go generate ./internal/gateway")
+	if !bytes.Equal(published, Schema) {
+		t.Error("agent-docs/schemas/flow.schema.json differs from internal/flowdef/flow.schema.json; run go generate ./internal/flowdef")
 	}
 }
 
@@ -49,7 +49,7 @@ func TestValidateFlowJSON(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateFlowJSON([]byte(tt.doc))
+			err := ValidateJSON([]byte(tt.doc))
 			if tt.want == "" {
 				if err != nil {
 					t.Errorf("valid document rejected: %v", err)
@@ -69,29 +69,29 @@ func TestValidateFlowJSONNullsAndErrors(t *testing.T) {
 		`{"id":"a","transform":{"kind":"Transform","name":null,"inputs":null,"steps":null}}`,
 		`{"id":"a","destinations":[{"name":"d","type":"file","dir":"/x","url":null}]}`,
 	} {
-		if err := validateFlowJSON([]byte(doc)); err != nil {
+		if err := ValidateJSON([]byte(doc)); err != nil {
 			t.Errorf("%s rejected: %v", doc, err)
 		}
 	}
-	err := validateFlowJSON([]byte(`{"id":"a","transform":{"steps":[{"filter":{"when":"x","action":"drop"}}]}}`))
+	err := ValidateJSON([]byte(`{"id":"a","transform":{"steps":[{"filter":{"when":"x","action":"drop"}}]}}`))
 	if err == nil || strings.Contains(err.Error(), "expected null") {
 		t.Errorf("transform error = %v; want only the real problem", err)
 	}
-	if err := validateFlowJSON([]byte(`[1]`)); err == nil || !strings.Contains(err.Error(), "JSON object") {
+	if err := ValidateJSON([]byte(`[1]`)); err == nil || !strings.Contains(err.Error(), "JSON object") {
 		t.Errorf("non-object = %v", err)
 	}
-	if err := validateFlowJSON([]byte(`{"id":"a"} garbage`)); err == nil || !strings.Contains(err.Error(), "trailing data") {
+	if err := ValidateJSON([]byte(`{"id":"a"} garbage`)); err == nil || !strings.Contains(err.Error(), "trailing data") {
 		t.Errorf("trailing data = %v", err)
 	}
 	for _, id := range []string{"export", "import", "redeploy-all"} {
-		if !reservedFlowIDs[id] {
+		if !reservedIDs[id] {
 			t.Errorf("%s not read from the schema as reserved", id)
 		}
 	}
 }
 
 // TestFlowSchemaMatchesGoTypes guards the hand-written schema against drift
-// from gateway.Flow/FlowDestination and the generated transform schema.
+// from Flow/Destination and the generated transform schema.
 func TestFlowSchemaMatchesGoTypes(t *testing.T) {
 	var schema struct {
 		Properties map[string]any `json:"properties"`
@@ -99,7 +99,7 @@ func TestFlowSchemaMatchesGoTypes(t *testing.T) {
 			Properties map[string]any `json:"properties"`
 		} `json:"$defs"`
 	}
-	if err := json.Unmarshal(FlowSchema, &schema); err != nil {
+	if err := json.Unmarshal(Schema, &schema); err != nil {
 		t.Fatal(err)
 	}
 	jsonFields := func(v any, skip ...string) []string {
@@ -123,10 +123,10 @@ func TestFlowSchemaMatchesGoTypes(t *testing.T) {
 		return out
 	}
 	if got, want := keys(schema.Properties), jsonFields(Flow{}, "status", "stoppedDestinations"); !slices.Equal(got, want) {
-		t.Errorf("flow schema properties %v != gateway.Flow fields %v (runtime status and stoppedDestinations excluded)", got, want)
+		t.Errorf("flow schema properties %v != flowdef.Flow fields %v (runtime status and stoppedDestinations excluded)", got, want)
 	}
-	if got, want := keys(schema.Defs["Destination"].Properties), jsonFields(FlowDestination{}); !slices.Equal(got, want) {
-		t.Errorf("Destination properties %v != FlowDestination fields %v", got, want)
+	if got, want := keys(schema.Defs["Destination"].Properties), jsonFields(Destination{}); !slices.Equal(got, want) {
+		t.Errorf("Destination properties %v != Destination fields %v", got, want)
 	}
 
 	generated, err := os.ReadFile("../../agent-docs/schemas/transform.schema.json")
@@ -145,5 +145,14 @@ func TestFlowSchemaMatchesGoTypes(t *testing.T) {
 		if got, want := keys(schema.Defs[name].Properties), keys(def.Properties); !slices.Equal(got, want) {
 			t.Errorf("$defs/%s properties %v != transform.schema.json %v", name, got, want)
 		}
+	}
+}
+
+func TestSchemaID(t *testing.T) {
+	var s struct {
+		ID string `json:"$id"`
+	}
+	if err := json.Unmarshal(Schema, &s); err != nil || s.ID != SchemaID {
+		t.Errorf("$id = %q, %v; want %q", s.ID, err, SchemaID)
 	}
 }
