@@ -101,6 +101,13 @@ func TestAuthMiddleware(t *testing.T) {
 	}
 }
 
+func TestMissingAuthorizerFailsClosed(t *testing.T) {
+	s := New(Config{Auth: fakeAuth{users: map[string]Identity{"viewer": {Username: "viewer"}}}, Flows: &stubFlows{}})
+	if rec := serve(s, http.MethodGet, "/api/v1/flows", "", func(r *http.Request) { r.SetBasicAuth("viewer", "pw") }); rec.Code != http.StatusForbidden {
+		t.Errorf("no authorizer: %d, want 403", rec.Code)
+	}
+}
+
 func TestAuthDisabledWithoutProvider(t *testing.T) {
 	s := New(Config{Flows: &stubFlows{}})
 	if rec := serve(s, http.MethodPost, "/api/v1/flows", `{"id":"a"}`, nil); rec.Code != http.StatusCreated {

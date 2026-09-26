@@ -26,6 +26,10 @@ go build -o bin/weavster ./cmd/weavster
 On first start the server prints a one-time `admin` password to stderr (or set
 `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD`, see [Authentication](docs/authentication.md)).
 
+> **Warning:** plain HTTP sends credentials in cleartext. Keep the cleartext listener on
+> `127.0.0.1` and use an HTTPS listener (`listen.tlsAddress`, see
+> [Server configuration](docs/server-config.md)) for anything reachable over a network.
+
 Verify it's up by fetching the OpenAPI contract:
 
 ```bash

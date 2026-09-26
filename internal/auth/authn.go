@@ -16,6 +16,8 @@ var (
 	ErrUserNotFound  = errors.New("auth: user not found")
 	ErrUserExists    = errors.New("auth: user already exists")
 	ErrPasswordWrong = errors.New("auth: invalid credentials")
+	// ErrPasswordConflict means the password changed while a change was in flight.
+	ErrPasswordConflict = errors.New("auth: password was changed concurrently; retry")
 )
 
 // User is a local account.
@@ -82,7 +84,7 @@ func (p *LocalProvider) Authenticate(ctx context.Context, username, password, mf
 
 	// External auth hook overrides built-in credential validation.
 	if p.opts.External != nil {
-		snapshot := *u
+		snapshot := u.clone()
 		p.mu.Unlock()
 		ok, err := p.opts.External.Authenticate(ctx, username, password)
 		if err != nil || !ok {
@@ -97,6 +99,12 @@ func (p *LocalProvider) Authenticate(ctx context.Context, username, password, mf
 	p.mu.Unlock()
 	valid := VerifyPassword(hash, password)
 	p.mu.Lock()
+	// Revalidate: the account may have been deleted, re-passworded, or
+	// locked while the hash ran.
+	if current, ok := p.users[username]; !ok || current != u || u.PasswordHash != hash || p.isLocked(u) {
+		p.mu.Unlock()
+		return nil, p.genericOr(ErrPasswordWrong)
+	}
 	if !valid {
 		p.recordFailure(u)
 		p.mu.Unlock()
@@ -111,10 +119,18 @@ func (p *LocalProvider) Authenticate(ctx context.Context, username, password, mf
 		return nil, err
 	}
 	// Return a copy so callers never read the shared record without the lock.
-	snapshot := *u
+	snapshot := u.clone()
 	p.mu.Unlock()
 
 	return p.finishAuth(ctx, &snapshot, mfaCode)
+}
+
+// clone returns a deep copy of u, so callers can never share its slices.
+func (u *User) clone() User {
+	c := *u
+	c.Permissions = append([]string(nil), u.Permissions...)
+	c.PasswordHistory = append([]string(nil), u.PasswordHistory...)
+	return c
 }
 
 // finishAuth runs the MFA hook after successful primary authentication.
@@ -220,15 +236,27 @@ func (p *LocalProvider) ListUsers(ctx context.Context) ([]User, error) {
 	return out, nil
 }
 
+// ChangePassword verifies oldPassword and sets newPassword. The Argon2id work
+// runs outside the provider lock; the record is revalidated before the
+// change is applied.
 func (p *LocalProvider) ChangePassword(ctx context.Context, username, oldPassword, newPassword string) error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	u, ok := p.users[username]
 	if !ok {
+		p.mu.Unlock()
 		return ErrUserNotFound
 	}
-	if !VerifyPassword(u.PasswordHash, oldPassword) {
+	if p.isLocked(u) {
+		p.mu.Unlock()
+		return ErrPasswordWrong
+	}
+	oldHash, history := u.PasswordHash, append([]string(nil), u.PasswordHistory...)
+	p.mu.Unlock()
+
+	if !VerifyPassword(oldHash, oldPassword) {
+		p.mu.Lock()
 		p.recordFailure(u)
+		p.mu.Unlock()
 		return ErrPasswordWrong
 	}
 	if newPassword == oldPassword {
@@ -237,12 +265,18 @@ func (p *LocalProvider) ChangePassword(ctx context.Context, username, oldPasswor
 	if err := p.opts.Policy.Validate(newPassword); err != nil {
 		return err
 	}
-	if p.opts.Policy.reused(newPassword, u.PasswordHistory) {
+	if p.opts.Policy.reused(newPassword, history) {
 		return ErrPasswordReused
 	}
 	hash, err := HashPassword(newPassword)
 	if err != nil {
 		return err
+	}
+
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if current, ok := p.users[username]; !ok || current != u || u.PasswordHash != oldHash {
+		return ErrPasswordConflict
 	}
 	u.PasswordHash = hash
 	u.PasswordChangedAt = time.Now()

@@ -155,9 +155,11 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 func (s *Server) require(resource, action string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if s.cfg.Auth != nil && s.cfg.Authorizer != nil {
+			if s.cfg.Auth != nil {
+				// Fail closed: with authentication on, a missing Authorizer
+				// denies every permission-checked route.
 				id, _ := IdentityFrom(r.Context())
-				if !s.cfg.Authorizer.Authorize(r.Context(), id, resource, action) {
+				if s.cfg.Authorizer == nil || !s.cfg.Authorizer.Authorize(r.Context(), id, resource, action) {
 					writeError(w, http.StatusForbidden, "FORBIDDEN", "missing permission "+resource+":"+action)
 					return
 				}

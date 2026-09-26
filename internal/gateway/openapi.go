@@ -18,7 +18,8 @@ paths:
   /api/v1/auth/login:
     post:
       summary: Log in and receive a bearer token (valid 12 hours)
-      security: []
+      security:
+        - csrfMarker: []
       requestBody:
         required: true
         content:
@@ -98,7 +99,9 @@ paths:
         "200": {description: Message search results}
 security:
   - basicAuth: []
+    csrfMarker: []
   - bearerAuth: []
+    csrfMarker: []
 components:
   securitySchemes:
     basicAuth: {type: http, scheme: basic}

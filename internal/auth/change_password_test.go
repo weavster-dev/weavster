@@ -40,3 +40,34 @@ func TestAuthenticateReturnsCopy(t *testing.T) {
 		t.Error("mutating the returned user changed the stored record")
 	}
 }
+
+func TestAuthenticateReturnsDeepCopy(t *testing.T) {
+	ctx := context.Background()
+	p := NewLocalProvider(Options{})
+	if err := p.CreateUser(ctx, User{Username: "u", PasswordHash: "Pass-1", Permissions: []string{"a"}}); err != nil {
+		t.Fatal(err)
+	}
+	u, err := p.Authenticate(ctx, "u", "Pass-1", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	u.Permissions[0] = "changed"
+	if stored, _ := p.GetUser(ctx, "u"); stored.Permissions[0] != "a" {
+		t.Error("returned user shares its Permissions slice with the stored record")
+	}
+}
+
+func TestChangePasswordLocked(t *testing.T) {
+	ctx := context.Background()
+	p := NewLocalProvider(Options{Lockout: LockoutPolicy{RetryLimit: 1, LockoutPeriod: 60}})
+	if err := p.CreateUser(ctx, User{Username: "u", PasswordHash: "Pass-1"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.ChangePassword(ctx, "nobody", "x", "y"); !errors.Is(err, ErrUserNotFound) {
+		t.Errorf("unknown user: %v", err)
+	}
+	_ = p.ChangePassword(ctx, "u", "wrong", "New-Pass-2") // locks the account
+	if err := p.ChangePassword(ctx, "u", "Pass-1", "New-Pass-2"); !errors.Is(err, ErrPasswordWrong) {
+		t.Errorf("locked account: err = %v, want ErrPasswordWrong", err)
+	}
+}
