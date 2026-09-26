@@ -206,6 +206,8 @@ func TestTransferHandlers(t *testing.T) {
 		{"import conflict", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"a"}]}`, Config{Transfer: fakeTransfer{err: ErrImportConflict}}, http.StatusConflict},
 		{"import bad flow", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[1]}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
 		{"import bad id", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"import"}]}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
+		{"import incomplete", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"a"}]}`, Config{Transfer: fakeTransfer{err: ErrImportIncomplete}}, http.StatusInternalServerError},
+		{"import too large", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":["` + strings.Repeat("x", maxImportBytes) + `"]}`, Config{Transfer: fakeTransfer{}}, http.StatusRequestEntityTooLarge},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

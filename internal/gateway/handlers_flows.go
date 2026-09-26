@@ -237,6 +237,9 @@ func (s *Server) handleRedeployAll(w http.ResponseWriter, r *http.Request) {
 // FlowBundleVersion is the export/import document version.
 const FlowBundleVersion = 1
 
+// maxImportBytes caps an import document.
+const maxImportBytes = 50 << 20
+
 func (s *Server) handleFlowsExport(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Transfer == nil {
 		http.Error(w, "flow export unavailable", http.StatusServiceUnavailable)
@@ -271,7 +274,12 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 		Version int               `json:"version"`
 		Flows   []json.RawMessage `json:"flows"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxMessageBytes)).Decode(&bundle); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxImportBytes)).Decode(&bundle); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "export document larger than 50 MiB", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "body must be an export document: {\"version\":1,\"flows\":[...]}", http.StatusBadRequest)
 		return
 	}
@@ -298,6 +306,13 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 		flows = append(flows, f)
 	}
 	res, err := s.cfg.Transfer.Import(r.Context(), flows, overwrite)
+	if errors.Is(err, ErrImportIncomplete) {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error":   map[string]string{"code": "IMPORT_INCOMPLETE", "message": "import stopped part-way; created and updated list what was written"},
+			"created": res.Created, "updated": res.Updated,
+		})
+		return
+	}
 	if err != nil {
 		writeFlowError(w, err)
 		return

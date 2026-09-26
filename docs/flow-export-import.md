@@ -61,7 +61,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
 
 The whole document is checked before anything is written. Every flow must be valid, the ids
 must be unique, and dependencies must resolve against the document plus the existing flows,
-without cycles. Otherwise the import returns `400` and changes nothing.
+without cycles. Otherwise the import returns `400` and changes nothing. Flows are then written
+dependencies first. Each flow in the document is a full definition: a flow without `enabled`
+is imported disabled. Exports always include `enabled`.
 
 | Flow in the document | Result |
 |---|---|
@@ -76,11 +78,19 @@ Other errors:
 | `400 unsupported export version 2; expected 1` | Unknown `version`. |
 | `400 flows[0]: status is managed by lifecycle operations; omit it` | A flow in the document has a `status` field. |
 | `400 … appears twice` | The same id is listed twice. |
+| `413` | The document is larger than 50 MiB. |
 
-If writing fails part-way (for example, a store error), the import stops and returns `500`. The
-flows written before the failure stay written; import again with `?overwrite=true` to finish.
+If writing fails part-way (for example, a store error), the import stops and returns
+`500 {"error":{"code":"IMPORT_INCOMPLETE",…},"created":[…],"updated":[…]}`, listing what was
+written. Because flows are written dependencies first, every written flow's dependencies exist.
+Import again with `?overwrite=true` to finish.
+
+Creates, updates, imports, and deletes of flow definitions run one at a time, so a dependency
+check always sees the flows it is written against.
 
 ## Reserved ids
 
 `export`, `import`, and `redeploy-all` cannot be used as flow ids, because they name these
-endpoints.
+endpoints. A flow created with one of these ids before this rule existed can still be deleted
+(`DELETE /api/v1/flows/export`). To keep it, export all flows, change its id in the file,
+delete it, and import the file.

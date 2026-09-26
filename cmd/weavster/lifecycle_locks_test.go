@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -205,9 +206,50 @@ func TestCheckDependencies(t *testing.T) {
 		for _, f := range tt.flows {
 			all[f.ID] = f
 		}
-		err := checkDependencies(all)
+		roots := make([]string, 0, len(all))
+		for id := range all {
+			roots = append(roots, id)
+		}
+		err := checkDependencies(all, roots)
 		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
 			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
 		}
+	}
+}
+
+func TestCheckDependenciesScopedToRoots(t *testing.T) {
+	all := map[string]gateway.Flow{
+		"bad": {ID: "bad", DependsOn: []string{"gone"}}, // pre-existing dangling edge
+		"a":   {ID: "a", DependsOn: []string{"b"}},
+		"b":   {ID: "b"},
+	}
+	if err := checkDependencies(all, []string{"a"}); err != nil {
+		t.Errorf("an unrelated bad flow blocked the check: %v", err)
+	}
+	if got := dependencyOrder(all, []string{"a", "b"}); strings.Join(got, ",") != "b,a" {
+		t.Errorf("dependencyOrder = %v, want b before a", got)
+	}
+}
+
+type createFailRepo struct {
+	*state.MemStore
+	failID string
+}
+
+func (r createFailRepo) CreateFlow(ctx context.Context, f state.FlowDefinition) error {
+	if f.ID == r.failID {
+		return errors.New("database is locked")
+	}
+	return r.MemStore.CreateFlow(ctx, f)
+}
+
+// TestImportPartialFailure: writes happen dependencies-first, and a failure
+// reports what was already written.
+func TestImportPartialFailure(t *testing.T) {
+	ctx := context.Background()
+	flows := flowAdapter{store: createFailRepo{MemStore: state.NewMemStore(), failID: "top"}, locks: newFlowLocks(), defs: &sync.Mutex{}}
+	res, err := flows.Import(ctx, []gateway.Flow{{ID: "top", DependsOn: []string{"base"}}, {ID: "base"}}, false)
+	if !errors.Is(err, gateway.ErrImportIncomplete) || strings.Join(res.Created, ",") != "base" {
+		t.Errorf("Import = %+v, %v; want base written first, then the failure", res, err)
 	}
 }

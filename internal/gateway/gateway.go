@@ -122,6 +122,9 @@ var (
 	ErrFlowInUse = errors.New("flow is a dependency of other flows")
 	// ErrImportConflict: the bundle contains flows that already exist.
 	ErrImportConflict = errors.New("flows already exist")
+	// ErrImportIncomplete: writing stopped part-way; the ImportResult lists
+	// what was written.
+	ErrImportIncomplete = errors.New("import stopped part-way")
 )
 
 // FlowStore is the flow CRUD backend.

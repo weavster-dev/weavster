@@ -97,7 +97,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		repo = store.(flowRepository)
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
-	flows := flowAdapter{store: repo, stats: stats, locks: newFlowLocks()}
+	flows := flowAdapter{store: repo, stats: stats, locks: newFlowLocks(), defs: &sync.Mutex{}}
 	if cfg.Flows.DeployOnStartup && store != nil {
 		flows.DeployEnabled(ctx, logger)
 	}
@@ -519,6 +519,18 @@ type flowAdapter struct {
 	store flowRepository
 	stats *observability.StatsRegistry
 	locks *flowLocks // nil: no coordination (tests)
+	// defs serializes definition changes (create, update, import, delete),
+	// so dependency checks always see the flows they are written against.
+	defs *sync.Mutex
+}
+
+// definitions locks definition changes; it returns the unlock func.
+func (a flowAdapter) definitions() func() {
+	if a.defs == nil {
+		return func() {}
+	}
+	a.defs.Lock()
+	return a.defs.Unlock
 }
 
 func (a flowAdapter) lock(id string, skipDrain bool) func() {
@@ -563,6 +575,7 @@ func (a flowAdapter) setStatus(ctx context.Context, f gateway.Flow, status strin
 // enabled, when keepEnabled). It is serialized with lifecycle changes of the
 // flow; later messages and queued retries use the new definition.
 func (a flowAdapter) Update(ctx context.Context, id string, f gateway.Flow, keepEnabled bool) (gateway.Flow, error) {
+	defer a.definitions()()
 	defer a.lock(id, true)()
 	current, err := a.Get(ctx, id)
 	if err != nil {
@@ -667,19 +680,11 @@ func (a flowAdapter) RedeployAll(ctx context.Context) ([]gateway.Flow, error) {
 	return out, nil
 }
 
-// checkDependencies validates dependsOn across all flows (by id): every
-// dependency exists, no flow depends on itself, and there are no cycles.
-func checkDependencies(all map[string]gateway.Flow) error {
-	for id, f := range all {
-		for _, dep := range f.DependsOn {
-			if dep == id {
-				return fmt.Errorf("flow %s cannot depend on itself", id)
-			}
-			if _, ok := all[dep]; !ok {
-				return fmt.Errorf("flow %s depends on unknown flow %s", id, dep)
-			}
-		}
-	}
+// checkDependencies validates dependsOn for the given root flows and
+// everything they depend on: every dependency exists, no flow depends on
+// itself, and there are no cycles. Flows outside that closure are ignored, so
+// an unrelated bad edge never blocks a change.
+func checkDependencies(all map[string]gateway.Flow, roots []string) error {
 	const (
 		unvisited = iota
 		visiting
@@ -696,6 +701,12 @@ func checkDependencies(all map[string]gateway.Flow) error {
 		}
 		mark[id] = visiting
 		for _, dep := range all[id].DependsOn {
+			if dep == id {
+				return fmt.Errorf("flow %s cannot depend on itself", id)
+			}
+			if _, ok := all[dep]; !ok {
+				return fmt.Errorf("flow %s depends on unknown flow %s", id, dep)
+			}
 			if err := visit(dep, append(path, id)); err != nil {
 				return err
 			}
@@ -703,17 +714,44 @@ func checkDependencies(all map[string]gateway.Flow) error {
 		mark[id] = done
 		return nil
 	}
-	ids := make([]string, 0, len(all))
-	for id := range all {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	for _, id := range ids {
+	sorted := append([]string(nil), roots...)
+	sort.Strings(sorted)
+	for _, id := range sorted {
 		if err := visit(id, nil); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// dependencyOrder returns ids ordered so each flow's dependencies (within
+// ids) come before it. The graph must be acyclic.
+func dependencyOrder(all map[string]gateway.Flow, ids []string) []string {
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+	seen := map[string]bool{}
+	var out []string
+	var visit func(id string)
+	visit = func(id string) {
+		if seen[id] {
+			return
+		}
+		seen[id] = true
+		for _, dep := range all[id].DependsOn {
+			visit(dep)
+		}
+		if want[id] {
+			out = append(out, id)
+		}
+	}
+	sorted := append([]string(nil), ids...)
+	sort.Strings(sorted)
+	for _, id := range sorted {
+		visit(id)
+	}
+	return out
 }
 
 // withFlows returns all stored flows by id, with the given flows replacing
@@ -733,20 +771,33 @@ func (a flowAdapter) withFlows(ctx context.Context, changed ...gateway.Flow) (ma
 	return all, nil
 }
 
-// validateDefinition checks a flow's transform and destinations, and its
-// dependencies against the other flows.
-func (a flowAdapter) validateDefinition(ctx context.Context, f gateway.Flow) error {
+// checkDefinition validates a flow's transform and destinations.
+func checkDefinition(f gateway.Flow) error {
 	pf, err := toPipelineFlow(f)
 	if err == nil {
 		err = pipeline.Validate(pf)
 	}
-	if err == nil && len(f.DependsOn) > 0 {
-		var all map[string]gateway.Flow
-		if all, err = a.withFlows(ctx, f); err == nil {
-			err = checkDependencies(all)
-		}
-	}
 	if err != nil {
+		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+	}
+	return nil
+}
+
+// validateDefinition checks a flow's definition and its dependencies
+// against the stored flows. Callers hold the definitions lock. Store errors
+// are returned as-is (a 500), not as invalid input.
+func (a flowAdapter) validateDefinition(ctx context.Context, f gateway.Flow) error {
+	if err := checkDefinition(f); err != nil {
+		return err
+	}
+	if len(f.DependsOn) == 0 {
+		return nil
+	}
+	all, err := a.withFlows(ctx, f)
+	if err != nil {
+		return err
+	}
+	if err := checkDependencies(all, []string{f.ID}); err != nil {
 		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
 	return nil
@@ -797,23 +848,23 @@ func (a flowAdapter) Export(ctx context.Context, ids []string) ([]gateway.Flow, 
 	return out, nil
 }
 
-// Import validates the whole bundle, then writes it: new flows are created
-// undeployed; existing flows are replaced (keeping their status) only with
-// overwrite. On a write failure it returns what was already written.
+// Import validates the whole bundle, then writes it in dependency order:
+// new flows are created undeployed; existing flows are replaced (keeping
+// their current status) only with overwrite. It holds the definitions lock
+// throughout. On a write failure it returns what was already written.
 func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite bool) (gateway.ImportResult, error) {
+	defer a.definitions()()
 	res := gateway.ImportResult{Created: []string{}, Updated: []string{}}
 	seen := map[string]bool{}
+	ids := make([]string, 0, len(flows))
 	for _, f := range flows {
 		if seen[f.ID] {
 			return res, fmt.Errorf("%w: flow %s appears twice", gateway.ErrInvalidFlow, f.ID)
 		}
 		seen[f.ID] = true
-		pf, err := toPipelineFlow(f)
-		if err == nil {
-			err = pipeline.Validate(pf)
-		}
-		if err != nil {
-			return res, fmt.Errorf("%w: flow %s: %w", gateway.ErrInvalidFlow, f.ID, err)
+		ids = append(ids, f.ID)
+		if err := checkDefinition(f); err != nil {
+			return res, fmt.Errorf("flow %s: %w", f.ID, err)
 		}
 	}
 	all, err := a.withFlows(ctx)
@@ -821,51 +872,57 @@ func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite
 		return res, err
 	}
 	var conflicts []string
+	existing := map[string]bool{}
 	for _, f := range flows {
-		if _, exists := all[f.ID]; exists {
+		if _, ok := all[f.ID]; ok {
+			existing[f.ID] = true
 			conflicts = append(conflicts, f.ID)
 		}
 	}
 	if len(conflicts) > 0 && !overwrite {
+		sort.Strings(conflicts)
 		return res, fmt.Errorf("%w: %s (use overwrite=true to replace them)", gateway.ErrImportConflict, strings.Join(conflicts, ", "))
 	}
-	existing := make(map[string]gateway.Flow, len(all))
-	for id, f := range all {
-		existing[id] = f
-	}
+	byID := map[string]gateway.Flow{}
 	for _, f := range flows {
 		all[f.ID] = f
+		byID[f.ID] = f
 	}
-	if err := checkDependencies(all); err != nil {
+	if err := checkDependencies(all, ids); err != nil {
 		return res, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
-	for _, f := range flows {
-		if cur, ok := existing[f.ID]; ok {
-			if _, err := a.replace(ctx, f.ID, f, cur.Status); err != nil {
-				return res, fmt.Errorf("import %s: %w", f.ID, err)
+	for _, id := range dependencyOrder(all, ids) {
+		f := byID[id]
+		if existing[id] {
+			if err := a.replaceKeepingStatus(ctx, f); err != nil {
+				return res, fmt.Errorf("%w: flow %s: %w", gateway.ErrImportIncomplete, id, err)
 			}
-			res.Updated = append(res.Updated, f.ID)
+			res.Updated = append(res.Updated, id)
 			continue
 		}
 		f.Status = flowlife.Undeployed
 		doc, err := json.Marshal(f)
+		if err == nil {
+			err = a.store.CreateFlow(ctx, state.FlowDefinition{ID: id, Document: doc})
+		}
 		if err != nil {
-			return res, err
+			return res, fmt.Errorf("%w: flow %s: %w", gateway.ErrImportIncomplete, id, err)
 		}
-		if err := a.store.CreateFlow(ctx, state.FlowDefinition{ID: f.ID, Document: doc}); err != nil {
-			return res, fmt.Errorf("import %s: %w", f.ID, flowErr(err))
-		}
-		res.Created = append(res.Created, f.ID)
+		res.Created = append(res.Created, id)
 	}
 	return res, nil
 }
 
-// replace stores f under id with the given status, holding the flow's
-// lock.
-func (a flowAdapter) replace(ctx context.Context, id string, f gateway.Flow, status string) (gateway.Flow, error) {
-	defer a.lock(id, true)()
-	f.ID = id
-	return a.setStatus(ctx, f, status)
+// replaceKeepingStatus stores f's definition, re-reading the flow's current
+// status under its lock so a concurrent lifecycle change is never undone.
+func (a flowAdapter) replaceKeepingStatus(ctx context.Context, f gateway.Flow) error {
+	defer a.lock(f.ID, true)()
+	current, err := a.Get(ctx, f.ID)
+	if err != nil {
+		return err
+	}
+	_, err = a.setStatus(ctx, f, current.Status)
+	return err
 }
 
 // toPipelineFlow converts a stored flow into the pipeline's definition,
@@ -1023,6 +1080,7 @@ func (a flowAdapter) Get(ctx context.Context, id string) (gateway.Flow, error) {
 }
 
 func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) (gateway.Flow, error) {
+	defer a.definitions()()
 	if err := a.validateDefinition(ctx, f); err != nil {
 		return gateway.Flow{}, err
 	}
@@ -1038,6 +1096,7 @@ func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) (gateway.Flow, 
 }
 
 func (a flowAdapter) Delete(ctx context.Context, id string) error {
+	defer a.definitions()()
 	defer a.lock(id, false)()
 	// If the flows cannot be read (e.g. one is corrupt), allow the delete:
 	// it is how an operator removes an unreadable flow.
