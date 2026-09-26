@@ -59,7 +59,7 @@ Start the server with `weavster server 127.0.0.1:8080`. It serves plain HTTP onl
 
 | Capability | Tier | Proof / notes |
 |---|---|---|
-| `weavster server [address]` | Implemented (wired) | `TestRunServerSubcommand` |
+| `weavster server [address]` | Implemented (wired) | `TestSupportMatrixCLI/server-subcommand` |
 | `weavster` with no subcommand | Implemented (wired) | `TestSupportMatrixCLI/no-subcommand`. Starts the server on `127.0.0.1:8080`, **not** an interactive shell. |
 | `weavster -h` | Implemented (wired) | `TestRunHelpAndVersion` |
 | `weavster -v` | Implemented (wired) | `TestRunHelpAndVersion`. Prints the **local binary** version, not the server's. |

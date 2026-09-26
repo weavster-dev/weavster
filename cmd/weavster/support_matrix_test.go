@@ -37,14 +37,19 @@ func TestSupportMatrixWired(t *testing.T) {
 		marker   bool
 		want     int
 		contains string
-		headers  []string
+		headers  map[string]string
 	}{
 		{name: "openapi", method: http.MethodGet, path: "/api/openapi.yaml", want: http.StatusOK, contains: "openapi:"},
 		{name: "system", method: http.MethodGet, path: "/api/v1/system", marker: true, want: http.StatusOK},
 		{name: "csrf-marker", method: http.MethodGet, path: "/api/v1/system", want: http.StatusBadRequest},
 		{name: "trace-blocked", method: http.MethodTrace, path: "/api/v1/system", marker: true, want: http.StatusMethodNotAllowed},
 		{name: "track-blocked", method: "TRACK", path: "/api/v1/system", marker: true, want: http.StatusMethodNotAllowed},
-		{name: "security-headers", method: http.MethodGet, path: "/api/v1/system", marker: true, want: http.StatusOK, headers: []string{"Strict-Transport-Security", "X-Frame-Options", "Content-Security-Policy", "X-Content-Type-Options"}},
+		{name: "security-headers", method: http.MethodGet, path: "/api/v1/system", marker: true, want: http.StatusOK, headers: map[string]string{
+			"Strict-Transport-Security": "max-age=31536000; includeSubDomains",
+			"X-Frame-Options":           "DENY",
+			"Content-Security-Policy":   "frame-ancestors 'none'",
+			"X-Content-Type-Options":    "nosniff",
+		}},
 		{name: "flows-list", method: http.MethodGet, path: "/api/v1/flows", marker: true, want: http.StatusOK, contains: `"admit"`},
 		{name: "flows-create", method: http.MethodPost, path: "/api/v1/flows", marker: true, body: `{"id":"lab","name":"Lab Results"}`, want: http.StatusCreated},
 		{name: "flows-get", method: http.MethodGet, path: "/api/v1/flows/lab", marker: true, want: http.StatusOK, contains: "Lab Results"},
@@ -74,9 +79,9 @@ func TestSupportMatrixWired(t *testing.T) {
 			if tt.contains != "" && !strings.Contains(string(body), tt.contains) {
 				t.Errorf("body %q does not contain %q", body, tt.contains)
 			}
-			for _, h := range tt.headers {
-				if resp.Header.Get(h) == "" {
-					t.Errorf("missing header %s", h)
+			for h, want := range tt.headers {
+				if got := resp.Header.Get(h); got != want {
+					t.Errorf("header %s = %q, want %q", h, got, want)
 				}
 			}
 		})
@@ -119,6 +124,16 @@ func TestSupportMatrixCLI(t *testing.T) {
 		})
 	}
 
+	t.Run("server-subcommand", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := ln.Addr().String()
+		_ = ln.Close()
+		runUntilSIGTERM(t, []string{"server", addr}, "http://"+addr+"/api/openapi.yaml")
+	})
+
 	t.Run("no-subcommand", func(t *testing.T) {
 		const addr = "127.0.0.1:8080"
 		ln, err := net.Listen("tcp", addr)
@@ -132,22 +147,7 @@ func TestSupportMatrixCLI(t *testing.T) {
 			return
 		}
 		_ = ln.Close()
-
-		done := make(chan int, 1)
-		var out, errb bytes.Buffer
-		go func() { done <- run(nil, strings.NewReader(""), &out, &errb) }()
-		waitReady(t, "http://"+addr+"/api/openapi.yaml")
-		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
-			t.Fatal(err)
-		}
-		select {
-		case code := <-done:
-			if code != 0 {
-				t.Errorf("exit = %d, want 0 after SIGTERM (stderr %q)", code, errb.String())
-			}
-		case <-time.After(5 * time.Second):
-			t.Fatal("server did not shut down after SIGTERM")
-		}
+		runUntilSIGTERM(t, nil, "http://"+addr+"/api/openapi.yaml")
 	})
 }
 
@@ -184,6 +184,27 @@ func TestSupportMatrixPrivilegedGuard(t *testing.T) {
 				t.Errorf("stderr %q does not contain %q", errb.String(), tt.want)
 			}
 		})
+	}
+}
+
+// runUntilSIGTERM runs the CLI with args, waits until readyURL answers, then
+// sends SIGTERM and expects a clean exit 0.
+func runUntilSIGTERM(t *testing.T, args []string, readyURL string) {
+	t.Helper()
+	done := make(chan int, 1)
+	var out, errb bytes.Buffer
+	go func() { done <- run(args, strings.NewReader(""), &out, &errb) }()
+	waitReady(t, readyURL)
+	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Errorf("exit = %d, want 0 after SIGTERM (stderr %q)", code, errb.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not shut down after SIGTERM")
 	}
 }
 
