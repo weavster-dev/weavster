@@ -56,6 +56,9 @@
                                 <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../flow-export-import/" class="nav-link">Flow Dependencies, Export, Import</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -212,7 +215,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>GET/POST /api/v1/flows</code>, <code>GET/PUT/DELETE /api/v1/flows/{id}</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixWired/flows-*</code>, <code>TestFlowUpdateAndEnable</code>. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. A flow processes messages once it is <code>started</code> (see Flow lifecycle below). A flow <code>id</code> must be 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>; anything else returns <code>400</code>. <code>POST</code> with an existing <code>id</code> returns <code>409</code>. <code>GET</code>/<code>DELETE</code> of an unknown ID returns <code>404</code>.</td>
+<td><code>TestSupportMatrixWired/flows-*</code>, <code>TestFlowUpdateAndEnable</code>. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. A flow processes messages once it is <code>started</code> (see Flow lifecycle below). A flow <code>id</code> must be 1–128 characters from <code>A-Z a-z 0-9 . _ -</code> and not <code>export</code>, <code>import</code>, or <code>redeploy-all</code>; anything else returns <code>400</code>. <code>POST</code> with an existing <code>id</code> returns <code>409</code>. <code>GET</code>/<code>DELETE</code> of an unknown ID returns <code>404</code>.</td>
 </tr>
 <tr>
 <td><code>GET /api/v1/topology</code>, <code>GET /api/v1/topology/flows/{flowId}</code></td>
@@ -326,6 +329,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 </tr>
 </thead>
 <tbody>
+<tr>
+<td>Flow dependencies (<code>dependsOn</code>, validated, delete-protected), export (<code>GET /api/v1/flows/export</code>), import (<code>POST /api/v1/flows/import</code>, <code>overwrite</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestFlowExportImport</code>. Deploy does not deploy dependencies yet. See <a href="../flow-export-import/">Flow dependencies, export, and import</a>.</td>
+</tr>
 <tr>
 <td>Flow update/rename (<code>PUT /api/v1/flows/{id}</code>), enable/disable, auto-deploy of enabled flows at startup (<code>flows.deployOnStartup</code>)</td>
 <td>Implemented (wired)</td>

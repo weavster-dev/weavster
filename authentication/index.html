@@ -56,6 +56,9 @@
                                 <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../flow-export-import/" class="nav-link">Flow Dependencies, Export, Import</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -259,11 +262,11 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td>any signed-in user</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/flows</code>, <code>GET /api/v1/flows/{id}</code>, <code>GET /api/v1/topology</code>, <code>GET /api/v1/topology/flows/{flowId}</code></td>
+<td><code>GET /api/v1/flows</code>, <code>GET /api/v1/flows/{id}</code>, <code>GET /api/v1/flows/export</code>, <code>GET /api/v1/topology</code>, <code>GET /api/v1/topology/flows/{flowId}</code></td>
 <td><code>flows:view</code></td>
 </tr>
 <tr>
-<td><code>POST /api/v1/flows</code>, <code>PUT /api/v1/flows/{id}</code>, <code>DELETE /api/v1/flows/{id}</code>, <code>POST /api/v1/flows/{id}/{enable,disable}</code></td>
+<td><code>POST /api/v1/flows</code>, <code>PUT /api/v1/flows/{id}</code>, <code>DELETE /api/v1/flows/{id}</code>, <code>POST /api/v1/flows/{id}/{enable,disable}</code>, <code>POST /api/v1/flows/import</code></td>
 <td><code>flows:edit</code></td>
 </tr>
 <tr>
