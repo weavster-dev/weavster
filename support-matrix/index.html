@@ -47,6 +47,9 @@
                                 <a href="../authentication/" class="nav-link">Authentication</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../audit-log/" class="nav-link">Audit Log</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -246,9 +249,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Users are in memory and re-created at every start. <code>admin</code> is the only account.</td>
 </tr>
 <tr>
-<td>Audit of API calls</td>
-<td>Library-only</td>
-<td>The <code>audit</code> package exists, but request handlers never call it.</td>
+<td>Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction</td>
+<td>Implemented (wired)</td>
+<td><code>TestAuditLog</code>. Written to stderr only; not stored or searchable. See <a href="../audit-log/">Audit log</a>.</td>
 </tr>
 <tr>
 <td>HTTPS listener (<code>listen.tlsAddress</code>, <code>tls.certFile/keyFile/minVersion</code>)</td>
