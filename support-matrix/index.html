@@ -330,6 +330,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 </thead>
 <tbody>
 <tr>
+<td>Per-destination start/stop (<code>POST /api/v1/flows/{id}/destinations/{name}/{start,stop}</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestDestinationStartStop</code>. Sources are not separate connectors yet.</td>
+</tr>
+<tr>
 <td>Flow definitions validated against the published <code>agent-docs/schemas/flow.schema.json</code> (create, update, import; unknown fields rejected)</td>
 <td>Implemented (wired)</td>
 <td><code>TestFlowSchemaEnforced</code>, <code>TestFlowSchemaPublished</code></td>
@@ -347,7 +352,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Flow lifecycle: deploy, undeploy, start, stop, pause, halt, resume, redeploy-all, with transitions enforced</td>
 <td>Implemented (wired)</td>
-<td><code>TestFlowLifecycle</code>. API only; no per-destination start/stop. Deploy also deploys undeployed dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
+<td><code>TestFlowLifecycle</code>. API only. Deploy also deploys undeployed dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
 </tr>
 <tr>
 <td>Message intake: <code>POST /api/v1/flows/{id}/messages</code></td>

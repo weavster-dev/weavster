@@ -121,6 +121,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#stopping-one-destination" class="nav-link">Stopping one destination</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#deleting-a-running-flow" class="nav-link">Deleting a running flow</a>
               <ul class="nav flex-column">
               </ul>
@@ -266,6 +270,27 @@ redeployed. The rest keep their status.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="stopping-one-destination">Stopping one destination</h2>
+<p>You can hold deliveries to a single destination while the rest of the flow keeps running
+(permission <code>flows:deploy</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/destinations/ehr/stop
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/destinations/ehr/start
+</code></pre>
+<ul>
+<li><code>stop</code> waits for messages of the flow that are being processed right now, so nothing reaches
+  <code>ehr</code> after the stop is confirmed. <code>start</code> takes effect at once.</li>
+<li>While <code>ehr</code> is stopped, messages are still delivered to the other destinations. They stay
+  <code>queued</code> for <code>ehr</code>, which uses none of their retry attempts. A message is not dead-lettered
+  while it is still held for a stopped destination.</li>
+<li>After <code>start</code>, the retry worker delivers the held messages (same <code>Idempotency-Key</code>).</li>
+<li>The flow shows <code>"stoppedDestinations": ["ehr"]</code>. This is runtime state, like <code>status</code>: it
+  survives a restart and every status change, an update keeps it (a destination the update
+  removes is dropped from it), and exports leave it out.</li>
+<li>You cannot set <code>stoppedDestinations</code> in a create, update, or import body.</li>
+<li>Stopping or starting logs <code>flow.destination.stopped</code> / <code>flow.destination.started</code>.</li>
+<li>An unknown flow or destination returns <code>404</code>. Stopping a stopped destination (or starting a
+  running one) changes nothing.</li>
+</ul>
 <h2 id="deleting-a-running-flow">Deleting a running flow</h2>
 <p><code>DELETE /api/v1/flows/{id}</code> works in any status. For a flow that is not <code>undeployed</code>, the server
 waits for that flow's in-flight messages, sets it to <code>undeployed</code> (a <code>flow.undeployed</code> event), and
@@ -298,7 +323,6 @@ messages until you <code>deploy</code> and <code>start</code> them. <code>queued
 it is started.</p>
 <h2 id="not-available-yet">Not available yet</h2>
 <ul>
-<li>Starting or stopping a single destination.</li>
 <li>CLI commands for these operations.</li>
 </ul></div>
             </div>

@@ -225,7 +225,7 @@ below, in order, on the message as a JSON object.</p>
 <tbody>
 <tr>
 <td><code>name</code></td>
-<td>Unique within the flow; used to report delivery results.</td>
+<td>Unique within the flow; 1–128 characters from <code>A-Z a-z 0-9 . _ -</code> (it appears in URLs). Used to report delivery results.</td>
 </tr>
 <tr>
 <td><code>type</code></td>
@@ -289,11 +289,11 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 </tr>
 <tr>
 <td><code>queued</code></td>
-<td>At least one destination failed. It is retried automatically (see <a href="#retries">Retries</a>).</td>
+<td>At least one destination failed, or is <a href="../flow-lifecycle/#stopping-one-destination">stopped</a>. It is retried automatically (see <a href="#retries">Retries</a>).</td>
 </tr>
 <tr>
 <td><code>dead-lettered</code></td>
-<td>A destination still failed after <code>delivery.maxAttempts</code> attempts, or the flow was deleted while the message was queued. Not retried again.</td>
+<td>A destination still failed after <code>delivery.maxAttempts</code> attempts and no other destination has work left, or the flow was deleted while the message was queued. Not retried again.</td>
 </tr>
 <tr>
 <td><code>filtered</code></td>
