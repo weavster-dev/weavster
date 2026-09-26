@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"testing"
@@ -32,13 +35,13 @@ func TestSupportMatrixWired(t *testing.T) {
 		marker   bool
 		want     int
 		contains string
-		header   string
+		headers  []string
 	}{
 		{name: "openapi", method: http.MethodGet, path: "/api/openapi.yaml", want: http.StatusOK, contains: "openapi:"},
 		{name: "system", method: http.MethodGet, path: "/api/v1/system", marker: true, want: http.StatusOK},
 		{name: "csrf-marker", method: http.MethodGet, path: "/api/v1/system", want: http.StatusBadRequest},
 		{name: "trace-blocked", method: http.MethodTrace, path: "/api/v1/system", marker: true, want: http.StatusMethodNotAllowed},
-		{name: "security-headers", method: http.MethodGet, path: "/api/v1/system", marker: true, want: http.StatusOK, header: "X-Frame-Options"},
+		{name: "security-headers", method: http.MethodGet, path: "/api/v1/system", marker: true, want: http.StatusOK, headers: []string{"Strict-Transport-Security", "X-Frame-Options", "Content-Security-Policy", "X-Content-Type-Options"}},
 		{name: "flows-list", method: http.MethodGet, path: "/api/v1/flows", marker: true, want: http.StatusOK, contains: `"admit"`},
 		{name: "flows-create", method: http.MethodPost, path: "/api/v1/flows", marker: true, body: `{"id":"lab","name":"Lab Results"}`, want: http.StatusCreated},
 		{name: "flows-get", method: http.MethodGet, path: "/api/v1/flows/lab", marker: true, want: http.StatusOK, contains: "Lab Results"},
@@ -68,11 +71,65 @@ func TestSupportMatrixWired(t *testing.T) {
 			if tt.contains != "" && !strings.Contains(string(body), tt.contains) {
 				t.Errorf("body %q does not contain %q", body, tt.contains)
 			}
-			if tt.header != "" && resp.Header.Get(tt.header) == "" {
-				t.Errorf("missing header %s", tt.header)
+			for _, h := range tt.headers {
+				if resp.Header.Get(h) == "" {
+					t.Errorf("missing header %s", h)
+				}
 			}
 		})
 	}
+}
+
+// TestSupportMatrixCLI proves the wired CLI rows: -a/-s batch mode against
+// the composed server, and the no-subcommand default starting the server.
+func TestSupportMatrixCLI(t *testing.T) {
+	handler, err := buildServer(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	tests := []struct {
+		name     string
+		script   string
+		want     int
+		contains string
+	}{
+		{name: "batch-status", script: "status\n", want: 0, contains: `"weavster"`},
+		{name: "batch-flow-list", script: "flow list\n", want: 0, contains: "Patient Admit"},
+		{name: "batch-unknown-command", script: "nonsense\n", want: 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "script.txt")
+			if err := os.WriteFile(path, []byte(tt.script), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			var out, errb bytes.Buffer
+			if code := run([]string{"-a", ts.URL, "-s", path}, strings.NewReader(""), &out, &errb); code != tt.want {
+				t.Fatalf("exit = %d, want %d (stderr %q)", code, tt.want, errb.String())
+			}
+			if !strings.Contains(out.String(), tt.contains) {
+				t.Errorf("stdout %q does not contain %q", out.String(), tt.contains)
+			}
+		})
+	}
+
+	t.Run("no-subcommand", func(t *testing.T) {
+		// Occupy the default address (it may already be taken) so the server
+		// started by a bare `weavster` fails to bind instead of blocking.
+		if ln, err := net.Listen("tcp", "127.0.0.1:8080"); err == nil {
+			defer func() { _ = ln.Close() }()
+		}
+		var out, errb bytes.Buffer
+		if code := run(nil, strings.NewReader(""), &out, &errb); code != 1 {
+			t.Fatalf("exit = %d, want 1 (default address in use)", code)
+		}
+		if !strings.Contains(errb.String(), "127.0.0.1:8080") {
+			t.Errorf("stderr %q does not mention the default address", errb.String())
+		}
+	})
 }
 
 // TestSupportMatrixCodecs keeps the docs codec table in sync with
@@ -91,28 +148,29 @@ func TestSupportMatrixCodecs(t *testing.T) {
 	var documented []string
 	for _, line := range strings.Split(table, "\n") {
 		cells := strings.Split(line, "|")
-		if len(cells) < 3 || !strings.HasPrefix(strings.TrimSpace(cells[1]), "`") {
+		if len(cells) != 7 || !strings.HasPrefix(strings.TrimSpace(cells[1]), "`") {
 			continue
 		}
-		name := strings.Trim(strings.TrimSpace(cells[1]), "`")
-		enterprise := strings.TrimSpace(cells[2]) == "Enterprise-deferred"
-		documented = append(documented, name+":"+boolStr(enterprise))
+		for i := range cells {
+			cells[i] = strings.TrimSpace(cells[i])
+		}
+		documented = append(documented, strings.Join([]string{strings.Trim(cells[1], "`"), cells[2], cells[3], cells[4], cells[5]}, " | "))
 	}
 
 	var want []string
 	for _, e := range codecs.CoverageMatrix() {
-		want = append(want, e.Name+":"+boolStr(e.Enterprise))
+		tier, ack := "Library-only", "no"
+		if e.Enterprise {
+			tier = "Enterprise-deferred"
+		}
+		if e.Acknowledgment {
+			ack = "yes"
+		}
+		want = append(want, strings.Join([]string{e.Name, tier, e.Versions, ack, e.Notes}, " | "))
 	}
 	sort.Strings(documented)
 	sort.Strings(want)
-	if strings.Join(documented, ",") != strings.Join(want, ",") {
-		t.Errorf("docs codec table = %v, CoverageMatrix = %v", documented, want)
+	if got, exp := strings.Join(documented, "\n"), strings.Join(want, "\n"); got != exp {
+		t.Errorf("docs codec table:\n%s\nCoverageMatrix:\n%s", got, exp)
 	}
-}
-
-func boolStr(b bool) string {
-	if b {
-		return "enterprise"
-	}
-	return "mvp"
 }

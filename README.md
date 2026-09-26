@@ -2,11 +2,11 @@
 
 ![Coverage](https://raw.githubusercontent.com/weavster-dev/weavster/main/docs/coverage.svg)
 
-Config-driven, message-oriented integration platform, under active development toward its MVP.
-The goal: receive messages from files, HTTP, TCP/MLLP, databases, SMTP, and web services; filter
-and transform them with a declarative YAML DSL or sandboxed WASM; and route them to one or more
-destinations. **Today the server does not process messages yet** — see
-[What exists now](#what-exists-now) and the [support matrix](docs/support-matrix.md).
+Message-oriented integration platform. The current server stores flow definitions in memory,
+serves them through a REST API and a read-only topology API, and does not receive, transform, or
+deliver messages. Adapters, transforms, durable storage, and scheduling exist as libraries in the
+source tree that the server does not use. See [What exists now](#what-exists-now) and the
+[support matrix](docs/support-matrix.md).
 
 Single static Go binary (no CGo, no external runtime).
 
@@ -20,10 +20,13 @@ Get the server running locally in under 5 minutes.
 git clone https://github.com/weavster-dev/weavster.git
 cd weavster
 go build -o bin/weavster ./cmd/weavster
-./bin/weavster server 0.0.0.0:8080
+./bin/weavster server 127.0.0.1:8080
 ```
 
-Verify it's up — the server exposes its OpenAPI contract without auth:
+> **Warning:** API routes are unauthenticated. Keep the server on `127.0.0.1`; do not expose it
+> to a network.
+
+Verify it's up by fetching the OpenAPI contract:
 
 ```bash
 curl -s http://localhost:8080/api/openapi.yaml | head -n 5
@@ -73,7 +76,7 @@ weavster test --format junit --output artifacts/
 ## Run
 
 ```bash
-weavster server 0.0.0.0:8080
+weavster server 127.0.0.1:8080
 ```
 
 ## Layout
@@ -88,5 +91,5 @@ specs/           Phase 1/2 requirements and architecture
 
 ## Stack
 
-Go (>=1.22) · `net/http` + chi · wazero (WASM) · Go + TinyGo codegen ·
-PostgreSQL / SQLite / in-memory · REST + OpenAPI 3.1 · Prometheus + OTel.
+Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory store. Library-only packages
+also depend on wazero, SQLite/PostgreSQL drivers, Prometheus, and OpenTelemetry.

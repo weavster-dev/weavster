@@ -11,8 +11,8 @@ Config-driven, message-oriented integration platform — a single static Go bina
 
 ## What exists now
 
-Weavster is under active development toward its MVP. **The server does not process messages
-yet.** It serves a plain-HTTP, unauthenticated REST API with in-memory flow records, a
+**The server does not receive, transform, or deliver messages.**
+It serves a plain-HTTP, unauthenticated REST API with in-memory flow records, a
 read-only topology view of them, and a system status endpoint. Most platform capabilities
 (adapters, transforms, durable storage, scheduler, auth enforcement) exist only as libraries
 in the source tree.

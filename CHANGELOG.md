@@ -34,16 +34,12 @@ All notable changes to this project are documented here, following
 - CI quality gates (#142): `golangci-lint` job (pinned v2.6.2) with a no-`//nolint` check, `CGO_ENABLED=0` cross-build matrix for linux/amd64, linux/arm64, darwin/arm64 with no-CGo and static-link verification, and a Docker image build + non-root + smoke-test job.
 - `scripts/check-coverage.sh`: fails when any package is below the coverage threshold (default 90%), counting packages with no test files as 0%; run in the `coverage-gate` workflow.
 - Tests raising `cmd/weavster` (88.5% → 92.9%) and `internal/state` (87.9% → 90.4%) coverage: `weavster test` error paths, `server` subcommand dispatch, message search flow/status filtering, SQLite/in-memory search filter parity, and closed-database errors.
-
-- Support matrix (`docs/support-matrix.md`, in the docs nav): every capability classified as implemented (wired), library-only, Enterprise-deferred, or unsupported, with codec versions and per-adapter delivery guarantees. `TestSupportMatrixWired` proves the wired API rows against the composed server and `TestSupportMatrixCodecs` keeps the codec table in sync with `codecs.CoverageMatrix()` (#145).
+- Support matrix (`docs/support-matrix.md`, in the docs nav): every capability classified as implemented (wired), library-only, Enterprise-deferred, or unsupported, with codec versions and per-adapter delivery guarantees. `TestSupportMatrixWired` and `TestSupportMatrixCLI` prove the wired API and CLI rows against the composed server, and `TestSupportMatrixCodecs` checks every codec-table cell against `codecs.CoverageMatrix()` (#145).
 
 ### Changed
 
-- `README.md` and `docs/index.md` now describe composed runtime behavior instead of package presence: the server does not process messages, API routes are unauthenticated, and flows are in-memory (#145).
+- `README.md` and `docs/index.md` now describe composed runtime behavior instead of package presence: the server does not process messages, API routes are unauthenticated, and flows are in-memory. Quick Start and Run examples bind to `127.0.0.1` instead of `0.0.0.0` (#145).
 - Coverage policy raised to 90% for every package and the aggregate (#142, #107 D-08): `.octocov.yml` `acceptable: 90%`, `AGENTS.md`, `CONTRIBUTING.md`.
-
-### Changed
-
 - Specs amended with the #107 decisions (§0A): YAML DSL runs in an embedded, prebuilt WASM interpreter instead of per-transform TinyGo codegen (D-03); the MVP CPU limit is a wall-clock deadline, with instruction metering deferred to Enterprise (D-02); all mutation is API-first and the UI stays read-only (D-04); idempotency keys are stable across retries (D-10); scheduler leases carry a fencing token (D-11); topology drill-down node IDs follow contract §3.2 (D-13); install is signed binaries + a verifying `curl | bash` installer (D-07); open questions on mTLS, blob storage, and UI views resolved, and legacy import deferred (D-01, D-06, D-18, D-19). The Enterprise list now also covers broker adapters, KMS/Vault rotation, and object storage. Updated `specs/`, `docs/mvp-project-plan.md`, `docs/agent-onboarding.md`, and `agentic-manifest.json`.
 
 ### Fixed
