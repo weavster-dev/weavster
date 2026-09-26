@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 
 	"github.com/weavster-dev/weavster/internal/observability"
 	"github.com/weavster-dev/weavster/internal/topology"
@@ -40,6 +41,12 @@ type Flow struct {
 	Status     string `json:"status"`
 	Enabled    bool   `json:"enabled"`
 }
+
+// Flow errors a FlowStore returns for the handlers to map to 404 and 409.
+var (
+	ErrFlowNotFound = errors.New("flow not found")
+	ErrFlowExists   = errors.New("flow already exists")
+)
 
 // FlowStore is the flow CRUD backend.
 type FlowStore interface {

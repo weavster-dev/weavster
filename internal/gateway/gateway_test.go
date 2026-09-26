@@ -290,10 +290,10 @@ func TestFlowsHandlerErrorPaths(t *testing.T) {
 		t.Errorf("FlowsList error: want 500, got %d", rec.Code)
 	}
 
-	// Get error → 404
+	// Get store error → 500 (only ErrFlowNotFound is a 404)
 	rec = do(t, srv, http.MethodGet, "/api/v1/flows/missing", false)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("FlowsGet error: want 404, got %d", rec.Code)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("FlowsGet error: want 500, got %d", rec.Code)
 	}
 
 	// Create bad JSON → 400
@@ -315,10 +315,49 @@ func TestFlowsHandlerErrorPaths(t *testing.T) {
 		t.Errorf("FlowsCreate store error: want 500, got %d", rec3.Code)
 	}
 
-	// Delete error → 404
+	// Delete store error → 500
 	rec = do(t, srv, http.MethodDelete, "/api/v1/flows/missing", false)
-	if rec.Code != http.StatusNotFound {
-		t.Errorf("FlowsDelete error: want 404, got %d", rec.Code)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("FlowsDelete error: want 500, got %d", rec.Code)
+	}
+}
+
+// sentinelFlows returns the gateway's flow sentinels.
+type sentinelFlows struct{ *stubFlows }
+
+func (sentinelFlows) Get(context.Context, string) (Flow, error) { return Flow{}, ErrFlowNotFound }
+func (sentinelFlows) Create(context.Context, Flow) error        { return ErrFlowExists }
+func (sentinelFlows) Delete(context.Context, string) error      { return ErrFlowNotFound }
+
+func TestErrorsDoNotLeakInternals(t *testing.T) {
+	srv := newErrServer().Router()
+	for _, path := range []string{"/api/v1/flows", "/api/v1/topology", "/api/v1/messages"} {
+		rec := do(t, srv, http.MethodGet, path, false)
+		if rec.Code != http.StatusInternalServerError || strings.Contains(rec.Body.String(), "unavailable") {
+			t.Errorf("GET %s = %d %q, want generic 500", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestFlowsHandlerSentinels(t *testing.T) {
+	srv := New(Config{Flows: sentinelFlows{&stubFlows{}}}).Router()
+	tests := []struct {
+		method, path, body string
+		want               int
+	}{
+		{http.MethodGet, "/api/v1/flows/x", "", http.StatusNotFound},
+		{http.MethodDelete, "/api/v1/flows/x", "", http.StatusNotFound},
+		{http.MethodPost, "/api/v1/flows", `{"id":"x"}`, http.StatusConflict},
+		{http.MethodPost, "/api/v1/flows", `{"id":"a b"}`, http.StatusBadRequest},
+		{http.MethodPost, "/api/v1/flows", `{"name":"no id"}`, http.StatusBadRequest},
+	}
+	for _, tt := range tests {
+		req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+		rec := httptest.NewRecorder()
+		srv.ServeHTTP(rec, req)
+		if rec.Code != tt.want {
+			t.Errorf("%s %s = %d, want %d", tt.method, tt.path, rec.Code, tt.want)
+		}
 	}
 }
 

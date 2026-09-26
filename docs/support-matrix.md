@@ -26,8 +26,8 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | CSRF marker enforcement (`400` without `X-Weavster-CSRF: 1`) | Implemented (wired) | `TestSupportMatrixWired/csrf-marker` |
 | `TRACE`/`TRACK` rejected with `405` | Implemented (wired) | `TestSupportMatrixWired/trace-blocked` |
 | `Strict-Transport-Security`, `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` headers | Implemented (wired) | `TestSupportMatrixWired/security-headers`. HSTS is sent even over plain HTTP. |
-| `GET/POST /api/v1/flows`, `GET/DELETE /api/v1/flows/{id}` | Implemented (wired) | `TestSupportMatrixWired/flows-*`. Flows live **in memory** and are lost on restart. The server starts with one sample flow, `admit`. Flows are stored but **never run**. `DELETE` of an unknown ID returns `204`, not `404`. |
-| `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | Implemented (wired) | `TestSupportMatrixWired/topology-*`. The graph is built from the in-memory flows above. Status is whatever the flow record says, and activity counters are always zero. An unknown `flowId` returns `500`, not `404`. |
+| `GET/POST /api/v1/flows`, `GET/DELETE /api/v1/flows/{id}` | Implemented (wired) | `TestSupportMatrixWired/flows-*`. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. Flows are stored but **never run**. A flow `id` must be 1–128 characters from `A-Z a-z 0-9 . _ -`; anything else returns `400`. `POST` with an existing `id` returns `409`. `GET`/`DELETE` of an unknown ID returns `404`. |
+| `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | Implemented (wired) | `TestSupportMatrixWired/topology-*`. The graph is built from the stored flows above. Status is whatever the flow record says, and activity counters are always zero. An unknown `flowId` returns `404`. |
 | `GET /api/v1/messages` search | Implemented (wired) | `TestSupportMatrixWired/messages`. Always returns `[]`, because nothing writes messages yet. |
 | Authentication (Basic or Bearer token) on every `/api/v1` route except login | Implemented (wired) | `TestAuthRequired` |
 | Per-route permissions (`flows:view`, `flows:edit`, `messages:view`, `admin`) | Implemented (wired) | `TestPermissionMatrix` |
@@ -41,7 +41,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | Message store selection: `memory` (default), `sqlite`, `disabled` | Implemented (wired) | `TestServerConfigStore`. SQLite creates `<dataDir>/weavster.db` and runs migrations at startup. `disabled` makes message search return `503`. Nothing writes messages yet, so every store is empty. |
 | PostgreSQL message store | Unsupported | `store.dialect: postgres` is accepted, but startup fails after the retries because the schema uses SQLite-only SQL. |
 | Store connection retries (`store.maxRetry`, `store.retryWaitMs`) | Implemented (wired) | `TestServerConfigErrors/retry-exhausted`, `TestServerStopDuringStoreRetry`. PostgreSQL only. |
-| Durable flow definitions | Unsupported | Flows are in memory regardless of `store.dialect`. |
+| Durable flow definitions | Implemented (wired) | `TestFlowsSurviveRestart`. Durable with `store.dialect: sqlite`. With `memory` or `disabled`, flows are lost on restart. |
 | Server configuration file (`weavster server --config FILE`) | Implemented (wired) | `TestServerConfigListen`, `TestServerConfigErrors`. Strict YAML: unknown keys and invalid values exit `1`. See [Server configuration](server-config.md). |
 | Refuse to run as root (override: `WEAVSTER_ALLOW_ROOT=1`) | Implemented (wired) | `TestSupportMatrixPrivilegedGuard` |
 | `/metrics` (Prometheus), OpenTelemetry | Library-only | Not mounted or initialized by the server. |
@@ -84,10 +84,10 @@ cat > smoke.txt <<'EOF'
 status
 flow list
 EOF
-weavster -a http://127.0.0.1:8080 -s smoke.txt
+weavster -a http://127.0.0.1:8080 -u admin -p 'PASSWORD' -s smoke.txt
 ```
 
-Expected output: the `/api/v1/system` JSON document, followed by `Patient Admit`.
+Expected output: the `/api/v1/system` JSON document, followed by the name of each flow.
 
 ## Build and packaging
 

@@ -99,8 +99,8 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 
 !!! warning "Lockout can shut out the only admin"
     Anyone who can reach the API can lock `admin` by sending wrong passwords, and there is no
-    second account to unlock it. Restarting the server clears the lockout, but it also clears the
-    in-memory flows. Keep the server off untrusted networks. Setting `retryLimit: 0` removes this
+    second account to unlock it. Restarting the server clears the lockout, but it also clears
+    flows stored with `store.dialect: memory`. Keep the server off untrusted networks. Setting `retryLimit: 0` removes this
     risk but allows unlimited password guessing.
 
 ## Permissions

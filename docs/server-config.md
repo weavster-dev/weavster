@@ -87,13 +87,14 @@ and serves nothing.
 | `maxRetry` | `3` | PostgreSQL only: extra connection attempts after the first failure. |
 | `retryWaitMs` | `1000` | PostgreSQL only: wait between attempts, in milliseconds. |
 
-- **`memory`**: messages live in process memory and are lost on restart.
+- **`memory`**: messages and flow definitions live in process memory and are lost on restart.
 - **`sqlite`**: set `dsn` or `paths.dataDir`. `dsn` defaults to `<paths.dataDir>/weavster.db`.
   The parent directory is created (mode `0700`) if missing. Migrations run at startup. A SQLite
   failure is never retried.
 - **`postgres`**: `dsn` is required. **PostgreSQL does not work yet:** the schema uses
   SQLite-only SQL, so startup fails after the retries.
 - **`disabled`**: runs with no message store. `GET /api/v1/messages` returns `503 messages unavailable`.
+  Flow definitions are kept in memory.
 
 If every PostgreSQL attempt fails, the server exits `1`. SIGINT/SIGTERM during the retries
 stops the server immediately with exit code `0`. When every attempt fails:
@@ -102,8 +103,8 @@ stops the server immediately with exit code `0`. When every attempt fails:
 Error: store: postgres: giving up after 4 attempts: ...
 ```
 
-This setting stores **messages only**. Flow definitions are still kept in memory; see the
-[support matrix](support-matrix.md).
+The store holds messages and flow definitions. With `sqlite`, flows created through the API
+survive a restart.
 
 ### `paths`
 

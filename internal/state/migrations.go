@@ -55,6 +55,7 @@ func Migrations() []Migration {
 				return nil
 			},
 		},
+		flowsMigration(),
 	}
 }
 

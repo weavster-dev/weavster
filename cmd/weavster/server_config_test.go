@@ -266,3 +266,28 @@ func selfSignedCert(t *testing.T, dir string) (certFile, keyFile string, pool *x
 	pool.AddCert(cert)
 	return certFile, keyFile, pool
 }
+
+// TestFlowsSurviveRestart proves flow definitions are durable in the sqlite
+// store: a flow created through the API is still there after a restart.
+func TestFlowsSurviveRestart(t *testing.T) {
+	addr := freeAddr(t)
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	base := "http://" + addr
+	c := apiClient{t: t, base: base}
+	admin := basic(bootstrapAdmin, testAdminPassword)
+
+	stop := startCLI(t, []string{"server", "--config", cfg}, base+"/api/openapi.yaml")
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"lab","name":"Lab Results","sourceType":"http"}`, admin); status != http.StatusCreated {
+		t.Fatalf("create: %d %q", status, body)
+	}
+	stop()
+
+	stop = startCLI(t, []string{"server", "--config", cfg}, base+"/api/openapi.yaml")
+	defer stop()
+	if status, body, _ := c.do(http.MethodGet, "/api/v1/flows/lab", "", admin); status != http.StatusOK || !strings.Contains(body, "Lab Results") {
+		t.Errorf("after restart: %d %q, want the lab flow", status, body)
+	}
+	if status, body, _ := c.do(http.MethodGet, "/api/v1/topology", "", admin); status != http.StatusOK || !strings.Contains(body, "flow:lab") {
+		t.Errorf("topology after restart: %d %q", status, body)
+	}
+}
