@@ -54,7 +54,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 |---|---|---|
 | Sources and destinations (file, HTTP, TCP/MLLP, database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Nothing in the server starts an adapter or receives a message. |
 | Receive → filter → transform → route → deliver pipeline | Unsupported | |
-| YAML DSL transforms | Library-only | The compiler validates DSL, but its generated code discards the steps and returns the input unchanged. |
+| YAML DSL transforms | Library-only | An interpreter for `map`, `set`, and `filter` steps exists, but the server does not run transforms on messages yet. `build` and `destinationSet` are not supported. |
 | WASM executor (wazero), module registry | Library-only | Not used by the server. The executor has no WASI host. |
 | Scheduler (durable jobs, leases, interval/cron) | Library-only | |
 | Outbox, retries, dead-letter | Library-only | |
