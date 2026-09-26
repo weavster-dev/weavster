@@ -1180,7 +1180,7 @@ func (a flowAdapter) replaceKeepingStatus(ctx context.Context, f gateway.Flow, k
 // toPipelineFlow converts a stored flow into the pipeline's definition,
 // strictly decoding its transform.
 func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
-	pf := pipeline.Flow{ID: f.ID, Paused: !flowlife.AcceptsMessages(f.Status)}
+	pf := pipeline.Flow{ID: f.ID, Paused: !flowlife.AcceptsMessages(f.Status), ResponseSelector: f.ResponseSelector}
 	stopped := make(map[string]bool, len(f.StoppedDestinations))
 	for _, name := range f.StoppedDestinations {
 		stopped[name] = true
@@ -1195,9 +1195,13 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 		if err != nil {
 			return pf, fmt.Errorf("destination %s: transform: %w", d.Name, err)
 		}
+		rt, err := decodeTransform(d.ResponseTransform, f.ID+"."+d.Name+".response")
+		if err != nil {
+			return pf, fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
+		}
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{
 			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir,
-			Stopped: stopped[d.Name], Transform: t,
+			Stopped: stopped[d.Name], Transform: t, ResponseTransform: rt,
 		})
 	}
 	return pf, nil
@@ -1256,7 +1260,7 @@ func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (
 	if err != nil {
 		return gateway.IngestResult{}, err
 	}
-	return gateway.IngestResult{ID: res.ID, Status: string(res.Status)}, nil
+	return gateway.IngestResult{ID: res.ID, Status: string(res.Status), Response: res.Response}, nil
 }
 
 // retryLoop runs delivery retries immediately (resuming work queued before a
@@ -1297,17 +1301,36 @@ func (a ingestAdapter) retryDue(ctx context.Context) error {
 type adapterSink struct{ sink adapters.Sink }
 
 func (s adapterSink) Write(ctx context.Context, d pipeline.Delivery) error {
-	return s.sink.Write(ctx, adapters.Message{ID: d.MessageID, Body: d.Body, Metadata: map[string]string{
+	return s.sink.Write(ctx, adapterMessage(d))
+}
+
+// httpSink is the HTTP destination: a sink that also returns replies.
+type httpSink struct{ sink *adapters.HTTPSink }
+
+func (s httpSink) Write(ctx context.Context, d pipeline.Delivery) error {
+	return s.sink.Write(ctx, adapterMessage(d))
+}
+
+func (s httpSink) WriteResponse(ctx context.Context, d pipeline.Delivery) (*pipeline.Reply, error) {
+	r, err := s.sink.WriteResponse(ctx, adapterMessage(d))
+	if err != nil || r == nil {
+		return nil, err
+	}
+	return &pipeline.Reply{Body: r.Body, ContentType: r.ContentType}, nil
+}
+
+func adapterMessage(d pipeline.Delivery) adapters.Message {
+	return adapters.Message{ID: d.MessageID, Body: d.Body, Metadata: map[string]string{
 		adapters.IdempotencyKeyMetadata: d.IdempotencyKey,
 		adapters.ContentTypeMetadata:    d.ContentType,
-	}})
+	}}
 }
 
 // newSink builds the adapter for a flow destination.
 func newSink(d pipeline.Destination) (pipeline.Sink, error) {
 	switch d.Type {
 	case "http":
-		return adapterSink{adapters.NewHTTPSink(d.URL)}, nil
+		return httpSink{adapters.NewHTTPSink(d.URL)}, nil
 	case "file":
 		return adapterSink{adapters.NewFileSink(d.Dir)}, nil
 	}

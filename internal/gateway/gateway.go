@@ -53,6 +53,9 @@ type Flow struct {
 	// transform.schema.json shape); the gateway passes it through unparsed.
 	Transform    json.RawMessage   `json:"transform,omitempty"`
 	Destinations []FlowDestination `json:"destinations,omitempty"`
+	// ResponseSelector names the destination whose reply is returned to
+	// the sender of a message.
+	ResponseSelector string `json:"responseSelector,omitempty"`
 }
 
 // FlowDestination is one delivery target of a flow.
@@ -64,6 +67,8 @@ type FlowDestination struct {
 	// Transform is this destination's own DSL transform (filter steps
 	// included), applied to the flow's output; passed through unparsed.
 	Transform json.RawMessage `json:"transform,omitempty"`
+	// ResponseTransform is applied to this destination's reply.
+	ResponseTransform json.RawMessage `json:"responseTransform,omitempty"`
 }
 
 // FlowUpdater changes a stored flow's definition; the runtime status is
@@ -128,6 +133,8 @@ type FlowLifecycle interface {
 type IngestResult struct {
 	ID     string `json:"id"`
 	Status string `json:"status"`
+	// Response is the flow's selected destination reply, when there is one.
+	Response json.RawMessage `json:"response,omitempty"`
 }
 
 // MessageIngester runs a received message through a flow.
