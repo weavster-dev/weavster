@@ -154,7 +154,12 @@ same `Idempotency-Key`, so an HTTP receiver can ignore duplicates. When a destin
 
 Retry times are stored with the message. After a restart, the server resumes pending
 retries right away. With `store.dialect: sqlite`, a message that was `queued` when the server
-stopped is delivered once its destination is back.
+stopped is delivered once its destination is back. So is a message the server was still
+processing when it stopped or crashed: it is transformed if needed and delivered to every
+destination that has not received it.
+
+Messages of a flow whose `status` is `stopped`, `paused`, `halted`, or `undeployed` are not
+retried; they stay `queued`.
 
 A retried message that later succeeds changes to `sent`. The statistics then count it once as
 `queued` and once as `sent`.

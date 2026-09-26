@@ -101,6 +101,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		pipe := pipeline.New(store, newSink, processingObserver{stats, events}, pipeline.Options{
 			MaxAttempts: cfg.Delivery.MaxAttempts,
 			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
+			Gate:        flows.gate,
 		})
 		ia := ingestAdapter{flows: flows, pipe: pipe}
 		ingest = ia
@@ -419,6 +420,10 @@ type flowAdapter struct {
 // strictly decoding its transform.
 func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 	pf := pipeline.Flow{ID: f.ID}
+	switch f.Status {
+	case "stopped", "paused", "halted", "undeployed":
+		pf.Paused = true
+	}
 	if raw := bytes.TrimSpace(f.Transform); len(raw) > 0 && !bytes.Equal(raw, []byte("null")) {
 		dec := json.NewDecoder(bytes.NewReader(f.Transform))
 		dec.DisallowUnknownFields()
@@ -454,11 +459,10 @@ func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (
 	if err != nil {
 		return gateway.IngestResult{}, err
 	}
-	switch f.Status {
-	case "stopped", "paused", "halted", "undeployed":
+	pf, err := toPipelineFlow(f)
+	if err == nil && pf.Paused {
 		return gateway.IngestResult{}, fmt.Errorf("%w: flow %s is %s", gateway.ErrFlowNotRunning, f.ID, f.Status)
 	}
-	pf, err := toPipelineFlow(f)
 	if err != nil {
 		return gateway.IngestResult{}, err
 	}
@@ -492,12 +496,9 @@ func retryLoop(ctx context.Context, ia ingestAdapter, interval time.Duration, lo
 	}
 }
 
-// retryDue runs one retry pass, ordered with flow deletes like ingestion.
+// retryDue runs one retry pass. The pipeline read-locks the flow gate per
+// message, so flow deletes wait only for the message in progress.
 func (a ingestAdapter) retryDue(ctx context.Context) error {
-	if a.flows.gate != nil {
-		a.flows.gate.RLock()
-		defer a.flows.gate.RUnlock()
-	}
 	_, err := a.pipe.RetryDue(ctx, func(ctx context.Context, id string) (pipeline.Flow, error) {
 		f, err := a.flows.Get(ctx, id)
 		if errors.Is(err, gateway.ErrFlowNotFound) {

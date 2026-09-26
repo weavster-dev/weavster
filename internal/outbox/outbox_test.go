@@ -103,8 +103,8 @@ func TestDeliverSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, _ := s.Get(ctx, "1")
-	if m.Status != state.StatusSent {
-		t.Errorf("status = %s, want sent", m.Status)
+	if m.Status != state.StatusReceived {
+		t.Errorf("status = %s; Deliver must leave the aggregate status to the caller", m.Status)
 	}
 	if m.Attempts["d1"].Attempts != 1 || m.Attempts["d1"].LastError != "" {
 		t.Errorf("attempts = %+v", m.Attempts)
@@ -131,7 +131,7 @@ func TestDeliverBoundedRetryAndDeadLetter(t *testing.T) {
 	}
 	m, _ := s.Get(ctx, "1")
 	if m.Status != state.StatusDeadLettered {
-		t.Errorf("status = %s, want errored (dead-letter)", m.Status)
+		t.Errorf("status = %s, want dead-lettered", m.Status)
 	}
 	if m.Attempts["d1"].Attempts != 3 {
 		t.Errorf("attempts = %d, want 3", m.Attempts["d1"].Attempts)
@@ -184,8 +184,8 @@ func TestAmbiguousChecksStatusFirst(t *testing.T) {
 		t.Errorf("deliver called %d times, want 1 (status check must avoid re-send)", deliverCalls)
 	}
 	m, _ = s.Get(ctx, "1")
-	if m.Status != state.StatusSent {
-		t.Errorf("status = %s, want sent", m.Status)
+	if m.Status != state.StatusQueued || m.Attempts["d1"].LastError != "" {
+		t.Errorf("status = %s, attempts = %+v; want the delivery recorded and the status left to the caller", m.Status, m.Attempts)
 	}
 }
 

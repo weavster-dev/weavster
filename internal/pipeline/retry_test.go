@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -132,5 +133,88 @@ func TestRetryDueStoreFailures(t *testing.T) {
 				t.Errorf("failing call %d (get=%v): err = %v", n, failGet, err)
 			}
 		}
+	}
+}
+
+// TestRetryResumesInterruptedMessages covers crash recovery: messages left
+// in "received" or "transformed" (with an untried destination) are finished.
+func TestRetryResumesInterruptedMessages(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	sink := &recordingSink{}
+	p := New(store, func(Destination) (Sink, error) { return sink, nil }, nil, Options{BackoffBase: time.Millisecond})
+	f := Flow{ID: "f", Transform: transform(t, "name: t\nsteps:\n  - set: { field: ok, expr: yes }"),
+		Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}, {Name: "b", Type: "file", Dir: "d"}}}
+	lookup := func(context.Context, string) (Flow, error) { return f, nil }
+
+	_ = store.Put(ctx, state.Message{ID: "r", FlowID: "f", Status: state.StatusReceived, ContentType: "json", Raw: []byte(`{}`)})
+	_ = store.Put(ctx, state.Message{ID: "t", FlowID: "f", Status: state.StatusTransformed, ContentType: "json", Transformed: []byte(`{"x":1}`),
+		Attempts: map[string]state.DestinationAttempt{"a": {Attempts: 1}}})
+	_ = store.Put(ctx, state.Message{ID: "q", FlowID: "f", Status: state.StatusQueued, ContentType: "json", Transformed: []byte(`{"y":1}`),
+		Attempts: map[string]state.DestinationAttempt{"a": {Attempts: 1, LastError: "x"}}}) // b never tried
+
+	n, err := p.RetryDue(ctx, lookup)
+	if err != nil || n != 3 {
+		t.Fatalf("RetryDue = %d, %v; want 3", n, err)
+	}
+	for _, id := range []string{"r", "t", "q"} {
+		if m, _ := store.Get(ctx, id); m.Status != state.StatusSent {
+			t.Errorf("%s: status %s, want sent (attempts %+v)", id, m.Status, m.Attempts)
+		}
+	}
+	if m, _ := store.Get(ctx, "r"); string(m.Transformed) != `{"ok":"yes"}` {
+		t.Errorf("received message not transformed: %s", m.Transformed)
+	}
+}
+
+func TestRetrySkipsInFlightPausedAndContinuesPastErrors(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	p := New(store, func(Destination) (Sink, error) { return &recordingSink{}, nil }, nil, Options{BackoffBase: time.Millisecond})
+	f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	for _, id := range []string{"1", "2", "3"} {
+		_ = store.Put(ctx, state.Message{ID: id, FlowID: id, Status: state.StatusQueued, Transformed: []byte("x")})
+	}
+	p.inflight.Store("1", struct{}{}) // being processed by a request
+	lookup := func(_ context.Context, flowID string) (Flow, error) {
+		switch flowID {
+		case "2":
+			return Flow{}, errStore // lookup failure: skipped, error collected
+		case "3":
+			paused := f
+			paused.Paused = true
+			return paused, nil
+		}
+		return f, nil
+	}
+	n, err := p.RetryDue(ctx, lookup)
+	if n != 0 || !errors.Is(err, errStore) {
+		t.Errorf("RetryDue = %d, %v; want 0 resumed and the lookup error", n, err)
+	}
+	for _, id := range []string{"1", "2", "3"} {
+		if m, _ := store.Get(ctx, id); m.Status != state.StatusQueued {
+			t.Errorf("%s changed to %s", id, m.Status)
+		}
+	}
+
+	// Cancellation stops the pass before any message.
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	if n, _ := p.RetryDue(cancelled, func(context.Context, string) (Flow, error) { return f, nil }); n != 0 {
+		t.Errorf("cancelled pass resumed %d", n)
+	}
+}
+
+func TestRetryPagesThroughAllQueued(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	p := New(store, func(Destination) (Sink, error) { return &recordingSink{}, nil }, nil, Options{})
+	f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	total := retryPage*2 + 7
+	for i := 0; i < total; i++ {
+		_ = store.Put(ctx, state.Message{ID: fmt.Sprintf("%04d", i), FlowID: "f", Status: state.StatusQueued, Transformed: []byte("x")})
+	}
+	if n, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) { return f, nil }); err != nil || n != total {
+		t.Errorf("RetryDue = %d, %v; want %d", n, err, total)
 	}
 }

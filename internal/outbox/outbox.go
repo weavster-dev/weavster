@@ -92,7 +92,6 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 			cur.Attempts++
 			cur.LastError = ""
 			m.Attempts[dest] = cur
-			m.Status = state.StatusSent
 			return o.store.Put(ctx, m)
 		}
 	}
@@ -105,7 +104,8 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 		cur.LastError = ""
 		cur.NextAttemptAt = time.Time{}
 		m.Attempts[dest] = cur
-		m.Status = state.StatusSent
+		// The message status is left to the caller: other destinations may
+		// still be pending, so one success does not make the message sent.
 		return o.store.Put(ctx, m)
 	} else {
 		cur.Attempts = attempt

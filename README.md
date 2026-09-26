@@ -5,8 +5,9 @@
 Message-oriented integration platform. The current server stores flow definitions, accepts
 messages for a flow through its REST API, transforms them with a declarative YAML DSL
 (`map`/`set`/`filter`), and delivers them to HTTP and file destinations, recording every message
-and its status. Listening sources, retries, scheduling, and WASM modules exist as libraries in the
-source tree that the server does not use. See [What exists now](#what-exists-now) and the
+and its status; failed deliveries are retried with backoff and dead-lettered after a limit.
+Listening sources, scheduling, and WASM modules exist as libraries in the source tree that the
+server does not use. See [What exists now](#what-exists-now) and the
 [support matrix](docs/support-matrix.md).
 
 Single static Go binary (no CGo, no external runtime).
@@ -60,7 +61,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   `/api/v1/system`, CSRF marker enforcement, security headers, and TRACE/TRACK blocking;
   flow create/list/get/delete stored in the configured store (durable with `sqlite`);
   `POST /api/v1/flows/{id}/messages` runs a message through the flow's DSL transform and
-  delivers it once to each `http`/`file` destination (see
+  delivers it to each `http`/`file` destination, retrying failures with backoff (see
   [Processing messages](docs/processing-messages.md)); message search by flow and status;
   read-only topology JSON built from the flows.
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
