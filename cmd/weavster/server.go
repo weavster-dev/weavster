@@ -595,14 +595,19 @@ func (a flowAdapter) SetEnabled(ctx context.Context, id string, enabled bool) (g
 // one write, so a crash never leaves it half-deployed. Failures are logged
 // and skipped: one bad flow never stops the server from starting.
 func (a flowAdapter) DeployEnabled(ctx context.Context, logger *slog.Logger) {
-	flows, err := a.List(ctx)
+	defs, err := a.store.ListFlows(ctx)
 	if err != nil {
 		logger.Warn("auto-deploy skipped: cannot list flows", "error", err)
 		return
 	}
 	var started []string
-	for _, f := range flows {
-		if !f.Enabled || f.Status != flowlife.Undeployed {
+	for _, d := range defs {
+		var f gateway.Flow
+		if err := json.Unmarshal(d.Document, &f); err != nil {
+			logger.Warn("auto-deploy failed: unreadable flow", "flow", d.ID, "error", err)
+			continue
+		}
+		if !f.Enabled || flowlife.Normalize(f.Status) != flowlife.Undeployed {
 			continue
 		}
 		err := func() error {

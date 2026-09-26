@@ -21,12 +21,12 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 
 | Capability | Tier | Proof / notes |
 |---|---|---|
-| `GET /api/openapi.yaml` (no marker header needed) | Implemented (wired) | `TestSupportMatrixWired/openapi`. The served document omits `/api/v1/flows/{id}` and the `X-Weavster-CSRF` header, so a client generated from it is incomplete. |
+| `GET /api/openapi.yaml` (no marker header needed) | Implemented (wired) | `TestSupportMatrixWired/openapi`. The served document and `agent-docs/openapi.yaml` are maintained separately and can differ in detail. |
 | `GET /api/v1/system` status document | Implemented (wired) | `TestSupportMatrixWired/system` |
 | CSRF marker enforcement (`400` without `X-Weavster-CSRF: 1`) | Implemented (wired) | `TestSupportMatrixWired/csrf-marker` |
 | `TRACE`/`TRACK` rejected with `405` | Implemented (wired) | `TestSupportMatrixWired/trace-blocked` |
 | `Strict-Transport-Security`, `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` headers | Implemented (wired) | `TestSupportMatrixWired/security-headers`. HSTS is sent even over plain HTTP. |
-| `GET/POST /api/v1/flows`, `GET/DELETE /api/v1/flows/{id}` | Implemented (wired) | `TestSupportMatrixWired/flows-*`. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. Flows are stored but **never run**. A flow `id` must be 1–128 characters from `A-Z a-z 0-9 . _ -`; anything else returns `400`. `POST` with an existing `id` returns `409`. `GET`/`DELETE` of an unknown ID returns `404`. |
+| `GET/POST /api/v1/flows`, `GET/PUT/DELETE /api/v1/flows/{id}` | Implemented (wired) | `TestSupportMatrixWired/flows-*`, `TestFlowUpdateAndEnable`. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. A flow processes messages once it is `started` (see Flow lifecycle below). A flow `id` must be 1–128 characters from `A-Z a-z 0-9 . _ -`; anything else returns `400`. `POST` with an existing `id` returns `409`. `GET`/`DELETE` of an unknown ID returns `404`. |
 | `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | Implemented (wired) | `TestSupportMatrixWired/topology-*`. The graph is built from the stored flows above. Status is whatever the flow record says. Flow nodes carry real activity counters (see below). An unknown `flowId` returns `404`. |
 | `GET /api/v1/messages` search (`flowId`, `status`) | Implemented (wired) | `TestSupportMatrixWired/messages`, `TestPipelineEndToEnd`. Returns messages sent into flows with their final status. |
 | Authentication (Basic or Bearer token) on every `/api/v1` route except login | Implemented (wired) | `TestAuthRequired` |

@@ -156,6 +156,7 @@ func TestDeployEnabledSkipsBadFlows(t *testing.T) {
 		"good":  `{"id":"good","enabled":true}`,
 		"fails": `{"id":"fails","enabled":true}`,
 		"off":   `{"id":"off","enabled":false}`,
+		"bad":   `{`, // unreadable: logged and skipped
 	} {
 		_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: id, Document: []byte(doc)})
 	}
@@ -167,7 +168,7 @@ func TestDeployEnabledSkipsBadFlows(t *testing.T) {
 			t.Errorf("%s = %s, want %s", id, f.Status, want)
 		}
 	}
-	if !strings.Contains(logs.String(), "auto-deploy failed") || !strings.Contains(logs.String(), "flow=fails") {
+	if !strings.Contains(logs.String(), "auto-deploy failed") || !strings.Contains(logs.String(), "flow=fails") || !strings.Contains(logs.String(), "flow=bad") {
 		t.Errorf("failure not logged: %s", logs.String())
 	}
 

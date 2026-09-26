@@ -93,6 +93,20 @@ paths:
       responses:
         "201": {description: Created}
   /api/v1/flows/{id}:
+    get:
+      summary: Get a flow (requires flows:view)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: The flow}
+        "404": {description: Unknown flow}
+    delete:
+      summary: Delete a flow (requires flows:edit)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "204": {description: Deleted}
+        "404": {description: Unknown flow}
     put:
       summary: Replace a flow's definition; status is kept (requires flows:edit)
       parameters:
