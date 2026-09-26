@@ -43,7 +43,7 @@ Unknown fields and wrong types are rejected rather than ignored:
 ### `transform`
 
 `transform` is optional. Without it (or with `null` or no `steps`), messages pass through
-unchanged and may be any bytes. It uses the steps
+unchanged and may be any bytes (unless a destination has its own `transform`). It uses the steps
 below, in order, on the message as a JSON object.
 
 | Step | Fields | Effect |
@@ -77,6 +77,37 @@ below, in order, on the message as a JSON object.
 | `type` | `http` (POST to `url`) or `file` (write one file per message into `dir`, named by message ID). |
 | `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a `POST` with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough), and it times out after 30 seconds. The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`. Created if missing. |
+| `transform` | Optional. This destination's own transform, with the same steps as the flow `transform`. See [Per-destination transforms and filters](#per-destination-transforms-and-filters). |
+
+### Per-destination transforms and filters
+
+A destination's `transform` runs on the flow's output, just before delivery to that
+destination. The other destinations are not affected. A `filter` step in it drops the message
+for that destination only:
+
+```json
+"destinations": [
+  {"name": "ehr", "type": "http", "url": "https://ehr.example.com/inbound",
+   "transform": {"steps": [{"filter": {"when": "patient.lastName == ''", "action": "reject"}}]}},
+  {"name": "archive", "type": "file", "dir": "/var/lib/weavster/archive",
+   "transform": {"steps": [{"set": {"field": "archivedBy", "expr": "weavster"}}]}}
+]
+```
+
+- The destination receives the result as `application/json`.
+- A destination whose filter drops the message is not delivered to and counts as done. A
+  [stopped](flow-lifecycle.md#stopping-one-destination) destination still holds the message
+  until you start it; its filter is checked then. The
+  message is `sent` once the other destinations succeed. It is `filtered` when every destination
+  drops it.
+- Once any destination has a `transform`, every message sent to the flow must be a JSON object
+  (`400` otherwise), even when the flow itself has no `transform`.
+- A destination transform that fails (for example `"x" is not a number`) counts as a failed
+  delivery to that destination. It is retried and then dead-lettered like any other failure.
+  Because the same input gives the same failure, fix the transform with an update: `queued`
+  messages use the new definition.
+- Retries, and deliveries after a restart, run the destination's current transform again on
+  the stored flow output.
 
 ### Update a flow
 
@@ -185,7 +216,7 @@ The request returns after processing finishes. `status` is one of:
 | `sent` | Delivered to every destination. |
 | `queued` | At least one destination failed, or is [stopped](flow-lifecycle.md#stopping-one-destination). It is retried automatically (see [Retries](#retries)). |
 | `dead-lettered` | A destination still failed after `delivery.maxAttempts` attempts and no other destination has work left, or the flow was deleted while the message was queued. Not retried again. |
-| `filtered` | A `filter` step dropped the message. Nothing was delivered. |
+| `filtered` | A flow `filter` step dropped the message, or every destination's own filter did. Nothing was delivered. |
 | `errored` | The transform failed (for example `"x" is not a number`). Nothing was delivered. |
 
 Processing continues even if your client disconnects, so every message ends in one of the
@@ -195,7 +226,7 @@ Errors:
 
 | Response | Cause |
 |---|---|
-| `400` | The flow has a transform and the body is not a JSON object, or the body could not be read. |
+| `400` | The flow or one of its destinations has a transform and the body is not a JSON object, or the body could not be read. |
 | `404` | Unknown flow. |
 | `409` | The flow is not `started`. |
 | `413` | Body larger than 10 MiB. |

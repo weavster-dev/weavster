@@ -102,6 +102,9 @@
             "string",
             "null"
           ]
+        },
+        "transform": {
+          "$ref": "#/$defs/Transform"
         }
       }
     },

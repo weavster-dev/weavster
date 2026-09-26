@@ -1185,27 +1185,44 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 	for _, name := range f.StoppedDestinations {
 		stopped[name] = true
 	}
-	if raw := bytes.TrimSpace(f.Transform); len(raw) > 0 && !bytes.Equal(raw, []byte("null")) {
-		dec := json.NewDecoder(bytes.NewReader(f.Transform))
-		dec.DisallowUnknownFields()
-		var t compiler.Transform
-		if err := dec.Decode(&t); err != nil {
-			return pf, fmt.Errorf("transform: %w", err)
-		}
-		if t.Name == "" {
-			t.Name = f.ID
-		}
-		if len(t.Steps) > 0 { // a transform without steps is a passthrough
-			pf.Transform = &t
-		}
+	t, err := decodeTransform(f.Transform, f.ID)
+	if err != nil {
+		return pf, fmt.Errorf("transform: %w", err)
 	}
+	pf.Transform = t
 	for _, d := range f.Destinations {
+		t, err := decodeTransform(d.Transform, f.ID+"."+d.Name)
+		if err != nil {
+			return pf, fmt.Errorf("destination %s: transform: %w", d.Name, err)
+		}
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{
 			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir,
-			Stopped: stopped[d.Name],
+			Stopped: stopped[d.Name], Transform: t,
 		})
 	}
 	return pf, nil
+}
+
+// decodeTransform strictly decodes a stored DSL transform. It returns nil
+// for an absent or null transform, or one without steps (a passthrough).
+// name is used when the transform has none.
+func decodeTransform(raw json.RawMessage, name string) (*compiler.Transform, error) {
+	if raw = bytes.TrimSpace(raw); len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return nil, nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	var t compiler.Transform
+	if err := dec.Decode(&t); err != nil {
+		return nil, err
+	}
+	if t.Name == "" {
+		t.Name = name
+	}
+	if len(t.Steps) == 0 {
+		return nil, nil
+	}
+	return &t, nil
 }
 
 // ingestAdapter runs received messages through their flow's pipeline.
@@ -1423,6 +1440,8 @@ func (o processingObserver) Retried(m state.Message, attempted []string) {
 		kinds = []observability.CounterKind{observability.Sent}
 	case state.StatusDeadLettered:
 		kinds = []observability.CounterKind{observability.Errored}
+	case state.StatusFiltered: // every destination's own filter dropped it
+		kinds = []observability.CounterKind{observability.Filtered}
 	}
 	connectors := map[string]observability.CounterKind{}
 	for _, dest := range attempted {
