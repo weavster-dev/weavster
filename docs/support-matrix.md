@@ -28,7 +28,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | `Strict-Transport-Security`, `X-Frame-Options: DENY`, `Content-Security-Policy: frame-ancestors 'none'`, `X-Content-Type-Options: nosniff` headers | Implemented (wired) | `TestSupportMatrixWired/security-headers`. HSTS is sent even over plain HTTP. |
 | `GET/POST /api/v1/flows`, `GET/DELETE /api/v1/flows/{id}` | Implemented (wired) | `TestSupportMatrixWired/flows-*`. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. Flows are stored but **never run**. A flow `id` must be 1–128 characters from `A-Z a-z 0-9 . _ -`; anything else returns `400`. `POST` with an existing `id` returns `409`. `GET`/`DELETE` of an unknown ID returns `404`. |
 | `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | Implemented (wired) | `TestSupportMatrixWired/topology-*`. The graph is built from the stored flows above. Status is whatever the flow record says, and activity counters are always zero. An unknown `flowId` returns `404`. |
-| `GET /api/v1/messages` search | Implemented (wired) | `TestSupportMatrixWired/messages`. Always returns `[]`, because nothing writes messages yet. |
+| `GET /api/v1/messages` search (`flowId`, `status`) | Implemented (wired) | `TestSupportMatrixWired/messages`, `TestPipelineEndToEnd`. Returns messages sent into flows with their final status. |
 | Authentication (Basic or Bearer token) on every `/api/v1` route except login | Implemented (wired) | `TestAuthRequired` |
 | Per-route permissions (`flows:view`, `flows:edit`, `messages:view`, `admin`) | Implemented (wired) | `TestPermissionMatrix` |
 | `POST /api/v1/auth/login`, `/auth/logout`, `GET /auth/me`, `POST /auth/password` | Implemented (wired) | `TestLoginLogout`, `TestBootstrapGeneratedPassword`. Tokens are in memory and expire after 12 hours. |
@@ -39,7 +39,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction | Implemented (wired) | `TestAuditLog`. Written to stderr only; not stored or searchable. See [Audit log](audit-log.md). |
 | HTTPS listener (`listen.tlsAddress`, `tls.certFile/keyFile/minVersion`) | Implemented (wired) | `TestServerConfigTLS` |
 | mTLS | Unsupported | |
-| Message store selection: `memory` (default), `sqlite`, `disabled` | Implemented (wired) | `TestServerConfigStore`. SQLite creates `<dataDir>/weavster.db` and runs migrations at startup. `disabled` makes message search return `503`. Nothing writes messages yet, so every store is empty. |
+| Message store selection: `memory` (default), `sqlite`, `disabled` | Implemented (wired) | `TestServerConfigStore`. SQLite creates `<dataDir>/weavster.db` and runs migrations at startup. `disabled` makes message search return `503` and message intake unavailable. |
 | PostgreSQL message store | Unsupported | `store.dialect: postgres` is accepted, but startup fails after the retries because the schema uses SQLite-only SQL. |
 | Store connection retries (`store.maxRetry`, `store.retryWaitMs`) | Implemented (wired) | `TestServerConfigErrors/retry-exhausted`, `TestServerStopDuringStoreRetry`. PostgreSQL only. |
 | Durable flow definitions | Implemented (wired) | `TestFlowsSurviveRestart`. Durable with `store.dialect: sqlite`. With `memory` or `disabled`, flows are lost on restart. |
@@ -52,12 +52,14 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 
 | Capability | Tier | Notes |
 |---|---|---|
-| Sources and destinations (file, HTTP, TCP/MLLP, database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Nothing in the server starts an adapter or receives a message. |
-| Receive → filter → transform → route → deliver pipeline | Unsupported | |
-| YAML DSL transforms | Library-only | An interpreter for `map`, `set`, and `filter` steps exists, but the server does not run transforms on messages yet. `build` and `destinationSet` are not supported. |
+| Message intake: `POST /api/v1/flows/{id}/messages` | Implemented (wired) | `TestPipelineEndToEnd`. See [Processing messages](processing-messages.md). |
+| Receive → persist → filter → transform → deliver to each destination, with per-destination results and aggregate status | Implemented (wired) | `TestPipelineEndToEnd`. Synchronous, one attempt; no response processing. |
+| `http` and `file` destinations | Implemented (wired) | `TestPipelineEndToEnd` |
+| Other sources and destinations (file/HTTP/TCP-MLLP listeners, database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Flows do not listen on their own ports or poll anything. |
+| YAML DSL `map`, `set`, `filter` steps | Implemented (wired) | `TestPipelineEndToEnd`. `build` and `destinationSet` are not supported. |
 | WASM executor (wazero), module registry | Library-only | Not used by the server. The executor has no WASI host. |
 | Scheduler (durable jobs, leases, interval/cron) | Library-only | |
-| Outbox, retries, dead-letter | Library-only | |
+| Retries, backoff, dead-letter | Unsupported | A failed delivery leaves the message `queued`; nothing retries it. |
 | Alerts and SMTP/webhook notifiers | Library-only | |
 | Config-as-code (validate/plan/apply/drift), Git store | Library-only | No CLI command or API endpoint exposes them. |
 | Legacy import | Unsupported | `internal/migrate` reads a made-up `<weavster-export>` XML schema, not any real legacy export format. |
@@ -132,19 +134,19 @@ Codecs are library-only: the server never parses a message. You can exercise the
 
 ## Delivery guarantees per adapter
 
-**The running server delivers nothing**, so it makes no delivery guarantee. The table below
-describes the library adapters for when they are wired in later phases. No sink sends an
-idempotency key today, so no destination is exactly-once. The outbox library's
+The server makes **one** delivery attempt per destination; a failure leaves the message
+`queued` and is not retried. So today every wired destination is at-most-once. Rows marked
+"library" describe adapters the server does not use yet. The outbox library's
 `SemanticsForAdapter` labels non-TCP sinks "exactly-once", but that label is not yet true.
 
-| Adapter | Source | Sink | Guarantee when retried through the outbox | Sends idempotency key |
+| Adapter | Source | Sink | Guarantee | Sends idempotency key |
 |---|---|---|---|---|
-| File | yes | yes | at-least-once | no |
-| HTTP | yes | yes | at-least-once | no |
-| TCP/MLLP | yes | yes | at-least-once | no |
-| Database | yes | yes | at-least-once | no |
-| SMTP | — | yes | at-least-once | no |
-| Web service (SOAP/REST) | — | yes | at-least-once | no |
-| Document | — | yes | at-least-once | no |
-| In-process inter-flow | yes | yes | at-least-once | no |
+| File | library | wired | at-most-once (one attempt) | no |
+| HTTP | library | wired | at-most-once (one attempt) | yes: `Idempotency-Key` header, the same for every attempt to deliver a message to a destination |
+| TCP/MLLP | library | library | not wired | no (the protocol has no field for one) |
+| Database | library | library | not wired | no |
+| SMTP | — | library | not wired | no |
+| Web service (SOAP/REST) | — | library | not wired | no |
+| Document | — | library | not wired | no |
+| In-process inter-flow | library | library | not wired | no |
 | Broker, DICOM | Enterprise-deferred | Enterprise-deferred | — | — |

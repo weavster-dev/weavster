@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/weavster-dev/weavster/internal/observability"
@@ -40,12 +41,39 @@ type Flow struct {
 	SourceType string `json:"sourceType"`
 	Status     string `json:"status"`
 	Enabled    bool   `json:"enabled"`
+	// Transform is the flow's YAML DSL transform as a JSON object (the
+	// transform.schema.json shape); the gateway passes it through unparsed.
+	Transform    json.RawMessage   `json:"transform,omitempty"`
+	Destinations []FlowDestination `json:"destinations,omitempty"`
 }
 
-// Flow errors a FlowStore returns for the handlers to map to 404 and 409.
+// FlowDestination is one delivery target of a flow.
+type FlowDestination struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+	URL  string `json:"url,omitempty"`
+	Dir  string `json:"dir,omitempty"`
+}
+
+// IngestResult is the outcome of processing one received message.
+type IngestResult struct {
+	ID     string `json:"id"`
+	Status string `json:"status"`
+}
+
+// MessageIngester runs a received message through a flow.
+type MessageIngester interface {
+	Ingest(ctx context.Context, flowID string, body []byte) (IngestResult, error)
+}
+
+// Flow errors the ports return; handlers map them to 404, 409, and 400.
+// ErrInvalidFlow and ErrInvalidMessage are wrapped with a message that is
+// safe to show the client.
 var (
-	ErrFlowNotFound = errors.New("flow not found")
-	ErrFlowExists   = errors.New("flow already exists")
+	ErrFlowNotFound   = errors.New("flow not found")
+	ErrFlowExists     = errors.New("flow already exists")
+	ErrInvalidFlow    = errors.New("invalid flow")
+	ErrInvalidMessage = errors.New("invalid message")
 )
 
 // FlowStore is the flow CRUD backend.
@@ -90,6 +118,7 @@ type Config struct {
 	Audit       AuditSink
 	Flows       FlowStore
 	Messages    MessageSearcher
+	Ingest      MessageIngester
 	Topology    TopologyProvider
 	System      observability.SystemInfo
 	RequireCSRF bool

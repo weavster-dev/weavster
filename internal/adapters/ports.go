@@ -12,6 +12,10 @@ import (
 // (message-queue broker, DICOM).
 var ErrNotImplemented = errors.New("adapters: enterprise adapter not implemented in MVP")
 
+// IdempotencyKeyMetadata is the Message.Metadata key whose value sinks that
+// support idempotency send downstream (the HTTP sink: Idempotency-Key header).
+const IdempotencyKeyMetadata = "idempotency-key"
+
 // Message is the unit moved by sources and sinks.
 type Message struct {
 	ID       string

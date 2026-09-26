@@ -109,6 +109,27 @@ paths:
       responses:
         "204":
           description: Deleted.
+  /api/v1/flows/{id}/messages:
+    post:
+      summary: Send a message into a flow (requires messages:send)
+      description: >
+        Persists the message, runs the flow's transform, and delivers it to each destination.
+        The body must be a JSON object when the flow has a transform.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: {type: string}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        "202": {description: "Processed: {id, status} with status sent, queued, filtered, or errored"}
+        "400": {description: Body is not a JSON object}
+        "404": {description: Unknown flow}
+        "413": {description: Body larger than 10 MiB}
   /api/v1/messages:
     get:
       summary: Search messages

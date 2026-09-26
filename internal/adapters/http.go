@@ -26,6 +26,9 @@ func (s *HTTPSink) Write(ctx context.Context, m Message) error {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/octet-stream")
+	if key := m.Metadata[IdempotencyKeyMetadata]; key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return err

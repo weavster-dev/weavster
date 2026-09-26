@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"regexp"
 )
@@ -18,6 +19,8 @@ func writeFlowError(w http.ResponseWriter, err error) {
 		http.Error(w, "flow not found", http.StatusNotFound)
 	case errors.Is(err, ErrFlowExists):
 		http.Error(w, "flow already exists", http.StatusConflict)
+	case errors.Is(err, ErrInvalidFlow), errors.Is(err, ErrInvalidMessage):
+		http.Error(w, err.Error(), http.StatusBadRequest)
 	default:
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
@@ -84,4 +87,25 @@ func (s *Server) handleFlowsDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// maxMessageBytes caps a received message body.
+const maxMessageBytes = 10 << 20
+
+func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Ingest == nil {
+		http.Error(w, "message processing unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxMessageBytes))
+	if err != nil {
+		http.Error(w, "message body too large or unreadable", http.StatusRequestEntityTooLarge)
+		return
+	}
+	res, err := s.cfg.Ingest.Ingest(r.Context(), r.PathValue("id"), body)
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, res)
 }

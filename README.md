@@ -2,9 +2,10 @@
 
 ![Coverage](https://raw.githubusercontent.com/weavster-dev/weavster/main/docs/coverage.svg)
 
-Message-oriented integration platform. The current server stores flow definitions in its configured store,
-serves them through a REST API and a read-only topology API, and does not receive, transform, or
-deliver messages. Adapters, transforms, durable storage, and scheduling exist as libraries in the
+Message-oriented integration platform. The current server stores flow definitions, accepts
+messages for a flow through its REST API, transforms them with a declarative YAML DSL
+(`map`/`set`/`filter`), and delivers them to HTTP and file destinations, recording every message
+and its status. Listening sources, retries, scheduling, and WASM modules exist as libraries in the
 source tree that the server does not use. See [What exists now](#what-exists-now) and the
 [support matrix](docs/support-matrix.md).
 
@@ -57,10 +58,11 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
 - **Running server** (`weavster server [--config FILE]`): REST API over HTTP and optional HTTPS,
   with the OpenAPI document,
   `/api/v1/system`, CSRF marker enforcement, security headers, and TRACE/TRACK blocking;
-  flow create/list/get/delete stored in the configured store (durable with `sqlite`; flows are
-  never executed);
-  read-only topology JSON built from those flows; message search against the configured
-  store (`memory`, `sqlite`, or `disabled`), which is always empty because nothing writes messages.
+  flow create/list/get/delete stored in the configured store (durable with `sqlite`);
+  `POST /api/v1/flows/{id}/messages` runs a message through the flow's DSL transform and
+  delivers it once to each `http`/`file` destination (see
+  [Processing messages](docs/processing-messages.md)); message search by flow and status;
+  read-only topology JSON built from the flows.
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
   account; security-relevant API calls are written to an audit log on stderr. Users persist
   across restarts only with `store.dialect: sqlite`; otherwise they are kept in memory.

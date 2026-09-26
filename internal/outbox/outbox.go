@@ -11,7 +11,7 @@ import (
 )
 
 // DeliverFunc attempts delivery of a message to one destination, receiving the
-// deterministic idempotency key for this (message, destination, attempt).
+// idempotency key for this (message, destination), stable across retries.
 // A nil return means delivered. Return ErrAmbiguous when the outcome is
 // unknown (e.g. a timeout after the bytes may have been sent).
 type DeliverFunc func(ctx context.Context, m state.Message, dest, idempotencyKey string) error
@@ -97,7 +97,7 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 	}
 
 	attempt := cur.Attempts + 1
-	key := IdempotencyKey(m.ID, dest, attempt)
+	key := IdempotencyKey(m.ID, dest)
 
 	if err := o.deliver(ctx, m, dest, key); err == nil {
 		cur.Attempts = attempt

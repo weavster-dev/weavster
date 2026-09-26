@@ -3,13 +3,13 @@ package outbox
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 )
 
-// IdempotencyKey derives the deterministic idempotency key for an external
-// side effect from (message_id, destination, attempt) (gap #5).
-func IdempotencyKey(messageID, dest string, attempt int) string {
-	sum := sha256.Sum256([]byte(fmt.Sprintf("%s|%s|%d", messageID, dest, attempt)))
+// IdempotencyKey derives the idempotency key for delivering a message to a
+// destination from (message_id, destination). It is the same for every retry
+// of that delivery, so a sink can drop duplicates (gap #5, #107 D-10).
+func IdempotencyKey(messageID, dest string) string {
+	sum := sha256.Sum256([]byte(messageID + "|" + dest))
 	return hex.EncodeToString(sum[:])
 }
 

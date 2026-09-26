@@ -39,6 +39,7 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("flows", "edit")).Post("/flows", s.handleFlowsCreate)
 			r.With(s.require("flows", "view")).Get("/flows/{id}", s.handleFlowsGet)
 			r.With(s.require("flows", "edit")).Delete("/flows/{id}", s.handleFlowsDelete)
+			r.With(s.require("messages", "send")).Post("/flows/{id}/messages", s.handleIngest)
 			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "view")).Get("/messages", s.handleMessagesSearch)
 		})
 	})
