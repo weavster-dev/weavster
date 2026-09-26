@@ -76,8 +76,11 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/destinations/ehr/start
 ```
 
+- `stop` waits for messages of the flow that are being processed right now, so nothing reaches
+  `ehr` after the stop is confirmed. `start` takes effect at once.
 - While `ehr` is stopped, messages are still delivered to the other destinations. They stay
-  `queued` for `ehr`, which uses none of their retry attempts.
+  `queued` for `ehr`, which uses none of their retry attempts. A message is not dead-lettered
+  while it is still held for a stopped destination.
 - After `start`, the retry worker delivers the held messages (same `Idempotency-Key`).
 - The flow shows `"stoppedDestinations": ["ehr"]`. This is runtime state, like `status`: it
   survives a restart and every status change, an update keeps it (a destination the update

@@ -17,6 +17,9 @@ func TestFlowSchemaEnforced(t *testing.T) {
 	if code, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"ok","name":"OK"}`, admin); code != http.StatusCreated {
 		t.Fatalf("valid flow: %d %q", code, body)
 	}
+	if code, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"x","stoppedDestinations":["d"]}`, admin); code != http.StatusBadRequest || !strings.Contains(body, "managed by POST") {
+		t.Errorf("create with stoppedDestinations: %d %q", code, body)
+	}
 	bad := []struct{ name, body, want string }{
 		{"unknown field", `{"id":"x","destination":[]}`, "destination"},
 		{"wrong type", `{"id":"x","dependsOn":"ok"}`, "/dependsOn"},

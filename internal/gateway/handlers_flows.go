@@ -55,6 +55,17 @@ func (s *Server) handleFlowsGet(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, f)
 }
 
+// runtimeFieldError explains why a definition must not carry runtime state.
+func runtimeFieldError(doc map[string]any) string {
+	if _, present := doc["status"]; present {
+		return "status is managed by lifecycle operations (deploy, start, ...); omit it"
+	}
+	if _, present := doc["stoppedDestinations"]; present {
+		return "stoppedDestinations is managed by POST /api/v1/flows/{id}/destinations/{name}/{start,stop}; omit it"
+	}
+	return ""
+}
+
 // decodeFlow reads a flow definition from the request body. Clients never
 // send status (lifecycle operations own it); pathID, when set, must match
 // any id in the body.
@@ -69,8 +80,8 @@ func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, ma
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
-	if _, present := doc["status"]; present {
-		http.Error(w, "status is managed by lifecycle operations (deploy, start, ...); omit it", http.StatusBadRequest)
+	if msg := runtimeFieldError(doc); msg != "" {
+		http.Error(w, msg, http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
 	if pathID != "" {
@@ -288,8 +299,8 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
 			return
 		}
-		if _, present := doc["status"]; present {
-			http.Error(w, fmt.Sprintf("flows[%d]: status is managed by lifecycle operations; omit it", i), http.StatusBadRequest)
+		if msg := runtimeFieldError(doc); msg != "" {
+			http.Error(w, fmt.Sprintf("flows[%d]: %s", i, msg), http.StatusBadRequest)
 			return
 		}
 		// The schema also enforces the id format and reserved ids.

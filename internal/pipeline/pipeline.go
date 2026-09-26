@@ -303,21 +303,29 @@ func (p *Pipeline) deliverFunc(f Flow, contentType string) outbox.DeliverFunc {
 	}
 }
 
-// rollup is sent when every destination succeeded, dead-lettered when a
-// destination exhausted its attempts, and otherwise queued.
+// rollup is queued while any destination still has work (a retry, an
+// untried destination, or a stopped destination holding the message);
+// otherwise dead-lettered if a destination exhausted its attempts, and sent
+// when every destination succeeded.
 func (p *Pipeline) rollup(m state.Message, f Flow) state.Status {
-	status := state.StatusSent
+	pending, exhausted := false, false
 	for _, d := range f.Destinations {
 		a := m.Attempts[d.Name]
 		switch {
 		case a.Attempts > 0 && a.LastError == "":
 		case a.Attempts >= p.opts.MaxAttempts:
-			return state.StatusDeadLettered
+			exhausted = true
 		default:
-			status = state.StatusQueued
+			pending = true
 		}
 	}
-	return status
+	switch {
+	case pending:
+		return state.StatusQueued
+	case exhausted:
+		return state.StatusDeadLettered
+	}
+	return state.StatusSent
 }
 
 // retryPage is how many messages RetryDue loads per store query.
@@ -330,6 +338,7 @@ const retryPage = 200
 // cancellation stops the pass between messages. An error on one message is
 // collected and the pass continues. It returns how many messages it resumed.
 func (p *Pipeline) RetryDue(ctx context.Context, lookup FlowLookup) (int, error) {
+	lookup = cachedLookup(lookup) // one flow lookup per flow per pass
 	var errs []error
 	n := 0
 	for _, status := range []state.Status{state.StatusQueued, state.StatusTransformed, state.StatusReceived} {
@@ -361,6 +370,24 @@ func (p *Pipeline) RetryDue(ctx context.Context, lookup FlowLookup) (int, error)
 		}
 	}
 	return n, errors.Join(errs...)
+}
+
+// cachedLookup memoizes a FlowLookup for one retry pass, so a backlog of
+// messages for the same flow costs one flow read.
+func cachedLookup(lookup FlowLookup) FlowLookup {
+	type entry struct {
+		f   Flow
+		err error
+	}
+	cache := map[string]entry{}
+	return func(ctx context.Context, flowID string) (Flow, error) {
+		if e, ok := cache[flowID]; ok {
+			return e.f, e.err
+		}
+		f, err := lookup(ctx, flowID)
+		cache[flowID] = entry{f, err}
+		return f, err
+	}
 }
 
 // retryOne resumes one message if it is not in flight, its flow is running,

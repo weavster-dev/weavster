@@ -395,11 +395,15 @@ func TestAutoDeployOrderIndependent(t *testing.T) {
 	}
 }
 
-func TestKeepStoppedAndSetDestinationRunning(t *testing.T) {
+func TestRuntimeHelpersAndSetDestinationRunning(t *testing.T) {
 	current := gateway.Flow{StoppedDestinations: []string{"a", "b"}}
 	next := gateway.Flow{Destinations: []gateway.FlowDestination{{Name: "b"}, {Name: "c"}}}
-	if got := keepStopped(current, next); strings.Join(got, ",") != "b" {
-		t.Errorf("keepStopped = %v, want [b] (a was removed)", got)
+	current.Status = "started"
+	if got := withRuntime(current, next); strings.Join(got.StoppedDestinations, ",") != "b" || got.Status != "started" {
+		t.Errorf("withRuntime = %+v, want status started and stopped [b] (a was removed)", got)
+	}
+	if got := withoutRuntime(current, "undeployed"); got.Status != "undeployed" || got.StoppedDestinations != nil {
+		t.Errorf("withoutRuntime = %+v", got)
 	}
 
 	ctx := context.Background()
@@ -417,5 +421,33 @@ func TestKeepStoppedAndSetDestinationRunning(t *testing.T) {
 	}
 	if _, err := flows.SetDestinationRunning(ctx, "nope", "d", true); !errors.Is(err, gateway.ErrFlowNotFound) {
 		t.Errorf("unknown flow: %v", err)
+	}
+}
+
+// TestDestinationStopWaitsForInFlight: stop waits for the flow's in-flight
+// messages; start does not.
+func TestDestinationStopWaitsForInFlight(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "f", Document: []byte(`{"id":"f","status":"started","destinations":[{"name":"d","type":"file","dir":"/x"}]}`)})
+	flows := flowAdapter{store: mem, locks: newFlowLocks()}
+	done := flows.locks.ProcessFlow("f")
+	stopped := make(chan struct{})
+	go func() { _, _ = flows.SetDestinationRunning(ctx, "f", "d", false); close(stopped) }()
+	select {
+	case <-stopped:
+		t.Fatal("stop returned while a message was in flight")
+	case <-time.After(50 * time.Millisecond):
+	}
+	done()
+	<-stopped
+	hold := flows.locks.ProcessFlow("f")
+	defer hold()
+	started := make(chan struct{})
+	go func() { _, _ = flows.SetDestinationRunning(ctx, "f", "d", true); close(started) }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("start waited for in-flight messages")
 	}
 }

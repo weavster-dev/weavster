@@ -36,6 +36,7 @@ func TestValidateFlowJSON(t *testing.T) {
 		{"runtime stoppedDestinations", `{"id":"a","stoppedDestinations":["d"]}`, "stoppedDestinations"},
 		{"wrong type", `{"id":"a","enabled":"yes"}`, "/enabled"},
 		{"bad destination type", `{"id":"a","destinations":[{"name":"d","type":"smtp"}]}`, "/destinations/0/type"},
+		{"destination name with slash", `{"id":"a","destinations":[{"name":"ehr/primary","type":"file","dir":"/x"}]}`, "/destinations/0/name"},
 		{"unknown step", `{"id":"a","transform":{"steps":[{"explode":{}}]}}`, "/transform"},
 		{"two kinds in a step", `{"id":"a","transform":{"steps":[{"map":{"from":"a","to":"b"},"set":{"field":"c","expr":"d"}}]}}`, "/transform"},
 		{"bad filter action", `{"id":"a","transform":{"steps":[{"filter":{"when":"x","action":"drop"}}]}}`, "/transform"},

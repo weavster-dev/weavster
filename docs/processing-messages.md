@@ -64,7 +64,7 @@ below, in order, on the message as a JSON object.
 
 | Field | Meaning |
 |---|---|
-| `name` | Unique within the flow; used to report delivery results. |
+| `name` | Unique within the flow; 1–128 characters from `A-Z a-z 0-9 . _ -` (it appears in URLs). Used to report delivery results. |
 | `type` | `http` (POST to `url`) or `file` (write one file per message into `dir`, named by message ID). |
 | `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a `POST` with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough), and it times out after 30 seconds. The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`. Created if missing. |
@@ -121,7 +121,7 @@ The request returns after processing finishes. `status` is one of:
 |---|---|
 | `sent` | Delivered to every destination. |
 | `queued` | At least one destination failed, or is [stopped](flow-lifecycle.md#stopping-one-destination). It is retried automatically (see [Retries](#retries)). |
-| `dead-lettered` | A destination still failed after `delivery.maxAttempts` attempts, or the flow was deleted while the message was queued. Not retried again. |
+| `dead-lettered` | A destination still failed after `delivery.maxAttempts` attempts and no other destination has work left, or the flow was deleted while the message was queued. Not retried again. |
 | `filtered` | A `filter` step dropped the message. Nothing was delivered. |
 | `errored` | The transform failed (for example `"x" is not a number`). Nothing was delivered. |
 

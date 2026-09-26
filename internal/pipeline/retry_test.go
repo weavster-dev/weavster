@@ -235,3 +235,31 @@ func TestRetryRepairsStuckRollup(t *testing.T) {
 		t.Errorf("status = %s, want dead-lettered", m.Status)
 	}
 }
+
+// TestStoppedDestinationHoldsDespiteExhaustedPeer: a message held for a
+// stopped destination stays queued even when another destination exhausts
+// its attempts, and is delivered once the destination is started.
+func TestStoppedDestinationHoldsDespiteExhaustedPeer(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	bad, held := &toggleSink{fail: true}, &recordingSink{}
+	p := New(store, func(d Destination) (Sink, error) {
+		if d.Name == "a" {
+			return bad, nil
+		}
+		return held, nil
+	}, nil, Options{MaxAttempts: 1})
+	f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "x"}, {Name: "b", Type: "file", Dir: "y", Stopped: true}}}
+	res, err := p.Process(ctx, f, []byte("x"))
+	if err != nil || res.Status != state.StatusQueued {
+		t.Fatalf("res = %+v, %v; want queued while b holds it", res, err)
+	}
+	f.Destinations[1].Stopped = false // b started
+	if _, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) { return f, nil }); err != nil {
+		t.Fatal(err)
+	}
+	m, _ := store.Get(ctx, res.ID)
+	if len(held.bodies) != 1 || m.Status != state.StatusDeadLettered {
+		t.Errorf("b got %d deliveries, status %s; want b delivered, then dead-lettered for a", len(held.bodies), m.Status)
+	}
+}

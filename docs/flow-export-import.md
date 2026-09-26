@@ -82,7 +82,8 @@ Other errors:
 | Response | Cause |
 |---|---|
 | `400 unsupported export version 2; expected 1` | Unknown `version`. |
-| `400 flows[0]: status is managed by lifecycle operations; omit it` | A flow in the document has a `status` field. |
+| `400 flows[0]: status is managed by lifecycle operations …; omit it` | A flow in the document has a `status` field. |
+| `400 flows[0]: stoppedDestinations is managed by …; omit it` | A flow in the document has a `stoppedDestinations` field. |
 | `400 … appears twice` | The same id is listed twice. |
 | `400 body must be an export document` | Not a JSON object, no `flows` array, or extra data after the document. |
 | `413` | The document is larger than 50 MiB. |
