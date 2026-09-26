@@ -526,3 +526,21 @@ func TestListeners(t *testing.T) {
 		}
 	}
 }
+
+func TestRetriedCounters(t *testing.T) {
+	tests := []struct {
+		status state.Status
+		want   func(observability.FlowStats) int64
+	}{
+		{state.StatusSent, func(s observability.FlowStats) int64 { return s.Sent }},
+		{state.StatusDeadLettered, func(s observability.FlowStats) int64 { return s.Errored }},
+		{state.StatusFiltered, func(s observability.FlowStats) int64 { return s.Filtered }},
+	}
+	for _, tt := range tests {
+		stats := observability.NewStatsRegistry()
+		processingObserver{stats, observability.NewEventLog()}.Retried(state.Message{ID: "m", FlowID: "f", Status: tt.status}, nil)
+		if got := tt.want(stats.Snapshot("f", false)); got != 1 {
+			t.Errorf("%s: counter = %d, want 1", tt.status, got)
+		}
+	}
+}

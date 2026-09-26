@@ -61,6 +61,9 @@ type FlowDestination struct {
 	Type string `json:"type"`
 	URL  string `json:"url,omitempty"`
 	Dir  string `json:"dir,omitempty"`
+	// Transform is this destination's own DSL transform (filter steps
+	// included), applied to the flow's output; passed through unparsed.
+	Transform json.RawMessage `json:"transform,omitempty"`
 }
 
 // FlowUpdater changes a stored flow's definition; the runtime status is

@@ -35,6 +35,9 @@ type Destination struct {
 	Type    string // "http" or "file"
 	URL     string // http
 	Dir     string // file
+	// Transform, when set, runs on the flow's output before delivery to
+	// this destination; its filter steps drop the message for it alone.
+	Transform *compiler.Transform
 }
 
 // Flow is the processing definition the pipeline runs.
@@ -118,8 +121,8 @@ func New(store state.Store, sinks SinkFactory, observer Observer, opts Options) 
 	return &Pipeline{store: store, sinks: sinks, observer: observer, opts: opts}
 }
 
-func (p *Pipeline) outbox(f Flow, contentType string) *outbox.Outbox {
-	return outbox.New(p.store, p.deliverFunc(f, contentType), outbox.Options{MaxAttempts: p.opts.MaxAttempts, BackoffBase: p.opts.BackoffBase})
+func (p *Pipeline) outbox(f Flow, contentType string, outs map[string]destinationResult) *outbox.Outbox {
+	return outbox.New(p.store, p.deliverFunc(f, contentType, outs), outbox.Options{MaxAttempts: p.opts.MaxAttempts, BackoffBase: p.opts.BackoffBase})
 }
 
 // Validate checks a flow definition: the transform compiles and every
@@ -144,6 +147,11 @@ func Validate(f Flow) error {
 		case d.Type != "http" && d.Type != "file":
 			return fmt.Errorf("destination %s: type must be http or file, got %q", d.Name, d.Type)
 		}
+		if d.Transform != nil {
+			if _, err := dsl.Compile(*d.Transform); err != nil {
+				return fmt.Errorf("destination %s: %w", d.Name, err)
+			}
+		}
 		seen[d.Name] = true
 	}
 	return nil
@@ -162,6 +170,8 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, 
 		if _, err := dsl.Compile(*f.Transform); err != nil {
 			return Result{}, err
 		}
+	}
+	if needsObject(f) {
 		if _, err := decodeObject(body); err != nil {
 			return Result{}, err
 		}
@@ -180,7 +190,7 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, 
 		contentType = "json"
 	}
 	m := state.Message{ID: id, FlowID: f.ID, ContentType: contentType, Raw: body, Original: body}
-	if err := p.outbox(f, contentType).Receive(ctx, m); err != nil {
+	if err := p.outbox(f, contentType, nil).Receive(ctx, m); err != nil {
 		return Result{}, err
 	}
 	if p.observer != nil {
@@ -192,6 +202,20 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, 
 		}()
 	}
 	return p.resume(ctx, f, id, false)
+}
+
+// needsObject reports whether messages of f must be JSON objects: the flow
+// or one of its destinations has a transform.
+func needsObject(f Flow) bool {
+	if f.Transform != nil {
+		return true
+	}
+	for _, d := range f.Destinations {
+		if d.Transform != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // decodeObject decodes body as a single JSON object, keeping numbers exact
@@ -219,7 +243,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 	if err != nil {
 		return Result{}, err
 	}
-	ob := p.outbox(f, m.ContentType)
+	ob := p.outbox(f, m.ContentType, nil)
 	if m.Status == state.StatusReceived {
 		transformed := m.Raw
 		if f.Transform != nil {
@@ -245,13 +269,17 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 		if err := ob.Transform(ctx, id, func([]byte) ([]byte, error) { return transformed, nil }); err != nil {
 			return Result{}, err
 		}
+		m.Transformed = transformed
 	}
 
 	now := time.Now()
+	outs := destinationOutputs(f, m)
+	skip := filteredSet(outs)
+	dob := p.outbox(f, m.ContentType, outs)
 	var attempted []string
 	for _, d := range f.Destinations {
-		if !d.Stopped && p.pending(m.Attempts[d.Name], now) {
-			if err := ob.Deliver(ctx, id, d.Name); err != nil {
+		if !d.Stopped && !skip[d.Name] && p.pending(m.Attempts[d.Name], now) {
+			if err := dob.Deliver(ctx, id, d.Name); err != nil {
 				return Result{}, err
 			}
 			attempted = append(attempted, d.Name)
@@ -261,7 +289,62 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 	if err != nil {
 		return Result{}, err
 	}
-	return p.complete(ctx, id, p.rollup(latest, f), nil, retry, attempted)
+	return p.complete(ctx, id, p.rollup(latest, f, skip), nil, retry, attempted)
+}
+
+// destinationResult is one destination's transform of a message's flow
+// output: the body to deliver, or that its filter dropped the message, or
+// the transform's error (a delivery failure).
+type destinationResult struct {
+	body     []byte
+	filtered bool
+	err      error
+}
+
+// destinationOutputs runs, once, the transform of every destination of f
+// that has one and still has work for m (not yet delivered or exhausted).
+// The transforms are deterministic, so every retry gets the same result.
+func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
+	outs := map[string]destinationResult{}
+	for _, d := range f.Destinations {
+		a := m.Attempts[d.Name]
+		if d.Transform == nil || (a.Attempts > 0 && a.LastError == "") {
+			continue
+		}
+		var r destinationResult
+		r.body, r.filtered, r.err = destinationOutput(*d.Transform, m.Transformed)
+		outs[d.Name] = r
+	}
+	return outs
+}
+
+// destinationOutput runs transform t over body, the flow's output.
+func destinationOutput(t compiler.Transform, body []byte) (out []byte, filtered bool, err error) {
+	prog, err := dsl.Compile(t)
+	if err != nil {
+		return nil, false, err
+	}
+	doc, err := decodeObject(body)
+	if err != nil {
+		return nil, false, err
+	}
+	res, filtered, err := prog.Run(doc)
+	if err != nil || filtered {
+		return nil, filtered, err
+	}
+	out, err = json.Marshal(res)
+	return out, false, err
+}
+
+// filteredSet lists the destinations whose own filter dropped the message.
+func filteredSet(outs map[string]destinationResult) map[string]bool {
+	skip := map[string]bool{}
+	for name, r := range outs {
+		if r.filtered {
+			skip[name] = true
+		}
+	}
+	return skip
 }
 
 // pending reports whether a destination still needs a delivery attempt now:
@@ -279,40 +362,57 @@ func (p *Pipeline) pending(a state.DestinationAttempt, now time.Time) bool {
 }
 
 // deliverFunc routes outbox deliveries to the flow's sinks, building each
-// sink once per message.
-func (p *Pipeline) deliverFunc(f Flow, contentType string) outbox.DeliverFunc {
+// sink once per message. A destination with a transform receives its entry
+// of outs.
+func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]destinationResult) outbox.DeliverFunc {
 	mime := "application/octet-stream"
 	if contentType == "json" {
 		mime = "application/json"
 	}
 	type built struct {
-		sink Sink
-		err  error
+		transformed bool
+		sink        Sink
+		err         error
 	}
 	sinks := map[string]built{}
 	for _, d := range f.Destinations {
 		s, err := p.sinks(d)
-		sinks[d.Name] = built{s, err}
+		sinks[d.Name] = built{d.Transform != nil, s, err}
 	}
 	return func(ctx context.Context, m state.Message, dest, key string) error {
 		b := sinks[dest]
 		if b.err != nil {
 			return b.err
 		}
-		return b.sink.Write(ctx, Delivery{MessageID: m.ID, Body: m.Transformed, ContentType: mime, IdempotencyKey: key})
+		body, destMime := m.Transformed, mime
+		if b.transformed {
+			out, ok := outs[dest]
+			switch {
+			case !ok || out.filtered: // callers skip filtered destinations
+				return errors.New("destination transform: no output for this destination")
+			case out.err != nil:
+				return fmt.Errorf("destination transform: %w", out.err)
+			}
+			body, destMime = out.body, "application/json"
+		}
+		return b.sink.Write(ctx, Delivery{MessageID: m.ID, Body: body, ContentType: destMime, IdempotencyKey: key})
 	}
 }
 
 // rollup is queued while any destination still has work (a retry, an
 // untried destination, or a stopped destination holding the message);
 // otherwise dead-lettered if a destination exhausted its attempts, and sent
-// when every destination succeeded.
-func (p *Pipeline) rollup(m state.Message, f Flow) state.Status {
+// when every destination succeeded or filtered the message. A message every
+// destination filtered (none received it) is filtered.
+func (p *Pipeline) rollup(m state.Message, f Flow, skip map[string]bool) state.Status {
 	pending, exhausted := false, false
+	filtered := 0
 	for _, d := range f.Destinations {
 		a := m.Attempts[d.Name]
 		switch {
 		case a.Attempts > 0 && a.LastError == "":
+		case skip[d.Name]:
+			filtered++
 		case a.Attempts >= p.opts.MaxAttempts:
 			exhausted = true
 		default:
@@ -324,6 +424,8 @@ func (p *Pipeline) rollup(m state.Message, f Flow) state.Status {
 		return state.StatusQueued
 	case exhausted:
 		return state.StatusDeadLettered
+	case len(f.Destinations) > 0 && filtered == len(f.Destinations):
+		return state.StatusFiltered
 	}
 	return state.StatusSent
 }
@@ -400,13 +502,14 @@ func (p *Pipeline) retryOne(ctx context.Context, m state.Message, lookup FlowLoo
 	}
 	if m.Status == state.StatusQueued {
 		now, due := time.Now(), false
+		skip := filteredSet(destinationOutputs(f, m))
 		for _, d := range f.Destinations {
-			due = due || (!d.Stopped && p.pending(m.Attempts[d.Name], now))
+			due = due || (!d.Stopped && !skip[d.Name] && p.pending(m.Attempts[d.Name], now))
 		}
 		if !due {
 			// Nothing to deliver; fix the status if a crash hit between the
 			// last delivery and the rollup (e.g. a destination exhausted).
-			if status := p.rollup(m, f); status != state.StatusQueued {
+			if status := p.rollup(m, f, skip); status != state.StatusQueued {
 				_, err := p.complete(ctx, m.ID, status, nil, true, nil)
 				return true, err
 			}
