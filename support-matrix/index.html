@@ -41,6 +41,9 @@
                                 <a href="./" class="nav-link active" aria-current="page">Support Matrix</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../server-config/" class="nav-link">Server Configuration</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -63,7 +66,7 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../documentation/" class="nav-link">
+                                <a rel="next" href="../server-config/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
@@ -157,8 +160,8 @@ delivery phase. When the README or any other page disagrees with this page, this
 </tbody>
 </table>
 <h2 id="server-and-api">Server and API</h2>
-<p>Start the server with <code>weavster server 127.0.0.1:8080</code>. It serves plain HTTP only. Every
-<code>/api/v1</code> request must carry the header <code>X-Weavster-CSRF: 1</code>.</p>
+<p>Start the server with <code>weavster server 127.0.0.1:8080</code>, or with a <a href="../server-config/">configuration file</a> using <code>weavster server --config weavster.yaml</code>. By default every <code>/api/v1</code> request must carry the
+header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false</code> removes that requirement.</p>
 <p>!!! warning
     No API route checks credentials, and the CSRF marker is a fixed public value. Bind to
     <code>127.0.0.1</code> and do not expose the server to a network.</p>
@@ -214,7 +217,7 @@ delivery phase. When the README or any other page disagrees with this page, this
 <tr>
 <td>Authentication, authorization, and audit of API calls</td>
 <td>Library-only</td>
-<td>The <code>auth</code> and <code>audit</code> packages exist, but request handlers never call them. Every <code>/api/v1</code> route, including <code>POST</code> and <code>DELETE</code>, is <strong>unauthenticated</strong>. The server tries to seed an <code>admin</code> user, but the password fails its own policy, so no user exists.</td>
+<td>The <code>auth</code> and <code>audit</code> packages exist, but request handlers never call them. Every <code>/api/v1</code> route, including <code>POST</code> and <code>DELETE</code>, is <strong>unauthenticated</strong>. No users exist.</td>
 </tr>
 <tr>
 <td>Login / logout / session endpoints</td>
@@ -222,9 +225,9 @@ delivery phase. When the README or any other page disagrees with this page, this
 <td></td>
 </tr>
 <tr>
-<td>HTTPS / TLS listener</td>
-<td>Library-only</td>
-<td><code>gateway.TLSOptions</code> exists, but the server only listens on plain HTTP.</td>
+<td>HTTPS listener (<code>listen.tlsAddress</code>, <code>tls.certFile/keyFile/minVersion</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestServerConfigTLS</code></td>
 </tr>
 <tr>
 <td>mTLS</td>
@@ -232,14 +235,34 @@ delivery phase. When the README or any other page disagrees with this page, this
 <td></td>
 </tr>
 <tr>
-<td>Persistent storage (SQLite / PostgreSQL)</td>
-<td>Library-only</td>
-<td>The server uses an in-memory store. The PostgreSQL backend cannot start (SQLite-only SQL).</td>
+<td>Message store selection: <code>memory</code> (default), <code>sqlite</code>, <code>disabled</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestServerConfigStore</code>. SQLite creates <code>&lt;dataDir&gt;/weavster.db</code> and runs migrations at startup. <code>disabled</code> makes message search return <code>503</code>. Nothing writes messages yet, so every store is empty.</td>
 </tr>
 <tr>
-<td>Server configuration file</td>
+<td>PostgreSQL message store</td>
 <td>Unsupported</td>
-<td>The only setting is the listen address (positional argument, default <code>127.0.0.1:8080</code>).</td>
+<td><code>store.dialect: postgres</code> is accepted, but startup fails after the retries because the schema uses SQLite-only SQL.</td>
+</tr>
+<tr>
+<td>Store connection retries (<code>store.maxRetry</code>, <code>store.retryWaitMs</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestServerConfigErrors/retry-exhausted</code>, <code>TestServerStopDuringStoreRetry</code>. PostgreSQL only.</td>
+</tr>
+<tr>
+<td>Durable flow definitions</td>
+<td>Unsupported</td>
+<td>Flows are in memory regardless of <code>store.dialect</code>.</td>
+</tr>
+<tr>
+<td>Server configuration file (<code>weavster server --config FILE</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestServerConfigListen</code>, <code>TestServerConfigErrors</code>. Strict YAML: unknown keys and invalid values exit <code>1</code>. See <a href="../server-config/">Server configuration</a>.</td>
+</tr>
+<tr>
+<td>Password and lockout policy keys (<code>auth.*</code>)</td>
+<td>Library-only</td>
+<td>Validated and passed to the local auth provider, which no endpoint uses.</td>
 </tr>
 <tr>
 <td>Refuse to run as root (override: <code>WEAVSTER_ALLOW_ROOT=1</code>)</td>
@@ -326,9 +349,9 @@ delivery phase. When the README or any other page disagrees with this page, this
 </thead>
 <tbody>
 <tr>
-<td><code>weavster server [address]</code></td>
+<td><code>weavster server [--config FILE] [address]</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixCLI/server-subcommand</code></td>
+<td><code>TestSupportMatrixCLI/server-subcommand</code>, <code>TestServerConfigListen</code></td>
 </tr>
 <tr>
 <td><code>weavster</code> with no subcommand</td>

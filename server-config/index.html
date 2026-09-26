@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://docs.weavster.dev/server-config/">
+        <link rel="shortcut icon" href="../img/favicon.ico">
+        <title>Server Configuration - Weavster</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="..">Weavster</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href=".." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../support-matrix/" class="nav-link">Support Matrix</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="./" class="nav-link active" aria-current="page">Server Configuration</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../documentation/" class="nav-link">Docs Site Guide</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../mvp-project-plan/" class="nav-link">MVP Project Plan</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../agent-onboarding/" class="nav-link">Agent Onboarding</a>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../support-matrix/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../documentation/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/server-config.md" class="nav-link">Edit on weavster-dev/weavster
+                                    </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#server-configuration" class="nav-link">Server configuration</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#example" class="nav-link">Example</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#keys" class="nav-link">Keys</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#root-accounts" class="nav-link">Root accounts</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="server-configuration">Server configuration</h1>
+<p><code>weavster server</code> reads an optional YAML configuration file:</p>
+<pre><code class="language-bash">weavster server --config /etc/weavster/weavster.yaml
+</code></pre>
+<p>Without <code>--config</code>, the server uses the defaults below. A positional address overrides
+<code>listen.address</code>, for example <code>weavster server --config weavster.yaml 127.0.0.1:9090</code>. Put
+<code>--config</code> <strong>before</strong> the address. Anything after the address is rejected with
+<code>Error: unexpected arguments</code>.</p>
+<p>The file is checked strictly at startup. It must contain exactly one YAML document. An unknown
+key, a value of the wrong type, an address that isn't <code>host:port</code>, or an invalid combination (for
+example a password policy that forbids every character class) stops the server with exit code <code>1</code> and a message like:</p>
+<pre><code class="language-text">Error: config: /etc/weavster/weavster.yaml: yaml: unmarshal errors:
+  line 3: field dialekt not found in type serverconfig.Store
+</code></pre>
+<h2 id="example">Example</h2>
+<p>A single-node server with a durable SQLite store and HTTPS:</p>
+<pre><code class="language-yaml">listen:
+  address: 127.0.0.1:8080        # cleartext listener; &quot;&quot; disables it
+  tlsAddress: 0.0.0.0:8443       # HTTPS listener; &quot;&quot; disables it
+  requireMarkerHeader: true
+tls:
+  certFile: /etc/weavster/tls/cert.pem
+  keyFile: /etc/weavster/tls/key.pem
+  minVersion: &quot;1.2&quot;
+store:
+  dialect: sqlite
+  maxRetry: 3
+  retryWaitMs: 1000
+paths:
+  dataDir: /var/lib/weavster     # SQLite file: /var/lib/weavster/weavster.db
+auth:
+  passwordPolicy:
+    minLength: 12
+    minUpper: 1
+    minLower: 1
+    minNumeric: 1
+    minSpecial: 1
+  lockout:
+    retryLimit: 5
+    lockoutPeriodSeconds: 300
+</code></pre>
+<h2 id="keys">Keys</h2>
+<p>Keys you leave out keep their default.</p>
+<h3 id="listen"><code>listen</code></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>address</code></td>
+<td><code>127.0.0.1:8080</code></td>
+<td>Cleartext HTTP <code>host:port</code>. Set to <code>""</code> to serve HTTPS only.</td>
+</tr>
+<tr>
+<td><code>tlsAddress</code></td>
+<td><code>""</code> (off)</td>
+<td>HTTPS <code>host:port</code>. Requires <code>tls.certFile</code> and <code>tls.keyFile</code>.</td>
+</tr>
+<tr>
+<td><code>requireMarkerHeader</code></td>
+<td><code>true</code></td>
+<td>Require <code>X-Weavster-CSRF: 1</code> on every <code>/api/v1</code> request. Requests without it get <code>400</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>At least one of <code>address</code> and <code>tlsAddress</code> must be set.</p>
+<h3 id="tls"><code>tls</code></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>certFile</code></td>
+<td><code>""</code></td>
+<td>PEM certificate (chain) for the HTTPS listener.</td>
+</tr>
+<tr>
+<td><code>keyFile</code></td>
+<td><code>""</code></td>
+<td>PEM private key matching <code>certFile</code>.</td>
+</tr>
+<tr>
+<td><code>minVersion</code></td>
+<td><code>"1.2"</code></td>
+<td>Lowest accepted TLS version: <code>"1.2"</code> or <code>"1.3"</code>. Quote the value so YAML reads it as a string.</td>
+</tr>
+</tbody>
+</table>
+<p>With TLS 1.2, only ECDHE AES-GCM cipher suites are offered. The certificate and key are loaded
+before any listener starts. If they can't be read, the server exits <code>1</code> with <code>Error: tls: …</code>
+and serves nothing.</p>
+<h3 id="store"><code>store</code></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dialect</code></td>
+<td><code>memory</code></td>
+<td><code>memory</code>, <code>sqlite</code>, <code>postgres</code>, or <code>disabled</code>.</td>
+</tr>
+<tr>
+<td><code>dsn</code></td>
+<td>see below</td>
+<td>Connection string. For <code>sqlite</code>, a file path. For <code>postgres</code>, a URL such as <code>postgres://user:pass@db:5432/weavster</code>.</td>
+</tr>
+<tr>
+<td><code>maxConnections</code></td>
+<td><code>10</code></td>
+<td>Maximum open PostgreSQL connections. SQLite always uses one.</td>
+</tr>
+<tr>
+<td><code>maxRetry</code></td>
+<td><code>3</code></td>
+<td>PostgreSQL only: extra connection attempts after the first failure.</td>
+</tr>
+<tr>
+<td><code>retryWaitMs</code></td>
+<td><code>1000</code></td>
+<td>PostgreSQL only: wait between attempts, in milliseconds.</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li><strong><code>memory</code></strong>: messages live in process memory and are lost on restart.</li>
+<li><strong><code>sqlite</code></strong>: set <code>dsn</code> or <code>paths.dataDir</code>. <code>dsn</code> defaults to <code>&lt;paths.dataDir&gt;/weavster.db</code>.
+  The parent directory is created (mode <code>0700</code>) if missing. Migrations run at startup. A SQLite
+  failure is never retried.</li>
+<li><strong><code>postgres</code></strong>: <code>dsn</code> is required. <strong>PostgreSQL does not work yet:</strong> the schema uses
+  SQLite-only SQL, so startup fails after the retries.</li>
+<li><strong><code>disabled</code></strong>: runs with no message store. <code>GET /api/v1/messages</code> returns <code>503 messages unavailable</code>.</li>
+</ul>
+<p>If every PostgreSQL attempt fails, the server exits <code>1</code>. SIGINT/SIGTERM during the retries
+stops the server immediately with exit code <code>0</code>. When every attempt fails:</p>
+<pre><code class="language-text">Error: store: postgres: giving up after 4 attempts: ...
+</code></pre>
+<p>This setting stores <strong>messages only</strong>. Flow definitions are still kept in memory; see the
+<a href="../support-matrix/">support matrix</a>.</p>
+<h3 id="paths"><code>paths</code></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dataDir</code></td>
+<td><code>""</code></td>
+<td>Directory for the default SQLite file. Use an absolute path; a relative one resolves against the working directory, which is <code>/</code> under most service managers.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="auth"><code>auth</code></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>passwordPolicy.minLength</code></td>
+<td><code>8</code></td>
+<td>Minimum password length (<code>0</code> = none).</td>
+</tr>
+<tr>
+<td><code>passwordPolicy.minUpper</code> / <code>minLower</code> / <code>minNumeric</code> / <code>minSpecial</code></td>
+<td><code>1</code> / <code>1</code> / <code>1</code> / <code>0</code></td>
+<td>Required characters of each class. <code>-1</code> forbids the class.</td>
+</tr>
+<tr>
+<td><code>lockout.retryLimit</code></td>
+<td><code>5</code></td>
+<td>Failed logins before lockout (<code>0</code> = never lock).</td>
+</tr>
+<tr>
+<td><code>lockout.lockoutPeriodSeconds</code></td>
+<td><code>300</code></td>
+<td>Lockout duration in seconds.</td>
+</tr>
+</tbody>
+</table>
+<p>!!! note
+    The server has no login endpoint yet, so these settings have no visible effect today. They
+    apply to local users once authentication is wired.</p>
+<h2 id="root-accounts">Root accounts</h2>
+<p>The server refuses to run as <code>root</code>. Set the environment variable <code>WEAVSTER_ALLOW_ROOT=1</code> to
+override this.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+        <script src="../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>
