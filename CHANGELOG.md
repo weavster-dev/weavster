@@ -32,7 +32,7 @@ All notable changes to this project are documented here, following
 - Alert delivery regression coverage: verify `Manager.Handle` preserves notifier failures and identifies the affected alert.
 - Config artifact coverage: tests now verify `Config.Artifacts` flattens every supported artifact kind and preserves serializable flow and alert content.
 - CI quality gates (#142): `golangci-lint` job (pinned v2.6.2) with a no-`//nolint` check, `CGO_ENABLED=0` cross-build matrix for linux/amd64, linux/arm64, darwin/arm64 with no-CGo and static-link verification, and a Docker image build + non-root + smoke-test job.
-- `scripts/check-coverage.sh`: fails when any package is below the coverage threshold (default 90%); run in the `coverage-gate` workflow.
+- `scripts/check-coverage.sh`: fails when any package is below the coverage threshold (default 90%), counting packages with no test files as 0%; run in the `coverage-gate` workflow.
 - Tests raising `cmd/weavster` (88.5% → 92.9%) and `internal/state` (87.9% → 90.4%) coverage: `weavster test` error paths, `server` subcommand dispatch, message search flow/status filtering, SQLite/in-memory search filter parity, and closed-database errors.
 
 ### Changed
