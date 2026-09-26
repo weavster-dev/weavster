@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -131,6 +132,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Events:      eventsAdapter{events},
 		Topology:    topologyAdapter{flows: flows, stats: stats},
 		System:      observability.SystemStatus("weavster", version, buildDate),
+		Listeners:   listeners(cfg.Listen),
 		RequireCSRF: cfg.Listen.RequireMarkerHeader,
 	})
 	return srv.Router(), closeStore, workers, nil
@@ -306,6 +308,21 @@ func shutdown(servers []*http.Server, stopWorkers context.CancelFunc, workersDon
 		return false
 	}
 	return clean
+}
+
+// listeners describes the configured listen addresses (ports-in-use).
+func listeners(l serverconfig.Listen) []gateway.PortInUse {
+	var out []gateway.PortInUse
+	for _, e := range []struct{ addr, usedBy string }{{l.Address, "api"}, {l.TLSAddress, "api-tls"}} {
+		if e.addr == "" {
+			continue
+		}
+		// The config guarantees host:port with a resolvable, non-zero port.
+		_, p, _ := net.SplitHostPort(e.addr)
+		port, _ := net.LookupPort("tcp", p)
+		out = append(out, gateway.PortInUse{Address: e.addr, Port: port, UsedBy: e.usedBy})
+	}
+	return out
 }
 
 // listen builds the cleartext and TLS listeners enabled in cfg.
@@ -735,9 +752,9 @@ func (a flowAdapter) SetEnabled(ctx context.Context, id string, enabled bool) (g
 	return a.setStatus(ctx, f, f.Status)
 }
 
-// DeployEnabled deploys and starts every enabled flow that is undeployed
-// (flows.deployOnStartup, spec §6.1). Each flow goes straight to started in
-// one write, so a crash never leaves it half-deployed. Failures are logged
+// DeployEnabled deploys every enabled flow that is undeployed
+// (flows.deployOnStartup, spec §6.1) into its initial state (started
+// unless set). Each flow goes straight to that state in one write, so a crash never leaves it half-deployed. Failures are logged
 // and skipped: one bad flow never stops the server from starting.
 func (a flowAdapter) DeployEnabled(ctx context.Context, logger *slog.Logger) {
 	defs, err := a.store.ListFlows(ctx)
@@ -760,36 +777,124 @@ func (a flowAdapter) DeployEnabled(ctx context.Context, logger *slog.Logger) {
 			inSet[f.ID] = true
 		}
 	}
-	var started []string
+	deployed := map[string][]string{} // initial status -> flows
 	for _, id := range pending {
-		err := func() error {
+		status, err := func() (string, error) {
 			defer a.lock(id, false)()
 			current, err := a.Get(ctx, id)
 			if err != nil || !current.Enabled {
-				return err
+				return "", err
 			}
 			switch current.Status {
 			case flowlife.Undeployed:
 			case flowlife.Deployed: // deployed earlier in this pass as a dependency
 			default:
-				return nil
+				return "", nil
 			}
 			// Same as a manual deploy: undeployed dependencies are deployed.
 			if err := a.deployDependencies(ctx, current); err != nil {
-				return err
+				return "", err
 			}
-			_, err = a.setStatus(ctx, current, flowlife.Started)
-			return err
+			status := initialStatus(current)
+			_, err = a.setStatus(ctx, current, status)
+			return status, err
 		}()
 		if err != nil {
 			logger.Warn("auto-deploy failed", "flow", id, "error", err)
 			continue
 		}
-		started = append(started, id)
+		if status != "" {
+			deployed[status] = append(deployed[status], id)
+		}
 	}
-	if len(started) > 0 {
-		logger.Info("auto-deployed enabled flows", "flows", started)
+	for _, status := range []string{flowlife.Started, flowlife.Paused, flowlife.Stopped} {
+		if len(deployed[status]) > 0 {
+			logger.Info("auto-deployed enabled flows", "status", status, "flows", deployed[status])
+		}
 	}
+}
+
+// initialStatus is the status auto-deploy gives f: its initialState, or
+// started.
+func initialStatus(f gateway.Flow) string {
+	if f.InitialState == "" {
+		return flowlife.Started
+	}
+	return f.InitialState
+}
+
+// UpdateMany replaces several definitions (PUT /api/v1/flows). Every flow
+// is checked, and must exist, before any is written; flows are written
+// dependencies first, each keeping its status and stopped destinations.
+// Like Update, it reads the other flows only when dependencies are set.
+func (a flowAdapter) UpdateMany(ctx context.Context, changes []gateway.FlowChange) ([]string, error) {
+	defer a.definitions()()
+	updated := []string{}
+	flows := make([]gateway.Flow, len(changes))
+	for i, c := range changes {
+		flows[i] = c.Flow
+	}
+	ids, err := checkBatch(flows)
+	if err != nil {
+		return updated, err
+	}
+	var missing []string
+	withDeps := false
+	for _, f := range flows {
+		if _, err := a.Get(ctx, f.ID); errors.Is(err, gateway.ErrFlowNotFound) {
+			missing = append(missing, f.ID)
+		} else if err != nil {
+			return updated, err
+		}
+		withDeps = withDeps || len(f.DependsOn) > 0
+	}
+	if len(missing) > 0 {
+		return updated, fmt.Errorf("%w: %s", gateway.ErrFlowNotFound, strings.Join(missing, ", "))
+	}
+	order := ids
+	if withDeps {
+		all, err := a.withFlows(ctx, flows...)
+		if err != nil {
+			return updated, err
+		}
+		if err := checkDependencies(all, ids); err != nil {
+			return updated, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+		}
+		order = dependencyOrder(all, ids)
+	}
+	keep := make(map[string]bool, len(changes))
+	for _, c := range changes {
+		keep[c.Flow.ID] = c.KeepEnabled
+	}
+	byID := make(map[string]gateway.Flow, len(flows))
+	for _, f := range flows {
+		byID[f.ID] = f
+	}
+	for _, id := range order {
+		if err := a.replaceKeepingStatus(ctx, byID[id], keep[id]); err != nil {
+			return updated, fmt.Errorf("%w: flow %s: %w", gateway.ErrUpdateIncomplete, id, err)
+		}
+		updated = append(updated, id)
+	}
+	return updated, nil
+}
+
+// checkBatch checks each definition of a multi-flow write (import, bulk
+// update) and rejects repeated ids. It returns the ids in order.
+func checkBatch(flows []gateway.Flow) ([]string, error) {
+	seen := map[string]bool{}
+	ids := make([]string, 0, len(flows))
+	for _, f := range flows {
+		if seen[f.ID] {
+			return nil, fmt.Errorf("%w: flow %s appears twice", gateway.ErrInvalidFlow, f.ID)
+		}
+		seen[f.ID] = true
+		ids = append(ids, f.ID)
+		if err := checkDefinition(f); err != nil {
+			return nil, fmt.Errorf("flow %s: %w", f.ID, err)
+		}
+	}
+	return ids, nil
 }
 
 // RedeployAll undeploys and re-deploys every flow that is not undeployed;
@@ -1004,17 +1109,9 @@ func (a flowAdapter) Export(ctx context.Context, ids []string) ([]gateway.Flow, 
 func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite bool) (gateway.ImportResult, error) {
 	defer a.definitions()()
 	res := gateway.ImportResult{Created: []string{}, Updated: []string{}}
-	seen := map[string]bool{}
-	ids := make([]string, 0, len(flows))
-	for _, f := range flows {
-		if seen[f.ID] {
-			return res, fmt.Errorf("%w: flow %s appears twice", gateway.ErrInvalidFlow, f.ID)
-		}
-		seen[f.ID] = true
-		ids = append(ids, f.ID)
-		if err := checkDefinition(f); err != nil {
-			return res, fmt.Errorf("flow %s: %w", f.ID, err)
-		}
+	ids, err := checkBatch(flows)
+	if err != nil {
+		return res, err
 	}
 	all, err := a.withFlows(ctx)
 	if err != nil {
@@ -1044,7 +1141,7 @@ func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite
 	for _, id := range dependencyOrder(all, ids) {
 		f := byID[id]
 		if existing[id] {
-			if err := a.replaceKeepingStatus(ctx, f); err != nil {
+			if err := a.replaceKeepingStatus(ctx, f, false); err != nil {
 				return res, fmt.Errorf("%w: flow %s: %w", gateway.ErrImportIncomplete, id, err)
 			}
 			res.Updated = append(res.Updated, id)
@@ -1064,12 +1161,16 @@ func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite
 }
 
 // replaceKeepingStatus stores f's definition, re-reading the flow's current
-// status under its lock so a concurrent lifecycle change is never undone.
-func (a flowAdapter) replaceKeepingStatus(ctx context.Context, f gateway.Flow) error {
+// status (and, with keepEnabled, its enabled flag) under its lock so a
+// concurrent lifecycle change or enable/disable is never undone.
+func (a flowAdapter) replaceKeepingStatus(ctx context.Context, f gateway.Flow, keepEnabled bool) error {
 	defer a.lock(f.ID, true)()
 	current, err := a.Get(ctx, f.ID)
 	if err != nil {
 		return err
+	}
+	if keepEnabled {
+		f.Enabled = current.Enabled
 	}
 	f = withRuntime(current, f)
 	_, err = a.setStatus(ctx, f, f.Status)

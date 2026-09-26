@@ -103,7 +103,8 @@ then removes it (a `flow.deleted` event). New messages for it return `404`. Its 
 `enabled` marks a flow as eligible for automatic deployment. It never changes the status by
 itself. When the server starts (with `flows.deployOnStartup`, the default; see
 [Server configuration](server-config.md#flows)), every flow that is `enabled` **and**
-`undeployed` is deployed and started. Flows in any other status keep it, and disabled flows are
+`undeployed` is deployed into its [initial state](#initial-state) (`started` unless you set
+another). Flows in any other status keep it, and disabled flows are
 left alone.
 
 Because `enabled` decides what runs after a restart, a flow you only `undeploy` comes back
@@ -120,6 +121,24 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 
 Each returns `200` with the flow, or `404` for an unknown flow.
 
+### Initial state
+
+`initialState` sets the status an automatically deployed flow gets:
+
+| `initialState` | Status after the server starts |
+|---|---|
+| `started` (default, or when omitted) | `started`: accepts messages. |
+| `paused` | `paused`: rejects messages until you `resume` it. |
+| `stopped` | `stopped`: rejects messages until you `start` it. |
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows \
+  -d '{"id":"adt","enabled":true,"initialState":"paused"}'
+```
+
+`initialState` only applies to automatic deployment at startup. A manual `deploy` still leaves
+the flow `deployed`. Any other value returns `400`.
+
 If a flow cannot be auto-deployed (for example, its stored definition is unreadable), the
 server logs `auto-deploy failed` with the flow id and starts anyway. You can then fix or delete
 that flow over the API.
@@ -128,7 +147,7 @@ that flow over the API.
 
 Flows created before the lifecycle existed have no status, or a free-form one. They read as
 `undeployed`. On the first start after the upgrade, those that are `enabled` are deployed and
-started automatically (with the default `flows.deployOnStartup: true`). The others reject
+started automatically (they have no `initialState`, so they start) (with the default `flows.deployOnStartup: true`). The others reject
 messages until you `deploy` and `start` them. `queued` messages of a flow are retried again once
 it is started.
 

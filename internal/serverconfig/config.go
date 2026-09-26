@@ -153,8 +153,13 @@ func (c Config) Validate() error {
 		if addr == "" {
 			continue
 		}
-		if _, _, err := net.SplitHostPort(addr); err != nil {
+		_, port, err := net.SplitHostPort(addr)
+		if err != nil {
 			return fmt.Errorf("config: %s must be host:port, got %q", key, addr)
+		}
+		// A fixed port, so the reported listeners (ports-in-use) are exact.
+		if p, err := net.LookupPort("tcp", port); err != nil || p == 0 {
+			return fmt.Errorf("config: %s needs a port from 1 to 65535 or a service name, got %q", key, addr)
 		}
 	}
 	if c.Listen.TLSAddress != "" && (c.TLS.CertFile == "" || c.TLS.KeyFile == "") {

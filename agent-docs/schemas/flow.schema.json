@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/weavster-dev/weavster/main/agent-docs/schemas/flow.schema.json",
   "title": "Weavster flow definition",
-  "description": "Body of POST /api/v1/flows, PUT /api/v1/flows/{id}, and each entry of an import document. status is managed by lifecycle operations and is not part of a definition.",
+  "description": "Body of POST /api/v1/flows, PUT /api/v1/flows/{id}, and each entry of PUT /api/v1/flows and of an import document. status is managed by lifecycle operations and is not part of a definition.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -16,7 +16,9 @@
         "enum": [
           "export",
           "import",
-          "redeploy-all"
+          "redeploy-all",
+          "connector-names",
+          "ports-in-use"
         ]
       }
     },
@@ -36,6 +38,14 @@
       "type": [
         "boolean",
         "null"
+      ]
+    },
+    "initialState": {
+      "enum": [
+        "started",
+        "paused",
+        "stopped",
+        null
       ]
     },
     "dependsOn": {

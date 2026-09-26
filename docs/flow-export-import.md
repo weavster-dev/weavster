@@ -81,11 +81,11 @@ Other errors:
 
 | Response | Cause |
 |---|---|
-| `400 unsupported export version 2; expected 1` | Unknown `version`. |
+| `400 unsupported export version 2; expected 1` | Missing or unknown `version`. |
 | `400 flows[0]: status is managed by lifecycle operations …; omit it` | A flow in the document has a `status` field. |
 | `400 flows[0]: stoppedDestinations is managed by …; omit it` | A flow in the document has a `stoppedDestinations` field. |
 | `400 … appears twice` | The same id is listed twice. |
-| `400 body must be an export document` | Not a JSON object, no `flows` array, or extra data after the document. |
+| `400 body must be an export document` | Not a JSON object, no `flows` array, a top-level field other than `version` and `flows`, or extra data after the document. |
 | `413` | The document is larger than 50 MiB. |
 
 If writing fails part-way (for example, a store error), the import stops and returns
@@ -98,7 +98,7 @@ check always sees the flows it is written against.
 
 ## Reserved ids
 
-`export`, `import`, and `redeploy-all` cannot be used as flow ids, because they name these
+`export`, `import`, `redeploy-all`, `connector-names`, and `ports-in-use` cannot be used as flow ids, because they name these
 endpoints. A flow created with one of these ids before this rule existed can still be deleted
 (`DELETE /api/v1/flows/export`). To keep it, export all flows, change its id in the file,
 delete it, and import the file.

@@ -164,6 +164,17 @@ func (f fakeUpdater) Update(_ context.Context, id string, fl Flow, _ bool) (Flow
 func (f fakeUpdater) SetEnabled(_ context.Context, id string, enabled bool) (Flow, error) {
 	return Flow{ID: id, Enabled: enabled}, f.err
 }
+func (f fakeUpdater) UpdateMany(_ context.Context, changes []FlowChange) ([]string, error) {
+	var ids []string
+	for _, c := range changes {
+		if !c.KeepEnabled {
+			ids = append(ids, c.Flow.ID+":enabled")
+			continue
+		}
+		ids = append(ids, c.Flow.ID)
+	}
+	return ids, f.err
+}
 
 func TestFlowUpdateHandlers(t *testing.T) {
 	tests := []struct {
@@ -179,6 +190,21 @@ func TestFlowUpdateHandlers(t *testing.T) {
 		{"enable", http.MethodPost, "/api/v1/flows/f/enable", ``, Config{FlowUpdates: fakeUpdater{}}, http.StatusOK},
 		{"disable unavailable", http.MethodPost, "/api/v1/flows/f/disable", ``, Config{}, http.StatusServiceUnavailable},
 		{"enable unknown", http.MethodPost, "/api/v1/flows/f/enable", ``, Config{FlowUpdates: fakeUpdater{err: ErrFlowNotFound}}, http.StatusNotFound},
+		{"bulk update", http.MethodPut, "/api/v1/flows", `{"flows":[{"id":"a"}]}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusOK},
+		{"bulk update unavailable", http.MethodPut, "/api/v1/flows", `{"flows":[]}`, Config{}, http.StatusServiceUnavailable},
+		{"bulk update missing flows", http.MethodPut, "/api/v1/flows", `{}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
+		{"bulk update with version", http.MethodPut, "/api/v1/flows", `{"version":1,"flows":[]}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
+		{"bulk update with null version", http.MethodPut, "/api/v1/flows", `{"version":null,"flows":[]}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
+		{"bulk update unknown field", http.MethodPut, "/api/v1/flows", `{"overwrite":true,"flows":[]}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
+		{"bulk update status", http.MethodPut, "/api/v1/flows", `{"flows":[{"id":"a","status":"started"}]}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
+		{"bulk update bad initial state", http.MethodPut, "/api/v1/flows", `{"flows":[{"id":"a","initialState":"halted"}]}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
+		{"bulk update unknown", http.MethodPut, "/api/v1/flows", `{"flows":[{"id":"a"}]}`, Config{FlowUpdates: fakeUpdater{err: ErrFlowNotFound}}, http.StatusNotFound},
+		{"bulk update invalid", http.MethodPut, "/api/v1/flows", `{"flows":[{"id":"a"}]}`, Config{FlowUpdates: fakeUpdater{err: ErrInvalidFlow}}, http.StatusBadRequest},
+		{"bulk update incomplete", http.MethodPut, "/api/v1/flows", `{"flows":[{"id":"a"}]}`, Config{FlowUpdates: fakeUpdater{err: ErrUpdateIncomplete}}, http.StatusInternalServerError},
+		{"connector names", http.MethodGet, "/api/v1/flows/connector-names", ``, Config{Flows: &fakeFlows{}}, http.StatusOK},
+		{"connector names unavailable", http.MethodGet, "/api/v1/flows/connector-names", ``, Config{}, http.StatusServiceUnavailable},
+		{"connector names error", http.MethodGet, "/api/v1/flows/connector-names", ``, Config{Flows: &errFlows{}}, http.StatusInternalServerError},
+		{"ports in use", http.MethodGet, "/api/v1/flows/ports-in-use", ``, Config{}, http.StatusOK},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -200,6 +226,34 @@ func (f fakeTransfer) Import(context.Context, []Flow, bool) (ImportResult, error
 	return ImportResult{Created: []string{"a"}}, f.err
 }
 
+func TestFlowOperationBodies(t *testing.T) {
+	tests := []struct {
+		name, method, path, body string
+		cfg                      Config
+		want                     string
+	}{
+		{"bulk update keeps enabled unless set", http.MethodPut, "/api/v1/flows", `{"flows":[{"id":"a"},{"id":"b","enabled":false}]}`,
+			Config{FlowUpdates: fakeUpdater{}}, `{"updated":["a","b:enabled"]}`},
+		{"bulk update incomplete lists written", http.MethodPut, "/api/v1/flows", `{"flows":[{"id":"a"}]}`,
+			Config{FlowUpdates: fakeUpdater{err: ErrUpdateIncomplete}}, `"updated":["a"]`},
+		{"connector names", http.MethodGet, "/api/v1/flows/connector-names", ``,
+			Config{Flows: &fakeFlows{flows: []Flow{{ID: "f", Name: "F", SourceType: "http", Destinations: []FlowDestination{{Name: "a"}, {Name: "b"}}}, {ID: "g"}}}},
+			`[{"id":"f","name":"F","sourceType":"http","destinations":["a","b"]},{"id":"g","name":"","sourceType":"","destinations":[]}]`},
+		{"ports in use", http.MethodGet, "/api/v1/flows/ports-in-use", ``,
+			Config{Listeners: []PortInUse{{Address: ":8080", Port: 8080, UsedBy: "api"}}}, `[{"address":":8080","port":8080,"usedBy":"api"}]`},
+		{"no ports", http.MethodGet, "/api/v1/flows/ports-in-use", ``, Config{}, `[]`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))
+			if !strings.Contains(rec.Body.String(), tt.want) {
+				t.Errorf("body = %s, want it to contain %s", rec.Body.String(), tt.want)
+			}
+		})
+	}
+}
+
 func TestTransferHandlers(t *testing.T) {
 	tests := []struct {
 		name, method, path, body string
@@ -215,6 +269,8 @@ func TestTransferHandlers(t *testing.T) {
 		{"import bad flow", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[1]}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
 		{"import bad id", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"import"}]}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
 		{"import missing flows", http.MethodPost, "/api/v1/flows/import", `{"version":1}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
+		{"import missing version", http.MethodPost, "/api/v1/flows/import", `{"flows":[]}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
+		{"import string version", http.MethodPost, "/api/v1/flows/import", `{"version":"1","flows":[]}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
 		{"import null flows", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":null}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
 		{"import trailing data", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[]}{}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
 		{"import incomplete", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"a"}]}`, Config{Transfer: fakeTransfer{err: ErrImportIncomplete}}, http.StatusInternalServerError},
