@@ -22,6 +22,10 @@ You cannot delete a flow that another flow depends on:
 409 flow is a dependency of other flows: adt depended on by adt-archive
 ```
 
+To prove nothing depends on it, the server must be able to read every other flow. If one is
+unreadable, the delete returns `500` naming that flow; delete the unreadable flow first (a flow
+can always delete itself).
+
 Dependencies are checked and exported, but they do not change deployment yet: deploying a
 flow does not deploy the flows it depends on.
 
@@ -68,7 +72,7 @@ is imported disabled. Exports always include `enabled`.
 | Flow in the document | Result |
 |---|---|
 | New id | Created `undeployed`. Deploy and start it to process messages. |
-| Existing id, without `?overwrite=true` | Nothing is written: `409 flows already exist: adt (use overwrite=true to replace them)` |
+| Existing id, without `?overwrite=true` | Nothing is written: `409 flows already exist: adt (use overwrite=true to replace them)`. Checked after the document is validated, so an invalid document returns `400` even when it also conflicts. |
 | Existing id, with `?overwrite=true` | Definition replaced; the flow keeps its current status. |
 
 Other errors:
@@ -78,6 +82,7 @@ Other errors:
 | `400 unsupported export version 2; expected 1` | Unknown `version`. |
 | `400 flows[0]: status is managed by lifecycle operations; omit it` | A flow in the document has a `status` field. |
 | `400 … appears twice` | The same id is listed twice. |
+| `400 body must be an export document` | Not a JSON object, no `flows` array, or extra data after the document. |
 | `413` | The document is larger than 50 MiB. |
 
 If writing fails part-way (for example, a store error), the import stops and returns

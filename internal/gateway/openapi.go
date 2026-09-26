@@ -107,6 +107,7 @@ paths:
       responses:
         "204": {description: Deleted}
         "404": {description: Unknown flow}
+        "409": {description: Other flows depend on this flow}
     put:
       summary: Replace a flow's definition; status is kept (requires flows:edit)
       parameters:
@@ -179,6 +180,8 @@ paths:
         "200": {description: "{created: [ids], updated: [ids]}"}
         "400": {description: Invalid document, flow, or dependencies; nothing written}
         "409": {description: Flows already exist and overwrite is not set; nothing written}
+        "413": {description: Document larger than 50 MiB}
+        "500": {description: "Stopped part-way: {error: {code: IMPORT_INCOMPLETE}, created: [ids], updated: [ids]} lists what was written"}
   /api/v1/flows/redeploy-all:
     post:
       summary: Undeploy and re-deploy every flow that is not undeployed (deployed, started, paused, halted, stopped); each ends deployed (requires flows:deploy)

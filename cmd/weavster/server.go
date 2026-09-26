@@ -879,17 +879,18 @@ func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite
 			conflicts = append(conflicts, f.ID)
 		}
 	}
-	if len(conflicts) > 0 && !overwrite {
-		sort.Strings(conflicts)
-		return res, fmt.Errorf("%w: %s (use overwrite=true to replace them)", gateway.ErrImportConflict, strings.Join(conflicts, ", "))
-	}
 	byID := map[string]gateway.Flow{}
 	for _, f := range flows {
 		all[f.ID] = f
 		byID[f.ID] = f
 	}
+	// Document errors (400) take precedence over conflicts (409).
 	if err := checkDependencies(all, ids); err != nil {
 		return res, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+	}
+	if len(conflicts) > 0 && !overwrite {
+		sort.Strings(conflicts)
+		return res, fmt.Errorf("%w: %s (use overwrite=true to replace them)", gateway.ErrImportConflict, strings.Join(conflicts, ", "))
 	}
 	for _, id := range dependencyOrder(all, ids) {
 		f := byID[id]
@@ -1098,19 +1099,29 @@ func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) (gateway.Flow, 
 func (a flowAdapter) Delete(ctx context.Context, id string) error {
 	defer a.definitions()()
 	defer a.lock(id, false)()
-	// If the flows cannot be read (e.g. one is corrupt), allow the delete:
-	// it is how an operator removes an unreadable flow.
-	if all, err := a.withFlows(ctx); err == nil {
-		var dependents []string
-		for _, f := range all {
-			if slices.Contains(f.DependsOn, id) {
-				dependents = append(dependents, f.ID)
-			}
+	// Fail closed: every other flow must be readable to prove nothing
+	// depends on this one. The flow being deleted may itself be unreadable,
+	// so a corrupt flow can always be removed.
+	defs, err := a.store.ListFlows(ctx)
+	if err != nil {
+		return err
+	}
+	var dependents []string
+	for _, d := range defs {
+		if d.ID == id {
+			continue
 		}
-		if len(dependents) > 0 {
-			sort.Strings(dependents)
-			return fmt.Errorf("%w: %s depended on by %s", gateway.ErrFlowInUse, id, strings.Join(dependents, ", "))
+		var f gateway.Flow
+		if err := json.Unmarshal(d.Document, &f); err != nil {
+			return fmt.Errorf("cannot check dependents: flow %s is unreadable: %w", d.ID, err)
 		}
+		if slices.Contains(f.DependsOn, id) {
+			dependents = append(dependents, f.ID)
+		}
+	}
+	if len(dependents) > 0 {
+		sort.Strings(dependents)
+		return fmt.Errorf("%w: %s depended on by %s", gateway.ErrFlowInUse, id, strings.Join(dependents, ", "))
 	}
 	if err := a.store.DeleteFlow(ctx, id); err != nil {
 		return flowErr(err)

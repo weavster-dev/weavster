@@ -271,10 +271,20 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	var bundle struct {
-		Version int               `json:"version"`
-		Flows   []json.RawMessage `json:"flows"`
+		Version int                `json:"version"`
+		Flows   *[]json.RawMessage `json:"flows"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxImportBytes)).Decode(&bundle); err != nil {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxImportBytes))
+	err := dec.Decode(&bundle)
+	if err == nil && bundle.Flows == nil {
+		err = errors.New("missing flows array")
+	}
+	if err == nil {
+		if _, tokErr := dec.Token(); tokErr != io.EOF {
+			err = errors.New("trailing data after the document")
+		}
+	}
+	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			http.Error(w, "export document larger than 50 MiB", http.StatusRequestEntityTooLarge)
@@ -287,8 +297,8 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("unsupported export version %d; expected %d", bundle.Version, FlowBundleVersion), http.StatusBadRequest)
 		return
 	}
-	flows := make([]Flow, 0, len(bundle.Flows))
-	for i, raw := range bundle.Flows {
+	flows := make([]Flow, 0, len(*bundle.Flows))
+	for i, raw := range *bundle.Flows {
 		var f Flow
 		var fields map[string]json.RawMessage
 		if err := json.Unmarshal(raw, &f); err != nil || json.Unmarshal(raw, &fields) != nil || fields == nil {

@@ -253,3 +253,39 @@ func TestImportPartialFailure(t *testing.T) {
 		t.Errorf("Import = %+v, %v; want base written first, then the failure", res, err)
 	}
 }
+
+// TestDeleteFailsClosed: a flow cannot be deleted while another flow is
+// unreadable (its dependencies are unknown), but the unreadable flow itself
+// can always be deleted.
+func TestDeleteFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "ok", Document: []byte(`{"id":"ok"}`)})
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "corrupt", Document: []byte(`{`)})
+	flows := flowAdapter{store: mem, locks: newFlowLocks(), defs: &sync.Mutex{}}
+	if err := flows.Delete(ctx, "ok"); err == nil || !strings.Contains(err.Error(), "corrupt is unreadable") {
+		t.Errorf("delete with an unreadable neighbour = %v, want refusal", err)
+	}
+	if err := flows.Delete(ctx, "corrupt"); err != nil {
+		t.Errorf("deleting the unreadable flow itself: %v", err)
+	}
+	if err := flows.Delete(ctx, "ok"); err != nil {
+		t.Errorf("delete after cleanup: %v", err)
+	}
+	if err := (flowAdapter{store: listFailRepo{mem}}).Delete(ctx, "x"); err == nil {
+		t.Error("delete with a failing store list: want error")
+	}
+}
+
+// TestImportDependencyErrorsBeatConflicts: a bundle that both collides and
+// has a bad dependency is rejected as invalid (400), not as a conflict.
+func TestImportDependencyErrorsBeatConflicts(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "a", Document: []byte(`{"id":"a"}`)})
+	flows := flowAdapter{store: mem, locks: newFlowLocks(), defs: &sync.Mutex{}}
+	_, err := flows.Import(ctx, []gateway.Flow{{ID: "a", DependsOn: []string{"missing"}}}, false)
+	if !errors.Is(err, gateway.ErrInvalidFlow) {
+		t.Errorf("err = %v, want ErrInvalidFlow", err)
+	}
+}
