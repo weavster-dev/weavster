@@ -3,6 +3,9 @@ package observability
 import "testing"
 
 func TestEventLogRingAndLimit(t *testing.T) {
+	if got := NewEventLog().Search(EventFilter{Limit: 5}); len(got) != 0 {
+		t.Errorf("empty log search = %v", got)
+	}
 	l := NewEventLog()
 	for i := 0; i < MaxEvents+5; i++ {
 		l.Add("x", "", "f", nil)

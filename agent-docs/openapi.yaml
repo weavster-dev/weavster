@@ -147,6 +147,7 @@ paths:
           schema: {type: boolean}
       responses:
         "200": {description: "received, filtered, transformed, sent, errored, queued, destinations, lastMessageAt"}
+        "400": {description: lifetime is not a boolean}
         "404": {description: Unknown flow}
   /api/v1/events:
     get:

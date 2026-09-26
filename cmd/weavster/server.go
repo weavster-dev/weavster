@@ -15,6 +15,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -86,7 +87,7 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 		repo = store.(flowRepository)
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
-	flows := flowAdapter{store: repo, stats: stats}
+	flows := flowAdapter{store: repo, stats: stats, gate: &sync.RWMutex{}}
 	var ingest gateway.MessageIngester
 	if store != nil {
 		ingest = ingestAdapter{flows: flows, pipe: pipeline.New(store, newSink, processingObserver{stats, events})}
@@ -386,6 +387,9 @@ type flowRepository interface {
 type flowAdapter struct {
 	store flowRepository
 	stats *observability.StatsRegistry
+	// gate orders deletes after in-flight processing (ingest holds it for
+	// reading), so a reset is never followed by a stale message's counters.
+	gate *sync.RWMutex
 }
 
 // toPipelineFlow converts a stored flow into the pipeline's definition,
@@ -419,6 +423,10 @@ type ingestAdapter struct {
 }
 
 func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (gateway.IngestResult, error) {
+	if a.flows.gate != nil {
+		a.flows.gate.RLock()
+		defer a.flows.gate.RUnlock()
+	}
 	f, err := a.flows.Get(ctx, flowID)
 	if err != nil {
 		return gateway.IngestResult{}, err
@@ -521,6 +529,10 @@ func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) error {
 }
 
 func (a flowAdapter) Delete(ctx context.Context, id string) error {
+	if a.gate != nil {
+		a.gate.Lock()
+		defer a.gate.Unlock()
+	}
 	if err := a.store.DeleteFlow(ctx, id); err != nil {
 		return flowErr(err)
 	}

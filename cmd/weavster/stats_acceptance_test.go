@@ -1,14 +1,21 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/observability"
+	"github.com/weavster-dev/weavster/internal/pipeline"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
+	"github.com/weavster-dev/weavster/internal/state"
 )
 
 // TestStatsEventsTopology proves statistics, events, and topology activity
@@ -25,6 +32,9 @@ func TestStatsEventsTopology(t *testing.T) {
 
 	c := startComposed(t, serverconfig.Default(), io.Discard)
 	admin := basic(bootstrapAdmin, testAdminPassword)
+	if status, body, _ := c.do(http.MethodGet, "/api/v1/events", "", admin); status != http.StatusOK || strings.TrimSpace(body) != "[]" {
+		t.Errorf("events on a fresh server: %d %q, want 200 []", status, body)
+	}
 	flow := `{"id":"lab","name":"Lab","transform":{"name":"t","steps":[{"filter":{"when":"skip","action":"reject"}}]},
 	  "destinations":[{"name":"ehr","type":"http","url":"` + downstream.URL + `"}]}`
 	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", flow, admin); status != http.StatusCreated {
@@ -102,5 +112,51 @@ func TestStatsEventsTopology(t *testing.T) {
 	}
 	if _, body, _ := c.do(http.MethodGet, "/api/v1/topology", "", admin); !strings.Contains(body, `"activity":{"received":0,"sent":0,"errored":0,"queued":0}`) {
 		t.Errorf("idle topology activity = %s", body)
+	}
+}
+
+type blockingSink struct{ release chan struct{} }
+
+func (s blockingSink) Write(context.Context, pipeline.Delivery) error {
+	<-s.release
+	return nil
+}
+
+// TestDeleteWaitsForInFlightIngest proves a flow delete is ordered after
+// in-flight processing, so the deleted flow's counters stay reset.
+func TestDeleteWaitsForInFlightIngest(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	stats := observability.NewStatsRegistry()
+	flows := flowAdapter{store: store, stats: stats, gate: &sync.RWMutex{}}
+	if err := flows.Create(ctx, gateway.Flow{ID: "f", Destinations: []gateway.FlowDestination{{Name: "d", Type: "file", Dir: t.TempDir()}}}); err != nil {
+		t.Fatal(err)
+	}
+	sink := blockingSink{release: make(chan struct{})}
+	ingest := ingestAdapter{flows: flows, pipe: pipeline.New(store, func(pipeline.Destination) (pipeline.Sink, error) { return sink, nil },
+		processingObserver{stats, observability.NewEventLog()})}
+
+	ingested := make(chan struct{})
+	go func() {
+		_, _ = ingest.Ingest(ctx, "f", []byte("x"))
+		close(ingested)
+	}()
+	for stats.Snapshot("f", false).Received == 0 { // wait until processing is in flight
+		time.Sleep(time.Millisecond)
+	}
+	deleted := make(chan error, 1)
+	go func() { deleted <- flows.Delete(ctx, "f") }()
+	select {
+	case <-deleted:
+		t.Fatal("delete completed while a message was still being processed")
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(sink.release)
+	<-ingested
+	if err := <-deleted; err != nil {
+		t.Fatal(err)
+	}
+	if s := stats.Snapshot("f", false); s.Received != 0 || s.Sent != 0 {
+		t.Errorf("stats after delete = %+v, want reset", s)
 	}
 }
