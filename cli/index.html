@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/flow-export-import/">
+        <link rel="canonical" href="https://docs.weavster.dev/cli/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Flow Dependencies, Export, Import - Weavster</title>
+        <title>Command-line client - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -47,7 +47,7 @@
                                 <a href="../authentication/" class="nav-link">Authentication</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../cli/" class="nav-link">Command-line client</a>
+                                <a href="./" class="nav-link active" aria-current="page">Command-line client</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../audit-log/" class="nav-link">Audit Log</a>
@@ -59,7 +59,7 @@
                                 <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Flow Dependencies, Export, Import</a>
+                                <a href="../flow-export-import/" class="nav-link">Flow Dependencies, Export, Import</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
@@ -79,17 +79,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../flow-lifecycle/" class="nav-link">
+                                <a rel="prev" href="../authentication/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../documentation/" class="nav-link">
+                                <a rel="next" href="../audit-log/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/flow-export-import.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/cli.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -110,21 +110,17 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#flow-dependencies-export-and-import" class="nav-link">Flow dependencies, export, and import</a>
+            <li class="nav-item" data-bs-level="1"><a href="#command-line-client" class="nav-link">Command-line client</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#dependencies" class="nav-link">Dependencies</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#export" class="nav-link">Export</a>
+            <li class="nav-item" data-bs-level="2"><a href="#flow-commands" class="nav-link">Flow commands</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#import" class="nav-link">Import</a>
+            <li class="nav-item" data-bs-level="2"><a href="#other-commands" class="nav-link">Other commands</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#reserved-ids" class="nav-link">Reserved ids</a>
+            <li class="nav-item" data-bs-level="2"><a href="#limits-today" class="nav-link">Limits today</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -135,140 +131,184 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="flow-dependencies-export-and-import">Flow dependencies, export, and import</h1>
-<h2 id="dependencies">Dependencies</h2>
-<p>A flow can declare the flows it needs with <code>dependsOn</code> (a list of flow ids):</p>
-<pre><code class="language-json">{&quot;id&quot;: &quot;adt-archive&quot;, &quot;name&quot;: &quot;ADT archive&quot;, &quot;dependsOn&quot;: [&quot;adt&quot;]}
+<h1 id="command-line-client">Command-line client</h1>
+<p><code>weavster</code> without <code>server</code> is the command-line client. It talks to a running server over the
+REST API. Today it runs commands from a script file (batch mode):</p>
+<pre><code class="language-bash">weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
 </code></pre>
-<p>The server checks dependencies on create, update, and import. It returns <code>400</code> when:</p>
 <table>
 <thead>
 <tr>
-<th>Problem</th>
-<th>Example message</th>
+<th>Flag</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>A listed flow does not exist</td>
-<td><code>flow adt-archive depends on unknown flow adt</code></td>
+<td><code>-a</code></td>
+<td>Server address (default <code>http://127.0.0.1:8080</code>).</td>
 </tr>
 <tr>
-<td>A flow lists itself</td>
-<td><code>flow adt cannot depend on itself</code></td>
+<td><code>-u</code>, <code>-p</code></td>
+<td>Username and password, sent as Basic credentials.</td>
 </tr>
 <tr>
-<td>The dependencies form a loop</td>
-<td><code>dependency cycle: a -&gt; b -&gt; a</code></td>
+<td><code>-s</code></td>
+<td>Script file: one command per line. Empty lines and lines starting with <code>#</code> are skipped.</td>
+</tr>
+<tr>
+<td><code>-d</code></td>
+<td>Accepted; errors look the same with or without it.</td>
 </tr>
 </tbody>
 </table>
-<p>You cannot delete a flow that another flow depends on:</p>
-<pre><code class="language-text">409 flow is a dependency of other flows: adt depended on by adt-archive
+<p>Commands are split on spaces: arguments (such as file names) cannot contain spaces, and there is
+no quoting. File names are relative to the directory you run <code>weavster</code> from.</p>
+<p>Every command in the script runs, even after an error. The client exits <code>0</code> when every command
+succeeded and <code>2</code> when any command failed: an unknown command, a usage error, a file that cannot
+be read, a server that cannot be reached, or an error reply from the server. Server errors are
+printed as:</p>
+<pre><code class="language-text">Error: server returned 404 Not Found: flow not found
 </code></pre>
-<p>To prove nothing depends on it, the server must be able to read every other flow. If one is
-unreadable, the delete returns <code>500</code> naming that flow; delete the unreadable flow first (a flow
-can always delete itself).</p>
-<p>Deploying a flow, manually or through startup auto-deploy, also deploys every <code>undeployed</code> flow
-it depends on, dependencies first. Dependencies in any other status are left as they are, so
-deploying a dependent never interrupts a running dependency. Starting a flow does not start its
-dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</p>
-<h2 id="export">Export</h2>
-<p><code>GET /api/v1/flows/export</code> (permission <code>flows:view</code>) returns flow definitions:</p>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
-  'http://127.0.0.1:8080/api/v1/flows/export?ids=adt-archive' &gt; flows.json
+<p>Each command needs the same <a href="../authentication/#permissions">permission</a> as the API call it makes.</p>
+<h2 id="flow-commands">Flow commands</h2>
+<pre><code class="language-text"># script.txt
+flow create adt.json
+flow deploy adt
+flow start adt
+flow list
 </code></pre>
-<pre><code class="language-json">{&quot;version&quot;:1,&quot;flows&quot;:[
-  {&quot;id&quot;:&quot;adt&quot;,&quot;name&quot;:&quot;ADT normalize&quot;,&quot;sourceType&quot;:&quot;http&quot;,&quot;enabled&quot;:true,&quot;transform&quot;:{…},&quot;destinations&quot;:[…]},
-  {&quot;id&quot;:&quot;adt-archive&quot;,&quot;name&quot;:&quot;ADT archive&quot;,&quot;sourceType&quot;:&quot;&quot;,&quot;enabled&quot;:false,&quot;dependsOn&quot;:[&quot;adt&quot;]}
-]}
-</code></pre>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+<th>API call</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>flow list</code></td>
+<td>One line per flow: id, status, and name, separated by tabs. Tabs, newlines, and other control characters in a name are printed as <code>\t</code>, <code>\n</code>, …</td>
+<td><code>GET /api/v1/flows</code></td>
+</tr>
+<tr>
+<td><code>flow get &lt;id&gt;</code></td>
+<td>Prints the flow as JSON.</td>
+<td><code>GET /api/v1/flows/{id}</code></td>
+</tr>
+<tr>
+<td><code>flow create &lt;file&gt;</code></td>
+<td>Creates a flow from a JSON file (a <a href="../processing-messages/#1-create-a-flow">flow definition</a>).</td>
+<td><code>POST /api/v1/flows</code></td>
+</tr>
+<tr>
+<td><code>flow update &lt;id&gt; &lt;file&gt;</code></td>
+<td>Replaces a flow's definition. The flow keeps its status (and <code>enabled</code> unless the file sets it).</td>
+<td><code>PUT /api/v1/flows/{id}</code></td>
+</tr>
+<tr>
+<td><code>flow update-all &lt;file&gt;</code></td>
+<td>Replaces several definitions from a <code>{"flows":[…]}</code> file; nothing is written if one is invalid or unknown.</td>
+<td><code>PUT /api/v1/flows</code></td>
+</tr>
+<tr>
+<td><code>flow rename &lt;id&gt; &lt;name&gt;</code></td>
+<td>Changes the flow's <code>name</code> to the remaining words, joined by single spaces. It reads the definition and writes it back with the new name, so a change another user makes in between is overwritten (status and <code>enabled</code> are kept).</td>
+<td><code>GET</code> then <code>PUT /api/v1/flows/{id}</code></td>
+</tr>
+<tr>
+<td><code>flow enable &lt;id&gt;</code>, <code>flow disable &lt;id&gt;</code></td>
+<td>Sets automatic deployment at startup.</td>
+<td><code>POST /api/v1/flows/{id}/enable</code>, <code>…/disable</code></td>
+</tr>
+<tr>
+<td><code>flow remove &lt;id&gt;</code></td>
+<td>Deletes the flow and prints <code>removed &lt;id&gt;</code>.</td>
+<td><code>DELETE /api/v1/flows/{id}</code></td>
+</tr>
+<tr>
+<td><code>flow export &lt;file&gt; [&lt;id&gt;…]</code></td>
+<td>Writes an export document (all flows, or the listed ids and their dependencies) to <code>&lt;file&gt;</code>.</td>
+<td><code>GET /api/v1/flows/export</code></td>
+</tr>
+<tr>
+<td><code>flow import &lt;file&gt; [--overwrite]</code></td>
+<td>Imports an export document; <code>--overwrite</code> replaces existing flows.</td>
+<td><code>POST /api/v1/flows/import</code></td>
+</tr>
+<tr>
+<td><code>flow deploy\|undeploy\|start\|stop\|pause\|halt\|resume &lt;id&gt;</code></td>
+<td>Changes the flow's <a href="../flow-lifecycle/">lifecycle</a> status.</td>
+<td><code>POST /api/v1/flows/{id}/{action}</code></td>
+</tr>
+<tr>
+<td><code>flow redeploy-all</code></td>
+<td>Undeploys and redeploys every flow that is not <code>undeployed</code>; each ends <code>deployed</code>.</td>
+<td><code>POST /api/v1/flows/redeploy-all</code></td>
+</tr>
+<tr>
+<td><code>flow stop-destination &lt;id&gt; &lt;destination&gt;</code>, <code>flow start-destination &lt;id&gt; &lt;destination&gt;</code></td>
+<td>Holds or releases one destination's deliveries.</td>
+<td><code>POST /api/v1/flows/{id}/destinations/{name}/{stop,start}</code></td>
+</tr>
+<tr>
+<td><code>flow connectors</code></td>
+<td>Every flow's source type and destination names.</td>
+<td><code>GET /api/v1/flows/connector-names</code></td>
+</tr>
+<tr>
+<td><code>flow ports</code></td>
+<td>The ports the server listens on.</td>
+<td><code>GET /api/v1/flows/ports-in-use</code></td>
+</tr>
+<tr>
+<td><code>flow help</code></td>
+<td>Lists the flow commands.</td>
+<td>—</td>
+</tr>
+</tbody>
+</table>
+<p><code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, and <code>ports-in-use</code> are not flow ids; using
+one as <code>&lt;id&gt;</code> is an error.</p>
+<p>Commands that change a flow print the server's reply (the flow, or the import/update result).
+<code>flow export</code> and <code>flow import</code> use the <a href="../flow-export-import/">export document</a> format.</p>
+<h2 id="other-commands">Other commands</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>status</code></td>
+<td>Prints the server's <code>GET /api/v1/system</code> reply.</td>
+</tr>
+<tr>
+<td><code>version</code></td>
+<td>Prints the client version.</td>
+</tr>
+<tr>
+<td><code>user list</code></td>
+<td>Prints nothing yet.</td>
+</tr>
+<tr>
+<td><code>help</code></td>
+<td>Lists the commands.</td>
+</tr>
+<tr>
+<td><code>quit</code>, <code>exit</code></td>
+<td>Do nothing in batch mode.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="limits-today">Limits today</h2>
 <ul>
-<li><code>ids</code> is a comma-separated list. The export also includes every flow those flows depend on,
-  directly or indirectly. Leave <code>ids</code> out to export all flows.</li>
-<li>Flows are sorted by id and have no <code>status</code>: an export holds definitions, not runtime state.</li>
-<li>An unknown id returns <code>404</code>.</li>
-</ul>
-<h2 id="import">Import</h2>
-<p><code>POST /api/v1/flows/import</code> (permission <code>flows:edit</code>) takes an export document:</p>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
-  http://127.0.0.1:8080/api/v1/flows/import --data @flows.json
-</code></pre>
-<pre><code class="language-json">{&quot;created&quot;:[&quot;adt&quot;,&quot;adt-archive&quot;],&quot;updated&quot;:[]}
-</code></pre>
-<p>The whole document is checked before anything is written. Every flow must be valid, the ids
-must be unique, and dependencies must resolve against the document plus the existing flows,
-without cycles. Otherwise the import returns <code>400</code> and changes nothing. Flows are then written
-dependencies first. Each flow in the document is a full definition: a flow without <code>enabled</code>
-is imported disabled. Exports always include <code>enabled</code>.</p>
-<table>
-<thead>
-<tr>
-<th>Flow in the document</th>
-<th>Result</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>New id</td>
-<td>Created <code>undeployed</code>. Deploy and start it to process messages.</td>
-</tr>
-<tr>
-<td>Existing id, without <code>?overwrite=true</code></td>
-<td>Nothing is written: <code>409 flows already exist: adt (use overwrite=true to replace them)</code>. Checked after the document is validated, so an invalid document returns <code>400</code> even when it also conflicts.</td>
-</tr>
-<tr>
-<td>Existing id, with <code>?overwrite=true</code></td>
-<td>Definition replaced; the flow keeps its current status.</td>
-</tr>
-</tbody>
-</table>
-<p>Other errors:</p>
-<table>
-<thead>
-<tr>
-<th>Response</th>
-<th>Cause</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>400 unsupported export version 2; expected 1</code></td>
-<td>Missing or unknown <code>version</code>.</td>
-</tr>
-<tr>
-<td><code>400 flows[0]: status is managed by lifecycle operations …; omit it</code></td>
-<td>A flow in the document has a <code>status</code> field.</td>
-</tr>
-<tr>
-<td><code>400 flows[0]: stoppedDestinations is managed by …; omit it</code></td>
-<td>A flow in the document has a <code>stoppedDestinations</code> field.</td>
-</tr>
-<tr>
-<td><code>400 … appears twice</code></td>
-<td>The same id is listed twice.</td>
-</tr>
-<tr>
-<td><code>400 body must be an export document</code></td>
-<td>Not a JSON object, no <code>flows</code> array, a top-level field other than <code>version</code> and <code>flows</code>, or extra data after the document.</td>
-</tr>
-<tr>
-<td><code>413</code></td>
-<td>The document is larger than 50 MiB.</td>
-</tr>
-</tbody>
-</table>
-<p>If writing fails part-way (for example, a store error), the import stops and returns
-<code>500 {"error":{"code":"IMPORT_INCOMPLETE",…},"created":[…],"updated":[…]}</code>, listing what was
-written. Because flows are written dependencies first, every written flow's dependencies exist.
-Import again with <code>?overwrite=true</code> to finish.</p>
-<p>Creates, updates, imports, and deletes of flow definitions run one at a time, so a dependency
-check always sees the flows it is written against.</p>
-<h2 id="reserved-ids">Reserved ids</h2>
-<p><code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, and <code>ports-in-use</code> cannot be used as flow ids, because they name these
-endpoints. A flow created with one of these ids before this rule existed can still be deleted
-(<code>DELETE /api/v1/flows/export</code>). To keep it, export all flows, change its id in the file,
-delete it, and import the file.</p></div>
+<li>There is no interactive shell yet: without <code>-s</code>, <code>weavster</code> starts the server.</li>
+<li><code>status</code> exits <code>0</code> even when the server answers with an error; it prints the reply.</li>
+</ul></div>
             </div>
         </div>
 
