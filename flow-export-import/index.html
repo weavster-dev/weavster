@@ -166,8 +166,10 @@
 <p>To prove nothing depends on it, the server must be able to read every other flow. If one is
 unreadable, the delete returns <code>500</code> naming that flow; delete the unreadable flow first (a flow
 can always delete itself).</p>
-<p>Dependencies are checked and exported, but they do not change deployment yet: deploying a
-flow does not deploy the flows it depends on.</p>
+<p>Deploying a flow, manually or through startup auto-deploy, also deploys every <code>undeployed</code> flow
+it depends on, dependencies first. Dependencies in any other status are left as they are, so
+deploying a dependent never interrupts a running dependency. Starting a flow does not start its
+dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</p>
 <h2 id="export">Export</h2>
 <p><code>GET /api/v1/flows/export</code> (permission <code>flows:view</code>) returns flow definitions:</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \

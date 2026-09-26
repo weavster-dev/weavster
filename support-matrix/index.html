@@ -332,7 +332,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Flow dependencies (<code>dependsOn</code>, validated, delete-protected), export (<code>GET /api/v1/flows/export</code>), import (<code>POST /api/v1/flows/import</code>, <code>overwrite</code>)</td>
 <td>Implemented (wired)</td>
-<td><code>TestFlowExportImport</code>. Deploy does not deploy dependencies yet. See <a href="../flow-export-import/">Flow dependencies, export, and import</a>.</td>
+<td><code>TestFlowExportImport</code>, <code>TestDeployDependenciesAndDeleteRunning</code>. Deploy also deploys undeployed dependencies; deleting a running flow undeploys it first. See <a href="../flow-export-import/">Flow dependencies, export, and import</a>.</td>
 </tr>
 <tr>
 <td>Flow update/rename (<code>PUT /api/v1/flows/{id}</code>), enable/disable, auto-deploy of enabled flows at startup (<code>flows.deployOnStartup</code>)</td>
@@ -342,7 +342,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Flow lifecycle: deploy, undeploy, start, stop, pause, halt, resume, redeploy-all, with transitions enforced</td>
 <td>Implemented (wired)</td>
-<td><code>TestFlowLifecycle</code>. API only; no per-destination start/stop, no dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
+<td><code>TestFlowLifecycle</code>. API only; no per-destination start/stop. Deploy also deploys undeployed dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
 </tr>
 <tr>
 <td>Message intake: <code>POST /api/v1/flows/{id}/messages</code></td>

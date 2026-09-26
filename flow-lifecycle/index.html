@@ -121,6 +121,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#deleting-a-running-flow" class="nav-link">Deleting a running flow</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#enabled-flows-start-automatically" class="nav-link">Enabled flows start automatically</a>
               <ul class="nav flex-column">
               </ul>
@@ -158,7 +162,7 @@ when you create a flow: <code>POST /api/v1/flows</code> with a <code>status</cod
 <tr>
 <td><code>deploy</code></td>
 <td><code>undeployed</code></td>
-<td><code>deployed</code></td>
+<td><code>deployed</code>; every <code>undeployed</code> flow it depends on (directly or indirectly) is deployed first</td>
 </tr>
 <tr>
 <td><code>start</code></td>
@@ -213,6 +217,10 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 <td>The operation is not allowed from the flow's current status (see the table).</td>
 </tr>
 <tr>
+<td><code>409 dependency problem: flow top depends on missing flow base</code></td>
+<td><code>deploy</code> found a dependency that no longer exists.</td>
+</tr>
+<tr>
 <td><code>404</code></td>
 <td>Unknown flow, or an operation name that is not one of the seven above.</td>
 </tr>
@@ -222,6 +230,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 </tr>
 </tbody>
 </table>
+<p>Every status change is logged as an event of type <code>flow.&lt;new status&gt;</code> (for example
+<code>flow.started</code>), with <code>data.from</code> holding the previous status. See <code>GET /api/v1/events</code>.</p>
 <p>Every operation except <code>halt</code> waits for that flow's messages that are being processed right
 now, then changes the status. <code>halt</code> is a force-stop: it changes the status at once, lets
 those messages finish, and accepts or retries nothing new. Operations on one flow never wait
@@ -256,6 +266,12 @@ redeployed. The rest keep their status.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="deleting-a-running-flow">Deleting a running flow</h2>
+<p><code>DELETE /api/v1/flows/{id}</code> works in any status. For a flow that is not <code>undeployed</code>, the server
+waits for that flow's in-flight messages, sets it to <code>undeployed</code> (a <code>flow.undeployed</code> event), and
+then removes it (a <code>flow.deleted</code> event). New messages for it return <code>404</code>. Its <code>queued</code> messages are
+<code>dead-lettered</code> by the next retry pass. A flow that other flows depend on cannot be deleted
+(<code>409</code>).</p>
 <h2 id="enabled-flows-start-automatically">Enabled flows start automatically</h2>
 <p><code>enabled</code> marks a flow as eligible for automatic deployment. It never changes the status by
 itself. When the server starts (with <code>flows.deployOnStartup</code>, the default; see
@@ -283,7 +299,6 @@ it is started.</p>
 <h2 id="not-available-yet">Not available yet</h2>
 <ul>
 <li>Starting or stopping a single destination.</li>
-<li>Flow dependencies (deploy does not deploy other flows).</li>
 <li>CLI commands for these operations.</li>
 </ul></div>
             </div>
