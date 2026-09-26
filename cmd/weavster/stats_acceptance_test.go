@@ -78,4 +78,29 @@ func TestStatsEventsTopology(t *testing.T) {
 	if !strings.Contains(body, `"received":3`) || !strings.Contains(body, `"queued":1`) || !strings.Contains(body, `"lastMessageAt":"`) {
 		t.Errorf("topology activity = %s", body)
 	}
+
+	// A transform error's text can quote message content, so the event
+	// carries only the message id.
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"conv","transform":{"name":"t","steps":[{"map":{"from":"name","to":"n","type":"number"}}]}}`, admin); status != http.StatusCreated {
+		t.Fatalf("create conv: %d %q", status, body)
+	}
+	c.do(http.MethodPost, "/api/v1/flows/conv/messages", `{"name":"John Smith"}`, admin)
+	_, body, _ = c.do(http.MethodGet, "/api/v1/events?flowId=conv&type=message.errored", "", admin)
+	if !strings.Contains(body, `"messageId"`) || strings.Contains(body, "John Smith") {
+		t.Errorf("errored event = %s; want the message id and no message content", body)
+	}
+	if _, body, _ := c.do(http.MethodGet, "/api/v1/events?limit=1", "", admin); strings.Count(body, `"id":`) != 1 {
+		t.Errorf("limit=1 returned %s", body)
+	}
+
+	// Deleting and re-creating a flow starts its stats from zero; an idle
+	// flow's topology activity shows zeros.
+	c.do(http.MethodDelete, "/api/v1/flows/lab", "", admin)
+	c.do(http.MethodPost, "/api/v1/flows", `{"id":"lab","name":"Lab"}`, admin)
+	if _, body, _ := c.do(http.MethodGet, "/api/v1/flows/lab/stats", "", admin); !strings.Contains(body, `"received":0`) {
+		t.Errorf("stats after re-create = %s", body)
+	}
+	if _, body, _ := c.do(http.MethodGet, "/api/v1/topology", "", admin); !strings.Contains(body, `"activity":{"received":0,"sent":0,"errored":0,"queued":0}`) {
+		t.Errorf("idle topology activity = %s", body)
+	}
 }

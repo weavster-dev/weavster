@@ -31,8 +31,12 @@ func (s *recordingSink) Write(_ context.Context, d Delivery) error {
 	return nil
 }
 
-type recordingObserver struct{ seen []state.Message }
+type recordingObserver struct {
+	received int
+	seen     []state.Message
+}
 
+func (o *recordingObserver) Received(string)           { o.received++ }
 func (o *recordingObserver) Processed(m state.Message) { o.seen = append(o.seen, m) }
 
 func transform(t *testing.T, yaml string) *compiler.Transform {
@@ -124,7 +128,7 @@ steps:
 			if m.Status != tt.wantStatus || m.FlowID != "f" || string(m.Raw) != tt.body {
 				t.Errorf("stored = %+v", m)
 			}
-			if len(obs.seen) != 1 || obs.seen[0].ID != res.ID || obs.seen[0].Status != tt.wantStatus {
+			if obs.received != 1 || len(obs.seen) != 1 || obs.seen[0].ID != res.ID || obs.seen[0].Status != tt.wantStatus {
 				t.Errorf("observer saw %+v, want the final message", obs.seen)
 			}
 			if tt.wantError != "" && !strings.Contains(m.Metadata["error"], tt.wantError) {
@@ -218,7 +222,11 @@ func TestProcessStoreFailures(t *testing.T) {
 				} else {
 					store.failPut = n
 				}
-				_, err := New(store, sink, nil).Process(ctx, f, []byte(`{}`))
+				obs := &recordingObserver{}
+				_, err := New(store, sink, obs).Process(ctx, f, []byte(`{}`))
+				if err != nil && obs.received == 1 && (len(obs.seen) == 0 || obs.seen[len(obs.seen)-1].Status != state.StatusErrored) {
+					t.Errorf("%s: a received message that failed was not reported as errored: %+v", name, obs.seen)
+				}
 				calls := store.puts
 				if failGet {
 					calls = store.gets

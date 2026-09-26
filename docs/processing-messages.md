@@ -119,7 +119,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1
 
 - `transformed` counts messages that got past the transform (sent plus queued).
 - `destinations` counts successful and failed deliveries per destination.
-- `lastMessageAt` is `null` until the first message arrives.
+- `lastMessageAt` is the arrival time of the newest message, `null` until the first one.
+- Deleting a flow clears its counters, so a new flow with the same `id` starts at zero.
 - Add `?lifetime=true` for lifetime totals. Today both views are identical because no reset exists yet.
 
 Events (permission `events:view`). Each processed message adds one event of type
@@ -131,13 +132,15 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 ```
 
 ```json
-[{"id":7,"at":"2026-09-26T12:00:00Z","type":"message.errored","flowId":"adt",
-  "data":{"messageId":"6f1c…","error":"dsl: normalize: step 2: …"}}]
+[{"id":7,"at":"2026-09-26T12:00:00Z","type":"message.errored","flowId":"adt","data":{"messageId":"6f1c…"}}]
 ```
 
-Both filters are optional. Results are oldest first.
+Both filters are optional. `limit` (1–10000, default 1000) returns the newest matches; results
+are oldest first. Events never contain message content or transform error text, because both
+can hold patient data. The error is stored with the message instead.
 
-The topology overview (`GET /api/v1/topology`) shows each flow's counters under `activity`.
+The topology overview (`GET /api/v1/topology`) shows each flow's `received`, `sent`,
+`errored`, and `queued` counts under `activity`. Zero counts are included.
 
 ## Limits today
 

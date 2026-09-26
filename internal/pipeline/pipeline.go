@@ -61,9 +61,12 @@ type Result struct {
 	Status state.Status
 }
 
-// Observer is told about every message that finished processing, with its
-// final stored state (status, per-destination attempts, error metadata).
+// Observer is told when a message is received and when it finishes
+// processing, with its final state (status, per-destination attempts, error
+// metadata). A message that fails after it was received is reported as
+// errored.
 type Observer interface {
+	Received(flowID string)
 	Processed(m state.Message)
 }
 
@@ -115,7 +118,7 @@ func validHTTPURL(s string) bool {
 // Process runs body through flow f and returns the stored message's id and
 // aggregate status. Delivery failures do not return an error: they are
 // recorded per destination and leave the message queued.
-func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (Result, error) {
+func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, err error) {
 	var prog *dsl.Program
 	var doc map[string]any
 	if f.Transform != nil {
@@ -147,6 +150,14 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (Result, er
 	ob := outbox.New(p.store, p.deliverFunc(f, contentType), outbox.Options{})
 	if err := ob.Receive(ctx, m); err != nil {
 		return Result{}, err
+	}
+	if p.observer != nil {
+		p.observer.Received(f.ID)
+		defer func() {
+			if err != nil { // stored but not finished: report it as errored
+				p.observer.Processed(state.Message{ID: id, FlowID: f.ID, Status: state.StatusErrored})
+			}
+		}()
 	}
 
 	if prog != nil {

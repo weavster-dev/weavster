@@ -141,8 +141,13 @@ paths:
         - name: flowId
           in: query
           schema: {type: string}
+        - name: limit
+          in: query
+          description: Newest N matching events (1-10000, default 1000)
+          schema: {type: integer, minimum: 1, maximum: 10000}
       responses:
         "200": {description: "Events, oldest first: id, at, type, flowId, data"}
+        "400": {description: Invalid limit}
   /api/v1/messages:
     get:
       summary: Search messages

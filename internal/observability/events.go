@@ -21,6 +21,7 @@ type EventFilter struct {
 	Type  string
 	Flow  string
 	Since time.Time
+	Limit int // newest N matches; 0 = all
 }
 
 func (f EventFilter) matches(e Event) bool {
@@ -41,7 +42,8 @@ func (f EventFilter) matches(e Event) bool {
 type EventLog struct {
 	mu     sync.Mutex
 	seq    int64
-	events []Event
+	events []Event // ring buffer of at most MaxEvents
+	next   int     // index of the oldest event once full
 }
 
 // NewEventLog returns an empty event log.
@@ -56,9 +58,11 @@ func (l *EventLog) Add(typ, actor, flow string, data map[string]string) Event {
 	defer l.mu.Unlock()
 	l.seq++
 	e := Event{ID: l.seq, At: time.Now(), Type: typ, Actor: actor, Flow: flow, Data: data}
-	l.events = append(l.events, e)
-	if len(l.events) > MaxEvents {
-		l.events = append(l.events[:0:0], l.events[len(l.events)-MaxEvents:]...)
+	if len(l.events) < MaxEvents {
+		l.events = append(l.events, e)
+	} else {
+		l.events[l.next] = e // overwrite the oldest
+		l.next = (l.next + 1) % MaxEvents
 	}
 	return e
 }
@@ -68,10 +72,13 @@ func (l *EventLog) Search(f EventFilter) []Event {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	out := make([]Event, 0)
-	for _, e := range l.events {
-		if f.matches(e) {
+	for i := range l.events {
+		if e := l.events[(l.next+i)%len(l.events)]; f.matches(e) {
 			out = append(out, e)
 		}
+	}
+	if f.Limit > 0 && len(out) > f.Limit {
+		out = out[len(out)-f.Limit:] // the newest Limit, oldest first
 	}
 	return out
 }

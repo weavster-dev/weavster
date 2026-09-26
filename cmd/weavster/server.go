@@ -85,8 +85,8 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 	if store != nil {
 		repo = store.(flowRepository)
 	}
-	flows := flowAdapter{store: repo}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
+	flows := flowAdapter{store: repo, stats: stats}
 	var ingest gateway.MessageIngester
 	if store != nil {
 		ingest = ingestAdapter{flows: flows, pipe: pipeline.New(store, newSink, processingObserver{stats, events})}
@@ -381,8 +381,12 @@ type flowRepository interface {
 	DeleteFlow(ctx context.Context, id string) error
 }
 
-// flowAdapter stores gateway flows as JSON documents (D-12).
-type flowAdapter struct{ store flowRepository }
+// flowAdapter stores gateway flows as JSON documents (D-12). stats, when
+// set, is cleared for a flow when it is deleted.
+type flowAdapter struct {
+	store flowRepository
+	stats *observability.StatsRegistry
+}
 
 // toPipelineFlow converts a stored flow into the pipeline's definition,
 // strictly decoding its transform.
@@ -517,7 +521,14 @@ func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) error {
 }
 
 func (a flowAdapter) Delete(ctx context.Context, id string) error {
-	return flowErr(a.store.DeleteFlow(ctx, id))
+	if err := a.store.DeleteFlow(ctx, id); err != nil {
+		return flowErr(err)
+	}
+	if a.stats != nil { // a new flow with this id starts from zero
+		a.stats.Reset(id, false)
+		a.stats.Reset(id, true)
+	}
+	return nil
 }
 
 // processingObserver turns finished messages into flow/destination counters
@@ -527,32 +538,36 @@ type processingObserver struct {
 	events *observability.EventLog
 }
 
+// Received counts the message on arrival (and sets lastMessageAt).
+func (o processingObserver) Received(flowID string) {
+	o.stats.Inc(flowID, observability.Received)
+}
+
+// Processed records the outcome counters in one update and adds an event.
+// The event carries only the message ID: error text can quote message
+// content (PHI), and events are readable with events:view alone.
 func (o processingObserver) Processed(m state.Message) {
-	o.stats.Inc(m.FlowID, observability.Received)
+	var kinds []observability.CounterKind
 	switch m.Status {
 	case state.StatusFiltered:
-		o.stats.Inc(m.FlowID, observability.Filtered)
+		kinds = []observability.CounterKind{observability.Filtered}
 	case state.StatusErrored:
-		o.stats.Inc(m.FlowID, observability.Errored)
+		kinds = []observability.CounterKind{observability.Errored}
 	case state.StatusSent:
-		o.stats.Inc(m.FlowID, observability.Transformed)
-		o.stats.Inc(m.FlowID, observability.Sent)
+		kinds = []observability.CounterKind{observability.Transformed, observability.Sent}
 	case state.StatusQueued:
-		o.stats.Inc(m.FlowID, observability.Transformed)
-		o.stats.Inc(m.FlowID, observability.Queued)
+		kinds = []observability.CounterKind{observability.Transformed, observability.Queued}
 	}
+	connectors := map[string]observability.CounterKind{}
 	for dest, a := range m.Attempts {
 		if a.LastError == "" {
-			o.stats.IncConnector(m.FlowID, dest, observability.Sent)
+			connectors[dest] = observability.Sent
 		} else {
-			o.stats.IncConnector(m.FlowID, dest, observability.Errored)
+			connectors[dest] = observability.Errored
 		}
 	}
-	data := map[string]string{"messageId": m.ID}
-	if e := m.Metadata["error"]; e != "" {
-		data["error"] = e
-	}
-	o.events.Add("message."+string(m.Status), "", m.FlowID, data)
+	o.stats.Record(m.FlowID, kinds, connectors)
+	o.events.Add("message."+string(m.Status), "", m.FlowID, map[string]string{"messageId": m.ID})
 }
 
 type statsAdapter struct {
@@ -573,7 +588,7 @@ func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime boo
 	for name, c := range s.Connectors {
 		out.Destinations[name] = gateway.ConnectorStats{Sent: c.Sent, Errored: c.Errored}
 	}
-	if !s.LastMessageAt.IsZero() {
+	if s.LastMessageAt != nil {
 		t := s.LastMessageAt.UTC()
 		out.LastMessageAt = &t
 	}
@@ -583,7 +598,7 @@ func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime boo
 type eventsAdapter struct{ log *observability.EventLog }
 
 func (a eventsAdapter) SearchEvents(_ context.Context, q gateway.EventQuery) ([]gateway.Event, error) {
-	found := a.log.Search(observability.EventFilter{Type: q.Type, Flow: q.FlowID})
+	found := a.log.Search(observability.EventFilter{Type: q.Type, Flow: q.FlowID, Limit: q.Limit})
 	out := make([]gateway.Event, 0, len(found))
 	for _, e := range found {
 		out = append(out, gateway.Event{ID: e.ID, At: e.At.UTC(), Type: e.Type, FlowID: e.Flow, Data: e.Data})
@@ -603,7 +618,7 @@ func (t topologyAdapter) activity(flowID string) *topology.Activity {
 	}
 	s := t.stats.Snapshot(flowID, false)
 	a := &topology.Activity{Received: s.Received, Sent: s.Sent, Errored: s.Errored, Queued: s.Queued}
-	if !s.LastMessageAt.IsZero() {
+	if s.LastMessageAt != nil {
 		a.LastMessageAt = s.LastMessageAt.UTC().Format(time.RFC3339)
 	}
 	return a

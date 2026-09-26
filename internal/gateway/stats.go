@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -42,7 +43,14 @@ type Event struct {
 type EventQuery struct {
 	Type   string
 	FlowID string
+	Limit  int // newest N matches
 }
+
+// Event search limits.
+const (
+	DefaultEventLimit = 1000
+	MaxEventLimit     = 10000
+)
 
 // EventSearcher searches the event log.
 type EventSearcher interface {
@@ -54,7 +62,15 @@ func (s *Server) handleFlowStats(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "statistics unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	st, err := s.cfg.Stats.FlowStats(r.Context(), r.PathValue("id"), r.URL.Query().Get("lifetime") == "true")
+	lifetime := false
+	if v := r.URL.Query().Get("lifetime"); v != "" {
+		var err error
+		if lifetime, err = strconv.ParseBool(v); err != nil {
+			http.Error(w, "lifetime must be true or false", http.StatusBadRequest)
+			return
+		}
+	}
+	st, err := s.cfg.Stats.FlowStats(r.Context(), r.PathValue("id"), lifetime)
 	if err != nil {
 		writeFlowError(w, err)
 		return
@@ -67,7 +83,16 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "events unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	events, err := s.cfg.Events.SearchEvents(r.Context(), EventQuery{Type: r.URL.Query().Get("type"), FlowID: r.URL.Query().Get("flowId")})
+	limit := DefaultEventLimit
+	if v := r.URL.Query().Get("limit"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 1 || n > MaxEventLimit {
+			http.Error(w, "limit must be between 1 and 10000", http.StatusBadRequest)
+			return
+		}
+		limit = n
+	}
+	events, err := s.cfg.Events.SearchEvents(r.Context(), EventQuery{Type: r.URL.Query().Get("type"), FlowID: r.URL.Query().Get("flowId"), Limit: limit})
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return

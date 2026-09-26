@@ -87,6 +87,11 @@ func TestStatsAndEventsHandlers(t *testing.T) {
 		{"events", Config{Events: fakeEvents{}}, "/api/v1/events", http.StatusOK},
 		{"events unavailable", Config{}, "/api/v1/events", http.StatusServiceUnavailable},
 		{"events error", Config{Events: fakeEvents{err: errors.New("boom")}}, "/api/v1/events", http.StatusInternalServerError},
+		{"lifetime 1", Config{Stats: fakeStats{}}, "/api/v1/flows/f/stats?lifetime=1", http.StatusOK},
+		{"bad lifetime", Config{Stats: fakeStats{}}, "/api/v1/flows/f/stats?lifetime=maybe", http.StatusBadRequest},
+		{"events limit", Config{Events: fakeEvents{}}, "/api/v1/events?limit=5", http.StatusOK},
+		{"bad limit", Config{Events: fakeEvents{}}, "/api/v1/events?limit=0", http.StatusBadRequest},
+		{"limit too large", Config{Events: fakeEvents{}}, "/api/v1/events?limit=10001", http.StatusBadRequest},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
