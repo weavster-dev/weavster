@@ -16,7 +16,7 @@
 | Package manager | Go modules (`go.mod`) |
 | Web framework | `net/http` + **chi** (`github.com/go-chi/chi/v5`) |
 | WASM runtime | **wazero** (`github.com/tetratelabs/wazero`) |
-| DSL codegen target | **Go + TinyGo → WASI** (pinned toolchain, external) |
+| DSL execution | **Prebuilt WASM DSL interpreter** embedded in the binary; built with pinned Go + TinyGo in CI only (#107 D-03) |
 | Databases | PostgreSQL (`pgx/v5`), SQLite (`modernc.org/sqlite` — pure-Go, **no CGo**), in-memory |
 
 **Hard constraints:**
@@ -39,7 +39,7 @@ weavster/                        # repo root = module root
 │   ├── state/                   # State Manager (Store: postgres/sqlite/memory) + migrations + search/export
 │   ├── adapters/                # Source/Sink ports (file/http/tcp-MLLP/db/smtp/webservice/interflow/document)
 │   ├── codecs/                  # Data-type codecs (HL7 v2, X12, NCPDP, JSON, XML, delimited, raw)
-│   ├── compiler/                # YAML DSL → TinyGo → WASM codegen + schema validation
+│   ├── compiler/                # YAML DSL schema validation → IR for the embedded interpreter
 │   ├── registry/                # WASM module registry (version/sign/promote/rollback/GC)
 │   ├── config/                  # config-as-code: plan/apply/drift, JSON-Schema validation
 │   ├── gitstore/                # native Git-backed config store (commit/push/pull/history/restore)

@@ -13,23 +13,23 @@
 |---|---|---|
 | Control plane language | **Go** | Single static binary for one-command installs; goroutine-native scheduler/executor; first-class embedded WASM (wazero); trivial cross-compile (linux/amd64, linux/arm64, darwin). |
 | WASM host runtime | **wazero** | Pure-Go, zero CGo/deps, embeds directly into the single binary; WASI-complete; small attack surface; clean CPU/memory limits. |
-| User transform authoring | **Declarative YAML DSL (default) + multi-language WASI (advanced)** | Non-programmer authors declare filters/transforms in YAML; the platform compiles them to WASM in the platform's preferred guest language. Advanced users author directly in Rust / Go+TinyGo / TypeScript (AssemblyScript/Javy) / C via WASI + Component Model. |
-| YAML-DSL codegen target | **Go + TinyGo** (confirmed) | Same toolchain as the control plane; TinyGo → WASI runs on wazero; one pinned, reproducible toolchain for the auto-build path. |
-| WASM sandboxing | wazero `ModuleConfig` limits + `InterruptOnTimeout` | Fuel (CPU) budget, max memory pages, wall-clock timeout, WASI stdio capture, no filesystem/network by default. |
+| User transform authoring | **Declarative YAML DSL (default) + multi-language WASI (advanced)** | Non-programmer authors declare filters/transforms in YAML; the platform validates them and executes them in a prebuilt, sandboxed WASM DSL interpreter (amended per #107 D-03). Advanced users author directly in Rust / Go+TinyGo / TypeScript (AssemblyScript/Javy) / C via WASI + Component Model. |
+| YAML-DSL execution | **Prebuilt DSL interpreter (WASM)** (amended per #107 D-03) | One signed, reproducibly built interpreter module (Go + TinyGo, pinned toolchain, built in Weavster's CI) is embedded in the binary; the validated YAML DSL is passed to it as data. No TinyGo or other SDK on end-user hosts. |
+| WASM sandboxing | wazero `ModuleConfig` limits + context-deadline cancellation (`WithCloseOnContextDone`) | Max memory pages, wall-clock deadline (the MVP CPU limit), WASI stdio capture, no filesystem/network by default. Instruction-count (fuel) metering is Enterprise (amended per #107 D-02). |
 | Production database | **PostgreSQL** | Named in MVP scope; the durable State Manager backend. |
 | Local DX database | **SQLite / in-memory** | No Postgres required for local transform testing (non-negotiable constraint). |
 | API protocol | **REST + OpenAPI 3.1** (JSON-first; XML where parity requires) | Machine-readable contract in `agent-docs/`. |
 | Config & IaC | **YAML/JSON config-as-code** + **Terraform/OpenTofu/Pulumi** sample modules | Non-negotiable. |
 | Docs | **MkDocs** site + **`agent-docs/`** (OpenAPI, JSON Schemas, `llms.txt`) | Non-negotiable. |
 
-**Decision (confirmed):** the management console is a **read-only web UI** served by the single binary (no desktop application). Read-only preserves SDLC best practice — Git/CI stays the *only* mutation path; the UI never edits configuration. Primary MVP view: a **flow topology/connectivity graph** (node/edge, "Svelte Flow"-style) showing flows, sources, transforms, destinations, and runtime activity. Other read-only views (operations dashboard, message browser, events/logs) are deferred/TBD.
+**Decision (confirmed):** the management console is a **read-only web UI** served by the single binary (no desktop application). Read-only preserves SDLC best practice — the UI never edits configuration. All mutation is **API-first**: the REST API is the canonical, fully automatable write surface, and the CLI, `config plan/apply`, CI/CD, and IaC tooling are clients of it; no capability is UI-only (amended per #107 D-04). Primary MVP view: a **flow topology/connectivity graph** (node/edge, "Svelte Flow"-style) showing flows, sources, transforms, destinations, and runtime activity. Other read-only views (operations dashboard, message browser, events/logs) are deferred/TBD.
 
 ---
 
 ## 2. Non-Negotiable Constraints (restated)
 
-1. **Installation** — one command (`curl | bash`, `brew install`, `apt-get install`, or a signed static binary). Zero heavy SDKs (Rust/Java/.NET) required on the end-user host.
-2. **Transforms/filters** — all user business logic compiles to **WASM**; the host treats WASM modules as sandboxed plugins.
+1. **Installation** — one command: a `curl | bash` installer that downloads and verifies a signed static binary (MVP; Homebrew and apt/RPM packages are post-MVP per #107 D-07). Zero heavy SDKs (Rust/Java/.NET) required on the end-user host.
+2. **Transforms/filters** — all user business logic executes within **WASM**: YAML DSL runs in the embedded, prebuilt interpreter module, and advanced guest modules are compiled to WASM (#107 D-03); the host treats WASM modules as sandboxed plugins.
 3. **Local DX** — running locally (testing transforms) must not require Postgres; use SQLite or in-memory state.
 4. **Testing** — built-in `test` command; JUnit XML or JSON output; runs via CLI and natively in CI/CD (GitHub Actions/GitLab).
 5. **IaC** — configuration is 100% code-defined (YAML/JSON); deployment/updates driven by Terraform/OpenTofu/Pulumi; sample modules provided.
@@ -101,7 +101,7 @@ steps:
   - filter: { when: "patient.lastName == ''", action: reject }
 ```
 
-The platform's **transform compiler** transpiles this YAML into a WASM module (generated in **Go+TinyGo**, then compiled with a pinned, reproducible toolchain) and caches the artifact. YAML is the source of truth; the WASM module is a build artifact, never hand-edited.
+The platform's **transform compiler** validates this YAML against the published schema and lowers it to an intermediate representation that the embedded, prebuilt **DSL interpreter** WASM module executes as data. YAML is the source of truth; the interpreter is a signed, reproducibly built artifact (Go + TinyGo with a pinned toolchain in Weavster's CI), never built on end-user hosts (amended per #107 D-03).
 
 **Path B — Multi-language WASI (advanced).** Users author a guest module directly in Rust, Go+TinyGo, TypeScript (AssemblyScript/Javy), or C, compiled to WASM against the platform's **guest SDK** (a WASI ABI + host-function imports). The SDK is a versioned contract.
 
@@ -122,7 +122,7 @@ Host functions are registered per-module at instantiation time based on the flow
 
 ### 4.3 Resource limits (mandatory)
 
-Every module instantiation sets: **fuel** (CPU instruction budget), **max memory pages**, **wall-clock deadline** (interrupt), and **WASI stdio capture**. Exceeding a limit aborts the module and produces a structured error carrying module name + version + input hash + limit type.
+Every module instantiation sets: **max memory pages**, a **wall-clock deadline** (interrupt; this is the MVP CPU limit), and **WASI stdio capture**. Instruction-count (fuel) metering is not available in wazero and is deferred to Enterprise (amended per #107 D-02). Exceeding a limit aborts the module and produces a structured error carrying module name + version + input hash + limit type.
 
 ---
 
@@ -192,7 +192,7 @@ Every Black-Box behavior (§2 of the functional spec) is mapped to its new imple
 - **Schema enforcement:** every config artifact has a JSON Schema published in `agent-docs/schemas/`; the CLI/API validate on load and reject invalid configs.
 - **Plan vs apply for config:** a built-in `config diff` / `config validate` / `apply --dry-run` produces a plan of changes (flows to add/update/remove, drift detection) *before* mutation — see the viability-gap analysis (gap #6).
 - **Infrastructure:** sample Terraform/OpenTofu and Pulumi modules provision the VM/container, Postgres, TLS certs, and DNS. The platform config is applied *as data* by the same pipeline (GitOps: config push → plan → apply).
-- **Update path:** `curl | bash` / `brew` / `apt` / signed binary; IaC pins the version; in-place binary swap + DB migration on startup.
+- **Update path:** `curl | bash` installer / signed binary (MVP; `brew`/`apt` post-MVP); IaC pins the version; in-place binary swap + DB migration on startup.
 
 ### 6.1 Sample Terraform module (illustrative)
 
@@ -230,8 +230,8 @@ module "weavster" {
 
 ## 8. Packaging, Deployment & Docs
 
-- **Artifacts:** single static binary (linux/amd64, linux/arm64, darwin/arm64) + OCI container (distroless, non-root).
-- **Install:** `curl | bash` installer; Homebrew tap; Debian/RPM repos. No Rust/Java/.NET runtime needed on the host.
+- **Artifacts:** single static binary (linux/amd64, linux/arm64, darwin/arm64) + OCI container image (distroless, non-root). The image build and smoke test are MVP CI gates; publishing the image to a registry is post-MVP (#107 D-07).
+- **Install:** signed static binaries + checksums and a `curl | bash` installer that verifies them (MVP). Homebrew tap, Debian/RPM repos, and published container images are post-MVP (#107 D-07). No Rust/Java/.NET runtime needed on the host.
 - **Docs:** MkDocs human site (getting started, flow authoring, YAML DSL reference, guest SDK reference, operations runbook) + `agent-docs/` containing `openapi.yaml`, `schemas/*.json` (flow/config/transform JSON Schemas), and `llms.txt` (agent context index).
 
 ---
@@ -252,7 +252,7 @@ module "weavster" {
 - REST API + OpenAPI 3.1; **read-only** web UI (flow topology/connectivity graph) served by the binary; CLI.
 - Prometheus metrics + structured logs + events.
 - **Critical-gap closures (folded into MVP per stakeholder decision):**
-  - **Legacy data import/migration** — a first-class `import legacy` command + ETL adapter for the legacy export format (see gap #1).
+  - **Legacy data import/migration** — a first-class `import legacy` command + ETL adapter for the legacy export format (see gap #1). Remains MVP scope but is blocked until anonymized legacy export samples are available and a supported legacy version range is pinned (#107 D-01).
   - **WASM module lifecycle** — a versioned, signed, rollbackable module registry (see gap #2).
   - **Idempotency & retries** — transactional outbox + deterministic idempotency keys on all external side effects (see gap #5).
 
@@ -276,15 +276,15 @@ These are commercial add-ons. Each has a **port (interface) in the MVP** so the 
 
 ### 10.1 Resolved (this phase)
 
-1. **YAML-DSL codegen target** → **Go + TinyGo** (confirmed): same toolchain as the control plane; TinyGo compiles to WASI and runs on wazero; one pinned, reproducible toolchain for the auto-build path.
-2. **Web UI** → **read-only** (confirmed): Git/CI is the only mutation path. Primary MVP view is a **flow topology/connectivity graph** (node/edge, "Svelte Flow"-style) showing flows, sources, transforms, destinations, and runtime activity. A full authoring UI is explicitly **out of scope**. Data contract: `specs/read-only-graph-view-contract.md`.
+1. **YAML-DSL execution** → **prebuilt DSL interpreter** (amended per #107 D-03, superseding the original per-transform Go + TinyGo codegen): one signed WASM interpreter, built in Weavster's CI with a pinned TinyGo toolchain and embedded in the binary, executes the validated DSL as data. TinyGo is not required on hosts; it remains one option for authoring custom guest modules (Path B).
+2. **Web UI** → **read-only** (confirmed): the UI never mutates; all mutation is API-first and automatable via CLI, `config plan/apply`, CI/CD, and IaC (amended per #107 D-04). Primary MVP view is a **flow topology/connectivity graph** (node/edge, "Svelte Flow"-style) showing flows, sources, transforms, destinations, and runtime activity. A full authoring UI is explicitly **out of scope**. Data contract: `specs/read-only-graph-view-contract.md`.
 
 ### 10.2 Remaining open questions
 
-1. **Web UI read-only view set beyond the graph** — whether/when to add the operations dashboard, message browser, and events/logs views (deferred/TBD; the graph is the confirmed MVP surface).
-2. **Blob storage** for large message content (Postgres `BYTEA` vs object storage) — recommended: Postgres for MVP, object-storage port for Enterprise.
-3. **mTLS scope** — mandatory for the API by default vs opt-in per listener.
-4. **Backward-compat import format** — whether the legacy XML export format is parsed natively by the `import` command (ties to viability gap #1).
+1. **Web UI read-only view set beyond the graph** — *resolved (#107 D-19):* deferred post-MVP; the topology graph is the only MVP UI.
+2. **Blob storage** for large message content — *resolved (#107 D-18):* PostgreSQL `BYTEA` / SQLite `BLOB` for MVP; a `BlobStore` port for Enterprise object storage.
+3. **mTLS scope** — *resolved (#107 D-06):* opt-in per API listener and adapter peer; client-certificate verification off by default; production example configs enable TLS.
+4. **Backward-compat import format** — *deferred (#107 D-01):* legacy import is blocked until real, anonymized legacy export samples are available and a supported version range is pinned.
 
 ---
 

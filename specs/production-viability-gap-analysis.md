@@ -23,12 +23,12 @@
 
 **Proposed solution.**
 1. Ship a first-class **`import legacy`** command (and API endpoint) that consumes the legacy XML/archive export format and maps it to the new config-as-code YAML and schema.
-2. Implement it as an **ETL pipeline** with three explicit phases and a written mapping table: *extract* (parse legacy export archives: flows, snippets, scripts, users, config map), *transform* (legacy constructs → YAML DSL; legacy scripted filters → YAML DSL where expressible, else a WASI module stub flagged for human review), *load* (seed `Store`, then validate against JSON Schemas).
+2. Implement it as an **ETL pipeline** with three explicit phases and a written mapping table: *extract* (parse legacy export archives: flows, snippets, scripts, users, config map), *transform* (legacy constructs → YAML DSL; legacy scripted filters → YAML DSL where expressible, else a WASI module stub flagged for human review), *load* (validate every generated artifact against JSON Schemas, then seed `Store`; amended per #107 so nothing invalid is written).
 3. **Message history** is treated separately: import **metadata + references** by default, with an opt-in `--with-content` flag for full content migration (content is the high-volume, high-cost part).
 4. Provide a **dry-run report** (counts + list of constructs that could not be auto-translated) before any write.
 5. Make the legacy→YAML mapper a versioned, separately-tested component (its own transform fixtures) so the migration itself is testable via the built-in `test` command.
 
-**Disposition:** **MVP** — must ship with the first release; no customer can adopt without it.
+**Disposition:** **MVP** — must ship with the first release; no customer can adopt without it. Implementation is blocked until anonymized legacy export samples are available and a supported legacy version range is pinned (#107 D-01).
 
 ---
 
@@ -80,7 +80,7 @@
 **Why it matters.** Duplicate execution of a transform that has side effects (send a message, bill a claim, write to a downstream system) is a correctness and compliance hazard. Even in single-node MVP, an unclean crash must not cause a half-processed message to be silently re-run without acknowledgment.
 
 **Proposed solution.**
-1. **MVP (must):** implement the durable job queue on **Postgres `FOR UPDATE SKIP LOCKED`** (or SQLite equivalent for local DX) so that *any* executor claiming a job takes an atomic, visible lock. Single-node crashes are recovered by the startup reconciler that re-claims jobs whose leases have expired — **with a monotonic job ID and a `claimed_by`/`lease_until` heartbeat**, so a stale node cannot double-claim.
+1. **MVP (must):** implement the durable job queue on **Postgres `FOR UPDATE SKIP LOCKED`** (or SQLite equivalent for local DX) so that *any* executor claiming a job takes an atomic, visible lock. Single-node crashes are recovered by the startup reconciler that re-claims jobs whose leases have expired — **with a monotonic job ID, a `claimed_by`/`lease_until` heartbeat, and a fencing (claim) token that `complete`/`requeue`/`heartbeat` must present**, so a stale node cannot double-claim or complete a reclaimed job (amended per #107 D-11).
 2. **Idempotency guard** (see Gap 5) makes even an accidental double-claim harmless.
 3. **Enterprise (defer):** distributed leader election (Postgres advisory-lock leader or etcd) + a dedicated queue (Redis/NATS Streams) + K8s autoscaling of the executor tier.
 
@@ -98,7 +98,7 @@
 
 **Proposed solution.**
 1. **Outbox pattern:** persist the *intent to deliver* and the *result* transactionally in `Store` **before** acknowledging to the source. The flow is: receive → persist → transform (WASM) → persist result → deliver → mark delivered. A crash at any point re-enters the *same* job with the *same* message ID.
-2. **Idempotency keys:** every external side effect carries a deterministic `idempotency_key` derived from `(message_id, destination, attempt)`. Sinks that support it (HTTP headers, SMTP, database upsert) send the key so the downstream can dedupe. Sinks that do not (raw TCP MLLP) are flagged **at-least-once** and documented as such.
+2. **Idempotency keys:** every external side effect carries a deterministic `idempotency_key` derived from `(message_id, destination)` — **stable across retries of the same delivery**, so a retry after an ambiguous outcome can be deduplicated downstream; the attempt number is recorded separately and is never part of the key (amended per #107 D-10). Sinks that support it (HTTP headers, SMTP, database upsert) send the key so the downstream can dedupe. Sinks that do not (raw TCP MLLP) are flagged **at-least-once** and documented as such.
 3. **Exactly-once where protocol allows, at-least-once + dedupe elsewhere:** the platform records the outcome and, on retry after an ambiguous result, prefers **"check status first, don't blindly re-send."**
 4. **Explicit retry policy:** bounded retries with backoff, a dead-letter state, and a `deadletter` admin surface — never silent infinite retry.
 
