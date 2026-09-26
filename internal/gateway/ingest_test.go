@@ -147,3 +147,38 @@ func TestRedeployAllPartialBody(t *testing.T) {
 		t.Errorf("partial redeploy body = %s", body)
 	}
 }
+
+type fakeUpdater struct{ err error }
+
+func (f fakeUpdater) Update(_ context.Context, id string, fl Flow, _ bool) (Flow, error) {
+	return fl, f.err
+}
+func (f fakeUpdater) SetEnabled(_ context.Context, id string, enabled bool) (Flow, error) {
+	return Flow{ID: id, Enabled: enabled}, f.err
+}
+
+func TestFlowUpdateHandlers(t *testing.T) {
+	tests := []struct {
+		name, method, path, body string
+		cfg                      Config
+		want                     int
+	}{
+		{"update", http.MethodPut, "/api/v1/flows/f", `{"name":"x"}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusOK},
+		{"update unavailable", http.MethodPut, "/api/v1/flows/f", `{}`, Config{}, http.StatusServiceUnavailable},
+		{"update bad json", http.MethodPut, "/api/v1/flows/f", `x`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
+		{"update null body", http.MethodPut, "/api/v1/flows/f", `null`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
+		{"update unknown", http.MethodPut, "/api/v1/flows/f", `{}`, Config{FlowUpdates: fakeUpdater{err: ErrFlowNotFound}}, http.StatusNotFound},
+		{"enable", http.MethodPost, "/api/v1/flows/f/enable", ``, Config{FlowUpdates: fakeUpdater{}}, http.StatusOK},
+		{"disable unavailable", http.MethodPost, "/api/v1/flows/f/disable", ``, Config{}, http.StatusServiceUnavailable},
+		{"enable unknown", http.MethodPost, "/api/v1/flows/f/enable", ``, Config{FlowUpdates: fakeUpdater{err: ErrFlowNotFound}}, http.StatusNotFound},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))
+			if rec.Code != tt.want {
+				t.Errorf("got %d %q, want %d", rec.Code, rec.Body.String(), tt.want)
+			}
+		})
+	}
+}

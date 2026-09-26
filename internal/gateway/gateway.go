@@ -55,6 +55,15 @@ type FlowDestination struct {
 	Dir  string `json:"dir,omitempty"`
 }
 
+// FlowUpdater changes a stored flow's definition; the runtime status is
+// never changed by these calls.
+type FlowUpdater interface {
+	// Update replaces the definition; with keepEnabled the stored enabled
+	// flag is kept instead of f.Enabled.
+	Update(ctx context.Context, id string, f Flow, keepEnabled bool) (Flow, error)
+	SetEnabled(ctx context.Context, id string, enabled bool) (Flow, error)
+}
+
 // FlowLifecycle changes a flow's runtime state (spec §6.1).
 type FlowLifecycle interface {
 	Transition(ctx context.Context, id, action string) (Flow, error)
@@ -133,6 +142,7 @@ type Config struct {
 	Messages    MessageSearcher
 	Ingest      MessageIngester
 	Lifecycle   FlowLifecycle
+	FlowUpdates FlowUpdater
 	Stats       StatsProvider
 	Events      EventSearcher
 	Topology    TopologyProvider

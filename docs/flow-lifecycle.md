@@ -62,15 +62,42 @@ redeployed. The rest keep their status.
 | `started` | processed | retried |
 | any other | `409 flow … is <status>; start it first` | kept `queued`, not retried |
 
+## Enabled flows start automatically
+
+`enabled` marks a flow as eligible for automatic deployment. It never changes the status by
+itself. When the server starts (with `flows.deployOnStartup`, the default; see
+[Server configuration](server-config.md#flows)), every flow that is `enabled` **and**
+`undeployed` is deployed and started. Flows in any other status keep it, and disabled flows are
+left alone.
+
+Because `enabled` decides what runs after a restart, a flow you only `undeploy` comes back
+at the next start if it is still enabled. To keep a flow offline across restarts, `undeploy` it
+**and** `disable` it.
+
+Set it on create (`"enabled": true`), with an update that includes `enabled`, or with these
+endpoints (permission `flows:edit`):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/enable
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/disable
+```
+
+Each returns `200` with the flow, or `404` for an unknown flow.
+
+If a flow cannot be auto-deployed (for example, its stored definition is unreadable), the
+server logs `auto-deploy failed` with the flow id and starts anyway. You can then fix or delete
+that flow over the API.
+
 ## Upgrading from a version without the lifecycle
 
 Flows created before the lifecycle existed have no status, or a free-form one. They read as
-`undeployed` and stop accepting messages until you `deploy` and `start` them. Their `queued`
-messages are retried again once they are started.
+`undeployed`. On the first start after the upgrade, those that are `enabled` are deployed and
+started automatically (with the default `flows.deployOnStartup: true`). The others reject
+messages until you `deploy` and `start` them. `queued` messages of a flow are retried again once
+it is started.
 
 ## Not available yet
 
 - Starting or stopping a single destination.
-- Automatic deployment of `enabled` flows when the server starts.
 - Flow dependencies (deploy does not deploy other flows).
 - CLI commands for these operations.

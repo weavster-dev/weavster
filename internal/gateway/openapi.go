@@ -92,6 +92,50 @@ paths:
       summary: Create flow
       responses:
         "201": {description: Created}
+  /api/v1/flows/{id}:
+    get:
+      summary: Get a flow (requires flows:view)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: The flow}
+        "404": {description: Unknown flow}
+    delete:
+      summary: Delete a flow (requires flows:edit)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "204": {description: Deleted}
+        "404": {description: Unknown flow}
+    put:
+      summary: Replace a flow's definition; status is kept (requires flows:edit)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object}
+      responses:
+        "200": {description: The updated flow}
+        "400": {description: Invalid definition, a status field, or a different id in the body}
+        "404": {description: Unknown flow}
+  /api/v1/flows/{id}/enable:
+    post:
+      summary: Make a flow eligible for auto-deploy at startup (requires flows:edit)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: The updated flow}
+        "404": {description: Unknown flow}
+  /api/v1/flows/{id}/disable:
+    post:
+      summary: Remove a flow's auto-deploy eligibility (requires flows:edit)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        "200": {description: The updated flow}
+        "404": {description: Unknown flow}
   /api/v1/flows/{id}/{action}:
     post:
       summary: Change a flow's lifecycle state (requires flows:deploy)

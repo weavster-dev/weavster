@@ -117,6 +117,12 @@ The store holds messages, flow definitions, and users. With `sqlite`, flows and 
 
 `maxAttempts` must be 1–1000; the two intervals must be 1–3,600,000 ms (one hour). See [Processing messages](processing-messages.md#retries).
 
+### `flows`
+
+| Key | Default | Description |
+|---|---|---|
+| `deployOnStartup` | `true` | At startup, deploy and start every flow that is `enabled` and `undeployed`. See [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
+
 ### `paths`
 
 | Key | Default | Description |

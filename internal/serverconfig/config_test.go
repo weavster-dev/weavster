@@ -16,7 +16,8 @@ func TestLoad(t *testing.T) {
 	}{
 		{name: "empty file keeps defaults", yaml: "", check: func(t *testing.T, c Config) {
 			if c.Listen.Address != "127.0.0.1:8080" || c.Store.Dialect != DialectMemory || !c.Listen.RequireMarkerHeader ||
-				c.Listen.ShutdownTimeoutMs != 10000 || c.Delivery != (Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000}) {
+				c.Listen.ShutdownTimeoutMs != 10000 || c.Delivery != (Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000}) ||
+				!c.Flows.DeployOnStartup {
 				t.Errorf("defaults not applied: %+v", c)
 			}
 		}},

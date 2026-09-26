@@ -61,6 +61,29 @@ below, in order, on the message as a JSON object.
 | `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a `POST` with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough), and it times out after 30 seconds. The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`. Created if missing. |
 
+### Update a flow
+
+Replace a flow's definition, or rename it by changing `name` (permission `flows:edit`):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080/api/v1/flows/adt -d '{
+  "name": "ADT normalize v2", "sourceType": "http", "enabled": true,
+  "transform": {"kind": "Transform", "name": "normalize", "inputs": ["message"], "steps": [ … ]},
+  "destinations": [ … ]
+}'
+```
+
+- The body replaces the whole definition: fields you leave out are cleared. There are two
+  exceptions: the flow keeps its `status`, and it keeps `enabled` unless you include that field.
+- Messages received after the update use the new definition. A running flow does not need a
+  restart.
+- `queued` messages are retried against the current definition. A changed destination URL is
+  used for them, and a removed destination is no longer retried for them.
+- Statistics of a removed or renamed destination remain listed until the server restarts.
+- The same checks as create apply (`400` with the reason).
+- `id` comes from the URL: a different `id` in the body, or any `status` field, returns `400`.
+- Unknown flows return `404`.
+
 ## 2. Deploy and start the flow
 
 A new flow is `undeployed` and rejects messages until you deploy and start it (permission
