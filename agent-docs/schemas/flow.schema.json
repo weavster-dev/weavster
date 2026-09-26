@@ -1,0 +1,253 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/weavster-dev/weavster/main/agent-docs/schemas/flow.schema.json",
+  "title": "Weavster flow definition",
+  "description": "Body of POST /api/v1/flows, PUT /api/v1/flows/{id}, and each entry of an import document. status is managed by lifecycle operations and is not part of a definition.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,128}$",
+      "not": {
+        "enum": [
+          "export",
+          "import",
+          "redeploy-all"
+        ]
+      }
+    },
+    "name": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourceType": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "enabled": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "dependsOn": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z0-9._-]{1,128}$"
+      }
+    },
+    "transform": {
+      "$ref": "#/$defs/Transform"
+    },
+    "destinations": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "$ref": "#/$defs/Destination"
+      }
+    }
+  },
+  "$defs": {
+    "Destination": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "type": {
+          "enum": [
+            "http",
+            "file"
+          ]
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dir": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    },
+    "Transform": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "inputs": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "string"
+          }
+        },
+        "steps": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Step"
+          }
+        }
+      }
+    },
+    "Step": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "maxProperties": 1,
+      "properties": {
+        "map": {
+          "$ref": "#/$defs/MapStep"
+        },
+        "set": {
+          "$ref": "#/$defs/SetStep"
+        },
+        "filter": {
+          "$ref": "#/$defs/FilterStep"
+        },
+        "build": {
+          "$ref": "#/$defs/BuildStep"
+        },
+        "destinationSet": {
+          "$ref": "#/$defs/DestinationSetStep"
+        }
+      }
+    },
+    "MapStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from",
+        "to"
+      ],
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "",
+            "string",
+            "number",
+            "boolean"
+          ]
+        }
+      }
+    },
+    "SetStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "field",
+        "expr"
+      ],
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "expr": {
+          "type": "string"
+        }
+      }
+    },
+    "FilterStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "when",
+        "action"
+      ],
+      "properties": {
+        "when": {
+          "type": "string"
+        },
+        "action": {
+          "enum": [
+            "reject",
+            "accept"
+          ]
+        }
+      }
+    },
+    "BuildStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "template"
+      ],
+      "properties": {
+        "template": {
+          "type": "string"
+        },
+        "format": {
+          "type": "string"
+        }
+      }
+    },
+    "DestinationSetStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

@@ -6,27 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
 	"strconv"
 	"strings"
 )
-
-// flowIDPattern restricts flow IDs to one URL path segment.
-var flowIDPattern = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
-
-// reservedFlowIDs are path segments used by /flows/<name> routes.
-var reservedFlowIDs = map[string]bool{"export": true, "import": true, "redeploy-all": true}
-
-type flowIDValidator struct{}
-
-// MatchString reports whether id is a usable flow id.
-func (flowIDValidator) MatchString(id string) bool {
-	return flowIDPattern.MatchString(id) && !reservedFlowIDs[id]
-}
-
-// validFlowID accepts 1-128 characters from A-Z a-z 0-9 . _ - except the
-// reserved route names.
-var validFlowID = flowIDValidator{}
 
 // writeFlowError maps FlowStore errors to 404/409, and anything else to a
 // 500 that does not leak internal detail.
@@ -76,42 +58,44 @@ func (s *Server) handleFlowsGet(w http.ResponseWriter, r *http.Request) {
 // decodeFlow reads a flow definition from the request body. Clients never
 // send status (lifecycle operations own it); pathID, when set, must match
 // any id in the body.
-func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, map[string]json.RawMessage, bool) {
+func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, map[string]any, bool) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "could not read request body", http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
-	var f Flow
-	if err := json.Unmarshal(body, &f); err != nil {
+	doc, err := parseFlowDoc(body)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(body, &fields); err != nil || fields == nil {
-		http.Error(w, "the body must be a JSON object", http.StatusBadRequest)
-		return Flow{}, nil, false
-	}
-	if _, present := fields["status"]; present {
+	if _, present := doc["status"]; present {
 		http.Error(w, "status is managed by lifecycle operations (deploy, start, ...); omit it", http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
 	if pathID != "" {
-		if f.ID != "" && f.ID != pathID {
-			http.Error(w, "flow id cannot be changed; the id in the body must match the URL", http.StatusBadRequest)
-			return Flow{}, nil, false
+		switch id := doc["id"].(type) {
+		case nil: // absent or null: the id comes from the URL
+			doc["id"] = pathID
+		case string:
+			if id != pathID {
+				http.Error(w, "flow id cannot be changed; the id in the body must match the URL", http.StatusBadRequest)
+				return Flow{}, nil, false
+			}
 		}
-		f.ID = pathID
 	}
-	if f.ID == "" {
-		http.Error(w, "flow id is required", http.StatusBadRequest)
+	// The schema enforces the id format and reserved ids too.
+	if err := validateFlowDoc(doc); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
-	if !validFlowID.MatchString(f.ID) {
-		http.Error(w, "flow id must be 1-128 characters from A-Z a-z 0-9 . _ - and not export, import, or redeploy-all", http.StatusBadRequest)
+	normalized, _ := json.Marshal(doc) // a valid document re-encodes
+	var f Flow
+	if err := json.Unmarshal(normalized, &f); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return Flow{}, nil, false
 	}
-	return f, fields, true
+	return f, doc, true
 }
 
 func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
@@ -136,12 +120,12 @@ func (s *Server) handleFlowsUpdate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "flow updates unavailable", http.StatusServiceUnavailable)
 		return
 	}
-	f, fields, ok := decodeFlow(w, r, r.PathValue("id"))
+	f, doc, ok := decodeFlow(w, r, r.PathValue("id"))
 	if !ok {
 		return
 	}
 	// enable/disable own this flag; an update that omits it keeps it.
-	_, setsEnabled := fields["enabled"]
+	_, setsEnabled := doc["enabled"]
 	updated, err := s.cfg.FlowUpdates.Update(r.Context(), f.ID, f, !setsEnabled)
 	if err != nil {
 		writeFlowError(w, err)
@@ -299,18 +283,23 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 	}
 	flows := make([]Flow, 0, len(*bundle.Flows))
 	for i, raw := range *bundle.Flows {
-		var f Flow
-		var fields map[string]json.RawMessage
-		if err := json.Unmarshal(raw, &f); err != nil || json.Unmarshal(raw, &fields) != nil || fields == nil {
+		doc, err := parseFlowDoc(raw)
+		if err != nil {
 			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
 			return
 		}
-		if _, present := fields["status"]; present {
+		if _, present := doc["status"]; present {
 			http.Error(w, fmt.Sprintf("flows[%d]: status is managed by lifecycle operations; omit it", i), http.StatusBadRequest)
 			return
 		}
-		if !validFlowID.MatchString(f.ID) {
-			http.Error(w, fmt.Sprintf("flows[%d]: flow id must be 1-128 characters from A-Z a-z 0-9 . _ - and not export, import, or redeploy-all", i), http.StatusBadRequest)
+		// The schema also enforces the id format and reserved ids.
+		if err := validateFlowDoc(doc); err != nil {
+			http.Error(w, fmt.Sprintf("flows[%d]: %v", i, err), http.StatusBadRequest)
+			return
+		}
+		var f Flow
+		if err := json.Unmarshal(raw, &f); err != nil {
+			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
 			return
 		}
 		flows = append(flows, f)
