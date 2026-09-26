@@ -12,8 +12,9 @@ import (
 // Identity is a minimal authenticated principal. The gateway defines its own
 // types and depends only on ports, never on auth's concrete types (hexagonal).
 type Identity struct {
-	Username    string
-	Permissions []string
+	Username           string
+	Permissions        []string
+	MustChangePassword bool
 }
 
 // AuthProvider authenticates credentials (arch §3.1).
@@ -76,7 +77,8 @@ type TopologyProvider interface {
 
 // Config wires the gateway's ports.
 type Config struct {
-	Auth        AuthProvider
+	Auth        AuthProvider // nil disables authentication and authorization
+	Passwords   PasswordChanger
 	Authorizer  Authorizer
 	Audit       AuditSink
 	Flows       FlowStore
@@ -88,10 +90,11 @@ type Config struct {
 
 // Server is the HTTP gateway.
 type Server struct {
-	cfg Config
+	cfg      Config
+	sessions *sessions
 }
 
 // New returns a gateway server.
 func New(cfg Config) *Server {
-	return &Server{cfg: cfg}
+	return &Server{cfg: cfg, sessions: newSessions()}
 }

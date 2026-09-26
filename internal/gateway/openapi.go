@@ -15,6 +15,51 @@ info:
   version: 0.1.0
   description: REST API for the Weavster message-oriented integration platform.
 paths:
+  /api/v1/auth/login:
+    post:
+      summary: Log in and receive a bearer token (valid 12 hours)
+      security:
+        - csrfMarker: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [username, password]
+              properties:
+                username: {type: string}
+                password: {type: string}
+                mfaCode: {type: string}
+      responses:
+        "200": {description: "Token, expiresAt, and user"}
+        "401": {description: Invalid username or password}
+  /api/v1/auth/logout:
+    post:
+      summary: Revoke the bearer token used for this request
+      responses:
+        "204": {description: Logged out}
+  /api/v1/auth/me:
+    get:
+      summary: Current user, permissions, and whether a password change is required
+      responses:
+        "200": {description: Current user}
+  /api/v1/auth/password:
+    post:
+      summary: Change the current user's password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [oldPassword, newPassword]
+              properties:
+                oldPassword: {type: string}
+                newPassword: {type: string}
+      responses:
+        "204": {description: Password changed}
+        "400": {description: New password rejected by the password policy}
   /api/v1/system:
     get:
       summary: System status
@@ -52,6 +97,16 @@ paths:
       summary: Search messages
       responses:
         "200": {description: Message search results}
+security:
+  - basicAuth: []
+    csrfMarker: []
+  - bearerAuth: []
+    csrfMarker: []
+components:
+  securitySchemes:
+    basicAuth: {type: http, scheme: basic}
+    bearerAuth: {type: http, scheme: bearer}
+    csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
 `
 
 // OpenAPISpec returns the OpenAPI 3.1 contract.

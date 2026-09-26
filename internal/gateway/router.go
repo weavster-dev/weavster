@@ -23,14 +23,21 @@ func (s *Server) Router() http.Handler {
 		if s.cfg.RequireCSRF {
 			r.Use(RequireMarkerHeader)
 		}
-		r.Get("/system", s.handleSystem)
-		r.Get("/topology", s.handleTopologyOverview)
-		r.Get("/topology/flows/{flowId}", s.handleTopologyFlow)
-		r.Get("/flows", s.handleFlowsList)
-		r.Post("/flows", s.handleFlowsCreate)
-		r.Get("/flows/{id}", s.handleFlowsGet)
-		r.Delete("/flows/{id}", s.handleFlowsDelete)
-		r.Get("/messages", s.handleMessagesSearch)
+		r.Post("/auth/login", s.handleLogin)
+		r.Group(func(r chi.Router) {
+			r.Use(s.authenticate)
+			r.Post("/auth/logout", s.handleLogout)
+			r.Get("/auth/me", s.handleMe)
+			r.Post("/auth/password", s.handleChangePassword)
+			r.Get("/system", s.handleSystem)
+			r.With(s.require("flows", "view")).Get("/topology", s.handleTopologyOverview)
+			r.With(s.require("flows", "view")).Get("/topology/flows/{flowId}", s.handleTopologyFlow)
+			r.With(s.require("flows", "view")).Get("/flows", s.handleFlowsList)
+			r.With(s.require("flows", "edit")).Post("/flows", s.handleFlowsCreate)
+			r.With(s.require("flows", "view")).Get("/flows/{id}", s.handleFlowsGet)
+			r.With(s.require("flows", "edit")).Delete("/flows/{id}", s.handleFlowsDelete)
+			r.With(s.require("messages", "view")).Get("/messages", s.handleMessagesSearch)
+		})
 	})
 	return r
 }

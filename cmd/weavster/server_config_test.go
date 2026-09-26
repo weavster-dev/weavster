@@ -53,6 +53,7 @@ func apiGet(t *testing.T, client *http.Client, url string, marker bool) (int, st
 	if marker {
 		req.Header.Set(gateway.MarkerHeader, gateway.MarkerValue)
 	}
+	req.SetBasicAuth(bootstrapAdmin, testAdminPassword)
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatal(err)

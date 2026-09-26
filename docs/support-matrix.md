@@ -17,9 +17,7 @@ Every capability sits in exactly one tier:
 Start the server with `weavster server 127.0.0.1:8080`, or with a [configuration file](server-config.md) using `weavster server --config weavster.yaml`. By default every `/api/v1` request must carry the
 header `X-Weavster-CSRF: 1`. `listen.requireMarkerHeader: false` removes that requirement.
 
-!!! warning
-    No API route checks credentials, and the CSRF marker is a fixed public value. Bind to
-    `127.0.0.1` and do not expose the server to a network.
+Every `/api/v1` route except login needs credentials. See [Authentication](authentication.md).
 
 | Capability | Tier | Proof / notes |
 |---|---|---|
@@ -31,8 +29,13 @@ header `X-Weavster-CSRF: 1`. `listen.requireMarkerHeader: false` removes that re
 | `GET/POST /api/v1/flows`, `GET/DELETE /api/v1/flows/{id}` | Implemented (wired) | `TestSupportMatrixWired/flows-*`. Flows live **in memory** and are lost on restart. The server starts with one sample flow, `admit`. Flows are stored but **never run**. `DELETE` of an unknown ID returns `204`, not `404`. |
 | `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | Implemented (wired) | `TestSupportMatrixWired/topology-*`. The graph is built from the in-memory flows above. Status is whatever the flow record says, and activity counters are always zero. An unknown `flowId` returns `500`, not `404`. |
 | `GET /api/v1/messages` search | Implemented (wired) | `TestSupportMatrixWired/messages`. Always returns `[]`, because nothing writes messages yet. |
-| Authentication, authorization, and audit of API calls | Library-only | The `auth` and `audit` packages exist, but request handlers never call them. Every `/api/v1` route, including `POST` and `DELETE`, is **unauthenticated**. No users exist. |
-| Login / logout / session endpoints | Unsupported | |
+| Authentication (Basic or Bearer token) on every `/api/v1` route except login | Implemented (wired) | `TestAuthRequired` |
+| Per-route permissions (`flows:view`, `flows:edit`, `messages:view`, `admin`) | Implemented (wired) | `TestPermissionMatrix` |
+| `POST /api/v1/auth/login`, `/auth/logout`, `GET /auth/me`, `POST /auth/password` | Implemented (wired) | `TestLoginLogout`, `TestBootstrapGeneratedPassword`. Tokens are in memory and expire after 12 hours. |
+| First-run `admin` account (env var, secret file, or one-time generated password with forced change) | Implemented (wired) | `TestBootstrapGeneratedPassword`, `TestBootstrapPasswordSources` |
+| Password policy and lockout (`auth.*` config) | Implemented (wired) | `TestBootstrapPasswordSources` |
+| Durable users; user administration API | Unsupported | Users are in memory and re-created at every start. `admin` is the only account. |
+| Audit of API calls | Library-only | The `audit` package exists, but request handlers never call it. |
 | HTTPS listener (`listen.tlsAddress`, `tls.certFile/keyFile/minVersion`) | Implemented (wired) | `TestServerConfigTLS` |
 | mTLS | Unsupported | |
 | Message store selection: `memory` (default), `sqlite`, `disabled` | Implemented (wired) | `TestServerConfigStore`. SQLite creates `<dataDir>/weavster.db` and runs migrations at startup. `disabled` makes message search return `503`. Nothing writes messages yet, so every store is empty. |
@@ -40,7 +43,6 @@ header `X-Weavster-CSRF: 1`. `listen.requireMarkerHeader: false` removes that re
 | Store connection retries (`store.maxRetry`, `store.retryWaitMs`) | Implemented (wired) | `TestServerConfigErrors/retry-exhausted`, `TestServerStopDuringStoreRetry`. PostgreSQL only. |
 | Durable flow definitions | Unsupported | Flows are in memory regardless of `store.dialect`. |
 | Server configuration file (`weavster server --config FILE`) | Implemented (wired) | `TestServerConfigListen`, `TestServerConfigErrors`. Strict YAML: unknown keys and invalid values exit `1`. See [Server configuration](server-config.md). |
-| Password and lockout policy keys (`auth.*`) | Library-only | Validated and passed to the local auth provider, which no endpoint uses. |
 | Refuse to run as root (override: `WEAVSTER_ALLOW_ROOT=1`) | Implemented (wired) | `TestSupportMatrixPrivilegedGuard` |
 | `/metrics` (Prometheus), OpenTelemetry | Library-only | Not mounted or initialized by the server. |
 | Web UI | Unsupported | Only the JSON topology API exists. |
@@ -69,7 +71,7 @@ header `X-Weavster-CSRF: 1`. `listen.requireMarkerHeader: false` removes that re
 | `weavster -v` | Implemented (wired) | `TestRunHelpAndVersion`. Prints the **local binary** version, not the server's. |
 | `weavster -s script.txt` batch mode | Implemented (wired) | `TestSupportMatrixCLI/batch-*`. Commands: `help`, `status`, `version`, `flow list`, `user list`, `quit`/`exit`. `user list` always prints nothing. Exits `2` if any line is an unknown command, cannot reach the server, or `flow list` gets an unreadable reply. **`status` exits `0` even when the server answers with an HTTP error**; it prints the error body. |
 | `-a address` | Implemented (wired) | `TestSupportMatrixCLI/batch-*`. Used only by `-s`. Include the scheme, for example `http://127.0.0.1:8080` (default). |
-| `-u`, `-p` | Unsupported | Parsed but never sent to the server. |
+| `-u`, `-p` | Implemented (wired) | `TestCLICredentials`. Sent as HTTP Basic credentials by `-s` batch mode. |
 | `-c connection-file` | Unsupported | Parsed and ignored. A missing file is not an error. |
 | `-d` | Unsupported | Parsed, but error output is identical with or without it. |
 | Interactive shell | Unsupported | |
