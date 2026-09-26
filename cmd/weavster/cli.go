@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -16,9 +15,11 @@ import (
 // Client is the network-API surface used by the scriptable shell (spec §3).
 type Client interface {
 	Status(ctx context.Context) (string, error)
-	FlowList(ctx context.Context) ([]string, error)
 	UserList(ctx context.Context) ([]string, error)
 	Version(ctx context.Context) string
+	// Call sends one REST request and returns the response body. A reply
+	// that is not 2xx is an error carrying the status and the body.
+	Call(ctx context.Context, method, path string, body []byte) ([]byte, error)
 }
 
 // httpClient is the REST Client adapter (spec §3.2, §3.3).
@@ -37,7 +38,15 @@ func newHTTPClient(addr, user, pass string) *httpClient {
 }
 
 func (c *httpClient) get(ctx context.Context, path string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+path, nil)
+	return c.request(ctx, http.MethodGet, path, nil)
+}
+
+func (c *httpClient) request(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
+	var r io.Reader
+	if body != nil {
+		r = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.base+path, r)
 	if err != nil {
 		return nil, err
 	}
@@ -58,25 +67,20 @@ func (c *httpClient) Status(ctx context.Context) (string, error) {
 	return string(body), nil
 }
 
-func (c *httpClient) FlowList(ctx context.Context) ([]string, error) {
-	resp, err := c.get(ctx, "/api/v1/flows")
+func (c *httpClient) Call(ctx context.Context, method, path string, body []byte) ([]byte, error) {
+	resp, err := c.request(ctx, method, path, body)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("server returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
-	}
-	var flows []gateway.Flow
-	if err := json.NewDecoder(resp.Body).Decode(&flows); err != nil {
+	out, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return nil, err
 	}
-	names := make([]string, len(flows))
-	for i, f := range flows {
-		names[i] = f.Name
+	if resp.StatusCode/100 != 2 {
+		return nil, fmt.Errorf("server returned %s: %s", resp.Status, strings.TrimSpace(string(out)))
 	}
-	return names, nil
+	return out, nil
 }
 
 func (c *httpClient) UserList(ctx context.Context) ([]string, error) {

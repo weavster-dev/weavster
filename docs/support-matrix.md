@@ -84,7 +84,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | `weavster` with no subcommand | Implemented (wired) | `TestSupportMatrixCLI/no-subcommand`. Starts the server on `127.0.0.1:8080`, **not** an interactive shell. |
 | `weavster -h` | Implemented (wired) | `TestRunHelpAndVersion` |
 | `weavster -v` | Implemented (wired) | `TestRunHelpAndVersion`. Prints the **local binary** version, not the server's. |
-| `weavster -s script.txt` batch mode | Implemented (wired) | `TestSupportMatrixCLI/batch-*`. Commands: `help`, `status`, `version`, `flow list`, `user list`, `quit`/`exit`. `user list` always prints nothing. Exits `2` if any line is an unknown command, cannot reach the server, or `flow list` gets an unreadable reply. **`status` exits `0` even when the server answers with an HTTP error**; it prints the error body. |
+| `weavster -s script.txt` batch mode | Implemented (wired) | `TestSupportMatrixCLI/batch-*`, `TestFlowCLI`. Commands: `help`, `status`, `version`, `flow` (list, get, create, update, update-all, rename, enable, disable, remove, export, import, lifecycle actions, redeploy-all, start/stop-destination, connectors, ports), `user list`, `quit`/`exit`. `user list` always prints nothing. Exits `2` if any line fails (unknown command, usage error, unreadable file, unreachable server, or an error reply). **`status` exits `0` even when the server answers with an HTTP error**; it prints the error body. See [Command-line client](cli.md). |
 | `-a address` | Implemented (wired) | `TestSupportMatrixCLI/batch-*`. Used only by `-s`. Include the scheme, for example `http://127.0.0.1:8080` (default). |
 | `-u`, `-p` | Implemented (wired) | `TestCLICredentials`. Sent as HTTP Basic credentials by `-s` batch mode. |
 | `-c connection-file` | Unsupported | Parsed and ignored. A missing file is not an error. |
@@ -102,7 +102,7 @@ EOF
 weavster -a http://127.0.0.1:8080 -u admin -p 'PASSWORD' -s smoke.txt
 ```
 
-Expected output: the `/api/v1/system` JSON document, followed by the name of each flow.
+Expected output: the `/api/v1/system` JSON document, followed by one line per flow: id, status, and name, separated by tabs. See [Command-line client](cli.md) for every command.
 
 ## Build and packaging
 

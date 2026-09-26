@@ -13,6 +13,7 @@ nav:
   - Support Matrix: support-matrix.md
   - Server Configuration: server-config.md
   - Authentication: authentication.md
+  - Command-line client: cli.md
   - Audit Log: audit-log.md
   - Processing Messages: processing-messages.md
   - Flow Lifecycle: flow-lifecycle.md
