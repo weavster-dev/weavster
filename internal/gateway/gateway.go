@@ -41,6 +41,9 @@ type Flow struct {
 	SourceType string `json:"sourceType"`
 	Status     string `json:"status,omitempty"`
 	Enabled    bool   `json:"enabled"`
+	// InitialState is the status automatic deployment at server start
+	// gives the flow: started (when empty), paused, or stopped.
+	InitialState string `json:"initialState,omitempty"`
 	// DependsOn lists flows this flow requires (ids); kept acyclic.
 	DependsOn []string `json:"dependsOn,omitempty"`
 	// StoppedDestinations is runtime state (like Status): destinations held
@@ -67,6 +70,25 @@ type FlowUpdater interface {
 	// flag is kept instead of f.Enabled.
 	Update(ctx context.Context, id string, f Flow, keepEnabled bool) (Flow, error)
 	SetEnabled(ctx context.Context, id string, enabled bool) (Flow, error)
+	// UpdateMany replaces several definitions. Every flow must exist and be
+	// valid before any is written (ErrFlowNotFound, ErrInvalidFlow); on a
+	// failed write (ErrUpdateIncomplete) it returns the ids already written.
+	UpdateMany(ctx context.Context, changes []FlowChange) ([]string, error)
+}
+
+// FlowChange is one entry of a bulk update.
+type FlowChange struct {
+	Flow Flow
+	// KeepEnabled keeps the stored enabled flag instead of Flow.Enabled.
+	KeepEnabled bool
+}
+
+// PortInUse is a network port the server listens on.
+type PortInUse struct {
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+	// UsedBy names the listener, e.g. "api" or "api-tls".
+	UsedBy string `json:"usedBy"`
 }
 
 // FlowBundle is an export/import document.
@@ -135,6 +157,8 @@ var (
 	// ErrImportIncomplete: writing stopped part-way; the ImportResult lists
 	// what was written.
 	ErrImportIncomplete = errors.New("import stopped part-way")
+	// ErrUpdateIncomplete: a bulk update stopped part-way.
+	ErrUpdateIncomplete = errors.New("update stopped part-way")
 )
 
 // FlowStore is the flow CRUD backend.
@@ -189,6 +213,8 @@ type Config struct {
 	Events      EventSearcher
 	Topology    TopologyProvider
 	System      observability.SystemInfo
+	// Listeners are the ports the server listens on (ports-in-use).
+	Listeners   []PortInUse
 	RequireCSRF bool
 }
 

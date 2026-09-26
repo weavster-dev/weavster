@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/observability"
+	"github.com/weavster-dev/weavster/internal/serverconfig"
 	"github.com/weavster-dev/weavster/internal/state"
 )
 
@@ -449,5 +451,78 @@ func TestDestinationStopWaitsForInFlight(t *testing.T) {
 	case <-started:
 	case <-time.After(time.Second):
 		t.Fatal("start waited for in-flight messages")
+	}
+}
+
+// TestUpdateManyErrors: document problems are reported before anything is
+// written; a store failure part-way reports what was written, dependencies
+// first.
+func TestUpdateManyErrors(t *testing.T) {
+	ctx := context.Background()
+	newFlows := func(failID string) flowAdapter {
+		mem := state.NewMemStore()
+		for _, id := range []string{"base", "top"} {
+			_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: id, Document: []byte(`{"id":"` + id + `","status":"started"}`)})
+		}
+		return flowAdapter{store: failingUpdateRepo{MemStore: mem, failID: failID}, locks: newFlowLocks(), defs: &sync.Mutex{}}
+	}
+	bad := gateway.Flow{ID: "base", Destinations: []gateway.FlowDestination{{Name: "x", Type: "ftp"}}}
+	tests := []struct {
+		name    string
+		failID  string
+		changes []gateway.FlowChange
+		want    error
+		written string
+	}{
+		{"duplicate", "", []gateway.FlowChange{{Flow: gateway.Flow{ID: "base"}}, {Flow: gateway.Flow{ID: "base"}}}, gateway.ErrInvalidFlow, ""},
+		{"invalid definition", "", []gateway.FlowChange{{Flow: bad}}, gateway.ErrInvalidFlow, ""},
+		{"unknown flow", "", []gateway.FlowChange{{Flow: gateway.Flow{ID: "base"}}, {Flow: gateway.Flow{ID: "nope"}}}, gateway.ErrFlowNotFound, ""},
+		{"bad dependency", "", []gateway.FlowChange{{Flow: gateway.Flow{ID: "top", DependsOn: []string{"gone"}}}}, gateway.ErrInvalidFlow, ""},
+		{"incomplete", "top", []gateway.FlowChange{{Flow: gateway.Flow{ID: "top", DependsOn: []string{"base"}}}, {Flow: gateway.Flow{ID: "base"}}}, gateway.ErrUpdateIncomplete, "base"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			flows := newFlows(tt.failID)
+			written, err := flows.UpdateMany(ctx, tt.changes)
+			if !errors.Is(err, tt.want) || strings.Join(written, ",") != tt.written {
+				t.Errorf("UpdateMany = %v, %v; want %v with %q written", written, err, tt.want, tt.written)
+			}
+			if f, _ := flows.Get(ctx, "base"); f.Status != "started" {
+				t.Errorf("base status = %q; an update must keep it", f.Status)
+			}
+		})
+	}
+	// An unrelated unreadable flow does not block an update without
+	// dependencies; with dependencies every flow is read.
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "a", Document: []byte(`{"id":"a"}`)})
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "corrupt", Document: []byte(`{`)})
+	flows := flowAdapter{store: mem, locks: newFlowLocks(), defs: &sync.Mutex{}}
+	if _, err := flows.UpdateMany(ctx, []gateway.FlowChange{{Flow: gateway.Flow{ID: "a", Name: "A"}}}); err != nil {
+		t.Errorf("UpdateMany next to an unreadable flow: %v", err)
+	}
+	if _, err := flows.UpdateMany(ctx, []gateway.FlowChange{{Flow: gateway.Flow{ID: "a", DependsOn: []string{"corrupt"}}}}); err == nil {
+		t.Error("UpdateMany with dependencies and an unreadable flow: want error")
+	}
+	if _, err := flows.UpdateMany(ctx, []gateway.FlowChange{{Flow: gateway.Flow{ID: "corrupt"}}}); err == nil {
+		t.Error("UpdateMany reading an unreadable flow: want error")
+	}
+}
+
+func TestListeners(t *testing.T) {
+	tests := []struct {
+		name   string
+		listen serverconfig.Listen
+		want   []gateway.PortInUse
+	}{
+		{"none", serverconfig.Listen{}, nil},
+		{"service name", serverconfig.Listen{TLSAddress: ":https"}, []gateway.PortInUse{{Address: ":https", Port: 443, UsedBy: "api-tls"}}},
+		{"both", serverconfig.Listen{Address: ":8080", TLSAddress: "127.0.0.1:8443"},
+			[]gateway.PortInUse{{Address: ":8080", Port: 8080, UsedBy: "api"}, {Address: "127.0.0.1:8443", Port: 8443, UsedBy: "api-tls"}}},
+	}
+	for _, tt := range tests {
+		if got := listeners(tt.listen); !slices.Equal(got, tt.want) {
+			t.Errorf("%s: listeners = %+v, want %+v", tt.name, got, tt.want)
+		}
 	}
 }

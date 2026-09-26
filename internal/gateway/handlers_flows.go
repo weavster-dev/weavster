@@ -229,6 +229,72 @@ func (s *Server) handleRedeployAll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, flows)
 }
 
+// decodeFlowList validates each flow definition of a list body (import,
+// bulk update). It returns the flows and, for each, whether it sets enabled.
+func decodeFlowList(w http.ResponseWriter, raws []json.RawMessage) ([]Flow, []bool, bool) {
+	flows := make([]Flow, 0, len(raws))
+	setsEnabled := make([]bool, 0, len(raws))
+	for i, raw := range raws {
+		doc, err := parseFlowDoc(raw)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
+			return nil, nil, false
+		}
+		if msg := runtimeFieldError(doc); msg != "" {
+			http.Error(w, fmt.Sprintf("flows[%d]: %s", i, msg), http.StatusBadRequest)
+			return nil, nil, false
+		}
+		// The schema also enforces the id format and reserved ids.
+		if err := validateFlowDoc(doc); err != nil {
+			http.Error(w, fmt.Sprintf("flows[%d]: %v", i, err), http.StatusBadRequest)
+			return nil, nil, false
+		}
+		var f Flow
+		if err := json.Unmarshal(raw, &f); err != nil {
+			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
+			return nil, nil, false
+		}
+		_, sets := doc["enabled"]
+		flows = append(flows, f)
+		setsEnabled = append(setsEnabled, sets)
+	}
+	return flows, setsEnabled, true
+}
+
+// flowsDocument is the body of an import or a bulk update. Other
+// top-level fields are rejected.
+type flowsDocument struct {
+	Version *int               `json:"version"`
+	Flows   *[]json.RawMessage `json:"flows"`
+}
+
+// decodeFlowsBody reads a flowsDocument of at most maxImportBytes. On
+// failure it writes the error response, naming the expected shape.
+func decodeFlowsBody(w http.ResponseWriter, r *http.Request, shape string) (flowsDocument, bool) {
+	var doc flowsDocument
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxImportBytes))
+	dec.DisallowUnknownFields()
+	err := dec.Decode(&doc)
+	if err == nil && doc.Flows == nil {
+		err = errors.New("missing flows array")
+	}
+	if err == nil {
+		if _, tokErr := dec.Token(); tokErr != io.EOF {
+			err = errors.New("trailing data after the document")
+		}
+	}
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			http.Error(w, "document larger than 50 MiB", http.StatusRequestEntityTooLarge)
+			return doc, false
+		}
+		http.Error(w, "body must be "+shape, http.StatusBadRequest)
+		return doc, false
+	}
+	return doc, true
+}
+
 // FlowBundleVersion is the export/import document version.
 const FlowBundleVersion = 1
 
@@ -265,55 +331,21 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	var bundle struct {
-		Version int                `json:"version"`
-		Flows   *[]json.RawMessage `json:"flows"`
-	}
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxImportBytes))
-	err := dec.Decode(&bundle)
-	if err == nil && bundle.Flows == nil {
-		err = errors.New("missing flows array")
-	}
-	if err == nil {
-		if _, tokErr := dec.Token(); tokErr != io.EOF {
-			err = errors.New("trailing data after the document")
-		}
-	}
-	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			http.Error(w, "export document larger than 50 MiB", http.StatusRequestEntityTooLarge)
-			return
-		}
-		http.Error(w, "body must be an export document: {\"version\":1,\"flows\":[...]}", http.StatusBadRequest)
+	bundle, ok := decodeFlowsBody(w, r, `an export document: {"version":1,"flows":[...]}`)
+	if !ok {
 		return
 	}
-	if bundle.Version != FlowBundleVersion {
-		http.Error(w, fmt.Sprintf("unsupported export version %d; expected %d", bundle.Version, FlowBundleVersion), http.StatusBadRequest)
+	if bundle.Version == nil || *bundle.Version != FlowBundleVersion {
+		version := 0
+		if bundle.Version != nil {
+			version = *bundle.Version
+		}
+		http.Error(w, fmt.Sprintf("unsupported export version %d; expected %d", version, FlowBundleVersion), http.StatusBadRequest)
 		return
 	}
-	flows := make([]Flow, 0, len(*bundle.Flows))
-	for i, raw := range *bundle.Flows {
-		doc, err := parseFlowDoc(raw)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
-			return
-		}
-		if msg := runtimeFieldError(doc); msg != "" {
-			http.Error(w, fmt.Sprintf("flows[%d]: %s", i, msg), http.StatusBadRequest)
-			return
-		}
-		// The schema also enforces the id format and reserved ids.
-		if err := validateFlowDoc(doc); err != nil {
-			http.Error(w, fmt.Sprintf("flows[%d]: %v", i, err), http.StatusBadRequest)
-			return
-		}
-		var f Flow
-		if err := json.Unmarshal(raw, &f); err != nil {
-			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
-			return
-		}
-		flows = append(flows, f)
+	flows, _, ok := decodeFlowList(w, *bundle.Flows)
+	if !ok {
+		return
 	}
 	res, err := s.cfg.Transfer.Import(r.Context(), flows, overwrite)
 	if errors.Is(err, ErrImportIncomplete) {
@@ -350,4 +382,79 @@ func (s *Server) handleDestinationAction(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, f)
+}
+
+func (s *Server) handleFlowsBulkUpdate(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.FlowUpdates == nil {
+		http.Error(w, "flow updates unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	body, ok := decodeFlowsBody(w, r, `{"flows":[...]}`)
+	if !ok {
+		return
+	}
+	if body.Version != nil {
+		http.Error(w, `body must be {"flows":[...]}; version belongs to import documents`, http.StatusBadRequest)
+		return
+	}
+	flows, setsEnabled, ok := decodeFlowList(w, *body.Flows)
+	if !ok {
+		return
+	}
+	changes := make([]FlowChange, len(flows))
+	for i, f := range flows {
+		// As with PUT /flows/{id}: omitting enabled keeps it.
+		changes[i] = FlowChange{Flow: f, KeepEnabled: !setsEnabled[i]}
+	}
+	updated, err := s.cfg.FlowUpdates.UpdateMany(r.Context(), changes)
+	switch {
+	case errors.Is(err, ErrUpdateIncomplete):
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error":   map[string]string{"code": "UPDATE_INCOMPLETE", "message": "bulk update stopped part-way; updated lists what was written"},
+			"updated": updated,
+		})
+	case errors.Is(err, ErrFlowNotFound):
+		http.Error(w, err.Error(), http.StatusNotFound) // names the missing flows
+	case err != nil:
+		writeFlowError(w, err)
+	default:
+		writeJSON(w, http.StatusOK, map[string][]string{"updated": updated})
+	}
+}
+
+// ConnectorNames lists one flow's connectors.
+type ConnectorNames struct {
+	ID           string   `json:"id"`
+	Name         string   `json:"name"`
+	SourceType   string   `json:"sourceType"`
+	Destinations []string `json:"destinations"`
+}
+
+func (s *Server) handleConnectorNames(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Flows == nil {
+		http.Error(w, "flows unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	flows, err := s.cfg.Flows.List(r.Context())
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	out := make([]ConnectorNames, 0, len(flows))
+	for _, f := range flows {
+		c := ConnectorNames{ID: f.ID, Name: f.Name, SourceType: f.SourceType, Destinations: make([]string, 0, len(f.Destinations))}
+		for _, d := range f.Destinations {
+			c.Destinations = append(c.Destinations, d.Name)
+		}
+		out = append(out, c)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handlePortsInUse(w http.ResponseWriter, _ *http.Request) {
+	ports := s.cfg.Listeners
+	if ports == nil {
+		ports = []PortInUse{}
+	}
+	writeJSON(w, http.StatusOK, ports)
 }

@@ -86,6 +86,38 @@ paths:
       responses:
         "201":
           description: Created.
+    put:
+      summary: Replace several flow definitions; each keeps its status, stopped destinations, and (unless set) enabled (requires flows:edit)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: "{flows: [flow definitions]}; no other top-level field"
+      responses:
+        "200":
+          description: "{updated: [ids]}"
+        "400":
+          description: Invalid document, flow, or dependencies; nothing written.
+        "404":
+          description: Unknown flows (listed); nothing written.
+        "413":
+          description: Document larger than 50 MiB.
+        "500":
+          description: "Stopped part-way: {error: {code: UPDATE_INCOMPLETE}, updated: [ids]} lists what was written."
+  /api/v1/flows/connector-names:
+    get:
+      summary: List every flow's source type and destination names (requires flows:view)
+      responses:
+        "200":
+          description: "[{id, name, sourceType, destinations: [names]}]"
+  /api/v1/flows/ports-in-use:
+    get:
+      summary: List the ports the server listens on (requires flows:view)
+      responses:
+        "200":
+          description: "[{address, port, usedBy}]"
   /api/v1/flows/{id}:
     put:
       summary: Replace a flow's definition; status is kept (requires flows:edit)

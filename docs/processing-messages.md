@@ -60,6 +60,15 @@ below, in order, on the message as a JSON object.
 - `build` and `destinationSet` steps are not supported yet.
 - Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.
 
+### Other fields
+
+| Field | Meaning |
+|---|---|
+| `id` | Required. 1–128 characters from `A-Z a-z 0-9 . _ -`. `export`, `import`, `redeploy-all`, `connector-names`, and `ports-in-use` are reserved. |
+| `name`, `sourceType` | Free text shown in lists. |
+| `enabled`, `initialState` | Automatic deployment at startup; see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
+| `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). |
+
 ### `destinations`
 
 | Field | Meaning |
@@ -91,6 +100,60 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080
 - The same checks as create apply (`400` with the reason).
 - `id` comes from the URL: a different `id` in the body, or any `status` field, returns `400`.
 - Unknown flows return `404`.
+
+### Update several flows at once
+
+`PUT /api/v1/flows` replaces several definitions in one request (permission `flows:edit`):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080/api/v1/flows -d '{
+  "flows": [
+    {"id": "adt", "name": "ADT normalize v3", "sourceType": "http", "destinations": [ … ]},
+    {"id": "orm", "name": "Orders", "enabled": false}
+  ]
+}'
+```
+
+```json
+{"updated":["adt","orm"]}
+```
+
+- Each entry follows the same rules as `PUT /api/v1/flows/{id}`: it replaces the whole
+  definition, and the flow keeps its `status`, its stopped destinations, and `enabled`
+  (unless the entry sets it).
+- Every entry is checked first. If any is invalid (`400`) or any flow does not exist (`404`,
+  naming the missing ids), nothing is written.
+- Flows are written dependencies first. If the store fails part-way, the response is `500` with
+  `{"error":{"code":"UPDATE_INCOMPLETE",…},"updated":[…]}` listing the flows already written.
+- The body is `{"flows":[…]}` with no other top-level field (`400` otherwise) and may be up
+  to 50 MiB (`413` above that).
+
+### Connector names
+
+List every flow's source type and destination names (permission `flows:view`):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/flows/connector-names
+```
+
+```json
+[{"id":"adt","name":"ADT normalize","sourceType":"http","destinations":["ehr","archive"]}]
+```
+
+### Ports in use
+
+List the ports the server listens on (permission `flows:view`):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/flows/ports-in-use
+```
+
+```json
+[{"address":"127.0.0.1:8080","port":8080,"usedBy":"api"},{"address":":8443","port":8443,"usedBy":"api-tls"}]
+```
+
+`usedBy` is `api` for `listen.address` and `api-tls` for `listen.tlsAddress`. Flows do not
+listen on their own ports yet, so no flow appears in this list.
 
 ## 2. Deploy and start the flow
 
