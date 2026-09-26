@@ -35,8 +35,12 @@ Each returns `200` with the updated flow:
 | Response | Cause |
 |---|---|
 | `409 cannot pause a flow that is stopped` | The operation is not allowed from the flow's current status (see the table). |
+| `409 dependency problem: flow top depends on missing flow base` | `deploy` found a dependency that no longer exists. |
 | `404` | Unknown flow, or an operation name that is not one of the seven above. |
 | `403` | You lack `flows:deploy`. This is checked first, so an unknown operation also returns `403` for such users. |
+
+Every status change is logged as an event of type `flow.<new status>` (for example
+`flow.started`), with `data.from` holding the previous status. See `GET /api/v1/events`.
 
 Every operation except `halt` waits for that flow's messages that are being processed right
 now, then changes the status. `halt` is a force-stop: it changes the status at once, lets
@@ -65,8 +69,8 @@ redeployed. The rest keep their status.
 ## Deleting a running flow
 
 `DELETE /api/v1/flows/{id}` works in any status. For a flow that is not `undeployed`, the server
-waits for that flow's in-flight messages, undeploys it (logging a `flow.undeployed` event with
-`"reason":"deleted"`), and removes it. New messages for it return `404`. Its `queued` messages are
+waits for that flow's in-flight messages, sets it to `undeployed` (a `flow.undeployed` event), and
+then removes it (a `flow.deleted` event). New messages for it return `404`. Its `queued` messages are
 `dead-lettered` by the next retry pass. A flow that other flows depend on cannot be deleted
 (`409`).
 

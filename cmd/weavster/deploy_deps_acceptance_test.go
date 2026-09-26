@@ -46,12 +46,14 @@ func TestDeployDependenciesAndDeleteRunning(t *testing.T) {
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		_, body, _ := c.do(http.MethodGet, "/api/v1/events?type=flow.undeployed&flowId=live", "", admin)
-		if strings.Contains(body, `"reason":"deleted"`) {
+		_, body, _ := c.do(http.MethodGet, "/api/v1/events?flowId=live", "", admin)
+		undeployed := strings.Index(body, `"type":"flow.undeployed"`)
+		deleted := strings.Index(body, `"type":"flow.deleted"`)
+		if undeployed >= 0 && deleted > undeployed && strings.Contains(body, `"type":"flow.started"`) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("no flow.undeployed event: %s", body)
+			t.Fatalf("want flow.started, then flow.undeployed before flow.deleted: %s", body)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}

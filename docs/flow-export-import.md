@@ -26,8 +26,9 @@ To prove nothing depends on it, the server must be able to read every other flow
 unreadable, the delete returns `500` naming that flow; delete the unreadable flow first (a flow
 can always delete itself).
 
-Deploying a flow also deploys every `undeployed` flow it depends on, dependencies first.
-Dependencies in any other status are left as they are. Starting a flow does not start its
+Deploying a flow, manually or through startup auto-deploy, also deploys every `undeployed` flow
+it depends on, dependencies first. Dependencies in any other status are left as they are, so
+deploying a dependent never interrupts a running dependency. Starting a flow does not start its
 dependencies. See [Flow lifecycle](flow-lifecycle.md).
 
 ## Export
