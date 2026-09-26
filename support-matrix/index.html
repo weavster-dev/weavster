@@ -330,6 +330,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 </thead>
 <tbody>
 <tr>
+<td>Flow definitions validated against the published <code>agent-docs/schemas/flow.schema.json</code> (create, update, import; unknown fields rejected)</td>
+<td>Implemented (wired)</td>
+<td><code>TestFlowSchemaEnforced</code>, <code>TestFlowSchemaPublished</code></td>
+</tr>
+<tr>
 <td>Flow dependencies (<code>dependsOn</code>, validated, delete-protected), export (<code>GET /api/v1/flows/export</code>), import (<code>POST /api/v1/flows/import</code>, <code>overwrite</code>)</td>
 <td>Implemented (wired)</td>
 <td><code>TestFlowExportImport</code>, <code>TestDeployDependenciesAndDeleteRunning</code>. Deploy also deploys undeployed dependencies; deleting a running flow undeploys it first. See <a href="../flow-export-import/">Flow dependencies, export, and import</a>.</td>

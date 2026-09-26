@@ -170,6 +170,11 @@ one or more destinations. You send messages to the flow over the API.</p>
 reported as <code>400</code> with the reason, for example:</p>
 <pre><code class="language-text">invalid flow: dsl: normalize: step 1: build: dsl: step not supported yet
 </code></pre>
+<p>Every flow definition you send (create, update, import) is checked against
+<a href="https://github.com/weavster-dev/weavster/blob/main/agent-docs/schemas/flow.schema.json"><code>flow.schema.json</code></a>.
+Unknown fields and wrong types are rejected rather than ignored:</p>
+<pre><code class="language-text">400 flow does not match flow.schema.json: /destinations/0/type: value must be one of &quot;http&quot;, &quot;file&quot;
+</code></pre>
 <h3 id="transform"><code>transform</code></h3>
 <p><code>transform</code> is optional. Without it (or with <code>null</code> or no <code>steps</code>), messages pass through
 unchanged and may be any bytes. It uses the steps
