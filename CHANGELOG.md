@@ -32,6 +32,10 @@ All notable changes to this project are documented here, following
 - Alert delivery regression coverage: verify `Manager.Handle` preserves notifier failures and identifies the affected alert.
 - Config artifact coverage: tests now verify `Config.Artifacts` flattens every supported artifact kind and preserves serializable flow and alert content.
 
+### Changed
+
+- Specs amended with the #107 decisions (§0A): YAML DSL runs in an embedded, prebuilt WASM interpreter instead of per-transform TinyGo codegen (D-03); the MVP CPU limit is a wall-clock deadline, with instruction metering deferred to Enterprise (D-02); all mutation is API-first and the UI stays read-only (D-04); idempotency keys are stable across retries (D-10); scheduler leases carry a fencing token (D-11); topology drill-down node IDs follow contract §3.2 (D-13); install is signed binaries + a verifying `curl | bash` installer (D-07); open questions on mTLS, blob storage, and UI views resolved, and legacy import deferred (D-01, D-06, D-18, D-19). The Enterprise list now also covers broker adapters, KMS/Vault rotation, and object storage. Updated `specs/`, `docs/mvp-project-plan.md`, `docs/agent-onboarding.md`, and `agentic-manifest.json`.
+
 ### Fixed
 
 - Duplicate test function declarations breaking `go vet`/`go test` on main: renamed `TestAdapterNames` (in `adapters_gap_test.go`) to `TestAdapterNamesGap` and `TestSchedulerReconcile` (in `heartbeat_reconcile_test.go`) to `TestSchedulerReconcileExpiredLease`, preserving both test cases.

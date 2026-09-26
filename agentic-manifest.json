@@ -19,7 +19,7 @@
     "package_manager": "go.mod (Go modules)",
     "web_framework": "net/http + chi",
     "wasm_runtime": "wazero",
-    "dsl_codegen_target": "Go + TinyGo (WASI)",
+    "dsl_codegen_target": "Prebuilt WASM DSL interpreter embedded in the binary; built with pinned Go + TinyGo in CI only (#107 D-03)",
     "databases": ["PostgreSQL (prod)", "SQLite (local DX)", "in-memory (passthrough/buffered)"],
     "api_protocol": "REST + OpenAPI 3.1 (JSON-first; XML where parity requires)",
     "iac": "YAML/JSON config-as-code + Terraform/OpenTofu/Pulumi sample modules"
@@ -114,7 +114,7 @@
       "depends_on": ["Module Registry", "Data-Type Codecs", "Observability"],
       "acceptance_criteria": [
         "Implements TransformEngine port over wazero; sandboxed guest: no filesystem/network/clock by default (architecture §4.2).",
-        "Enforces fuel (CPU), max memory pages, wall-clock deadline, and WASI stdio capture on every instantiation; exceeding a limit aborts with structured error carrying module name + version + input hash + limit type (architecture §4.3, gap #3 MVP).",
+        "Enforces max memory pages, a wall-clock deadline (the MVP CPU limit; instruction metering is Enterprise per #107 D-02), and WASI stdio capture on every instantiation; exceeding a limit aborts with structured error carrying module name + version + input hash + limit type (architecture §4.3, gap #3 MVP).",
         "Registers host functions (parse/serialize, ack, route, store, net, crypto/hash) per-module by declared capabilities (least privilege) (architecture §4.2).",
         "Runs response-transformer and response-selector stages distinct from the initial transform (spec §2.2.7).",
         "Fan-out to all non-excluded destinations; inter-flow routing via route host function (spec §2.3.8-9).",
@@ -174,10 +174,10 @@
       "files_to_create": ["compiler.go", "yaml_ast.go", "codegen.go", "tinygo_build.go", "schema_validate.go", "compiler_test.go"],
       "depends_on": ["Module Registry", "Data-Type Codecs"],
       "acceptance_criteria": [
-        "Transpiles declarative YAML DSL transforms (map/build/XSLT-style steps, filter, destination-set filter) into Go+TinyGo source, compiled to WASI with a pinned reproducible toolchain (architecture §4.1, spec §2.2.4-5).",
+        "Validates declarative YAML DSL transforms (map/build/XSLT-style steps, filter, destination-set exclusion) and lowers them to an IR executed by the embedded, prebuilt WASM DSL interpreter (architecture §4.1, spec §2.2.4-5, #107 D-03).",
         "YAML is the source of truth; the .wasm is a cached, rebuildable artifact (never hand-edited) (architecture §4.1).",
         "Validates every config artifact against its JSON Schema on load and rejects invalid configs (architecture §6).",
-        "Compiles with a pinned TinyGo toolchain; same Go toolchain as the control plane (architecture §10.1).",
+        "The interpreter module is built in CI with a pinned TinyGo toolchain, reproducibly, and embedded + signed; no TinyGo is required on hosts (architecture §10.1, #107 D-03).",
         "Passes `go test -race ./internal/compiler/...`."
       ],
       "frameworks_to_use": ["gopkg.in/yaml.v3", "github.com/santhosh-tekuri/jsonschema/v5", "tinygo (external pinned toolchain → WASI)"]
@@ -254,7 +254,7 @@
       "depends_on": ["State Manager"],
       "acceptance_criteria": [
         "Transactional outbox: receive → persist → transform → persist result → deliver → mark delivered; crash re-enters same job with same message ID (gap #5).",
-        "Deterministic idempotency_key from (message_id, destination, attempt) on every external side effect; at-least-once sinks (raw TCP MLLP) documented as such (gap #5).",
+        "Deterministic idempotency_key from (message_id, destination), stable across retries (#107 D-10), on every external side effect; at-least-once sinks (raw TCP MLLP) documented as such (gap #5).",
         "On ambiguous-result retry, check status first rather than blindly re-send (gap #5).",
         "Bounded retries with backoff, a dead-letter state, and a deadletter admin surface (no silent infinite retry) (gap #5).",
         "Passes `go test -race ./internal/outbox/...`."

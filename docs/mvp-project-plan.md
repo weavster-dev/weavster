@@ -24,7 +24,7 @@ It is a **greenfield replacement** for the legacy integration engine, built to t
 | Web framework | `net/http` + **chi** |
 | WASM host runtime | **wazero** (pure-Go, zero CGo) |
 | Transform authoring | Declarative **YAML DSL** (default) + multi-language **WASI** (advanced) |
-| YAML-DSL codegen | **Go + TinyGo → WASI** (pinned, reproducible toolchain) |
+| YAML-DSL execution | **Prebuilt WASM DSL interpreter** embedded in the binary (built with pinned Go + TinyGo in CI; #107 D-03) |
 | Databases | **PostgreSQL** (prod) · **SQLite** (local DX) · **in-memory** (passthrough/buffered) |
 | API | REST + OpenAPI 3.1 (JSON-first) |
 | Config & IaC | YAML/JSON config-as-code + Terraform/OpenTofu/Pulumi samples |
@@ -35,9 +35,9 @@ It is a **greenfield replacement** for the legacy integration engine, built to t
 
 ## 3. MVP scope — in vs out
 
-**In scope (MVP):** single Go binary/container; Postgres + SQLite/in-memory via the `Store` port; TLS + mTLS; local auth (password policy, lockout, anti-enumeration); built-in RBAC permission set; YAML DSL (auto-compiled) + WASI transforms; internal scheduler with Postgres `SKIP LOCKED` job claiming; `weavster test`; Git-backed config-as-code + IaC samples; REST API + OpenAPI; **read-only** flow-topology web UI; Prometheus metrics + structured logs + events; and the **three critical gap closures** below.
+**In scope (MVP):** single Go binary/container; Postgres + SQLite/in-memory via the `Store` port; TLS + mTLS; local auth (password policy, lockout, anti-enumeration); built-in RBAC permission set; YAML DSL (executed by an embedded, prebuilt WASM interpreter — #107 D-03) + WASI transforms; internal scheduler with Postgres `SKIP LOCKED` job claiming; `weavster test`; Git-backed config-as-code + IaC samples; REST API + OpenAPI; **read-only** flow-topology web UI; Prometheus metrics + structured logs + events; and the **three critical gap closures** below.
 
-**Explicitly out (Enterprise, port exists but implementation excluded):** SSO (OIDC/SAML), complex RBAC/ABAC (OPA/Cedar), immutable/SIEM audit, K8s horizontal scaling, Redis/NATS queue + leader election, distributed tracing + transform replay, multi-tenancy, DICOM service-class provider. *Leave the interface, stub the rest.*
+**Explicitly out (Enterprise, port exists but implementation excluded):** SSO (OIDC/SAML), complex RBAC/ABAC (OPA/Cedar), immutable/SIEM audit, K8s horizontal scaling, Redis/NATS queue + leader election, distributed tracing + transform replay, multi-tenancy, DICOM service-class provider, message-queue broker (queue/topic) adapters, KMS/Vault secret rotation, object/blob storage. *Leave the interface, stub the rest.*
 
 ## 4. Critical gaps folded into the MVP (from the viability analysis)
 
@@ -45,7 +45,7 @@ It is a **greenfield replacement** for the legacy integration engine, built to t
 |---|---|
 | **#1 State migration** | First-class `import legacy` command + ETL (extract → transform → load) with dry-run report and opt-in `--with-content`. |
 | **#2 WASM module lifecycle** | Versioned, signed, rollbackable module registry (draft → promoted → active → superseded → retired). |
-| **#5 Idempotency & retries** | Transactional outbox + deterministic `idempotency_key` on all side effects; bounded retries + dead-letter state. |
+| **#5 Idempotency & retries** | Transactional outbox + deterministic `idempotency_key` (stable across retries, #107 D-10) on all side effects; bounded retries + dead-letter state. |
 | **#4 HA floor (partial)** | Durable job claim + lease heartbeat + startup reconciler (crash-safety only; full HA is Enterprise). |
 | **#6 Config plan/apply** | `config plan` (dry-run diff) / `config apply`, drift detection, JSON plan output. |
 | **#7 Migrations** | Versioned, forward-only `Store` migration runner with pre-upgrade checkpoint. |
@@ -64,7 +64,7 @@ Full detail (paths, files, dependencies, acceptance criteria, frameworks) lives 
 | State Manager | `internal/state` | Store port (Postgres/SQLite/memory) + migrations + search/export |
 | Adapters | `internal/adapters` | Source/Sink ports (file/http/tcp-MLLP/db/smtp/webservice/interflow/document) |
 | Data-Type Codecs | `internal/codecs` | HL7 v2, X12, NCPDP, JSON, XML, delimited, raw |
-| Transform Compiler | `internal/compiler` | YAML DSL → TinyGo → WASM + schema validation |
+| Transform Compiler | `internal/compiler` | YAML DSL schema validation → IR for the embedded DSL interpreter |
 | Module Registry | `internal/registry` | WASM module version/sign/promote/rollback/GC *(glue, gap #2)* |
 | Config-as-Code | `internal/config` | plan/apply/drift, JSON-Schema validation |
 | Git Store | `internal/gitstore` | native Git-backed config (commit/push/pull/history/restore) |

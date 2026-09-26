@@ -24,7 +24,7 @@
 
 ```json
 {
-  "id": "flow:my-flow:source:file-1",
+  "id": "source:file-1",
   "kind": "source",
   "label": "file:///incoming/patients",
   "status": "started",
@@ -44,7 +44,7 @@
 
 | Field | Type | Notes |
 |---|---|---|
-| `id` | string | Stable, entity-derived. Prefix by kind: `flow:` / `source:` / `transform:` / `destination:`. |
+| `id` | string | Stable, entity-derived. Prefix by kind: `flow:<flowId>` in the overview; `source:<id>`, `transform:<kind>:<id>`, `destination:<id>` in a flow drill-down (unique within that flow; §3.2 is normative — amended per #107 D-13). |
 | `kind` | enum | `flow` \| `source` \| `transform` \| `destination` |
 | `label` | string | Human-readable. |
 | `status` | enum | `undeployed` \| `deployed` \| `started` \| `paused` \| `halted` \| `stopped` \| `errored` |
@@ -130,7 +130,7 @@ The rolling `activity` snapshot embedded above is the MVP signal. Deep historica
 - `activity` is a **rolling snapshot** (configurable window, default e.g. 5 min / 1 h) computed from the scheduler/executor's in-memory counters and flushed to `Store` periodically. It is **best-effort** and does not require a running Prometheus for the UI to work.
 - Counters: `received`, `sent`, `errored`, `queued`, `lastMessageAt`. Node `activity` aggregates its own traffic; edge `activity` is the traffic flowing *across* that edge.
 - `status` is derived from the authoritative flow/connector lifecycle state (functional spec §6.1), with `errored` synthesized when a node's error rate exceeds a threshold in the window (or from an explicit error condition).
-- **Refresh model (recommended):** simple client polling of the JSON endpoints for MVP (KISS, read-only, cacheable). **Optional later:** `GET /api/v1/topology/stream` as Server-Sent Events for live `activity` patches. No WebSockets.
+- **Refresh model (recommended):** simple client polling of the JSON endpoints for MVP (KISS, read-only, cacheable). **Optional later (post-MVP, #107 D-25):** `GET /api/v1/topology/stream` as Server-Sent Events for live `activity` patches. No WebSockets.
 
 ---
 
