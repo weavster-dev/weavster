@@ -20,8 +20,8 @@ func TestLoad(t *testing.T) {
 			}
 		}},
 		{name: "sqlite dsn defaults under dataDir", yaml: "store: {dialect: sqlite}\npaths: {dataDir: /var/lib/weavster}\n", check: func(t *testing.T, c Config) {
-			if c.Store.DSN != filepath.Join("/var/lib/weavster", "weavster.db") {
-				t.Errorf("dsn = %q", c.Store.DSN)
+			if c.StoreDSN() != filepath.Join("/var/lib/weavster", "weavster.db") {
+				t.Errorf("dsn = %q", c.StoreDSN())
 			}
 		}},
 		{name: "explicit values override defaults", yaml: `
@@ -45,7 +45,7 @@ auth:
 		{name: "bad tls version", yaml: "tls: {minVersion: \"1.0\"}\n", wantErr: "tls.minVersion must be 1.2 or 1.3"},
 		{name: "bad dialect", yaml: "store: {dialect: mysql}\n", wantErr: "store.dialect must be"},
 		{name: "postgres without dsn", yaml: "store: {dialect: postgres}\n", wantErr: "store.dsn is required"},
-		{name: "sqlite without dsn or dataDir", yaml: "store: {dialect: sqlite}\npaths: {dataDir: \"\"}\n", wantErr: "store.dsn or paths.dataDir"},
+		{name: "sqlite without dsn or dataDir", yaml: "store: {dialect: sqlite}\n", wantErr: "store.dsn or paths.dataDir"},
 		{name: "zero pool", yaml: "store: {maxConnections: 0}\n", wantErr: "store.maxConnections must be >= 1"},
 		{name: "negative retry", yaml: "store: {maxRetry: -1}\n", wantErr: "must be >= 0"},
 		{name: "negative lockout", yaml: "auth: {lockout: {retryLimit: -2}}\n", wantErr: "auth.lockout values must be >= 0"},
@@ -58,6 +58,9 @@ auth:
 				t.Fatal(err)
 			}
 			c, err := Load(path)
+			if err == nil {
+				err = c.Validate()
+			}
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("err = %v, want containing %q", err, tt.wantErr)

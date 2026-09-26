@@ -85,7 +85,7 @@ func Default() Config {
 		Listen: Listen{Address: "127.0.0.1:8080", RequireMarkerHeader: true},
 		TLS:    TLS{MinVersion: "1.2"},
 		Store:  Store{Dialect: DialectMemory, MaxConnections: 10, MaxRetry: 3, RetryWaitMs: 1000},
-		Paths:  Paths{DataDir: "data"},
+		Paths:  Paths{},
 		Auth: Auth{
 			PasswordPolicy: PasswordPolicy{MinLength: 8, MinUpper: 1, MinLower: 1, MinNumeric: 1},
 			Lockout:        Lockout{RetryLimit: 5, LockoutPeriodSeconds: 300},
@@ -93,8 +93,8 @@ func Default() Config {
 	}
 }
 
-// Load reads path over the defaults, rejecting unknown keys, and validates
-// the result.
+// Load reads path over the defaults and rejects unknown keys. Callers run
+// Validate after applying any overrides.
 func Load(path string) (Config, error) {
 	cfg := Default()
 	data, err := os.ReadFile(path)
@@ -106,14 +106,20 @@ func Load(path string) (Config, error) {
 	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
 		return cfg, fmt.Errorf("config: %s: %w", path, err)
 	}
-	if err := cfg.Validate(); err != nil {
-		return cfg, err
-	}
 	return cfg, nil
 }
 
+// StoreDSN returns store.dsn, or for the sqlite dialect without one,
+// <paths.dataDir>/weavster.db.
+func (c Config) StoreDSN() string {
+	if c.Store.Dialect == DialectSQLite && c.Store.DSN == "" && c.Paths.DataDir != "" {
+		return filepath.Join(c.Paths.DataDir, "weavster.db")
+	}
+	return c.Store.DSN
+}
+
 // Validate reports the first invalid value or combination.
-func (c *Config) Validate() error {
+func (c Config) Validate() error {
 	if c.Listen.Address == "" && c.Listen.TLSAddress == "" {
 		return errors.New("config: listen.address or listen.tlsAddress is required")
 	}
@@ -126,11 +132,8 @@ func (c *Config) Validate() error {
 	switch c.Store.Dialect {
 	case DialectMemory, DialectDisabled:
 	case DialectSQLite:
-		if c.Store.DSN == "" {
-			if c.Paths.DataDir == "" {
-				return errors.New("config: store.dsn or paths.dataDir is required for the sqlite dialect")
-			}
-			c.Store.DSN = filepath.Join(c.Paths.DataDir, "weavster.db")
+		if c.StoreDSN() == "" {
+			return errors.New("config: store.dsn or paths.dataDir is required for the sqlite dialect")
 		}
 	case DialectPostgres:
 		if c.Store.DSN == "" {

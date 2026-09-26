@@ -16,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -162,6 +163,17 @@ func TestServerConfigErrors(t *testing.T) {
 		{name: "sqlite-dir-uncreatable", args: func(t *testing.T) []string {
 			return []string{"server", "--config", writeConfig(t, "store: {dialect: sqlite}\npaths: {dataDir: \""+filepath.Join(blocker, "sub")+"\"}\n")}
 		}, want: "Error: store:"},
+		{name: "sqlite-not-retried", args: func(t *testing.T) []string {
+			return []string{"server", "--config", writeConfig(t, "store: {dialect: sqlite, dsn: \""+t.TempDir()+"\", maxRetry: 5, retryWaitMs: 60000}\n")}
+		}, want: "Error: store: sqlite:"},
+		{name: "extra-arguments", args: func(*testing.T) []string {
+			return []string{"server", "127.0.0.1:0", "--config", "weavster.yaml"}
+		}, want: "unexpected arguments"},
+		{name: "unreadable-tls-cert", args: func(t *testing.T) []string {
+			dir := t.TempDir()
+			return []string{"server", "--config", writeConfig(t, "listen: {tlsAddress: \"127.0.0.1:0\"}\ntls: {certFile: \""+
+				filepath.Join(dir, "cert.pem")+"\", keyFile: \""+filepath.Join(dir, "key.pem")+"\"}\n")}
+		}, want: "Error: tls:"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -173,6 +185,34 @@ func TestServerConfigErrors(t *testing.T) {
 				t.Errorf("stderr %q does not contain %q", errb.String(), tt.want)
 			}
 		})
+	}
+}
+
+// TestServerStopDuringStoreRetry proves SIGTERM interrupts store connection
+// retries and exits cleanly.
+func TestServerStopDuringStoreRetry(t *testing.T) {
+	cfg := writeConfig(t, "store: {dialect: postgres, dsn: \"postgres://u:p@127.0.0.1:1/db?connect_timeout=1\", maxRetry: 1000, retryWaitMs: 50}\n")
+	done := make(chan int, 1)
+	errb := &syncBuffer{}
+	go func() { done <- run([]string{"server", "--config", cfg}, strings.NewReader(""), io.Discard, errb) }()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(errb.String(), "store connection failed") {
+		if time.Now().After(deadline) {
+			t.Fatalf("no retry logged: %q", errb.String())
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case code := <-done:
+		if code != 0 {
+			t.Errorf("exit = %d, want 0 (stderr %q)", code, errb.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("SIGTERM did not interrupt store retries")
 	}
 }
 

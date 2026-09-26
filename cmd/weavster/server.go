@@ -29,7 +29,7 @@ import (
 // buildServer wires the ports/adapters selected by cfg into the single binary
 // (arch §3). The returned func releases the message store.
 func buildServer(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config) (http.Handler, func() error, error) {
-	store, err := openStore(ctx, logger, cfg.Store)
+	store, err := openStore(ctx, logger, cfg)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -51,9 +51,6 @@ func buildServer(ctx context.Context, logger *slog.Logger, cfg serverconfig.Conf
 		},
 		AntiEnumeration: true,
 	})
-	_ = provider.CreateUser(context.Background(), auth.User{
-		Username: "admin", PasswordHash: "admin123!", Permissions: []string{auth.PermAdmin},
-	})
 
 	sink := audit.NewLocalSink(logger)
 	flows := newMemFlowStore()
@@ -71,10 +68,11 @@ func buildServer(ctx context.Context, logger *slog.Logger, cfg serverconfig.Conf
 	return srv.Router(), closeStore, nil
 }
 
-// openStore connects the configured message store, retrying failed attempts
-// (spec §11). The disabled dialect returns a nil Store.
-func openStore(ctx context.Context, logger *slog.Logger, sc serverconfig.Store) (state.Store, error) {
-	var open func(context.Context, string) (state.Store, error)
+// openStore connects the configured message store. Only PostgreSQL
+// connections are retried (spec §11); SQLite failures are permanent. The
+// disabled dialect returns a nil Store.
+func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config) (state.Store, error) {
+	sc, dsn := cfg.Store, cfg.StoreDSN()
 	switch sc.Dialect {
 	case serverconfig.DialectDisabled:
 		logger.Warn("message store disabled; message endpoints return 503")
@@ -82,16 +80,16 @@ func openStore(ctx context.Context, logger *slog.Logger, sc serverconfig.Store) 
 	case serverconfig.DialectMemory:
 		return state.NewMemStore(), nil
 	case serverconfig.DialectSQLite:
-		if sc.DSN != ":memory:" && !strings.HasPrefix(sc.DSN, "file:") {
-			if err := os.MkdirAll(filepath.Dir(sc.DSN), 0o700); err != nil {
+		if dsn != ":memory:" && !strings.HasPrefix(dsn, "file:") {
+			if err := os.MkdirAll(filepath.Dir(dsn), 0o700); err != nil {
 				return nil, fmt.Errorf("store: %w", err)
 			}
 		}
-		open = state.OpenSQLite
-	default:
-		open = func(ctx context.Context, dsn string) (state.Store, error) {
-			return state.OpenPostgres(ctx, dsn, sc.MaxConnections)
+		s, err := state.OpenSQLite(ctx, dsn)
+		if err != nil {
+			return nil, fmt.Errorf("store: sqlite: %w", err)
 		}
+		return s, nil
 	}
 
 	var err error
@@ -104,7 +102,7 @@ func openStore(ctx context.Context, logger *slog.Logger, sc serverconfig.Store) 
 			}
 		}
 		var s state.Store
-		if s, err = open(ctx, sc.DSN); err == nil {
+		if s, err = state.OpenPostgres(ctx, dsn, sc.MaxConnections); err == nil {
 			return s, nil
 		}
 		logger.Warn("store connection failed", "dialect", sc.Dialect, "attempt", attempt, "error", err)
@@ -112,9 +110,18 @@ func openStore(ctx context.Context, logger *slog.Logger, sc serverconfig.Store) 
 	return nil, fmt.Errorf("store: %s: giving up after %d attempts: %w", sc.Dialect, sc.MaxRetry+1, err)
 }
 
-// runServer loads the configuration, enforces the privileged-run guard
-// (spec §11), and serves until SIGINT/SIGTERM.
+// runServer enforces the privileged-run guard (spec §11), loads the
+// configuration, and serves until SIGINT/SIGTERM.
 func runServer(args []string, stderr io.Writer) int {
+	fail := func(err error) int {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+	allowRoot := os.Getenv("WEAVSTER_ALLOW_ROOT") == "1"
+	if err := checkPrivileged(allowRoot, isPrivileged); err != nil {
+		return fail(err)
+	}
+
 	fs := flag.NewFlagSet("server", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "path to the server configuration file")
@@ -124,54 +131,49 @@ func runServer(args []string, stderr io.Writer) int {
 		}
 		return 1
 	}
+	if fs.NArg() > 1 {
+		return fail(fmt.Errorf("unexpected arguments %q; put flags before the address", fs.Args()[1:]))
+	}
 
 	cfg := serverconfig.Default()
 	if *configPath != "" {
 		var err error
 		if cfg, err = serverconfig.Load(*configPath); err != nil {
-			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-			return 1
+			return fail(err)
 		}
 	}
-	if fs.NArg() > 0 {
+	if fs.NArg() == 1 {
 		cfg.Listen.Address = fs.Arg(0)
 	}
 	if err := cfg.Validate(); err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return 1
+		return fail(err)
 	}
 
-	allowRoot := os.Getenv("WEAVSTER_ALLOW_ROOT") == "1"
-	if err := checkPrivileged(allowRoot, isPrivileged); err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return 1
-	}
-
-	// Register for signals before connecting or serving so a stop signal that
-	// arrives as soon as the listener is up is never lost.
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sig)
+	// Cancel on SIGINT/SIGTERM from the start, so a stop signal interrupts
+	// store connection retries and is never lost once listeners are up.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
-	handler, closeStore, err := buildServer(context.Background(), logger, cfg)
+	handler, closeStore, err := buildServer(ctx, logger, cfg)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return 1
+		if ctx.Err() != nil {
+			return 0
+		}
+		return fail(err)
 	}
 	defer func() { _ = closeStore() }()
 
 	servers, err := listen(cfg, handler)
 	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return 1
+		return fail(err)
 	}
 	errCh := make(chan error, len(servers))
 	for _, s := range servers {
 		go func(s *http.Server) {
 			var err error
 			if s.TLSConfig != nil {
-				err = s.ListenAndServeTLS(cfg.TLS.CertFile, cfg.TLS.KeyFile)
+				err = s.ListenAndServeTLS("", "")
 			} else {
 				err = s.ListenAndServe()
 			}
@@ -184,12 +186,13 @@ func runServer(args []string, stderr io.Writer) int {
 	code := 0
 	select {
 	case err := <-errCh:
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		code = 1
-	case <-sig:
+		code = fail(err)
+	case <-ctx.Done():
 	}
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	for _, s := range servers {
-		_ = s.Shutdown(context.Background())
+		_ = s.Shutdown(shutdownCtx)
 	}
 	return code
 }
@@ -209,6 +212,11 @@ func listen(cfg serverconfig.Config, handler http.Handler) ([]*http.Server, erro
 		if err != nil {
 			return nil, err
 		}
+		cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("tls: %w", err)
+		}
+		tlsCfg.Certificates = []tls.Certificate{cert}
 		servers = append(servers, &http.Server{Addr: cfg.Listen.TLSAddress, Handler: handler, TLSConfig: tlsCfg, ReadHeaderTimeout: 10 * time.Second})
 	}
 	return servers, nil

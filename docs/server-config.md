@@ -8,7 +8,8 @@ weavster server --config /etc/weavster/weavster.yaml
 
 Without `--config`, the server uses the defaults below. A positional address overrides
 `listen.address`, for example `weavster server --config weavster.yaml 127.0.0.1:9090`. Put
-`--config` **before** the address: flags after the address are ignored.
+`--config` **before** the address. Anything after the address is rejected with
+`Error: unexpected arguments`.
 
 The file is checked strictly at startup. An unknown key, a value of the wrong type, or an
 invalid combination stops the server with exit code `1` and a message like:
@@ -71,8 +72,9 @@ At least one of `address` and `tlsAddress` must be set.
 | `keyFile` | `""` | PEM private key matching `certFile`. |
 | `minVersion` | `"1.2"` | Lowest accepted TLS version: `"1.2"` or `"1.3"`. Quote the value so YAML reads it as a string. |
 
-With TLS 1.2, only ECDHE AES-GCM cipher suites are offered. An unreadable certificate or key
-stops the server with exit code `1`.
+With TLS 1.2, only ECDHE AES-GCM cipher suites are offered. The certificate and key are loaded
+before any listener starts. If they can't be read, the server exits `1` with `Error: tls: …`
+and serves nothing.
 
 ### `store`
 
@@ -81,17 +83,19 @@ stops the server with exit code `1`.
 | `dialect` | `memory` | `memory`, `sqlite`, `postgres`, or `disabled`. |
 | `dsn` | see below | Connection string. For `sqlite`, a file path. For `postgres`, a URL such as `postgres://user:pass@db:5432/weavster`. |
 | `maxConnections` | `10` | Maximum open PostgreSQL connections. SQLite always uses one. |
-| `maxRetry` | `3` | Extra connection attempts after the first failure. |
-| `retryWaitMs` | `1000` | Wait between attempts, in milliseconds. |
+| `maxRetry` | `3` | PostgreSQL only: extra connection attempts after the first failure. |
+| `retryWaitMs` | `1000` | PostgreSQL only: wait between attempts, in milliseconds. |
 
 - **`memory`**: messages live in process memory and are lost on restart.
-- **`sqlite`**: `dsn` defaults to `<paths.dataDir>/weavster.db`. The directory is created
-  (mode `0700`) if missing. Migrations run at startup.
+- **`sqlite`**: set `dsn` or `paths.dataDir`. `dsn` defaults to `<paths.dataDir>/weavster.db`.
+  The parent directory is created (mode `0700`) if missing. Migrations run at startup. A SQLite
+  failure is never retried.
 - **`postgres`**: `dsn` is required. **PostgreSQL does not work yet:** the schema uses
   SQLite-only SQL, so startup fails after the retries.
 - **`disabled`**: runs with no message store. `GET /api/v1/messages` returns `503 messages unavailable`.
 
-If every attempt fails, the server exits `1`:
+If every PostgreSQL attempt fails, the server exits `1`. SIGINT/SIGTERM during the retries
+stops the server immediately with exit code `0`. When every attempt fails:
 
 ```text
 Error: store: postgres: giving up after 4 attempts: ...
@@ -104,7 +108,7 @@ This setting stores **messages only**. Flow definitions are still kept in memory
 
 | Key | Default | Description |
 |---|---|---|
-| `dataDir` | `data` (relative to the working directory) | Directory for the default SQLite file. |
+| `dataDir` | `""` | Directory for the default SQLite file. Use an absolute path; a relative one resolves against the working directory, which is `/` under most service managers. |
 
 ### `auth`
 
