@@ -19,7 +19,7 @@ Get the server running locally in under 5 minutes.
 git clone https://github.com/weavster-dev/weavster.git
 cd weavster
 go build -o bin/weavster ./cmd/weavster
-./bin/weavster server 0.0.0.0:8080
+WEAVSTER_ADMIN_USER=admin WEAVSTER_ADMIN_PASSWORD=<yourpassword> ./bin/weavster server 127.0.0.1:8080
 ```
 
 Verify it's up — the server exposes its OpenAPI contract without auth:
@@ -28,10 +28,10 @@ Verify it's up — the server exposes its OpenAPI contract without auth:
 curl -s http://localhost:8080/api/openapi.yaml | head -n 5
 ```
 
-and the system status endpoint (API routes require the CSRF marker header):
+and the system status endpoint (API routes require Basic auth + CSRF marker header; loopback HTTP is supported for local CLI/script use):
 
 ```bash
-curl -s -H 'X-Weavster-CSRF: 1' http://localhost:8080/api/v1/system
+curl -s -u 'admin:<yourpassword>' -H 'X-Weavster-CSRF: 1' http://localhost:8080/api/v1/system
 ```
 
 Run the test suite to confirm a healthy checkout:

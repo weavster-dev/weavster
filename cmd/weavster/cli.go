@@ -40,6 +40,9 @@ func (c *httpClient) get(ctx context.Context, path string) (*http.Response, erro
 	if err != nil {
 		return nil, err
 	}
+	if c.user != "" || c.pass != "" {
+		req.SetBasicAuth(c.user, c.pass)
+	}
 	req.Header.Set(gateway.MarkerHeader, gateway.MarkerValue)
 	return c.http.Do(req)
 }
