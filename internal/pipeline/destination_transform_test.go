@@ -149,3 +149,26 @@ func TestFilterAfterDelivery(t *testing.T) {
 		t.Errorf("status = %s, want sent (a received it)", m.Status)
 	}
 }
+
+// TestStoppedDestinationHoldsFilteredMessage: a stopped destination whose
+// filter would drop the message still holds it queued until started.
+func TestStoppedDestinationHoldsFilteredMessage(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	p := New(store, func(Destination) (Sink, error) { return &recordingSink{}, nil }, nil, Options{})
+	f := Flow{ID: "f", Destinations: []Destination{
+		{Name: "a", Type: "file", Dir: "x"},
+		{Name: "b", Type: "file", Dir: "y", Transform: steps(rejectWhen("kind")), Stopped: true},
+	}}
+	res, err := p.Process(ctx, f, []byte(`{"kind":"adt"}`))
+	if err != nil || res.Status != state.StatusQueued {
+		t.Fatalf("Process = %+v, %v; want queued while b is stopped", res, err)
+	}
+	f.Destinations[1].Stopped = false
+	if _, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) { return f, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := store.Get(ctx, res.ID); m.Status != state.StatusSent {
+		t.Errorf("after starting b: %s, want sent (b filtered it)", m.Status)
+	}
+}

@@ -95,7 +95,9 @@ for that destination only:
 ```
 
 - The destination receives the result as `application/json`.
-- A destination whose filter drops the message is not delivered to and counts as done. The
+- A destination whose filter drops the message is not delivered to and counts as done. A
+  [stopped](flow-lifecycle.md#stopping-one-destination) destination still holds the message
+  until you start it; its filter is checked then. The
   message is `sent` once the other destinations succeed. It is `filtered` when every destination
   drops it.
 - Once any destination has a `transform`, every message sent to the flow must be a JSON object

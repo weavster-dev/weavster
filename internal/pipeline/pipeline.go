@@ -302,13 +302,15 @@ type destinationResult struct {
 }
 
 // destinationOutputs runs, once, the transform of every destination of f
-// that has one and still has work for m (not yet delivered or exhausted).
-// The transforms are deterministic, so every retry gets the same result.
+// that has one and still has work for m (not yet delivered). Stopped
+// destinations are left out: they hold the message, even one their filter
+// would drop, until started (their definition may change meanwhile). The
+// transforms are deterministic, so every retry gets the same result.
 func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 	outs := map[string]destinationResult{}
 	for _, d := range f.Destinations {
 		a := m.Attempts[d.Name]
-		if d.Transform == nil || (a.Attempts > 0 && a.LastError == "") {
+		if d.Transform == nil || d.Stopped || (a.Attempts > 0 && a.LastError == "") {
 			continue
 		}
 		var r destinationResult
