@@ -112,7 +112,7 @@ func TestMappingTableVersioned(t *testing.T) {
 
 func TestTransformNamesAndEnabled(t *testing.T) {
 	le := &LegacyExport{Flows: []LegacyFlow{
-		{Name: "ADT Inbound", Enabled: true, Destinations: []LegacyDestination{{Name: "HIS main", Type: "http"}}},
+		{Name: "ADT Inbound", Enabled: true, Destinations: []LegacyDestination{{Name: "HIS main", Type: "http"}, {Name: "HIS-main", Type: "file"}}},
 		{Name: "import"},
 		{Name: "ADT/Inbound"},
 		{Name: ""},
@@ -129,7 +129,11 @@ func TestTransformNamesAndEnabled(t *testing.T) {
 	if f := cfg.Flows["ADT-Inbound"]; !f.Enabled || f.Name != "ADT Inbound" || f.Destinations[0].Name != "HIS-main" {
 		t.Errorf("ADT-Inbound = %+v", f)
 	}
-	if len(review) != 5 { // four flow renames, one destination rename
+	if f := cfg.Flows["ADT-Inbound"]; len(f.Destinations) != 2 || f.Destinations[1].Name != "HIS-main-2" {
+		t.Errorf("colliding destination names = %+v", f.Destinations)
+	}
+	// four flow renames, two destination renames, two destinations needing a url/dir
+	if len(review) != 8 {
 		t.Errorf("review = %v", review)
 	}
 	store := config.NewMemStore()
@@ -138,5 +142,13 @@ func TestTransformNamesAndEnabled(t *testing.T) {
 	}
 	if got := validName(strings.Repeat("a", 200)); len(got) != 128 {
 		t.Errorf("validName length = %d", len(got))
+	}
+}
+
+func TestUniqueStaysWithinLimit(t *testing.T) {
+	long := strings.Repeat("a", 128)
+	got := unique(long, func(c string) bool { return c == long })
+	if len(got) != 128 || !strings.HasSuffix(got, "-2") {
+		t.Errorf("unique = %q (%d chars)", got, len(got))
 	}
 }

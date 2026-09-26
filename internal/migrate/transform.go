@@ -33,9 +33,7 @@ func Transform(le *LegacyExport, mappingVersion string) (*config.Config, []strin
 		if flowdef.Reserved(id) {
 			id += "-flow"
 		}
-		for base, n := id, 2; cfg.Flows[id].ID != ""; n++ {
-			id = fmt.Sprintf("%s-%d", base, n)
-		}
+		id = unique(id, func(c string) bool { return cfg.Flows[c].ID != "" })
 		if id != lf.Name {
 			review = append(review, "flow:"+lf.Name+":renamed:"+id)
 		}
@@ -44,16 +42,25 @@ func Transform(le *LegacyExport, mappingVersion string) (*config.Config, []strin
 			// Flow definitions carry no source settings yet (gap #1).
 			review = append(review, "flow:"+lf.Name+":source-path")
 		}
+		destNames := map[string]bool{}
 		for _, d := range lf.Destinations {
 			if d.Type != "http" && d.Type != "file" {
 				// Only http and file destinations exist; flag the rest.
 				review = append(review, "flow:"+lf.Name+":destination:"+d.Name+":"+d.Type)
 				continue
 			}
-			name := validName(d.Name)
+			name := unique(validName(d.Name), func(c string) bool { return destNames[c] })
+			destNames[name] = true
 			if name != d.Name {
 				review = append(review, "flow:"+lf.Name+":destination-renamed:"+d.Name+":"+name)
 			}
+			// Legacy destinations carry no URL or directory; the flow runs
+			// only once they are set.
+			setting := "url"
+			if d.Type == "file" {
+				setting = "dir"
+			}
+			review = append(review, "flow:"+lf.Name+":destination:"+name+":set-"+setting)
 			f.Destinations = append(f.Destinations, flowdef.Destination{Name: name, Type: d.Type})
 		}
 		var steps []map[string]any
@@ -102,4 +109,22 @@ func validName(name string) string {
 		b = b[:128]
 	}
 	return string(b)
+}
+
+// unique returns name, or name with the smallest "-N" suffix that is not
+// taken, shortened so the result stays within 128 characters.
+func unique(name string, taken func(string) bool) string {
+	if !taken(name) {
+		return name
+	}
+	for n := 2; ; n++ {
+		suffix := fmt.Sprintf("-%d", n)
+		base := name
+		if len(base)+len(suffix) > 128 {
+			base = base[:128-len(suffix)]
+		}
+		if c := base + suffix; !taken(c) {
+			return c
+		}
+	}
 }
