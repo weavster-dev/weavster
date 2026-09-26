@@ -233,6 +233,9 @@ func convert(v any, typ string) (any, error) {
 	case "number":
 		switch n := v.(type) {
 		case float64:
+			if math.IsNaN(n) || math.IsInf(n, 0) {
+				return nil, fmt.Errorf("%v is not a finite number", n)
+			}
 			return n, nil
 		case string:
 			f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
@@ -346,8 +349,26 @@ type filterStep struct {
 	reject      bool
 }
 
+// splitComparison finds the first == or != outside quoted strings.
+func splitComparison(when string) (left, op, right string, ok bool) {
+	var quote byte
+	for i := 0; i+1 < len(when); i++ {
+		c := when[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case (c == '=' || c == '!') && when[i+1] == '=':
+			return when[:i], when[i : i+2], when[i+2:], true
+		}
+	}
+	return "", "", "", false
+}
+
 var (
-	comparison = regexp.MustCompile(`^(.+?)\s*(==|!=)\s*(.+)$`)
 	// numberLiteral is the only number syntax the DSL accepts; any other
 	// unquoted operand is a path, so a field named "inf" stays a field.
 	numberLiteral = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$`)
@@ -363,16 +384,16 @@ func compileFilter(f compiler.FilterStep) (step, error) {
 		return nil, fmt.Errorf("filter.action must be reject or accept, got %q", f.Action)
 	}
 	when := strings.TrimSpace(f.When)
-	if m := comparison.FindStringSubmatch(when); m != nil {
-		left, err := parseOperand(m[1])
+	if l, op, rt, ok := splitComparison(when); ok {
+		left, err := parseOperand(l)
 		if err != nil {
 			return nil, fmt.Errorf("filter.when: %w", err)
 		}
-		right, err := parseOperand(m[3])
+		right, err := parseOperand(rt)
 		if err != nil {
 			return nil, fmt.Errorf("filter.when: %w", err)
 		}
-		st.left, st.op, st.right = left, m[2], right
+		st.left, st.op, st.right = left, op, right
 		return st, nil
 	}
 	left, err := parseOperand(when)

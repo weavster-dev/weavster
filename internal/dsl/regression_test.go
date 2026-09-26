@@ -2,6 +2,7 @@ package dsl
 
 import (
 	"encoding/json"
+	"math"
 	"strings"
 	"testing"
 )
@@ -21,6 +22,10 @@ func TestRunRegressions(t *testing.T) {
 			`{"a":{"k":1},"b":[1,2]}`, `{"a":{"k":1},"b":[1,2],"s":"{\"k\":1}","t":"[1,2]"}`, false},
 		{"null stays null for typed maps", "name: t\nsteps:\n  - map: { from: a, to: b, type: number }",
 			`{"a":null}`, `{"a":null,"b":null}`, false},
+		{"operator inside a quoted literal", "name: t\nsteps:\n  - filter: { when: \"'a==b' == v\", action: reject }",
+			`{"v":"a==b"}`, "", true},
+		{"!= inside a quoted literal", "name: t\nsteps:\n  - filter: { when: \"v != \\\"x!=y\\\"\", action: accept }",
+			`{"v":"z"}`, `{"v":"z"}`, false},
 		{"field named inf is a field", "name: t\nsteps:\n  - filter: { when: \"inf == 'x'\", action: reject }",
 			`{"inf":"x"}`, "", true},
 	}
@@ -88,6 +93,12 @@ func TestRejectsUnsupportedSyntaxAndValues(t *testing.T) {
 		p, _ := Compile(mustParse(t, "name: t\nsteps:\n  - map: { from: a, to: b, type: number }"))
 		if _, _, err := p.Run(map[string]any{"a": v}); err == nil || !strings.Contains(err.Error(), "is not a number") {
 			t.Errorf("%s: err = %v, want not-a-number", v, err)
+		}
+	}
+	pn, _ := Compile(mustParse(t, "name: t\nsteps:\n  - map: { from: a, to: b, type: number }"))
+	for _, v := range []float64{math.NaN(), math.Inf(1)} {
+		if _, _, err := pn.Run(map[string]any{"a": v}); err == nil || !strings.Contains(err.Error(), "not a finite number") {
+			t.Errorf("%v: err = %v, want not-finite", v, err)
 		}
 	}
 	p, _ := Compile(mustParse(t, "name: t\nsteps:\n  - map: { from: a, to: items.5 }"))
