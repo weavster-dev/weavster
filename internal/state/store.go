@@ -85,6 +85,7 @@ type sqlStore struct {
 func openSQLStore(ctx context.Context, db *sql.DB) (*sqlStore, error) {
 	s := &sqlStore{db: db}
 	if err := Migrate(ctx, db, Migrations()); err != nil {
+		_ = db.Close()
 		return nil, err
 	}
 	return s, nil

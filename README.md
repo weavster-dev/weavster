@@ -50,16 +50,18 @@ Full developer workflow and quality gates: see [CONTRIBUTING.md](CONTRIBUTING.md
 
 The [support matrix](docs/support-matrix.md) is the authoritative, per-capability list. In short:
 
-- **Running server** (`weavster server`): plain-HTTP REST API with the OpenAPI document,
+- **Running server** (`weavster server [--config FILE]`): REST API over HTTP and optional HTTPS,
+  with the OpenAPI document,
   `/api/v1/system`, CSRF marker enforcement, security headers, and TRACE/TRACK blocking;
   flow create/list/get/delete backed by an **in-memory** map (lost on restart, never executed);
-  read-only topology JSON built from those flows; message search that always returns `[]`.
+  read-only topology JSON built from those flows; message search against the configured
+  store (`memory`, `sqlite`, or `disabled`), which is always empty because nothing writes messages.
   **API routes are unauthenticated** — no login, authorization, or audit is enforced.
 - **CLI**: `weavster server`, `weavster test` (four built-in codec round-trip fixtures,
   JUnit/JSON output), and `-s` batch scripts with `help`, `status`, `version`, `flow list`,
   `user list`, `quit`. `-u`, `-p`, and `-c` are parsed but ignored; `-v` prints the local version.
-- **Library-only** (source and unit tests exist, not used by the server): auth, audit,
-  scheduler, adapters, outbox, codecs, WASM compiler/executor/registry, SQLite/PostgreSQL
+- **Library-only** (source and unit tests exist, not used by the server): auth enforcement, audit,
+  scheduler, adapters, outbox, codecs, WASM compiler/executor/registry, PostgreSQL
   store, config-as-code, Git store, alerts, notifiers, secrets, metrics/tracing.
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.
 - **Build**: CI verifies static `CGO_ENABLED=0` builds for linux/amd64, linux/arm64,
@@ -77,6 +79,7 @@ weavster test --format junit --output artifacts/
 
 ```bash
 weavster server 127.0.0.1:8080
+weavster server --config weavster.yaml   # see docs/server-config.md
 ```
 
 ## Layout
@@ -91,5 +94,5 @@ specs/           Phase 1/2 requirements and architecture
 
 ## Stack
 
-Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory store. Library-only packages
+Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory or SQLite message store. Library-only packages
 also depend on wazero, SQLite/PostgreSQL drivers, Prometheus, and OpenTelemetry.

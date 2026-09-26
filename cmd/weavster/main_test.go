@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/weavster-dev/weavster/internal/serverconfig"
 )
 
 func TestRunHelpAndVersion(t *testing.T) {
@@ -185,7 +187,7 @@ func TestPrivilegedGuard(t *testing.T) {
 
 func TestBuildServerServesSystem(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	handler, err := buildServer(logger)
+	handler, _, err := buildServer(context.Background(), logger, serverconfig.Default())
 	if err != nil {
 		t.Fatal(err)
 	}

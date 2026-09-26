@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"log/slog"
 	"net"
@@ -11,18 +12,20 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/weavster-dev/weavster/internal/codecs"
 	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/serverconfig"
 )
 
 // TestSupportMatrixWired proves every "Implemented (wired)" server/API row in
 // docs/support-matrix.md against the composed server.
 func TestSupportMatrixWired(t *testing.T) {
-	handler, err := buildServer(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler, _, err := buildServer(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)), serverconfig.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +94,7 @@ func TestSupportMatrixWired(t *testing.T) {
 // TestSupportMatrixCLI proves the wired CLI rows: -a/-s batch mode against
 // the composed server, and the no-subcommand default starting the server.
 func TestSupportMatrixCLI(t *testing.T) {
-	handler, err := buildServer(slog.New(slog.NewTextHandler(io.Discard, nil)))
+	handler, _, err := buildServer(context.Background(), slog.New(slog.NewTextHandler(io.Discard, nil)), serverconfig.Default())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,21 +194,50 @@ func TestSupportMatrixPrivilegedGuard(t *testing.T) {
 // sends SIGTERM and expects a clean exit 0.
 func runUntilSIGTERM(t *testing.T, args []string, readyURL string) {
 	t.Helper()
+	startCLI(t, args, readyURL)()
+}
+
+// startCLI runs the CLI with args in the background and waits until readyURL
+// answers. The returned stop func sends SIGTERM and expects a clean exit 0.
+func startCLI(t *testing.T, args []string, readyURL string) (stop func()) {
+	t.Helper()
 	done := make(chan int, 1)
-	var out, errb bytes.Buffer
-	go func() { done <- run(args, strings.NewReader(""), &out, &errb) }()
+	errb := &syncBuffer{}
+	go func() { done <- run(args, strings.NewReader(""), io.Discard, errb) }()
 	waitReady(t, readyURL)
-	if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case code := <-done:
-		if code != 0 {
-			t.Errorf("exit = %d, want 0 after SIGTERM (stderr %q)", code, errb.String())
+	return func() {
+		t.Helper()
+		if err := syscall.Kill(os.Getpid(), syscall.SIGTERM); err != nil {
+			t.Fatal(err)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("server did not shut down after SIGTERM")
+		select {
+		case code := <-done:
+			if code != 0 {
+				t.Errorf("exit = %d, want 0 after SIGTERM (stderr %q)", code, errb.String())
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("server did not shut down after SIGTERM")
+		}
 	}
+}
+
+// syncBuffer is a bytes.Buffer safe for the server goroutine to write while
+// the test reads it.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
 }
 
 func waitReady(t *testing.T, url string) {

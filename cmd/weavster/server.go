@@ -2,32 +2,53 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/weavster-dev/weavster/internal/audit"
 	"github.com/weavster-dev/weavster/internal/auth"
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/observability"
+	"github.com/weavster-dev/weavster/internal/serverconfig"
 	"github.com/weavster-dev/weavster/internal/state"
 	"github.com/weavster-dev/weavster/internal/topology"
 )
 
-// buildServer wires all ports/adapters into the single binary (arch §3).
-func buildServer(logger *slog.Logger) (http.Handler, error) {
-	store := state.NewMemStore()
+// buildServer wires the ports/adapters selected by cfg into the single binary
+// (arch §3). The returned func releases the message store.
+func buildServer(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config) (http.Handler, func() error, error) {
+	store, err := openStore(ctx, logger, cfg.Store)
+	if err != nil {
+		return nil, nil, err
+	}
+	closeStore := func() error { return nil }
+	var messages gateway.MessageSearcher
+	if store != nil {
+		closeStore = store.Close
+		messages = &messageAdapter{store: store}
+	}
 
+	pp := cfg.Auth.PasswordPolicy
 	provider := auth.NewLocalProvider(auth.Options{
-		Policy:          auth.PasswordPolicy{MinLength: 8, MinUpper: 1, MinLower: 1, MinNumeric: 1},
-		Lockout:         auth.LockoutPolicy{RetryLimit: 5, LockoutPeriod: 300},
+		Policy: auth.PasswordPolicy{
+			MinLength: pp.MinLength, MinUpper: pp.MinUpper, MinLower: pp.MinLower,
+			MinNumeric: pp.MinNumeric, MinSpecial: pp.MinSpecial,
+		},
+		Lockout: auth.LockoutPolicy{
+			RetryLimit: cfg.Auth.Lockout.RetryLimit, LockoutPeriod: cfg.Auth.Lockout.LockoutPeriodSeconds,
+		},
 		AntiEnumeration: true,
 	})
 	_ = provider.CreateUser(context.Background(), auth.User{
@@ -42,57 +63,155 @@ func buildServer(logger *slog.Logger) (http.Handler, error) {
 		Authorizer:  authorizerAdapter{},
 		Audit:       auditAdapter{sink},
 		Flows:       flows,
-		Messages:    &messageAdapter{store: store},
+		Messages:    messages,
 		Topology:    &topologyAdapter{flows: flows},
 		System:      observability.SystemStatus("weavster", version, buildDate),
-		RequireCSRF: true,
+		RequireCSRF: cfg.Listen.RequireMarkerHeader,
 	})
-	return srv.Router(), nil
+	return srv.Router(), closeStore, nil
 }
 
-// runServer starts the composition root, enforcing the privileged-run guard
-// (spec §11). Blocks until SIGINT/SIGTERM.
+// openStore connects the configured message store, retrying failed attempts
+// (spec §11). The disabled dialect returns a nil Store.
+func openStore(ctx context.Context, logger *slog.Logger, sc serverconfig.Store) (state.Store, error) {
+	var open func(context.Context, string) (state.Store, error)
+	switch sc.Dialect {
+	case serverconfig.DialectDisabled:
+		logger.Warn("message store disabled; message endpoints return 503")
+		return nil, nil
+	case serverconfig.DialectMemory:
+		return state.NewMemStore(), nil
+	case serverconfig.DialectSQLite:
+		if sc.DSN != ":memory:" && !strings.HasPrefix(sc.DSN, "file:") {
+			if err := os.MkdirAll(filepath.Dir(sc.DSN), 0o700); err != nil {
+				return nil, fmt.Errorf("store: %w", err)
+			}
+		}
+		open = state.OpenSQLite
+	default:
+		open = func(ctx context.Context, dsn string) (state.Store, error) {
+			return state.OpenPostgres(ctx, dsn, sc.MaxConnections)
+		}
+	}
+
+	var err error
+	for attempt := 1; attempt <= sc.MaxRetry+1; attempt++ {
+		if attempt > 1 {
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(time.Duration(sc.RetryWaitMs) * time.Millisecond):
+			}
+		}
+		var s state.Store
+		if s, err = open(ctx, sc.DSN); err == nil {
+			return s, nil
+		}
+		logger.Warn("store connection failed", "dialect", sc.Dialect, "attempt", attempt, "error", err)
+	}
+	return nil, fmt.Errorf("store: %s: giving up after %d attempts: %w", sc.Dialect, sc.MaxRetry+1, err)
+}
+
+// runServer loads the configuration, enforces the privileged-run guard
+// (spec §11), and serves until SIGINT/SIGTERM.
 func runServer(args []string, stderr io.Writer) int {
+	fs := flag.NewFlagSet("server", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "", "path to the server configuration file")
+	if err := fs.Parse(args); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return 0
+		}
+		return 1
+	}
+
+	cfg := serverconfig.Default()
+	if *configPath != "" {
+		var err error
+		if cfg, err = serverconfig.Load(*configPath); err != nil {
+			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 1
+		}
+	}
+	if fs.NArg() > 0 {
+		cfg.Listen.Address = fs.Arg(0)
+	}
+	if err := cfg.Validate(); err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+
 	allowRoot := os.Getenv("WEAVSTER_ALLOW_ROOT") == "1"
 	if err := checkPrivileged(allowRoot, isPrivileged); err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 		return 1
 	}
 
-	addr := "127.0.0.1:8080"
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		addr = args[0]
-	}
-
-	logger := slog.New(slog.NewTextHandler(stderr, nil))
-	handler, err := buildServer(logger)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return 1
-	}
-	server := &http.Server{Addr: addr, Handler: handler}
-
-	// Register for signals before serving so a stop signal that arrives as
-	// soon as the listener is up is never lost.
+	// Register for signals before connecting or serving so a stop signal that
+	// arrives as soon as the listener is up is never lost.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
 	defer signal.Stop(sig)
 
-	errCh := make(chan error, 1)
-	go func() {
-		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
-		}
-	}()
+	logger := slog.New(slog.NewTextHandler(stderr, nil))
+	handler, closeStore, err := buildServer(context.Background(), logger, cfg)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+	defer func() { _ = closeStore() }()
 
+	servers, err := listen(cfg, handler)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 1
+	}
+	errCh := make(chan error, len(servers))
+	for _, s := range servers {
+		go func(s *http.Server) {
+			var err error
+			if s.TLSConfig != nil {
+				err = s.ListenAndServeTLS(cfg.TLS.CertFile, cfg.TLS.KeyFile)
+			} else {
+				err = s.ListenAndServe()
+			}
+			if err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errCh <- err
+			}
+		}(s)
+	}
+
+	code := 0
 	select {
 	case err := <-errCh:
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
-		return 1
+		code = 1
 	case <-sig:
-		_ = server.Shutdown(context.Background())
-		return 0
 	}
+	for _, s := range servers {
+		_ = s.Shutdown(context.Background())
+	}
+	return code
+}
+
+// listen builds the cleartext and TLS listeners enabled in cfg.
+func listen(cfg serverconfig.Config, handler http.Handler) ([]*http.Server, error) {
+	var servers []*http.Server
+	if cfg.Listen.Address != "" {
+		servers = append(servers, &http.Server{Addr: cfg.Listen.Address, Handler: handler, ReadHeaderTimeout: 10 * time.Second})
+	}
+	if cfg.Listen.TLSAddress != "" {
+		opts := gateway.DefaultTLSOptions()
+		if cfg.TLS.MinVersion == "1.3" {
+			opts.MinVersion = tls.VersionTLS13
+		}
+		tlsCfg, err := gateway.BuildTLSConfig(opts)
+		if err != nil {
+			return nil, err
+		}
+		servers = append(servers, &http.Server{Addr: cfg.Listen.TLSAddress, Handler: handler, TLSConfig: tlsCfg, ReadHeaderTimeout: 10 * time.Second})
+	}
+	return servers, nil
 }
 
 // isPrivileged reports whether the process runs under a privileged OS account.
