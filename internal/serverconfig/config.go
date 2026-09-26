@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
 
@@ -106,6 +107,10 @@ func Load(path string) (Config, error) {
 	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
 		return cfg, fmt.Errorf("config: %s: %w", path, err)
 	}
+	var extra yaml.Node
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return cfg, fmt.Errorf("config: %s: must contain exactly one YAML document", path)
+	}
 	return cfg, nil
 }
 
@@ -122,6 +127,14 @@ func (c Config) StoreDSN() string {
 func (c Config) Validate() error {
 	if c.Listen.Address == "" && c.Listen.TLSAddress == "" {
 		return errors.New("config: listen.address or listen.tlsAddress is required")
+	}
+	for key, addr := range map[string]string{"listen.address": c.Listen.Address, "listen.tlsAddress": c.Listen.TLSAddress} {
+		if addr == "" {
+			continue
+		}
+		if _, _, err := net.SplitHostPort(addr); err != nil {
+			return fmt.Errorf("config: %s must be host:port, got %q", key, addr)
+		}
 	}
 	if c.Listen.TLSAddress != "" && (c.TLS.CertFile == "" || c.TLS.KeyFile == "") {
 		return errors.New("config: listen.tlsAddress requires tls.certFile and tls.keyFile")
@@ -154,10 +167,17 @@ func (c Config) Validate() error {
 			return errors.New("config: auth.passwordPolicy.minLength and auth.lockout values must be >= 0")
 		}
 	}
+	forbidden := 0
 	for _, v := range []int{p.MinUpper, p.MinLower, p.MinNumeric, p.MinSpecial} {
 		if v < -1 {
 			return errors.New("config: auth.passwordPolicy character-class counts must be >= -1 (-1 forbids the class)")
 		}
+		if v == -1 {
+			forbidden++
+		}
+	}
+	if forbidden == 4 {
+		return errors.New("config: auth.passwordPolicy forbids every character class, so no password can satisfy it")
 	}
 	return nil
 }

@@ -39,6 +39,10 @@ auth:
 			}
 		}},
 		{name: "unknown key", yaml: "store: {dialekt: sqlite}\n", wantErr: "field dialekt not found"},
+		{name: "second document", yaml: "store: {dialect: memory}\n---\nstore: {dialect: sqlite}\n", wantErr: "exactly one YAML document"},
+		{name: "bad listen address", yaml: "listen: {address: \"8080\"}\n", wantErr: "listen.address must be host:port"},
+		{name: "bad tls address", yaml: "listen: {tlsAddress: \"localhost\"}\n", wantErr: "listen.tlsAddress must be host:port"},
+		{name: "all classes forbidden", yaml: "auth: {passwordPolicy: {minUpper: -1, minLower: -1, minNumeric: -1, minSpecial: -1}}\n", wantErr: "forbids every character class"},
 		{name: "malformed yaml", yaml: "listen: [\n", wantErr: "config:"},
 		{name: "no listener", yaml: "listen: {address: \"\"}\n", wantErr: "listen.address or listen.tlsAddress is required"},
 		{name: "tls without cert", yaml: "listen: {tlsAddress: \":8443\"}\n", wantErr: "requires tls.certFile and tls.keyFile"},

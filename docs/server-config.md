@@ -11,8 +11,9 @@ Without `--config`, the server uses the defaults below. A positional address ove
 `--config` **before** the address. Anything after the address is rejected with
 `Error: unexpected arguments`.
 
-The file is checked strictly at startup. An unknown key, a value of the wrong type, or an
-invalid combination stops the server with exit code `1` and a message like:
+The file is checked strictly at startup. It must contain exactly one YAML document. An unknown
+key, a value of the wrong type, an address that isn't `host:port`, or an invalid combination (for
+example a password policy that forbids every character class) stops the server with exit code `1` and a message like:
 
 ```text
 Error: config: /etc/weavster/weavster.yaml: yaml: unmarshal errors:
