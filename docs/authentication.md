@@ -119,7 +119,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 |---|---|
 | `GET /api/v1/system`, `/api/v1/auth/me`, `POST /api/v1/auth/password`, `POST /api/v1/auth/logout` | any signed-in user |
 | `GET /api/v1/flows`, `GET /api/v1/flows/{id}`, `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | `flows:view` |
-| `POST /api/v1/flows`, `DELETE /api/v1/flows/{id}` | `flows:edit` |
+| `POST /api/v1/flows`, `PUT /api/v1/flows/{id}`, `DELETE /api/v1/flows/{id}`, `POST /api/v1/flows/{id}/{enable,disable}` | `flows:edit` |
 | `GET /api/v1/messages` | `messages:view` |
 | `POST /api/v1/flows/{id}/messages` | `messages:send` |
 | `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all` | `flows:deploy` |

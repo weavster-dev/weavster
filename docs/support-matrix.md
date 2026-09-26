@@ -52,7 +52,8 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 
 | Capability | Tier | Notes |
 |---|---|---|
-| Flow lifecycle: deploy, undeploy, start, stop, pause, halt, resume, redeploy-all, with transitions enforced | Implemented (wired) | `TestFlowLifecycle`. API only; no per-destination start/stop, no auto-deploy, no dependencies. See [Flow lifecycle](flow-lifecycle.md). |
+| Flow update/rename (`PUT /api/v1/flows/{id}`), enable/disable, auto-deploy of enabled flows at startup (`flows.deployOnStartup`) | Implemented (wired) | `TestFlowUpdateAndEnable`, `TestDeployOnStartupDisabled` |
+| Flow lifecycle: deploy, undeploy, start, stop, pause, halt, resume, redeploy-all, with transitions enforced | Implemented (wired) | `TestFlowLifecycle`. API only; no per-destination start/stop, no dependencies. See [Flow lifecycle](flow-lifecycle.md). |
 | Message intake: `POST /api/v1/flows/{id}/messages` | Implemented (wired) | `TestPipelineEndToEnd`. See [Processing messages](processing-messages.md). |
 | Receive → persist → filter → transform → deliver to each destination, with per-destination results and aggregate status | Implemented (wired) | `TestPipelineEndToEnd`. Synchronous, one attempt; no response processing. |
 | `http` and `file` destinations | Implemented (wired) | `TestPipelineEndToEnd` |

@@ -96,6 +96,16 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
 	flows := flowAdapter{store: repo, stats: stats, locks: newFlowLocks()}
+	if cfg.Flows.DeployOnStartup && store != nil {
+		started, err := flows.DeployEnabled(ctx)
+		if err != nil {
+			_ = closeStore()
+			return nil, nil, nil, err
+		}
+		if len(started) > 0 {
+			logger.Info("auto-deployed enabled flows", "flows", started)
+		}
+	}
 	var ingest gateway.MessageIngester
 	workers := func(context.Context) {}
 	if store != nil {
@@ -120,6 +130,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Messages:    messages,
 		Ingest:      ingest,
 		Lifecycle:   flows,
+		FlowUpdates: flows,
 		Stats:       statsAdapter{flows: flows, stats: stats},
 		Events:      eventsAdapter{events},
 		Topology:    topologyAdapter{flows: flows, stats: stats},
@@ -550,6 +561,59 @@ func (a flowAdapter) setStatus(ctx context.Context, f gateway.Flow, status strin
 		return gateway.Flow{}, flowErr(err)
 	}
 	return f, nil
+}
+
+// Update replaces a flow's definition, keeping its runtime status. It is
+// serialized with lifecycle changes of the flow; messages received
+// afterwards use the new definition.
+func (a flowAdapter) Update(ctx context.Context, id string, f gateway.Flow) (gateway.Flow, error) {
+	defer a.lock(id, true)()
+	current, err := a.Get(ctx, id)
+	if err != nil {
+		return gateway.Flow{}, err
+	}
+	pf, err := toPipelineFlow(f)
+	if err == nil {
+		err = pipeline.Validate(pf)
+	}
+	if err != nil {
+		return gateway.Flow{}, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+	}
+	f.ID = id
+	return a.setStatus(ctx, f, current.Status)
+}
+
+// SetEnabled sets auto-deploy eligibility without changing the status.
+func (a flowAdapter) SetEnabled(ctx context.Context, id string, enabled bool) (gateway.Flow, error) {
+	defer a.lock(id, true)()
+	f, err := a.Get(ctx, id)
+	if err != nil {
+		return gateway.Flow{}, err
+	}
+	f.Enabled = enabled
+	return a.setStatus(ctx, f, f.Status)
+}
+
+// DeployEnabled deploys and starts every enabled flow that is undeployed
+// (flows.deployOnStartup, spec §6.1) and returns the ids it started.
+func (a flowAdapter) DeployEnabled(ctx context.Context) ([]string, error) {
+	flows, err := a.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var started []string
+	for _, f := range flows {
+		if !f.Enabled || f.Status != flowlife.Undeployed {
+			continue
+		}
+		for _, action := range []string{flowlife.Deploy, flowlife.Start} {
+			if _, err := a.Transition(ctx, f.ID, action); err != nil {
+				return started, fmt.Errorf("auto-deploy %s: %w", f.ID, err)
+			}
+		}
+		started = append(started, f.ID)
+	}
+	return started, nil
 }
 
 // RedeployAll undeploys and re-deploys every flow that is not undeployed;

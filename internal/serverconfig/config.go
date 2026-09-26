@@ -30,6 +30,14 @@ type Config struct {
 	Paths    Paths    `yaml:"paths"`
 	Auth     Auth     `yaml:"auth"`
 	Delivery Delivery `yaml:"delivery"`
+	Flows    Flows    `yaml:"flows"`
+}
+
+// Flows configures flow handling at startup (spec §4.5).
+type Flows struct {
+	// DeployOnStartup deploys and starts every enabled, undeployed flow when
+	// the server starts.
+	DeployOnStartup bool `yaml:"deployOnStartup"`
 }
 
 // Delivery configures delivery retries (spec §2.5).
@@ -103,6 +111,7 @@ func Default() Config {
 			Lockout:        Lockout{RetryLimit: 5, LockoutPeriodSeconds: 300},
 		},
 		Delivery: Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000},
+		Flows:    Flows{DeployOnStartup: true},
 	}
 }
 
