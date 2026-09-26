@@ -333,7 +333,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>YAML DSL transforms</td>
 <td>Library-only</td>
-<td>The compiler validates DSL, but its generated code discards the steps and returns the input unchanged.</td>
+<td>An interpreter for <code>map</code>, <code>set</code>, and <code>filter</code> steps exists, but the server does not run transforms on messages yet. <code>build</code> and <code>destinationSet</code> are not supported.</td>
 </tr>
 <tr>
 <td>WASM executor (wazero), module registry</td>
