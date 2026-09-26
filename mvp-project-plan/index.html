@@ -165,8 +165,8 @@
 <td>Declarative <strong>YAML DSL</strong> (default) + multi-language <strong>WASI</strong> (advanced)</td>
 </tr>
 <tr>
-<td>YAML-DSL codegen</td>
-<td><strong>Go + TinyGo → WASI</strong> (pinned, reproducible toolchain)</td>
+<td>YAML-DSL execution</td>
+<td><strong>Prebuilt WASM DSL interpreter</strong> embedded in the binary (built with pinned Go + TinyGo in CI; #107 D-03)</td>
 </tr>
 <tr>
 <td>Databases</td>
@@ -192,8 +192,8 @@
 </table>
 <p><strong>Architecture principle:</strong> hexagonal (ports &amp; adapters). Every component depends only on a <strong>Go interface (port)</strong>, never another component's concrete type. This is what allows the monolith to be split per-component on Kubernetes later without a rewrite.</p>
 <h2 id="3-mvp-scope-in-vs-out">3. MVP scope — in vs out</h2>
-<p><strong>In scope (MVP):</strong> single Go binary/container; Postgres + SQLite/in-memory via the <code>Store</code> port; TLS + mTLS; local auth (password policy, lockout, anti-enumeration); built-in RBAC permission set; YAML DSL (auto-compiled) + WASI transforms; internal scheduler with Postgres <code>SKIP LOCKED</code> job claiming; <code>weavster test</code>; Git-backed config-as-code + IaC samples; REST API + OpenAPI; <strong>read-only</strong> flow-topology web UI; Prometheus metrics + structured logs + events; and the <strong>three critical gap closures</strong> below.</p>
-<p><strong>Explicitly out (Enterprise, port exists but implementation excluded):</strong> SSO (OIDC/SAML), complex RBAC/ABAC (OPA/Cedar), immutable/SIEM audit, K8s horizontal scaling, Redis/NATS queue + leader election, distributed tracing + transform replay, multi-tenancy, DICOM service-class provider. <em>Leave the interface, stub the rest.</em></p>
+<p><strong>In scope (MVP):</strong> single Go binary/container; Postgres + SQLite/in-memory via the <code>Store</code> port; TLS + mTLS; local auth (password policy, lockout, anti-enumeration); built-in RBAC permission set; YAML DSL (executed by an embedded, prebuilt WASM interpreter — #107 D-03) + WASI transforms; internal scheduler with Postgres <code>SKIP LOCKED</code> job claiming; <code>weavster test</code>; Git-backed config-as-code + IaC samples; REST API + OpenAPI; <strong>read-only</strong> flow-topology web UI; Prometheus metrics + structured logs + events; and the <strong>three critical gap closures</strong> below.</p>
+<p><strong>Explicitly out (Enterprise, port exists but implementation excluded):</strong> SSO (OIDC/SAML), complex RBAC/ABAC (OPA/Cedar), immutable/SIEM audit, K8s horizontal scaling, Redis/NATS queue + leader election, distributed tracing + transform replay, multi-tenancy, DICOM service-class provider, message-queue broker (queue/topic) adapters, KMS/Vault secret rotation, object/blob storage. <em>Leave the interface, stub the rest.</em></p>
 <h2 id="4-critical-gaps-folded-into-the-mvp-from-the-viability-analysis">4. Critical gaps folded into the MVP (from the viability analysis)</h2>
 <table>
 <thead>
@@ -205,7 +205,7 @@
 <tbody>
 <tr>
 <td><strong>#1 State migration</strong></td>
-<td>First-class <code>import legacy</code> command + ETL (extract → transform → load) with dry-run report and opt-in <code>--with-content</code>.</td>
+<td>First-class <code>import legacy</code> command + ETL (extract → transform → load) with dry-run report and opt-in <code>--with-content</code>. Remains MVP scope but is blocked until anonymized legacy export samples are available and a supported legacy version range is pinned (#107 D-01).</td>
 </tr>
 <tr>
 <td><strong>#2 WASM module lifecycle</strong></td>
@@ -213,7 +213,7 @@
 </tr>
 <tr>
 <td><strong>#5 Idempotency &amp; retries</strong></td>
-<td>Transactional outbox + deterministic <code>idempotency_key</code> on all side effects; bounded retries + dead-letter state.</td>
+<td>Transactional outbox + deterministic <code>idempotency_key</code> (stable across retries, #107 D-10) on all side effects; bounded retries + dead-letter state.</td>
 </tr>
 <tr>
 <td><strong>#4 HA floor (partial)</strong></td>
@@ -283,7 +283,7 @@
 <tr>
 <td>Transform Compiler</td>
 <td><code>internal/compiler</code></td>
-<td>YAML DSL → TinyGo → WASM + schema validation</td>
+<td>YAML DSL schema validation → IR for the embedded DSL interpreter</td>
 </tr>
 <tr>
 <td>Module Registry</td>

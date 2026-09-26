@@ -172,8 +172,8 @@
 <td><strong>wazero</strong> (<code>github.com/tetratelabs/wazero</code>)</td>
 </tr>
 <tr>
-<td>DSL codegen target</td>
-<td><strong>Go + TinyGo → WASI</strong> (pinned toolchain, external)</td>
+<td>DSL execution</td>
+<td><strong>Prebuilt WASM DSL interpreter</strong> embedded in the binary; built with pinned Go + TinyGo in CI only (#107 D-03)</td>
 </tr>
 <tr>
 <td>Databases</td>
@@ -198,7 +198,7 @@
 │   ├── state/                   # State Manager (Store: postgres/sqlite/memory) + migrations + search/export
 │   ├── adapters/                # Source/Sink ports (file/http/tcp-MLLP/db/smtp/webservice/interflow/document)
 │   ├── codecs/                  # Data-type codecs (HL7 v2, X12, NCPDP, JSON, XML, delimited, raw)
-│   ├── compiler/                # YAML DSL → TinyGo → WASM codegen + schema validation
+│   ├── compiler/                # YAML DSL schema validation → IR for the embedded interpreter
 │   ├── registry/                # WASM module registry (version/sign/promote/rollback/GC)
 │   ├── config/                  # config-as-code: plan/apply/drift, JSON-Schema validation
 │   ├── gitstore/                # native Git-backed config store (commit/push/pull/history/restore)
