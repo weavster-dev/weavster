@@ -28,7 +28,7 @@
 4. Provide a **dry-run report** (counts + list of constructs that could not be auto-translated) before any write.
 5. Make the legacy→YAML mapper a versioned, separately-tested component (its own transform fixtures) so the migration itself is testable via the built-in `test` command.
 
-**Disposition:** **MVP** — must ship with the first release; no customer can adopt without it.
+**Disposition:** **MVP** — must ship with the first release; no customer can adopt without it. Implementation is blocked until anonymized legacy export samples are available and a supported legacy version range is pinned (#107 D-01).
 
 ---
 

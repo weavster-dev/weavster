@@ -29,7 +29,7 @@
 ## 2. Non-Negotiable Constraints (restated)
 
 1. **Installation** — one command: a `curl | bash` installer that downloads and verifies a signed static binary (MVP; Homebrew and apt/RPM packages are post-MVP per #107 D-07). Zero heavy SDKs (Rust/Java/.NET) required on the end-user host.
-2. **Transforms/filters** — all user business logic compiles to **WASM**; the host treats WASM modules as sandboxed plugins.
+2. **Transforms/filters** — all user business logic executes within **WASM**: YAML DSL runs in the embedded, prebuilt interpreter module, and advanced guest modules are compiled to WASM (#107 D-03); the host treats WASM modules as sandboxed plugins.
 3. **Local DX** — running locally (testing transforms) must not require Postgres; use SQLite or in-memory state.
 4. **Testing** — built-in `test` command; JUnit XML or JSON output; runs via CLI and natively in CI/CD (GitHub Actions/GitLab).
 5. **IaC** — configuration is 100% code-defined (YAML/JSON); deployment/updates driven by Terraform/OpenTofu/Pulumi; sample modules provided.
@@ -230,7 +230,7 @@ module "weavster" {
 
 ## 8. Packaging, Deployment & Docs
 
-- **Artifacts:** single static binary (linux/amd64, linux/arm64, darwin/arm64) + OCI container (distroless, non-root).
+- **Artifacts:** single static binary (linux/amd64, linux/arm64, darwin/arm64) + OCI container image (distroless, non-root). The image build and smoke test are MVP CI gates; publishing the image to a registry is post-MVP (#107 D-07).
 - **Install:** signed static binaries + checksums and a `curl | bash` installer that verifies them (MVP). Homebrew tap, Debian/RPM repos, and published container images are post-MVP (#107 D-07). No Rust/Java/.NET runtime needed on the host.
 - **Docs:** MkDocs human site (getting started, flow authoring, YAML DSL reference, guest SDK reference, operations runbook) + `agent-docs/` containing `openapi.yaml`, `schemas/*.json` (flow/config/transform JSON Schemas), and `llms.txt` (agent context index).
 
@@ -252,7 +252,7 @@ module "weavster" {
 - REST API + OpenAPI 3.1; **read-only** web UI (flow topology/connectivity graph) served by the binary; CLI.
 - Prometheus metrics + structured logs + events.
 - **Critical-gap closures (folded into MVP per stakeholder decision):**
-  - **Legacy data import/migration** — a first-class `import legacy` command + ETL adapter for the legacy export format (see gap #1).
+  - **Legacy data import/migration** — a first-class `import legacy` command + ETL adapter for the legacy export format (see gap #1). Remains MVP scope but is blocked until anonymized legacy export samples are available and a supported legacy version range is pinned (#107 D-01).
   - **WASM module lifecycle** — a versioned, signed, rollbackable module registry (see gap #2).
   - **Idempotency & retries** — transactional outbox + deterministic idempotency keys on all external side effects (see gap #5).
 

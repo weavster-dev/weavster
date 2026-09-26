@@ -43,7 +43,7 @@ It is a **greenfield replacement** for the legacy integration engine, built to t
 
 | Gap | MVP closure |
 |---|---|
-| **#1 State migration** | First-class `import legacy` command + ETL (extract → transform → load) with dry-run report and opt-in `--with-content`. |
+| **#1 State migration** | First-class `import legacy` command + ETL (extract → transform → load) with dry-run report and opt-in `--with-content`. Remains MVP scope but is blocked until anonymized legacy export samples are available and a supported legacy version range is pinned (#107 D-01). |
 | **#2 WASM module lifecycle** | Versioned, signed, rollbackable module registry (draft → promoted → active → superseded → retired). |
 | **#5 Idempotency & retries** | Transactional outbox + deterministic `idempotency_key` (stable across retries, #107 D-10) on all side effects; bounded retries + dead-letter state. |
 | **#4 HA floor (partial)** | Durable job claim + lease heartbeat + startup reconciler (crash-safety only; full HA is Enterprise). |

@@ -10,7 +10,7 @@
 
 ## 1. Scope & Principles
 
-- **Read-only.** The UI consumes only `GET` endpoints (and optionally a server-sent stream). No mutation endpoints exist for this surface. Git/CI remains the sole path for config changes.
+- **Read-only.** The UI consumes only `GET` endpoints (and optionally a server-sent stream). No mutation endpoints exist for this surface. Configuration changes go through the REST API — the canonical, API-first mutation surface used by the CLI, `config plan/apply`, CI/CD, and IaC tooling — never through the UI (#107 D-04).
 - **Two levels:** an **overview** graph (flows + inter-flow connectivity) and a **flow-internal** graph (source → transforms → destinations) as a drill-down.
 - **Connectivity = static wiring; Activity = live traffic** layered on top.
 - **No layout in the backend.** Nodes/edges carry *structure and status only*, never x/y coordinates. Layout is computed client-side (and, for MVP, persisted client-side only).
