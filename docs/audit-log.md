@@ -22,16 +22,19 @@ time=2026-09-26T12:00:00Z level=INFO msg=audit id=3 actor=admin action="POST /ap
 | `GET /api/v1/messages` (message content can hold protected health information), including rejected reads | `phi.access` |
 | Every `POST /api/v1/auth/login`, with the outcome in `status`: `200`, `400` (malformed body), `401`, `500`, or `503` | `auth.login` |
 | Any other request rejected with `401`: missing credentials, wrong Basic password, or an unknown, expired, or revoked token | `auth.failure` |
+| A non-GET request (including login) rejected with `400` for a missing `X-Weavster-CSRF` marker | method and literal path, e.g. `POST /api/v1/auth/login` |
 
 Other reads, such as `GET /api/v1/flows` and `GET /api/v1/topology`, are not recorded.
 
 ## Redaction
 
 Request bodies are never recorded, so passwords sent to `/auth/login` or `/auth/password`
-never reach the log. A query parameter is logged as `[redacted]` when any word in its name is `password`, `token`,
-`secret`, `authorization`, `credential`, `ssn`, or `phi`, ignoring case. A new word starts at
-`-`, `_`, `.`, or a lowercase-to-uppercase change. So `apiToken`, `X-Token`, `client_secret`,
-and `newPassword` are redacted, while `className` is not.
+never reach the log. A query parameter is logged as `[redacted]` when, ignoring case:
+
+- its name contains `password`, `token`, `secret`, `authorization`, or `credential` anywhere
+  (`apiToken`, `X-Token`, `client_secret`, `newPassword`, `notpassword`), or
+- one of its words is `ssn` or `phi` (`patient_ssn`, `phiFlag`). A new word starts at `-`,
+  `_`, `.`, or a lowercase-to-uppercase change, so `className` and `graphId` are not redacted.
 
 ```text
 actor=admin action=phi.access resource=/api/v1/messages detail="map[query.apiToken:[redacted] query.status:sent status:200]"
@@ -39,6 +42,6 @@ actor=admin action=phi.access resource=/api/v1/messages detail="map[query.apiTok
 
 ## Retention
 
-Audit entries exist only in the log output and in process memory, which keeps up to the
+Audit entries exist only in the log output and in process memory, which keeps exactly the
 newest 10,000 entries. They are not stored and cannot be searched through the API yet. To keep them, collect stderr with your log shipper
 (for example journald or a container log driver).

@@ -14,17 +14,23 @@ const (
 	ActionConfig    = "config.apply"
 )
 
-// sensitiveKeys are parameters excluded from audit capture (spec §10).
-var sensitiveKeys = map[string]bool{
-	"password": true, "token": true, "secret": true, "authorization": true,
-	"credential": true, "ssn": true, "phi": true,
-}
+// Sensitive parameter names (spec §10). Long terms match as substrings of the
+// key; the short terms "ssn" and "phi" only match as whole words, since as
+// substrings they hit ordinary names such as "className" and "graphId".
+var (
+	sensitiveSubstrings = []string{"password", "token", "secret", "authorization", "credential"}
+	sensitiveWords      = map[string]bool{"ssn": true, "phi": true}
+)
 
-// isSensitive reports whether any word of key is sensitive, ignoring case.
-// Words are split at non-alphanumerics and lower-to-upper case changes, so
-// "newPassword", "X-Token", and "client_secret" match but "className" does
-// not.
+// isSensitive reports whether key names a sensitive parameter, ignoring case.
+// Words are split at non-alphanumerics and lower-to-upper case changes.
 func isSensitive(key string) bool {
+	lower := strings.ToLower(key)
+	for _, s := range sensitiveSubstrings {
+		if strings.Contains(lower, s) {
+			return true
+		}
+	}
 	var words []string
 	start := 0
 	runes := []rune(key)
@@ -41,7 +47,7 @@ func isSensitive(key string) bool {
 	}
 	words = append(words, string(runes[start:]))
 	for _, w := range words {
-		if sensitiveKeys[strings.ToLower(w)] {
+		if sensitiveWords[strings.ToLower(w)] {
 			return true
 		}
 	}

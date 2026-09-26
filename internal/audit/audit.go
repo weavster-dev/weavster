@@ -29,7 +29,8 @@ type AuditSink interface {
 type LocalSink struct {
 	mu      sync.Mutex
 	seq     int64
-	entries []Entry
+	entries []Entry // ring buffer of at most maxEntries
+	next    int     // ring index of the oldest entry once full
 	logger  *slog.Logger
 }
 
@@ -53,9 +54,11 @@ func (s *LocalSink) Record(_ context.Context, e Entry) error {
 	e.ID = s.seq
 	e.At = time.Now()
 	e.Detail = RedactSensitive(e.Detail)
-	s.entries = append(s.entries, e)
-	if len(s.entries) >= 2*maxEntries { // amortized trim to the newest maxEntries
-		s.entries = append([]Entry(nil), s.entries[len(s.entries)-maxEntries:]...)
+	if len(s.entries) < maxEntries {
+		s.entries = append(s.entries, e)
+	} else {
+		s.entries[s.next] = e // overwrite the oldest
+		s.next = (s.next + 1) % maxEntries
 	}
 
 	s.logger.Info("audit",
@@ -73,13 +76,9 @@ func (s *LocalSink) Record(_ context.Context, e Entry) error {
 func (s *LocalSink) Entries() []Entry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	kept := s.entries
-	if len(kept) > maxEntries {
-		kept = kept[len(kept)-maxEntries:]
-	}
-	out := make([]Entry, len(kept))
-	copy(out, kept)
-	return out
+	out := make([]Entry, 0, len(s.entries))
+	out = append(out, s.entries[s.next:]...)
+	return append(out, s.entries[:s.next]...)
 }
 
 var _ AuditSink = (*LocalSink)(nil)

@@ -86,8 +86,10 @@ func (s *Server) audited(next http.Handler) http.Handler {
 			if r.Method == http.MethodGet || r.Method == http.MethodHead {
 				return
 			}
+			// Requests rejected before routing (e.g. missing CSRF marker) only
+			// have the wildcard pattern; record their literal path instead.
 			route := r.URL.Path
-			if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" {
+			if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" && !strings.HasSuffix(rc.RoutePattern(), "*") {
 				route = rc.RoutePattern()
 			}
 			action = r.Method + " " + route

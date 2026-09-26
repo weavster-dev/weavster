@@ -42,7 +42,7 @@ All notable changes to this project are documented here, following
 
 ### Changed
 
-- Audit redaction matches sensitive words in parameter names case-insensitively (`newPassword`, `X-Token`, `client_secret`), and is applied inside the audit sink. Audit log lines include the entry detail, and the in-memory history is capped at 10,000 entries. The gateway `AuditSink` port takes an `AuditEvent` (#153).
+- Audit redaction ignores case. It matches `password`/`token`/`secret`/`authorization`/`credential` anywhere in a parameter name, and `ssn`/`phi` as whole words, so `className` is not redacted. Redaction is applied inside the audit sink. Audit log lines include the entry detail, and the in-memory history is a ring buffer of 10,000 entries. The gateway `AuditSink` port takes an `AuditEvent` (#153).
 - `state.OpenPostgres` takes a maximum-connections argument (`store.maxConnections`) (#147).
 - `README.md` and `docs/index.md` now describe composed runtime behavior instead of package presence: the server does not process messages, API routes are unauthenticated, and flows are in-memory. Quick Start and Run examples bind to `127.0.0.1` instead of `0.0.0.0` (#145).
 - Coverage policy raised to 90% for every package and the aggregate (#142, #107 D-08): `.octocov.yml` `acceptable: 90%`, `AGENTS.md`, `CONTRIBUTING.md`.

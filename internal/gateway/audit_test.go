@@ -66,6 +66,19 @@ func TestAuditMiddleware(t *testing.T) {
 	}
 }
 
+func TestAuditRecordsMarkerRejections(t *testing.T) {
+	sink := &captureSink{}
+	s := newAuthServer(fakePasswords{})
+	s.cfg.Audit, s.cfg.RequireCSRF = sink, true
+	s = New(s.cfg)
+	serve(s, http.MethodPost, "/api/v1/auth/login", `{"username":"viewer","password":"pw"}`, nil)
+	serve(s, http.MethodDelete, "/api/v1/flows/a", "", nil)
+	if len(sink.events) != 2 || sink.events[0].Action != "POST /api/v1/auth/login" || sink.events[0].Detail["status"] != "400" ||
+		sink.events[1].Action != "DELETE /api/v1/flows/a" || sink.events[1].Detail["status"] != "400" {
+		t.Errorf("events = %+v; want the login and delete recorded with status 400", sink.events)
+	}
+}
+
 func TestAuditQueryDetail(t *testing.T) {
 	sink := &captureSink{}
 	s := New(Config{Audit: sink})
