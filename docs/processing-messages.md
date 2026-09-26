@@ -265,7 +265,7 @@ Errors:
 
 | Response | Cause |
 |---|---|
-| `400` | The flow or one of its destinations has a transform and the body is not a JSON object, or the body could not be read. |
+| `400` | The flow or one of its destinations has a `transform` (a `responseTransform` does not count) and the body is not a JSON object, or the body could not be read. |
 | `404` | Unknown flow. |
 | `409` | The flow is not `started`. |
 | `413` | Body larger than 10 MiB. |

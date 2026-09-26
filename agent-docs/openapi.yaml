@@ -256,7 +256,7 @@ paths:
             schema: {type: string, format: binary}
       responses:
         "202": {description: "Processed: {id, status, response?} with status sent, queued, dead-lettered, filtered, or errored; response is the responseSelector destination's reply"}
-        "400": {description: The flow or a destination has a transform and the body is not a single JSON object, or the body could not be read}
+        "400": {description: The flow or a destination has a transform (a responseTransform does not count) and the body is not a single JSON object, or the body could not be read}
         "404": {description: Unknown flow}
         "409": {description: The flow is not started}
         "413": {description: Body larger than 10 MiB}
