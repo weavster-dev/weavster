@@ -231,7 +231,7 @@ is imported disabled. Exports always include <code>enabled</code>.</p>
 <tbody>
 <tr>
 <td><code>400 unsupported export version 2; expected 1</code></td>
-<td>Unknown <code>version</code>.</td>
+<td>Missing or unknown <code>version</code>.</td>
 </tr>
 <tr>
 <td><code>400 flows[0]: status is managed by lifecycle operations …; omit it</code></td>
@@ -247,7 +247,7 @@ is imported disabled. Exports always include <code>enabled</code>.</p>
 </tr>
 <tr>
 <td><code>400 body must be an export document</code></td>
-<td>Not a JSON object, no <code>flows</code> array, or extra data after the document.</td>
+<td>Not a JSON object, no <code>flows</code> array, a top-level field other than <code>version</code> and <code>flows</code>, or extra data after the document.</td>
 </tr>
 <tr>
 <td><code>413</code></td>
@@ -262,7 +262,7 @@ Import again with <code>?overwrite=true</code> to finish.</p>
 <p>Creates, updates, imports, and deletes of flow definitions run one at a time, so a dependency
 check always sees the flows it is written against.</p>
 <h2 id="reserved-ids">Reserved ids</h2>
-<p><code>export</code>, <code>import</code>, and <code>redeploy-all</code> cannot be used as flow ids, because they name these
+<p><code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, and <code>ports-in-use</code> cannot be used as flow ids, because they name these
 endpoints. A flow created with one of these ids before this rule existed can still be deleted
 (<code>DELETE /api/v1/flows/export</code>). To keep it, export all flows, change its id in the file,
 delete it, and import the file.</p></div>

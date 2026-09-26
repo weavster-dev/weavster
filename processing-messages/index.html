@@ -214,6 +214,33 @@ below, in order, on the message as a JSON object.</p>
 <li><code>build</code> and <code>destinationSet</code> steps are not supported yet.</li>
 <li>Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.</li>
 </ul>
+<h3 id="other-fields">Other fields</h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Required. 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>. <code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, and <code>ports-in-use</code> are reserved.</td>
+</tr>
+<tr>
+<td><code>name</code>, <code>sourceType</code></td>
+<td>Free text shown in lists.</td>
+</tr>
+<tr>
+<td><code>enabled</code>, <code>initialState</code></td>
+<td>Automatic deployment at startup; see <a href="../flow-lifecycle/#enabled-flows-start-automatically">Flow lifecycle</a>.</td>
+</tr>
+<tr>
+<td><code>dependsOn</code></td>
+<td>Flows this flow requires; see <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
+</tr>
+</tbody>
+</table>
 <h3 id="destinations"><code>destinations</code></h3>
 <table>
 <thead>
@@ -261,6 +288,42 @@ below, in order, on the message as a JSON object.</p>
 <li><code>id</code> comes from the URL: a different <code>id</code> in the body, or any <code>status</code> field, returns <code>400</code>.</li>
 <li>Unknown flows return <code>404</code>.</li>
 </ul>
+<h3 id="update-several-flows-at-once">Update several flows at once</h3>
+<p><code>PUT /api/v1/flows</code> replaces several definitions in one request (permission <code>flows:edit</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080/api/v1/flows -d '{
+  &quot;flows&quot;: [
+    {&quot;id&quot;: &quot;adt&quot;, &quot;name&quot;: &quot;ADT normalize v3&quot;, &quot;sourceType&quot;: &quot;http&quot;, &quot;destinations&quot;: [ … ]},
+    {&quot;id&quot;: &quot;orm&quot;, &quot;name&quot;: &quot;Orders&quot;, &quot;enabled&quot;: false}
+  ]
+}'
+</code></pre>
+<pre><code class="language-json">{&quot;updated&quot;:[&quot;adt&quot;,&quot;orm&quot;]}
+</code></pre>
+<ul>
+<li>Each entry follows the same rules as <code>PUT /api/v1/flows/{id}</code>: it replaces the whole
+  definition, and the flow keeps its <code>status</code>, its stopped destinations, and <code>enabled</code>
+  (unless the entry sets it).</li>
+<li>Every entry is checked first. If any is invalid (<code>400</code>) or any flow does not exist (<code>404</code>,
+  naming the missing ids), nothing is written.</li>
+<li>Flows are written dependencies first. If the store fails part-way, the response is <code>500</code> with
+  <code>{"error":{"code":"UPDATE_INCOMPLETE",…},"updated":[…]}</code> listing the flows already written.</li>
+<li>The body is <code>{"flows":[…]}</code> with no other top-level field (<code>400</code> otherwise) and may be up
+  to 50 MiB (<code>413</code> above that).</li>
+</ul>
+<h3 id="connector-names">Connector names</h3>
+<p>List every flow's source type and destination names (permission <code>flows:view</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/flows/connector-names
+</code></pre>
+<pre><code class="language-json">[{&quot;id&quot;:&quot;adt&quot;,&quot;name&quot;:&quot;ADT normalize&quot;,&quot;sourceType&quot;:&quot;http&quot;,&quot;destinations&quot;:[&quot;ehr&quot;,&quot;archive&quot;]}]
+</code></pre>
+<h3 id="ports-in-use">Ports in use</h3>
+<p>List the ports the server listens on (permission <code>flows:view</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/flows/ports-in-use
+</code></pre>
+<pre><code class="language-json">[{&quot;address&quot;:&quot;127.0.0.1:8080&quot;,&quot;port&quot;:8080,&quot;usedBy&quot;:&quot;api&quot;},{&quot;address&quot;:&quot;:8443&quot;,&quot;port&quot;:8443,&quot;usedBy&quot;:&quot;api-tls&quot;}]
+</code></pre>
+<p><code>usedBy</code> is <code>api</code> for <code>listen.address</code> and <code>api-tls</code> for <code>listen.tlsAddress</code>. Flows do not
+listen on their own ports yet, so no flow appears in this list.</p>
 <h2 id="2-deploy-and-start-the-flow">2. Deploy and start the flow</h2>
 <p>A new flow is <code>undeployed</code> and rejects messages until you deploy and start it (permission
 <code>flows:deploy</code>). See <a href="../flow-lifecycle/">Flow lifecycle</a>.</p>

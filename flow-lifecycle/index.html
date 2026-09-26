@@ -301,7 +301,8 @@ then removes it (a <code>flow.deleted</code> event). New messages for it return 
 <p><code>enabled</code> marks a flow as eligible for automatic deployment. It never changes the status by
 itself. When the server starts (with <code>flows.deployOnStartup</code>, the default; see
 <a href="../server-config/#flows">Server configuration</a>), every flow that is <code>enabled</code> <strong>and</strong>
-<code>undeployed</code> is deployed and started. Flows in any other status keep it, and disabled flows are
+<code>undeployed</code> is deployed into its <a href="#initial-state">initial state</a> (<code>started</code> unless you set
+another). Flows in any other status keep it, and disabled flows are
 left alone.</p>
 <p>Because <code>enabled</code> decides what runs after a restart, a flow you only <code>undeploy</code> comes back
 at the next start if it is still enabled. To keep a flow offline across restarts, <code>undeploy</code> it
@@ -312,13 +313,42 @@ endpoints (permission <code>flows:edit</code>):</p>
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/disable
 </code></pre>
 <p>Each returns <code>200</code> with the flow, or <code>404</code> for an unknown flow.</p>
+<h3 id="initial-state">Initial state</h3>
+<p><code>initialState</code> sets the status an automatically deployed flow gets:</p>
+<table>
+<thead>
+<tr>
+<th><code>initialState</code></th>
+<th>Status after the server starts</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>started</code> (default, or when omitted)</td>
+<td><code>started</code>: accepts messages.</td>
+</tr>
+<tr>
+<td><code>paused</code></td>
+<td><code>paused</code>: rejects messages until you <code>resume</code> it.</td>
+</tr>
+<tr>
+<td><code>stopped</code></td>
+<td><code>stopped</code>: rejects messages until you <code>start</code> it.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows \
+  -d '{&quot;id&quot;:&quot;adt&quot;,&quot;enabled&quot;:true,&quot;initialState&quot;:&quot;paused&quot;}'
+</code></pre>
+<p><code>initialState</code> only applies to automatic deployment at startup. A manual <code>deploy</code> still leaves
+the flow <code>deployed</code>. Any other value returns <code>400</code>.</p>
 <p>If a flow cannot be auto-deployed (for example, its stored definition is unreadable), the
 server logs <code>auto-deploy failed</code> with the flow id and starts anyway. You can then fix or delete
 that flow over the API.</p>
 <h2 id="upgrading-from-a-version-without-the-lifecycle">Upgrading from a version without the lifecycle</h2>
 <p>Flows created before the lifecycle existed have no status, or a free-form one. They read as
 <code>undeployed</code>. On the first start after the upgrade, those that are <code>enabled</code> are deployed and
-started automatically (with the default <code>flows.deployOnStartup: true</code>). The others reject
+started automatically (they have no <code>initialState</code>, so they start) (with the default <code>flows.deployOnStartup: true</code>). The others reject
 messages until you <code>deploy</code> and <code>start</code> them. <code>queued</code> messages of a flow are retried again once
 it is started.</p>
 <h2 id="not-available-yet">Not available yet</h2>

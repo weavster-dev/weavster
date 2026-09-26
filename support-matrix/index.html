@@ -215,7 +215,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>GET/POST /api/v1/flows</code>, <code>GET/PUT/DELETE /api/v1/flows/{id}</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixWired/flows-*</code>, <code>TestFlowUpdateAndEnable</code>. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. A flow processes messages once it is <code>started</code> (see Flow lifecycle below). A flow <code>id</code> must be 1–128 characters from <code>A-Z a-z 0-9 . _ -</code> and not <code>export</code>, <code>import</code>, or <code>redeploy-all</code>; anything else returns <code>400</code>. <code>POST</code> with an existing <code>id</code> returns <code>409</code>. <code>GET</code>/<code>DELETE</code> of an unknown ID returns <code>404</code>.</td>
+<td><code>TestSupportMatrixWired/flows-*</code>, <code>TestFlowUpdateAndEnable</code>. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. A flow processes messages once it is <code>started</code> (see Flow lifecycle below). A flow <code>id</code> must be 1–128 characters from <code>A-Z a-z 0-9 . _ -</code> and not <code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, or <code>ports-in-use</code>; anything else returns <code>400</code>. <code>POST</code> with an existing <code>id</code> returns <code>409</code>. <code>GET</code>/<code>DELETE</code> of an unknown ID returns <code>404</code>.</td>
 </tr>
 <tr>
 <td><code>GET /api/v1/topology</code>, <code>GET /api/v1/topology/flows/{flowId}</code></td>
@@ -333,6 +333,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Per-destination start/stop (<code>POST /api/v1/flows/{id}/destinations/{name}/{start,stop}</code>)</td>
 <td>Implemented (wired)</td>
 <td><code>TestDestinationStartStop</code>. Sources are not separate connectors yet.</td>
+</tr>
+<tr>
+<td>Bulk update (<code>PUT /api/v1/flows</code>), connector names (<code>GET /api/v1/flows/connector-names</code>), ports in use (<code>GET /api/v1/flows/ports-in-use</code>), <code>initialState</code> for startup auto-deploy</td>
+<td>Implemented (wired)</td>
+<td><code>TestFlowOperations</code>. API only. Ports in use lists the server's API listeners; flows do not listen on ports yet. See <a href="../processing-messages/#update-several-flows-at-once">Processing messages</a> and <a href="../flow-lifecycle/#initial-state">Flow lifecycle</a>.</td>
 </tr>
 <tr>
 <td>Flow definitions validated against the published <code>agent-docs/schemas/flow.schema.json</code> (create, update, import; unknown fields rejected)</td>

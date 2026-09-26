@@ -184,12 +184,12 @@ auth:
 <tr>
 <td><code>address</code></td>
 <td><code>127.0.0.1:8080</code></td>
-<td>Cleartext HTTP <code>host:port</code>. Set to <code>""</code> to serve HTTPS only.</td>
+<td>Cleartext HTTP <code>host:port</code>. The port is a number from 1 to 65535 or a service name such as <code>http</code>; <code>0</code> (a random port) is rejected. Set to <code>""</code> to serve HTTPS only.</td>
 </tr>
 <tr>
 <td><code>tlsAddress</code></td>
 <td><code>""</code> (off)</td>
-<td>HTTPS <code>host:port</code>. Requires <code>tls.certFile</code> and <code>tls.keyFile</code>.</td>
+<td>HTTPS <code>host:port</code>, with the same port rules as <code>address</code>. Requires <code>tls.certFile</code> and <code>tls.keyFile</code>.</td>
 </tr>
 <tr>
 <td><code>requireMarkerHeader</code></td>
