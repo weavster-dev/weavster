@@ -41,6 +41,10 @@ func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if f.ID == "" {
+		http.Error(w, "flow id is required", http.StatusBadRequest)
+		return
+	}
 	if err := s.cfg.Flows.Create(r.Context(), f); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

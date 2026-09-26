@@ -82,89 +82,81 @@ func TestAuditAdapterRecord(t *testing.T) {
 	}
 }
 
-// --- memFlowStore ---
+// --- flowAdapter ---
 
-func TestMemFlowStore(t *testing.T) {
+func TestFlowAdapter(t *testing.T) {
 	ctx := context.Background()
-	s := newMemFlowStore()
+	store := state.NewMemStore()
+	a := flowAdapter{store: store}
 
-	// List should return the pre-seeded "admit" flow.
-	flows, err := s.List(ctx)
-	if err != nil {
-		t.Fatalf("List: %v", err)
+	if flows, err := a.List(ctx); err != nil || len(flows) != 0 {
+		t.Fatalf("empty List = %v, %v", flows, err)
 	}
-	if len(flows) == 0 {
-		t.Fatal("expected at least one seeded flow")
+	want := gateway.Flow{ID: "f1", Name: "Flow One", SourceType: "file", Status: "idle", Enabled: true}
+	if err := a.Create(ctx, want); err != nil {
+		t.Fatal(err)
 	}
-
-	// Get the seeded flow.
-	f, err := s.Get(ctx, "admit")
-	if err != nil {
-		t.Fatalf("Get admit: %v", err)
+	if got, err := a.Get(ctx, "f1"); err != nil || got != want {
+		t.Errorf("Get = %+v, %v; want %+v", got, err, want)
 	}
-	if f.ID != "admit" {
-		t.Errorf("flow ID = %q", f.ID)
+	if flows, err := a.List(ctx); err != nil || len(flows) != 1 || flows[0] != want {
+		t.Errorf("List = %+v, %v", flows, err)
 	}
-
-	// Get a non-existent flow returns an error.
-	if _, err := s.Get(ctx, "noflow"); err == nil {
-		t.Error("expected error for missing flow")
+	if _, err := a.Get(ctx, "missing"); !errors.Is(err, state.ErrFlowNotFound) {
+		t.Errorf("Get missing = %v", err)
 	}
 
-	// Create a new flow and verify it is retrievable.
-	newFlow := gateway.Flow{ID: "test-flow", Name: "Test Flow", Status: "idle", Enabled: true}
-	if err := s.Create(ctx, newFlow); err != nil {
-		t.Fatalf("Create: %v", err)
+	// A corrupt stored document is reported, not silently dropped.
+	if err := store.PutFlow(ctx, state.FlowDefinition{ID: "bad", Document: []byte("{")}); err != nil {
+		t.Fatal(err)
 	}
-	got, err := s.Get(ctx, "test-flow")
-	if err != nil {
-		t.Fatalf("Get after Create: %v", err)
+	if _, err := a.Get(ctx, "bad"); err == nil {
+		t.Error("Get corrupt: want error")
 	}
-	if got.Name != "Test Flow" {
-		t.Errorf("created flow name = %q", got.Name)
+	if _, err := a.List(ctx); err == nil {
+		t.Error("List with corrupt document: want error")
 	}
-
-	// Delete removes the flow.
-	if err := s.Delete(ctx, "test-flow"); err != nil {
-		t.Fatalf("Delete: %v", err)
+	if err := a.Delete(ctx, "bad"); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := s.Get(ctx, "test-flow"); err == nil {
-		t.Error("expected error after Delete")
+	if err := a.Delete(ctx, "f1"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Delete(ctx, "f1"); !errors.Is(err, state.ErrFlowNotFound) {
+		t.Errorf("Delete missing = %v", err)
 	}
 }
 
 // --- topologyAdapter ---
 
-func TestTopologyAdapterOverview(t *testing.T) {
-	flows := newMemFlowStore()
-	ta := topologyAdapter{flows: flows}
-
-	graph, err := ta.Overview(context.Background())
-	if err != nil {
-		t.Fatalf("Overview: %v", err)
-	}
-	if len(graph.Nodes) == 0 {
-		t.Error("expected non-empty graph from Overview")
-	}
-}
-
-func TestTopologyAdapterFlowInternal(t *testing.T) {
-	flows := newMemFlowStore()
-	ta := topologyAdapter{flows: flows}
+func TestTopologyAdapter(t *testing.T) {
 	ctx := context.Background()
-
-	graph, err := ta.FlowInternal(ctx, "admit")
-	if err != nil {
-		t.Fatalf("FlowInternal admit: %v", err)
+	flows := flowAdapter{store: state.NewMemStore()}
+	if err := flows.Create(ctx, gateway.Flow{ID: "admit", Name: "Patient Admit", SourceType: "file", Status: "started"}); err != nil {
+		t.Fatal(err)
 	}
-	if len(graph.Nodes) == 0 {
-		t.Error("expected non-empty graph for admit flow")
-	}
+	ta := topologyAdapter{flows: flows}
 
-	// Non-existent flow must return an error.
+	if graph, err := ta.Overview(ctx); err != nil || len(graph.Nodes) != 1 {
+		t.Errorf("Overview = %+v, %v; want one flow node", graph, err)
+	}
+	if graph, err := ta.FlowInternal(ctx, "admit"); err != nil || len(graph.Nodes) == 0 {
+		t.Errorf("FlowInternal admit = %+v, %v", graph, err)
+	}
 	if _, err := ta.FlowInternal(ctx, "noflow"); err == nil {
 		t.Error("expected error for missing flow")
 	}
+
+	broken := topologyAdapter{flows: flowAdapter{store: failingFlowStore{}}}
+	if _, err := broken.Overview(ctx); err == nil {
+		t.Error("Overview with failing store: want error")
+	}
+}
+
+type failingFlowStore struct{ state.FlowStore }
+
+func (failingFlowStore) ListFlows(context.Context) ([]state.FlowDefinition, error) {
+	return nil, errors.New("store down")
 }
 
 // --- messageAdapter ---

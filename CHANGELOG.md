@@ -37,6 +37,7 @@ All notable changes to this project are documented here, following
 - Support matrix (`docs/support-matrix.md`, in the docs nav): every capability classified as implemented (wired), library-only, Enterprise-deferred, or unsupported, with codec versions and per-adapter delivery guarantees. `TestSupportMatrixWired`, `TestSupportMatrixCLI`, and `TestSupportMatrixPrivilegedGuard` prove the wired API and CLI rows against the composed server, and `TestSupportMatrixCodecs` checks every codec-table cell against `codecs.CoverageMatrix()` (#145).
 - `weavster server --config FILE`: strict YAML server configuration (`docs/server-config.md`). It covers the cleartext and HTTPS listeners (`listen.*`, `tls.certFile/keyFile/minVersion`), the CSRF marker toggle, message-store selection (`store.dialect: memory|sqlite|postgres|disabled`, `dsn`, `maxConnections`, `maxRetry`, `retryWaitMs`), `paths.dataDir`, and the `auth.passwordPolicy`/`auth.lockout` values. An unknown key, invalid value, or failed store connection exits `1` with `Error: …`. Acceptance tests: `TestServerConfigStore`, `TestServerConfigListen`, `TestServerConfigTLS`, `TestServerConfigErrors` (#147).
 - Authentication and authorization on every `/api/v1` route except login (HTTP Basic or a 12-hour Bearer token), with per-route permissions (`flows:view`, `flows:edit`, `messages:view`, `admin`) and `401`/`403` JSON errors. New endpoints: `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`, `GET /api/v1/auth/me`, `POST /api/v1/auth/password`. D-22 first-run `admin` bootstrap from `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD`, `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE`, or a one-time generated password that must be changed before use. The CLI `-u`/`-p` flags now send Basic credentials. Documented in `docs/authentication.md`; A password change must use a new password, revokes the user's other sessions, and counts a wrong `oldPassword` toward lockout. Password hashing no longer holds the provider lock, and `Authenticate` returns a copy of the user record. CLI `flow list` reports HTTP errors instead of JSON decode errors. Acceptance tests `TestAuthRequired`, `TestLoginLogout`, `TestPermissionMatrix`, `TestBootstrapGeneratedPassword`, `TestBootstrapPasswordSources`, `TestCLICredentials`.
+- Durable flow definitions (D-12): flows created through `/api/v1/flows` are saved in the configured store (a new `flows` table via schema migration 2), so with `store.dialect: sqlite` they survive a restart. `state.Store` gains a `FlowStore` port (`PutFlow`/`GetFlow`/`ListFlows`/`DeleteFlow`) implemented by the SQL and in-memory stores. Acceptance test: `TestFlowsSurviveRestart` (#151).
 
 ### Changed
 
@@ -47,10 +48,12 @@ All notable changes to this project are documented here, following
 
 ### Removed
 
+- The synthetic `admit` flow that the server seeded at startup; a new server starts with no flows (#151).
 - The hard-coded `admin`/`admin123!` seed user in the composition root. It never passed the default password policy, and a relaxed `auth.passwordPolicy` would have created it (#147).
 
 ### Fixed
 
+- `DELETE /api/v1/flows/{id}` for an unknown flow returns `404` instead of `204`, and `POST /api/v1/flows` without an `id` returns `400` (#151).
 - SQL store: a failed migration now closes the database handle instead of leaking it (#147).
 - `weavster server` registers its SIGINT/SIGTERM handler before it starts listening, so a stop signal that arrives right after startup is no longer lost (#145).
 - `golangci-lint` errcheck findings on unchecked `Close` calls in `cmd/weavster/cli_test.go` and `cmd/weavster/server_lifecycle_test.go` (#142).

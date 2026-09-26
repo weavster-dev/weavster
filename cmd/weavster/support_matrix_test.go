@@ -53,12 +53,16 @@ func TestSupportMatrixWired(t *testing.T) {
 			"Content-Security-Policy":   "frame-ancestors 'none'",
 			"X-Content-Type-Options":    "nosniff",
 		}},
-		{name: "flows-list", method: http.MethodGet, path: "/api/v1/flows", marker: true, want: http.StatusOK, contains: `"admit"`},
-		{name: "flows-create", method: http.MethodPost, path: "/api/v1/flows", marker: true, body: `{"id":"lab","name":"Lab Results"}`, want: http.StatusCreated},
+		{name: "flows-list-empty", method: http.MethodGet, path: "/api/v1/flows", marker: true, want: http.StatusOK, contains: "[]"},
+		{name: "flows-create", method: http.MethodPost, path: "/api/v1/flows", marker: true, body: `{"id":"lab","name":"Lab Results","sourceType":"file"}`, want: http.StatusCreated},
+		{name: "flows-create-no-id", method: http.MethodPost, path: "/api/v1/flows", marker: true, body: `{"name":"No ID"}`, want: http.StatusBadRequest},
+		{name: "flows-list", method: http.MethodGet, path: "/api/v1/flows", marker: true, want: http.StatusOK, contains: `"lab"`},
 		{name: "flows-get", method: http.MethodGet, path: "/api/v1/flows/lab", marker: true, want: http.StatusOK, contains: "Lab Results"},
 		{name: "topology-overview", method: http.MethodGet, path: "/api/v1/topology", marker: true, want: http.StatusOK, contains: "flow:lab"},
-		{name: "topology-flow", method: http.MethodGet, path: "/api/v1/topology/flows/admit", marker: true, want: http.StatusOK, contains: "source:"},
+		{name: "topology-flow", method: http.MethodGet, path: "/api/v1/topology/flows/lab", marker: true, want: http.StatusOK, contains: "source:"},
 		{name: "flows-delete", method: http.MethodDelete, path: "/api/v1/flows/lab", marker: true, want: http.StatusNoContent},
+		{name: "flows-delete-missing", method: http.MethodDelete, path: "/api/v1/flows/lab", marker: true, want: http.StatusNotFound},
+		{name: "flows-get-missing", method: http.MethodGet, path: "/api/v1/flows/lab", marker: true, want: http.StatusNotFound},
 		{name: "messages", method: http.MethodGet, path: "/api/v1/messages", marker: true, want: http.StatusOK, contains: "[]"},
 	}
 	for _, tt := range tests {
@@ -101,6 +105,10 @@ func TestSupportMatrixCLI(t *testing.T) {
 	}
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
+	c := apiClient{t: t, base: ts.URL}
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"admit","name":"Patient Admit"}`, basic(bootstrapAdmin, testAdminPassword)); status != http.StatusCreated {
+		t.Fatalf("create flow: %d %q", status, body)
+	}
 
 	tests := []struct {
 		name     string

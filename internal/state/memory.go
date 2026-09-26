@@ -8,13 +8,14 @@ import (
 // MemStore is an in-memory Store (passthrough/buffered backend; tests + local
 // DX, constraint #3).
 type MemStore struct {
-	mu sync.RWMutex
-	m  map[string]Message
+	mu    sync.RWMutex
+	m     map[string]Message
+	flows map[string]FlowDefinition
 }
 
 // NewMemStore returns an empty in-memory store.
 func NewMemStore() *MemStore {
-	return &MemStore{m: make(map[string]Message)}
+	return &MemStore{m: make(map[string]Message), flows: make(map[string]FlowDefinition)}
 }
 
 func (s *MemStore) Put(_ context.Context, m Message) error {

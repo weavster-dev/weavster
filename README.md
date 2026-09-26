@@ -2,7 +2,7 @@
 
 ![Coverage](https://raw.githubusercontent.com/weavster-dev/weavster/main/docs/coverage.svg)
 
-Message-oriented integration platform. The current server stores flow definitions in memory,
+Message-oriented integration platform. The current server stores flow definitions in its configured store,
 serves them through a REST API and a read-only topology API, and does not receive, transform, or
 deliver messages. Adapters, transforms, durable storage, and scheduling exist as libraries in the
 source tree that the server does not use. See [What exists now](#what-exists-now) and the
@@ -57,7 +57,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
 - **Running server** (`weavster server [--config FILE]`): REST API over HTTP and optional HTTPS,
   with the OpenAPI document,
   `/api/v1/system`, CSRF marker enforcement, security headers, and TRACE/TRACK blocking;
-  flow create/list/get/delete backed by an **in-memory** map (lost on restart, never executed);
+  flow create/list/get/delete stored in the configured store (durable with `sqlite`; flows are
+  never executed);
   read-only topology JSON built from those flows; message search against the configured
   store (`memory`, `sqlite`, or `disabled`), which is always empty because nothing writes messages.
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
@@ -100,5 +101,5 @@ specs/           Phase 1/2 requirements and architecture
 
 ## Stack
 
-Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory or SQLite message store. Library-only packages
+Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory or SQLite store. Library-only packages
 also depend on wazero, SQLite/PostgreSQL drivers, Prometheus, and OpenTelemetry.

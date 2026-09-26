@@ -9,6 +9,7 @@ import (
 var errExportStore = errors.New("export store failure")
 
 type exportErrorStore struct {
+	FlowStore // unused by export
 	searchErr error
 	getErr    error
 	putErr    error

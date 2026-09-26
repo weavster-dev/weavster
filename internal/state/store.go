@@ -67,8 +67,9 @@ type Query struct {
 }
 
 // Store is the port for durable state: received/intermediate/sent messages
-// with search and export (arch §3.1).
+// with search and export, and flow definitions (arch §3.1, D-12).
 type Store interface {
+	FlowStore
 	Put(ctx context.Context, m Message) error
 	Get(ctx context.Context, id string) (Message, error)
 	Delete(ctx context.Context, id string) error

@@ -164,10 +164,13 @@ func TestPermissionMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	flows := newMemFlowStore()
+	flows := flowAdapter{store: state.NewMemStore()}
+	if err := flows.Create(context.Background(), gateway.Flow{ID: "admit", Name: "Patient Admit"}); err != nil {
+		t.Fatal(err)
+	}
 	gw := gateway.New(gateway.Config{
 		Auth: authAdapter{provider}, Authorizer: authorizerAdapter{}, Passwords: provider,
-		Flows: flows, Messages: &messageAdapter{store: state.NewMemStore()}, Topology: &topologyAdapter{flows: flows}, RequireCSRF: true,
+		Flows: flows, Messages: &messageAdapter{store: state.NewMemStore()}, Topology: topologyAdapter{flows: flows}, RequireCSRF: true,
 	})
 	ts := httptest.NewServer(gw.Router())
 	defer ts.Close()

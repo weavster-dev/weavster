@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -13,7 +14,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -59,7 +59,13 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 	}
 
 	sink := audit.NewLocalSink(logger)
-	flows := newMemFlowStore()
+	// Flow definitions live in the configured store; with the store
+	// disabled they are kept in memory.
+	var flowStore state.FlowStore = state.NewMemStore()
+	if store != nil {
+		flowStore = store
+	}
+	flows := flowAdapter{store: flowStore}
 
 	srv := gateway.New(gateway.Config{
 		Auth:        authAdapter{provider},
@@ -68,7 +74,7 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 		Audit:       auditAdapter{sink},
 		Flows:       flows,
 		Messages:    messages,
-		Topology:    &topologyAdapter{flows: flows},
+		Topology:    topologyAdapter{flows: flows},
 		System:      observability.SystemStatus("weavster", version, buildDate),
 		RequireCSRF: cfg.Listen.RequireMarkerHeader,
 	})
@@ -280,52 +286,50 @@ func (a auditAdapter) Record(ctx context.Context, actor, action, resource string
 	return a.s.Record(ctx, audit.Entry{Actor: actor, Action: action, Resource: resource})
 }
 
-type memFlowStore struct {
-	mu    sync.Mutex
-	flows map[string]gateway.Flow
-}
+// flowAdapter stores gateway flows as JSON documents in the Store (D-12).
+type flowAdapter struct{ store state.FlowStore }
 
-func newMemFlowStore() *memFlowStore {
-	return &memFlowStore{flows: map[string]gateway.Flow{
-		"admit": {ID: "admit", Name: "Patient Admit", SourceType: "file", Status: "started", Enabled: true},
-	}}
-}
-
-func (s *memFlowStore) List(context.Context) ([]gateway.Flow, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	out := make([]gateway.Flow, 0, len(s.flows))
-	for _, f := range s.flows {
+func (a flowAdapter) List(ctx context.Context) ([]gateway.Flow, error) {
+	defs, err := a.store.ListFlows(ctx)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gateway.Flow, 0, len(defs))
+	for _, d := range defs {
+		var f gateway.Flow
+		if err := json.Unmarshal(d.Document, &f); err != nil {
+			return nil, fmt.Errorf("flow %s: %w", d.ID, err)
+		}
 		out = append(out, f)
 	}
 	return out, nil
 }
 
-func (s *memFlowStore) Get(_ context.Context, id string) (gateway.Flow, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	f, ok := s.flows[id]
-	if !ok {
-		return gateway.Flow{}, fmt.Errorf("flow %s not found", id)
+func (a flowAdapter) Get(ctx context.Context, id string) (gateway.Flow, error) {
+	d, err := a.store.GetFlow(ctx, id)
+	if err != nil {
+		return gateway.Flow{}, err
+	}
+	var f gateway.Flow
+	if err := json.Unmarshal(d.Document, &f); err != nil {
+		return gateway.Flow{}, fmt.Errorf("flow %s: %w", id, err)
 	}
 	return f, nil
 }
 
-func (s *memFlowStore) Create(_ context.Context, f gateway.Flow) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.flows[f.ID] = f
-	return nil
+func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) error {
+	doc, err := json.Marshal(f)
+	if err != nil {
+		return err
+	}
+	return a.store.PutFlow(ctx, state.FlowDefinition{ID: f.ID, Document: doc})
 }
 
-func (s *memFlowStore) Delete(_ context.Context, id string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.flows, id)
-	return nil
+func (a flowAdapter) Delete(ctx context.Context, id string) error {
+	return a.store.DeleteFlow(ctx, id)
 }
 
-type topologyAdapter struct{ flows *memFlowStore }
+type topologyAdapter struct{ flows gateway.FlowStore }
 
 func (t topologyAdapter) Overview(ctx context.Context) (topology.Graph, error) {
 	flows, err := t.flows.List(ctx)
