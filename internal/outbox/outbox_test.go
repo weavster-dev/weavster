@@ -17,13 +17,12 @@ func msg(id string) state.Message {
 }
 
 func TestIdempotencyKey(t *testing.T) {
-	a := IdempotencyKey("m1", "d1", 1)
-	b := IdempotencyKey("m1", "d1", 1)
-	if a != b {
-		t.Error("key must be deterministic")
+	a := IdempotencyKey("m1", "d1")
+	if a != IdempotencyKey("m1", "d1") {
+		t.Error("key must be stable across retries of the same delivery (D-10)")
 	}
-	if a == IdempotencyKey("m1", "d1", 2) || a == IdempotencyKey("m1", "d2", 1) || a == IdempotencyKey("m2", "d1", 1) {
-		t.Error("key must vary by message, destination, and attempt")
+	if a == IdempotencyKey("m1", "d2") || a == IdempotencyKey("m2", "d1") {
+		t.Error("key must vary by message and destination")
 	}
 }
 
@@ -110,7 +109,7 @@ func TestDeliverSuccess(t *testing.T) {
 	if m.Attempts["d1"].Attempts != 1 || m.Attempts["d1"].LastError != "" {
 		t.Errorf("attempts = %+v", m.Attempts)
 	}
-	if gotKey != IdempotencyKey("1", "d1", 1) {
+	if gotKey != IdempotencyKey("1", "d1") {
 		t.Errorf("idempotency key = %q", gotKey)
 	}
 }

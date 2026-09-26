@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"reflect"
 	"testing"
 	"time"
 
@@ -96,10 +97,10 @@ func TestFlowAdapter(t *testing.T) {
 	if err := a.Create(ctx, want); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := a.Get(ctx, "f1"); err != nil || got != want {
+	if got, err := a.Get(ctx, "f1"); err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("Get = %+v, %v; want %+v", got, err, want)
 	}
-	if flows, err := a.List(ctx); err != nil || len(flows) != 1 || flows[0] != want {
+	if flows, err := a.List(ctx); err != nil || len(flows) != 1 || !reflect.DeepEqual(flows[0], want) {
 		t.Errorf("List = %+v, %v", flows, err)
 	}
 	if err := a.Create(ctx, want); !errors.Is(err, gateway.ErrFlowExists) {

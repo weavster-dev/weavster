@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"time"
 )
 
 // HTTPSink POSTs messages to a URL.
@@ -13,9 +14,13 @@ type HTTPSink struct {
 	client *http.Client
 }
 
+// HTTPSinkTimeout bounds one delivery request, including reading the
+// response.
+const HTTPSinkTimeout = 30 * time.Second
+
 // NewHTTPSink returns an HTTP sink posting to url.
 func NewHTTPSink(url string) *HTTPSink {
-	return &HTTPSink{url: url, client: http.DefaultClient}
+	return &HTTPSink{url: url, client: &http.Client{Timeout: HTTPSinkTimeout}}
 }
 
 func (s *HTTPSink) Name() string { return "http" }
@@ -25,7 +30,14 @@ func (s *HTTPSink) Write(ctx context.Context, m Message) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("Content-Type", "application/octet-stream")
+	contentType := m.Metadata[ContentTypeMetadata]
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	}
+	req.Header.Set("Content-Type", contentType)
+	if key := m.Metadata[IdempotencyKeyMetadata]; key != "" {
+		req.Header.Set("Idempotency-Key", key)
+	}
 	resp, err := s.client.Do(req)
 	if err != nil {
 		return err

@@ -14,6 +14,7 @@ nav:
   - Server Configuration: server-config.md
   - Authentication: authentication.md
   - Audit Log: audit-log.md
+  - Processing Messages: processing-messages.md
   - Docs Site Guide: documentation.md
   - MVP Project Plan: mvp-project-plan.md
   - Agent Onboarding: agent-onboarding.md

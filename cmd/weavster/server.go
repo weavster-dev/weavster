@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -17,10 +18,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/weavster-dev/weavster/internal/adapters"
 	"github.com/weavster-dev/weavster/internal/audit"
 	"github.com/weavster-dev/weavster/internal/auth"
+	"github.com/weavster-dev/weavster/internal/compiler"
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/observability"
+	"github.com/weavster-dev/weavster/internal/pipeline"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 	"github.com/weavster-dev/weavster/internal/state"
 	"github.com/weavster-dev/weavster/internal/topology"
@@ -82,6 +86,10 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 		repo = store.(flowRepository)
 	}
 	flows := flowAdapter{store: repo}
+	var ingest gateway.MessageIngester
+	if store != nil {
+		ingest = ingestAdapter{flows: flows, pipe: pipeline.New(store, newSink)}
+	}
 
 	srv := gateway.New(gateway.Config{
 		Auth:        authAdapter{provider},
@@ -90,6 +98,7 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 		Audit:       auditAdapter{sink},
 		Flows:       flows,
 		Messages:    messages,
+		Ingest:      ingest,
 		Topology:    topologyAdapter{flows: flows},
 		System:      observability.SystemStatus("weavster", version, buildDate),
 		RequireCSRF: cfg.Listen.RequireMarkerHeader,
@@ -372,6 +381,84 @@ type flowRepository interface {
 // flowAdapter stores gateway flows as JSON documents (D-12).
 type flowAdapter struct{ store flowRepository }
 
+// toPipelineFlow converts a stored flow into the pipeline's definition,
+// strictly decoding its transform.
+func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
+	pf := pipeline.Flow{ID: f.ID}
+	if raw := bytes.TrimSpace(f.Transform); len(raw) > 0 && !bytes.Equal(raw, []byte("null")) {
+		dec := json.NewDecoder(bytes.NewReader(f.Transform))
+		dec.DisallowUnknownFields()
+		var t compiler.Transform
+		if err := dec.Decode(&t); err != nil {
+			return pf, fmt.Errorf("transform: %w", err)
+		}
+		if t.Name == "" {
+			t.Name = f.ID
+		}
+		if len(t.Steps) > 0 { // a transform without steps is a passthrough
+			pf.Transform = &t
+		}
+	}
+	for _, d := range f.Destinations {
+		pf.Destinations = append(pf.Destinations, pipeline.Destination{Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir})
+	}
+	return pf, nil
+}
+
+// ingestAdapter runs received messages through their flow's pipeline.
+type ingestAdapter struct {
+	flows flowAdapter
+	pipe  *pipeline.Pipeline
+}
+
+func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (gateway.IngestResult, error) {
+	f, err := a.flows.Get(ctx, flowID)
+	if err != nil {
+		return gateway.IngestResult{}, err
+	}
+	switch f.Status {
+	case "stopped", "paused", "halted", "undeployed":
+		return gateway.IngestResult{}, fmt.Errorf("%w: flow %s is %s", gateway.ErrFlowNotRunning, f.ID, f.Status)
+	}
+	pf, err := toPipelineFlow(f)
+	if err != nil {
+		return gateway.IngestResult{}, err
+	}
+	// Processing is durable work: finish it even if the client disconnects,
+	// so the stored message never stops half-way. HTTP deliveries are
+	// bounded by adapters.HTTPSinkTimeout.
+	res, err := a.pipe.Process(context.WithoutCancel(ctx), pf, body)
+	if errors.Is(err, pipeline.ErrInvalidMessage) {
+		return gateway.IngestResult{}, fmt.Errorf("%w: body must be a JSON object", gateway.ErrInvalidMessage)
+	}
+	if err != nil {
+		return gateway.IngestResult{}, err
+	}
+	return gateway.IngestResult{ID: res.ID, Status: string(res.Status)}, nil
+}
+
+// adapterSink delivers through an adapters.Sink, passing the idempotency key
+// as message metadata.
+type adapterSink struct{ sink adapters.Sink }
+
+func (s adapterSink) Write(ctx context.Context, d pipeline.Delivery) error {
+	return s.sink.Write(ctx, adapters.Message{ID: d.MessageID, Body: d.Body, Metadata: map[string]string{
+		adapters.IdempotencyKeyMetadata: d.IdempotencyKey,
+		adapters.ContentTypeMetadata:    d.ContentType,
+	}})
+}
+
+// newSink builds the adapter for a flow destination.
+func newSink(d pipeline.Destination) (pipeline.Sink, error) {
+	switch d.Type {
+	case "http":
+		return adapterSink{adapters.NewHTTPSink(d.URL)}, nil
+	case "file":
+		return adapterSink{adapters.NewFileSink(d.Dir)}, nil
+	}
+	return nil, fmt.Errorf("unsupported destination type %q", d.Type)
+}
+
 // flowErr translates state's flow errors into the gateway's.
 func flowErr(err error) error {
 	switch {
@@ -412,6 +499,13 @@ func (a flowAdapter) Get(ctx context.Context, id string) (gateway.Flow, error) {
 }
 
 func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) error {
+	pf, err := toPipelineFlow(f)
+	if err == nil {
+		err = pipeline.Validate(pf)
+	}
+	if err != nil {
+		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+	}
 	doc, err := json.Marshal(f)
 	if err != nil {
 		return err

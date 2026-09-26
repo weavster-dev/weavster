@@ -8,6 +8,7 @@ const (
 	PermFlowsView     = "flows:view"
 	PermFlowsEdit     = "flows:edit"
 	PermMessagesView  = "messages:view"
+	PermMessagesSend  = "messages:send"
 	PermAlertsEdit    = "alerts:edit"
 	PermEventsView    = "events:view"
 	PermSnippetsEdit  = "snippets:edit"

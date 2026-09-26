@@ -34,6 +34,7 @@ var protectedRoutes = []struct {
 	{http.MethodPost, "/api/v1/flows", "flows:edit"},
 	{http.MethodDelete, "/api/v1/flows/admit", "flows:edit"},
 	{http.MethodGet, "/api/v1/messages", "messages:view"},
+	{http.MethodPost, "/api/v1/flows/admit/messages", "messages:send"},
 }
 
 type apiClient struct {

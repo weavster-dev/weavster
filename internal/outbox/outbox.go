@@ -11,7 +11,7 @@ import (
 )
 
 // DeliverFunc attempts delivery of a message to one destination, receiving the
-// deterministic idempotency key for this (message, destination, attempt).
+// idempotency key for this (message, destination), stable across retries.
 // A nil return means delivered. Return ErrAmbiguous when the outcome is
 // unknown (e.g. a timeout after the bytes may have been sent).
 type DeliverFunc func(ctx context.Context, m state.Message, dest, idempotencyKey string) error
@@ -69,8 +69,9 @@ func (o *Outbox) Transform(ctx context.Context, id string, fn func([]byte) ([]by
 }
 
 // Deliver sends the message to one destination and records the outcome. It
-// re-enters the same message id after a crash, so a retry never duplicates a
-// message with the same (message_id, destination, attempt) idempotency key.
+// re-enters the same message id after a crash, and every attempt carries the
+// same (message_id, destination) idempotency key, so the sink can drop
+// duplicates (D-10).
 func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 	m, err := o.store.Get(ctx, id)
 	if err != nil {
@@ -97,7 +98,7 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 	}
 
 	attempt := cur.Attempts + 1
-	key := IdempotencyKey(m.ID, dest, attempt)
+	key := IdempotencyKey(m.ID, dest)
 
 	if err := o.deliver(ctx, m, dest, key); err == nil {
 		cur.Attempts = attempt
