@@ -9,46 +9,22 @@ import (
 	"sync"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/weavster-dev/weavster/internal/flowdef"
 )
 
 // Config is the root config-as-code document: the single source of truth for
 // flows, alerts, snippets, scripts, the config map, and settings (arch §6).
 type Config struct {
-	Version  string            `json:"version" yaml:"version"`
-	Flows    map[string]Flow   `json:"flows" yaml:"flows"`
-	Alerts   map[string]Alert  `json:"alerts" yaml:"alerts"`
-	Snippets map[string]string `json:"snippets" yaml:"snippets"`
-	Scripts  map[string]string `json:"scripts" yaml:"scripts"`
-	Map      map[string]string `json:"map" yaml:"map"`
-	Settings map[string]any    `json:"settings" yaml:"settings"`
-}
-
-// Flow is a message pipeline (source -> filters/transforms -> destinations).
-type Flow struct {
-	Name         string        `json:"name" yaml:"name"`
-	Source       Source        `json:"source" yaml:"source"`
-	Destinations []Destination `json:"destinations" yaml:"destinations"`
-	Filters      []Transform   `json:"filters,omitempty" yaml:"filters,omitempty"`
-	Transforms   []Transform   `json:"transforms,omitempty" yaml:"transforms,omitempty"`
-}
-
-// Source selects a message acquisition adapter.
-type Source struct {
-	Type   string         `json:"type" yaml:"type"`
-	Config map[string]any `json:"config,omitempty" yaml:"config,omitempty"`
-}
-
-// Destination selects a message delivery adapter.
-type Destination struct {
-	Name   string         `json:"name" yaml:"name"`
-	Type   string         `json:"type" yaml:"type"`
-	Config map[string]any `json:"config,omitempty" yaml:"config,omitempty"`
-}
-
-// Transform is a declarative filter/transform step (map/build/filter).
-type Transform struct {
-	Kind string         `json:"kind" yaml:"kind"`
-	Spec map[string]any `json:"spec" yaml:"spec"`
+	Version string `json:"version" yaml:"version"`
+	// Flows are flow definitions keyed by flow id: the same model the flow
+	// API accepts (flow.schema.json).
+	Flows    map[string]flowdef.Flow `json:"flows" yaml:"-"` // decoded through JSON (parse)
+	Alerts   map[string]Alert        `json:"alerts" yaml:"alerts"`
+	Snippets map[string]string       `json:"snippets" yaml:"snippets"`
+	Scripts  map[string]string       `json:"scripts" yaml:"scripts"`
+	Map      map[string]string       `json:"map" yaml:"map"`
+	Settings map[string]any          `json:"settings" yaml:"settings"`
 }
 
 // Alert is an alert definition (spec §2.7.24).
@@ -60,22 +36,61 @@ type Alert struct {
 }
 
 // Parse decodes a config document. YAML is the canonical format; JSON is a
-// YAML subset and is accepted as-is (arch §6).
+// YAML subset and is accepted as-is (arch §6). A flow's id defaults to its
+// key and must match it when set.
 func Parse(data []byte) (*Config, error) {
+	c, _, err := parse(data)
+	return c, err
+}
+
+// parse decodes the document with YAML rules, except flows: each flow is
+// converted to JSON and decoded as a flow definition, so transforms stay
+// JSON objects. It also returns each flow as written, for validation.
+func parse(data []byte) (*Config, map[string]json.RawMessage, error) {
 	var c Config
+	var doc struct {
+		Flows map[string]yaml.Node `yaml:"flows"`
+	}
 	if err := yaml.Unmarshal(data, &c); err != nil {
-		return nil, fmt.Errorf("config: parse: %w", err)
+		return nil, nil, fmt.Errorf("config: parse: %w", err)
+	}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, nil, fmt.Errorf("config: parse: %w", err)
 	}
 	if c.Version == "" {
 		c.Version = "1"
 	}
 	normalize(&c)
-	return &c, nil
+	written := make(map[string]json.RawMessage, len(doc.Flows))
+	for key, node := range doc.Flows {
+		var v any
+		if err := node.Decode(&v); err != nil {
+			return nil, nil, fmt.Errorf("config: flows.%s: %w", key, err)
+		}
+		js, err := json.Marshal(v)
+		if err != nil {
+			return nil, nil, fmt.Errorf("config: flows.%s: not JSON-compatible: %w", key, err)
+		}
+		var f flowdef.Flow
+		if err := json.Unmarshal(js, &f); err != nil {
+			return nil, nil, fmt.Errorf("config: flows.%s: %w", key, err)
+		}
+		switch f.ID {
+		case "":
+			f.ID = key
+		case key:
+		default:
+			return nil, nil, fmt.Errorf("config: flows.%s: id %q must match the key", key, f.ID)
+		}
+		c.Flows[key] = f
+		written[key] = js
+	}
+	return &c, written, nil
 }
 
 func normalize(c *Config) {
 	if c.Flows == nil {
-		c.Flows = map[string]Flow{}
+		c.Flows = map[string]flowdef.Flow{}
 	}
 	if c.Alerts == nil {
 		c.Alerts = map[string]Alert{}
@@ -94,9 +109,25 @@ func normalize(c *Config) {
 	}
 }
 
-// Marshal serializes the config as YAML.
+// Marshal serializes the config as YAML; flows are written as their JSON
+// documents.
 func (c *Config) Marshal() ([]byte, error) {
-	return yaml.Marshal(c)
+	flows := make(map[string]any, len(c.Flows))
+	for k, f := range c.Flows {
+		js, err := json.Marshal(f)
+		if err != nil {
+			return nil, err
+		}
+		var v any
+		if err := json.Unmarshal(js, &v); err != nil {
+			return nil, err
+		}
+		flows[k] = v
+	}
+	return yaml.Marshal(struct {
+		*Config `yaml:",inline"`
+		Flows   map[string]any `yaml:"flows"`
+	}{c, flows})
 }
 
 // Artifacts flattens the config into artifact keys -> serialized content.

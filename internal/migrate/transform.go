@@ -1,9 +1,11 @@
 package migrate
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/weavster-dev/weavster/internal/config"
+	"github.com/weavster-dev/weavster/internal/flowdef"
 )
 
 // Transform maps a legacy export to the new YAML DSL config (gap #1).
@@ -16,7 +18,7 @@ func Transform(le *LegacyExport, mappingVersion string) (*config.Config, []strin
 
 	cfg := &config.Config{
 		Version:  "1",
-		Flows:    make(map[string]config.Flow),
+		Flows:    make(map[string]flowdef.Flow),
 		Alerts:   make(map[string]config.Alert),
 		Snippets: make(map[string]string),
 		Scripts:  make(map[string]string),
@@ -27,25 +29,53 @@ func Transform(le *LegacyExport, mappingVersion string) (*config.Config, []strin
 	var review []string
 
 	for _, lf := range le.Flows {
-		f := config.Flow{
-			Name:   lf.Name,
-			Source: config.Source{Type: lf.Source.Type, Config: map[string]any{"path": lf.Source.Path}},
+		id := validName(lf.Name)
+		if flowdef.Reserved(id) {
+			id += "-flow"
 		}
+		id = unique(id, func(c string) bool { return cfg.Flows[c].ID != "" })
+		if id != lf.Name {
+			review = append(review, "flow:"+lf.Name+":renamed:"+id)
+		}
+		f := flowdef.Flow{ID: id, Name: lf.Name, SourceType: lf.Source.Type, Enabled: lf.Enabled}
+		if lf.Source.Path != "" {
+			// Flow definitions carry no source settings yet (gap #1).
+			review = append(review, "flow:"+lf.Name+":source-path")
+		}
+		destNames := map[string]bool{}
 		for _, d := range lf.Destinations {
-			f.Destinations = append(f.Destinations, config.Destination{Name: d.Name, Type: d.Type})
+			if d.Type != "http" && d.Type != "file" {
+				// Only http and file destinations exist; flag the rest.
+				review = append(review, "flow:"+lf.Name+":destination:"+d.Name+":"+d.Type)
+				continue
+			}
+			name := unique(validName(d.Name), func(c string) bool { return destNames[c] })
+			destNames[name] = true
+			if name != d.Name {
+				review = append(review, "flow:"+lf.Name+":destination-renamed:"+d.Name+":"+name)
+			}
+			// Legacy destinations carry no URL or directory; the flow runs
+			// only once they are set.
+			setting := "url"
+			if d.Type == "file" {
+				setting = "dir"
+			}
+			review = append(review, "flow:"+lf.Name+":destination:"+name+":set-"+setting)
+			f.Destinations = append(f.Destinations, flowdef.Destination{Name: name, Type: d.Type})
 		}
+		var steps []map[string]any
 		for _, filt := range lf.Filters {
 			if filt.Script != "" {
 				// Inexpressible legacy script -> flagged for review (gap #1).
 				review = append(review, "flow:"+lf.Name+":script-filter")
 				continue
 			}
-			f.Transforms = append(f.Transforms, config.Transform{
-				Kind: "map",
-				Spec: map[string]any{"from": filt.From, "to": filt.To},
-			})
+			steps = append(steps, map[string]any{"map": map[string]string{"from": filt.From, "to": filt.To}})
 		}
-		cfg.Flows[lf.Name] = f
+		if len(steps) > 0 {
+			f.Transform, _ = json.Marshal(map[string]any{"steps": steps}) // plain maps always encode
+		}
+		cfg.Flows[id] = f
 	}
 
 	for _, s := range le.Snippets {
@@ -59,4 +89,42 @@ func Transform(le *LegacyExport, mappingVersion string) (*config.Config, []strin
 		cfg.Map[e.Key] = e.Value
 	}
 	return cfg, review, nil
+}
+
+// validName turns a legacy name into a valid flow id or destination name
+// (flow.schema.json: 1-128 of A-Z a-z 0-9 . _ -): other characters become
+// "-".
+func validName(name string) string {
+	b := []byte(name)
+	for i, c := range b {
+		valid := c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == '-'
+		if !valid {
+			b[i] = '-'
+		}
+	}
+	switch {
+	case len(b) == 0:
+		return "unnamed"
+	case len(b) > 128:
+		b = b[:128]
+	}
+	return string(b)
+}
+
+// unique returns name, or name with the smallest "-N" suffix that is not
+// taken, shortened so the result stays within 128 characters.
+func unique(name string, taken func(string) bool) string {
+	if !taken(name) {
+		return name
+	}
+	for n := 2; ; n++ {
+		suffix := fmt.Sprintf("-%d", n)
+		base := name
+		if len(base)+len(suffix) > 128 {
+			base = base[:128-len(suffix)]
+		}
+		if c := base + suffix; !taken(c) {
+			return c
+		}
+	}
 }

@@ -1,4 +1,4 @@
-package gateway
+package flowdef
 
 import (
 	"bytes"
@@ -13,21 +13,27 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v5"
 )
 
-// FlowSchema is the flow-definition JSON Schema, published as
+// Schema is the flow-definition JSON Schema, published as
 // agent-docs/schemas/flow.schema.json (go generate copies it there).
 //
 //go:generate cp flow.schema.json ../../agent-docs/schemas/flow.schema.json
 //go:embed flow.schema.json
-var FlowSchema []byte
+var Schema []byte
+
+// SchemaID is the schema's $id, by which other schemas refer to it.
+const SchemaID = "https://raw.githubusercontent.com/weavster-dev/weavster/main/agent-docs/schemas/flow.schema.json"
 
 var flowSchema = mustCompileFlowSchema()
 
-// reservedFlowIDs are the ids the schema forbids (properties.id.not.enum):
+// reservedIDs are the ids the schema forbids (properties.id.not.enum):
 // path segments used by /flows/<name> routes. Read from the schema so it
 // stays the single source.
-var reservedFlowIDs = mustReservedFlowIDs()
+var reservedIDs = mustReservedIDs()
 
-func mustReservedFlowIDs() map[string]bool {
+// Reserved reports whether id names an API route and cannot be a flow id.
+func Reserved(id string) bool { return reservedIDs[id] }
+
+func mustReservedIDs() map[string]bool {
 	var s struct {
 		Properties struct {
 			ID struct {
@@ -37,7 +43,7 @@ func mustReservedFlowIDs() map[string]bool {
 			} `json:"id"`
 		} `json:"properties"`
 	}
-	if err := json.Unmarshal(FlowSchema, &s); err != nil || len(s.Properties.ID.Not.Enum) == 0 {
+	if err := json.Unmarshal(Schema, &s); err != nil || len(s.Properties.ID.Not.Enum) == 0 {
 		panic("flow.schema.json: properties.id.not.enum (reserved ids) is missing")
 	}
 	out := make(map[string]bool, len(s.Properties.ID.Not.Enum))
@@ -50,15 +56,15 @@ func mustReservedFlowIDs() map[string]bool {
 func mustCompileFlowSchema() *jsonschema.Schema {
 	c := jsonschema.NewCompiler()
 	c.Draft = jsonschema.Draft2020
-	if err := c.AddResource("flow.schema.json", bytes.NewReader(FlowSchema)); err != nil {
+	if err := c.AddResource(SchemaID, bytes.NewReader(Schema)); err != nil {
 		panic(err)
 	}
-	return c.MustCompile("flow.schema.json")
+	return c.MustCompile(SchemaID)
 }
 
-// parseFlowDoc decodes a flow definition for validation, keeping numbers
+// ParseDoc decodes a flow definition for validation, keeping numbers
 // exact.
-func parseFlowDoc(raw []byte) (map[string]any, error) {
+func ParseDoc(raw []byte) (map[string]any, error) {
 	var doc any
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
@@ -75,10 +81,10 @@ func parseFlowDoc(raw []byte) (map[string]any, error) {
 	return obj, nil
 }
 
-// validateFlowDoc checks a parsed flow definition against FlowSchema and
-// returns a short, client-safe description of the first violations.
-func validateFlowDoc(doc map[string]any) error {
-	if id, ok := doc["id"].(string); ok && reservedFlowIDs[id] {
+// ValidateDoc checks a parsed flow definition against Schema and returns a
+// short, client-safe description of the first violations.
+func ValidateDoc(doc map[string]any) error {
+	if id, ok := doc["id"].(string); ok && reservedIDs[id] {
 		return fmt.Errorf("flow id %q is reserved (it names an API route)", id)
 	}
 	err := flowSchema.Validate(any(doc))
@@ -104,13 +110,13 @@ func validateFlowDoc(doc map[string]any) error {
 	return fmt.Errorf("flow does not match flow.schema.json: %s", strings.Join(msgs, "; "))
 }
 
-// validateFlowJSON parses and validates one flow definition document.
-func validateFlowJSON(raw []byte) error {
-	doc, err := parseFlowDoc(raw)
+// ValidateJSON parses and validates one flow definition document.
+func ValidateJSON(raw []byte) error {
+	doc, err := ParseDoc(raw)
 	if err != nil {
 		return err
 	}
-	return validateFlowDoc(doc)
+	return ValidateDoc(doc)
 }
 
 // leaves returns the most specific validation errors.
