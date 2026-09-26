@@ -72,7 +72,7 @@ This returns `204` on success. Errors:
 |---|---|
 | `400 {"error":{"code":"OLD_PASSWORD_INCORRECT",…}}` | `oldPassword` is wrong. It counts as a failed attempt toward lockout. |
 | `400 {"error":{"code":"PASSWORD_REJECTED",…}}` | `newPassword` fails `auth.passwordPolicy` or equals `oldPassword`. |
-| `500 {"error":{"code":"INTERNAL",…}}` | The new password could not be saved (for example, the database is read-only). The old password still works. |
+| `500 {"error":{"code":"INTERNAL",…}}` | The new password could not be saved (for example, the database is read-only), or another password change for the same user happened at the same moment. The old password still works; retry. |
 
 A password change signs out every other session of that user. The token used for the change
 keeps working.

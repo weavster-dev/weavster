@@ -107,8 +107,34 @@ func (failingUserRepo) ListUsers(context.Context) ([]state.UserDocument, error) 
 
 type failingSaveRepo struct{ userRepository }
 
+func (failingSaveRepo) InsertUser(context.Context, state.UserDocument) error {
+	return errors.New("attempt to write a readonly database")
+}
+
 func (failingSaveRepo) PutUser(context.Context, state.UserDocument) error {
 	return errors.New("attempt to write a readonly database")
+}
+
+func TestBootstrapLosesRaceGracefully(t *testing.T) {
+	ctx := context.Background()
+	repo := state.NewMemStore()
+	other := auth.NewLocalProvider(auth.Options{Store: userStoreAdapter{repo: repo}})
+	if err := other.CreateUser(ctx, auth.User{Username: bootstrapAdmin, PasswordHash: "Other-Pass-1"}); err != nil {
+		t.Fatal(err)
+	}
+	// This process saw an empty store before the other one inserted admin.
+	p := auth.NewLocalProvider(auth.Options{Store: userStoreAdapter{repo: repo}})
+	var out strings.Builder
+	t.Setenv(envBootstrapPassword, "")
+	if err := bootstrapAdminUser(ctx, p, auth.PasswordPolicy{}, &out); err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(out.String(), "password:") {
+		t.Error("printed a password for an admin that was not created")
+	}
+	if _, err := p.Authenticate(ctx, bootstrapAdmin, "Other-Pass-1", ""); err != nil {
+		t.Errorf("the other process's admin should be loaded: %v", err)
+	}
 }
 
 func TestBootstrapReportsStorageFailure(t *testing.T) {

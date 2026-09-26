@@ -54,6 +54,9 @@ type AuthProvider interface {
 // UserStore persists local users (durable local users, spec §10).
 type UserStore interface {
 	LoadUsers(ctx context.Context) ([]User, error)
+	// InsertUser adds u, returning ErrUserExists when u.Username is taken
+	// (including by another process sharing the store).
+	InsertUser(ctx context.Context, u User) error
 	// SaveUser creates or replaces the user with u.Username.
 	SaveUser(ctx context.Context, u User) error
 	DeleteUser(ctx context.Context, username string) error
@@ -258,8 +261,12 @@ func (p *LocalProvider) CreateUser(ctx context.Context, u User) error {
 	u.PasswordHash = hash
 	u.PasswordChangedAt = time.Now()
 	u.PasswordHistory = []string{hash}
-	if err := p.save(ctx, &u); err != nil {
-		return err
+	if p.opts.Store != nil {
+		if err := p.opts.Store.InsertUser(ctx, u.clone()); errors.Is(err, ErrUserExists) {
+			return err
+		} else if err != nil {
+			return fmt.Errorf("%w: insert user: %w", ErrStorage, err)
+		}
 	}
 	p.users[u.Username] = &u
 	return nil

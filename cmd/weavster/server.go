@@ -282,6 +282,7 @@ func (a authAdapter) Authenticate(ctx context.Context, username, password, mfaCo
 // userRepository is the durable local-user store, implemented by state's
 // SQL and in-memory stores.
 type userRepository interface {
+	InsertUser(ctx context.Context, u state.UserDocument) error
 	PutUser(ctx context.Context, u state.UserDocument) error
 	ListUsers(ctx context.Context) ([]state.UserDocument, error)
 	DeleteUser(ctx context.Context, username string) error
@@ -306,6 +307,18 @@ func (a userStoreAdapter) LoadUsers(ctx context.Context) ([]auth.User, error) {
 	return out, nil
 }
 
+func (a userStoreAdapter) InsertUser(ctx context.Context, u auth.User) error {
+	doc, err := json.Marshal(u)
+	if err != nil {
+		return err
+	}
+	err = a.repo.InsertUser(ctx, state.UserDocument{Username: u.Username, Document: doc})
+	if errors.Is(err, state.ErrUserExists) {
+		return auth.ErrUserExists
+	}
+	return err
+}
+
 func (a userStoreAdapter) SaveUser(ctx context.Context, u auth.User) error {
 	doc, err := json.Marshal(u)
 	if err != nil {
@@ -327,7 +340,7 @@ func (a passwordAdapter) ChangePassword(ctx context.Context, username, oldPasswo
 		return nil
 	case errors.Is(err, auth.ErrPasswordWrong):
 		return gateway.ErrWrongPassword
-	case errors.Is(err, auth.ErrStorage), errors.Is(err, auth.ErrUserNotFound):
+	case errors.Is(err, auth.ErrStorage), errors.Is(err, auth.ErrUserNotFound), errors.Is(err, auth.ErrPasswordConflict):
 		return err // internal failure
 	default: // policy, reuse, or concurrent-change rejection
 		return fmt.Errorf("%w: %w", gateway.ErrPasswordRejected, err)

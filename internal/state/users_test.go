@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -9,6 +10,7 @@ func TestUserDocuments(t *testing.T) {
 	ctx := context.Background()
 	type userStore interface {
 		Store
+		InsertUser(context.Context, UserDocument) error
 		PutUser(context.Context, UserDocument) error
 		ListUsers(context.Context) ([]UserDocument, error)
 		DeleteUser(context.Context, string) error
@@ -25,6 +27,13 @@ func TestUserDocuments(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
+			if err := s.InsertUser(ctx, UserDocument{"bob", []byte(`{"v":3}`)}); !errors.Is(err, ErrUserExists) {
+				t.Errorf("InsertUser taken = %v, want ErrUserExists", err)
+			}
+			if err := s.InsertUser(ctx, UserDocument{"carol", []byte(`{}`)}); err != nil {
+				t.Fatal(err)
+			}
+			_ = s.DeleteUser(ctx, "carol")
 			users, err := s.ListUsers(ctx)
 			if err != nil || len(users) != 2 || users[0].Username != "alice" || string(users[1].Document) != `{"v":2}` {
 				t.Errorf("ListUsers = %+v, %v; want alice, bob(v2)", users, err)
@@ -50,6 +59,9 @@ func TestUserDocumentsClosedDB(t *testing.T) {
 	}
 	s := st.(*sqlStore)
 	_ = s.Close()
+	if err := s.InsertUser(ctx, UserDocument{Username: "x"}); err == nil {
+		t.Error("InsertUser on closed db: want error")
+	}
 	if err := s.PutUser(ctx, UserDocument{Username: "x"}); err == nil {
 		t.Error("PutUser on closed db: want error")
 	}

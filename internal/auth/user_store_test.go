@@ -21,6 +21,13 @@ func (m *memUsers) LoadUsers(context.Context) ([]User, error) {
 	return out, m.failAll
 }
 
+func (m *memUsers) InsertUser(ctx context.Context, u User) error {
+	if _, ok := m.users[u.Username]; ok {
+		return ErrUserExists
+	}
+	return m.SaveUser(ctx, u)
+}
+
 func (m *memUsers) SaveUser(_ context.Context, u User) error {
 	if m.failAll != nil {
 		return m.failAll
@@ -151,5 +158,17 @@ func TestSaveCountersLogsFailure(t *testing.T) {
 	}
 	if u, _ := p.GetUser(ctx, "u"); u.FailedAttempts != 1 {
 		t.Error("in-memory strike lost")
+	}
+}
+
+func TestCreateUserRejectsUserInStore(t *testing.T) {
+	ctx := context.Background()
+	store := &memUsers{users: map[string]User{"admin": {Username: "admin"}}}
+	p := NewLocalProvider(Options{Store: store}) // not loaded: another process created admin
+	if err := p.CreateUser(ctx, User{Username: "admin", PasswordHash: "Pass-1"}); !errors.Is(err, ErrUserExists) {
+		t.Errorf("err = %v, want ErrUserExists", err)
+	}
+	if _, err := p.GetUser(ctx, "admin"); err == nil {
+		t.Error("user added in memory although the store insert failed")
 	}
 }

@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"sort"
 )
 
@@ -10,7 +11,7 @@ import (
 // §10). The store treats Document as opaque bytes; the auth adapter encodes
 // it. The SQL and in-memory stores implement PutUser (create or replace),
 // ListUsers (ordered by username), and DeleteUser (a no-op for an unknown
-// user).
+// user). InsertUser adds a user only if the username is free.
 type UserDocument struct {
 	Username string
 	Document []byte
@@ -28,6 +29,25 @@ func usersMigration() Migration {
 			return err
 		},
 	}
+}
+
+// ErrUserExists is returned by InsertUser when the username is taken.
+var ErrUserExists = errors.New("state: user already exists")
+
+func (s *sqlStore) InsertUser(ctx context.Context, u UserDocument) error {
+	res, err := s.db.ExecContext(ctx,
+		`INSERT INTO users (username, document) VALUES (?, ?) ON CONFLICT (username) DO NOTHING`, u.Username, string(u.Document))
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrUserExists
+	}
+	return nil
 }
 
 func (s *sqlStore) PutUser(ctx context.Context, u UserDocument) error {
@@ -59,6 +79,16 @@ func (s *sqlStore) ListUsers(ctx context.Context) ([]UserDocument, error) {
 func (s *sqlStore) DeleteUser(ctx context.Context, username string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE username = ?`, username)
 	return err
+}
+
+func (s *MemStore) InsertUser(ctx context.Context, u UserDocument) error {
+	s.mu.Lock()
+	_, taken := s.users[u.Username]
+	s.mu.Unlock()
+	if taken {
+		return ErrUserExists
+	}
+	return s.PutUser(ctx, u)
 }
 
 func (s *MemStore) PutUser(_ context.Context, u UserDocument) error {
