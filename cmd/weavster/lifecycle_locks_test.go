@@ -394,3 +394,28 @@ func TestAutoDeployOrderIndependent(t *testing.T) {
 		}
 	}
 }
+
+func TestKeepStoppedAndSetDestinationRunning(t *testing.T) {
+	current := gateway.Flow{StoppedDestinations: []string{"a", "b"}}
+	next := gateway.Flow{Destinations: []gateway.FlowDestination{{Name: "b"}, {Name: "c"}}}
+	if got := keepStopped(current, next); strings.Join(got, ",") != "b" {
+		t.Errorf("keepStopped = %v, want [b] (a was removed)", got)
+	}
+
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "f", Document: []byte(`{"id":"f","status":"started","destinations":[{"name":"d","type":"file","dir":"/x"}]}`)})
+	events := observability.NewEventLog()
+	flows := flowAdapter{store: mem, locks: newFlowLocks(), events: events}
+	for _, running := range []bool{false, false, true} { // stopping twice is a no-op
+		if _, err := flows.SetDestinationRunning(ctx, "f", "d", running); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := events.Count(observability.EventFilter{}); got != 2 {
+		t.Errorf("%d events, want stopped then started", got)
+	}
+	if _, err := flows.SetDestinationRunning(ctx, "nope", "d", true); !errors.Is(err, gateway.ErrFlowNotFound) {
+		t.Errorf("unknown flow: %v", err)
+	}
+}

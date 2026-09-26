@@ -111,6 +111,9 @@ func (f fakeLifecycle) Transition(_ context.Context, id, action string) (Flow, e
 }
 
 func (f fakeLifecycle) RedeployAll(context.Context) ([]Flow, error) { return []Flow{{ID: "a"}}, f.err }
+func (f fakeLifecycle) SetDestinationRunning(_ context.Context, id, dest string, running bool) (Flow, error) {
+	return Flow{ID: id}, f.err
+}
 
 func TestLifecycleHandlers(t *testing.T) {
 	tests := []struct {
@@ -124,6 +127,11 @@ func TestLifecycleHandlers(t *testing.T) {
 		{"unavailable", Config{}, "/api/v1/flows/f/start", http.StatusServiceUnavailable},
 		{"invalid transition", Config{Lifecycle: fakeLifecycle{err: fmt.Errorf("%w: cannot pause a flow that is stopped", ErrInvalidTransition)}}, "/api/v1/flows/f/pause", http.StatusConflict},
 		{"redeploy-all", Config{Lifecycle: fakeLifecycle{}}, "/api/v1/flows/redeploy-all", http.StatusOK},
+		{"destination stop", Config{Lifecycle: fakeLifecycle{}}, "/api/v1/flows/f/destinations/d/stop", http.StatusOK},
+		{"destination start", Config{Lifecycle: fakeLifecycle{}}, "/api/v1/flows/f/destinations/d/start", http.StatusOK},
+		{"destination bad action", Config{Lifecycle: fakeLifecycle{}}, "/api/v1/flows/f/destinations/d/explode", http.StatusNotFound},
+		{"destination unavailable", Config{}, "/api/v1/flows/f/destinations/d/stop", http.StatusServiceUnavailable},
+		{"destination unknown", Config{Lifecycle: fakeLifecycle{err: ErrDestinationNotFound}}, "/api/v1/flows/f/destinations/d/stop", http.StatusNotFound},
 		{"redeploy-all unavailable", Config{}, "/api/v1/flows/redeploy-all", http.StatusServiceUnavailable},
 		{"redeploy-all partial", Config{Lifecycle: fakeLifecycle{err: errors.New("boom")}}, "/api/v1/flows/redeploy-all", http.StatusInternalServerError},
 	}

@@ -16,7 +16,7 @@ func writeFlowError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrFlowNotFound):
 		http.Error(w, "flow not found", http.StatusNotFound)
-	case errors.Is(err, ErrUnknownAction):
+	case errors.Is(err, ErrUnknownAction), errors.Is(err, ErrDestinationNotFound):
 		http.Error(w, err.Error(), http.StatusNotFound)
 	case errors.Is(err, ErrFlowExists):
 		http.Error(w, "flow already exists", http.StatusConflict)
@@ -317,4 +317,26 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, res)
+}
+
+func (s *Server) handleDestinationAction(w http.ResponseWriter, r *http.Request) {
+	var running bool
+	switch r.PathValue("action") {
+	case "start":
+		running = true
+	case "stop":
+	default:
+		http.NotFound(w, r)
+		return
+	}
+	if s.cfg.Lifecycle == nil {
+		http.Error(w, "flow lifecycle unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	f, err := s.cfg.Lifecycle.SetDestinationRunning(r.Context(), r.PathValue("id"), r.PathValue("dest"), running)
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, f)
 }

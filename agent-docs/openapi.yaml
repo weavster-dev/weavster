@@ -142,6 +142,16 @@ paths:
       responses:
         "200": {description: The updated flow}
         "404": {description: Unknown flow}
+  /api/v1/flows/{id}/destinations/{name}/{action}:
+    post:
+      summary: Stop (hold deliveries to) or start one destination of a flow (requires flows:deploy)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: name, in: path, required: true, schema: {type: string}}
+        - {name: action, in: path, required: true, schema: {type: string, enum: [start, stop]}}
+      responses:
+        "200": {description: "The flow; stoppedDestinations lists stopped destinations"}
+        "404": {description: Unknown flow, destination, or action}
   /api/v1/flows/{id}/{action}:
     post:
       summary: Change a flow's lifecycle state (requires flows:deploy)

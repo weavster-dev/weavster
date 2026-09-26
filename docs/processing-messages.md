@@ -120,7 +120,7 @@ The request returns after processing finishes. `status` is one of:
 | Status | Meaning |
 |---|---|
 | `sent` | Delivered to every destination. |
-| `queued` | At least one destination failed. It is retried automatically (see [Retries](#retries)). |
+| `queued` | At least one destination failed, or is [stopped](flow-lifecycle.md#stopping-one-destination). It is retried automatically (see [Retries](#retries)). |
 | `dead-lettered` | A destination still failed after `delivery.maxAttempts` attempts, or the flow was deleted while the message was queued. Not retried again. |
 | `filtered` | A `filter` step dropped the message. Nothing was delivered. |
 | `errored` | The transform failed (for example `"x" is not a number`). Nothing was delivered. |

@@ -33,6 +33,7 @@ func TestValidateFlowJSON(t *testing.T) {
 			"destinations":[{"name":"d","type":"http","url":"https://x"},{"name":"f","type":"file","dir":"/tmp"}]}`, ""},
 		{"null transform", `{"id":"a","transform":null}`, ""},
 		{"unknown field", `{"id":"a","colour":"red"}`, "colour"},
+		{"runtime stoppedDestinations", `{"id":"a","stoppedDestinations":["d"]}`, "stoppedDestinations"},
 		{"wrong type", `{"id":"a","enabled":"yes"}`, "/enabled"},
 		{"bad destination type", `{"id":"a","destinations":[{"name":"d","type":"smtp"}]}`, "/destinations/0/type"},
 		{"unknown step", `{"id":"a","transform":{"steps":[{"explode":{}}]}}`, "/transform"},
@@ -120,8 +121,8 @@ func TestFlowSchemaMatchesGoTypes(t *testing.T) {
 		sort.Strings(out)
 		return out
 	}
-	if got, want := keys(schema.Properties), jsonFields(Flow{}, "status"); !slices.Equal(got, want) {
-		t.Errorf("flow schema properties %v != gateway.Flow fields %v (status excluded)", got, want)
+	if got, want := keys(schema.Properties), jsonFields(Flow{}, "status", "stoppedDestinations"); !slices.Equal(got, want) {
+		t.Errorf("flow schema properties %v != gateway.Flow fields %v (runtime status and stoppedDestinations excluded)", got, want)
 	}
 	if got, want := keys(schema.Defs["Destination"].Properties), jsonFields(FlowDestination{}); !slices.Equal(got, want) {
 		t.Errorf("Destination properties %v != FlowDestination fields %v", got, want)
