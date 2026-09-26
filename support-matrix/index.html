@@ -467,7 +467,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>weavster</code> with no subcommand</td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixCLI/no-subcommand</code>. Starts the server on <code>127.0.0.1:8080</code>, <strong>not</strong> an interactive shell.</td>
+<td><code>TestSupportMatrixCLI/no-subcommand</code>, <code>TestShell</code>. Opens the interactive remote shell (<code>weavster&gt;</code> prompt); <code>quit</code>, <code>exit</code>, or end of input ends it. Start the server with <code>weavster server</code>.</td>
 </tr>
 <tr>
 <td><code>weavster -h</code></td>
@@ -477,37 +477,37 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>weavster -v</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestRunHelpAndVersion</code>. Prints the <strong>local binary</strong> version, not the server's.</td>
+<td><code>TestRunHelpAndVersion</code>, <code>TestShell/server_version</code>. Prints the server's version (and the client's). Needs credentials (<code>-u/-p</code> or <code>-c</code>); exits <code>2</code> if the server cannot be reached or refuses them.</td>
 </tr>
 <tr>
 <td><code>weavster -s script.txt</code> batch mode</td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixCLI/batch-*</code>, <code>TestFlowCLI</code>. Commands: <code>help</code>, <code>status</code>, <code>version</code>, <code>flow</code> (list, get, create, update, update-all, rename, enable, disable, remove, export, import, lifecycle actions, redeploy-all, start/stop-destination, connectors, ports), <code>user list</code>, <code>quit</code>/<code>exit</code>. <code>user list</code> always prints nothing. Exits <code>2</code> if any line fails (unknown command, usage error, unreadable file, unreachable server, or an error reply). <strong><code>status</code> exits <code>0</code> even when the server answers with an HTTP error</strong>; it prints the error body. See <a href="../cli/">Command-line client</a>.</td>
+<td><code>TestSupportMatrixCLI/batch-*</code>, <code>TestFlowCLI</code>. Commands: <code>help</code>, <code>status</code>, <code>version</code>, <code>flow</code> (list, get, create, update, update-all, rename, enable, disable, remove, export, import, lifecycle actions, redeploy-all, start/stop-destination, connectors, ports), <code>user list</code>, <code>quit</code>/<code>exit</code>. <code>user list</code> always prints nothing. Exits <code>2</code> if any line fails (unknown command, usage error, unreadable file, unreachable server, or an error reply). See <a href="../cli/">Command-line client</a>.</td>
 </tr>
 <tr>
 <td><code>-a address</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixCLI/batch-*</code>. Used only by <code>-s</code>. Include the scheme, for example <code>http://127.0.0.1:8080</code> (default).</td>
+<td><code>TestSupportMatrixCLI/batch-*</code>, <code>TestShell</code>. Include the scheme, for example <code>http://127.0.0.1:8080</code> (default).</td>
 </tr>
 <tr>
 <td><code>-u</code>, <code>-p</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestCLICredentials</code>. Sent as HTTP Basic credentials by <code>-s</code> batch mode.</td>
+<td><code>TestCLICredentials</code>, <code>TestShell</code>. Checked at startup; a failed login prints <code>Could not log in to server.</code> and continues. Sent as HTTP Basic credentials.</td>
 </tr>
 <tr>
 <td><code>-c connection-file</code></td>
-<td>Unsupported</td>
-<td>Parsed and ignored. A missing file is not an error.</td>
+<td>Implemented (wired)</td>
+<td><code>TestShell</code>. YAML with <code>address</code>, <code>user</code>, <code>password</code>; <code>-a/-u/-p</code> override it; a missing or invalid file exits <code>2</code>.</td>
 </tr>
 <tr>
 <td><code>-d</code></td>
-<td>Unsupported</td>
-<td>Parsed, but error output is identical with or without it.</td>
+<td>Implemented (wired)</td>
+<td><code>TestShell/debug_shows_causes</code>. Adds each underlying cause to error output.</td>
 </tr>
 <tr>
 <td>Interactive shell</td>
-<td>Unsupported</td>
-<td></td>
+<td>Implemented (wired)</td>
+<td><code>TestShell</code>. Same commands as batch mode. See <a href="../cli/">Command-line client</a>.</td>
 </tr>
 <tr>
 <td><code>weavster test [--filter NAME] [--format junit\|json] [--output DIR]</code></td>

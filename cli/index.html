@@ -112,6 +112,14 @@
             
             <li class="nav-item" data-bs-level="1"><a href="#command-line-client" class="nav-link">Command-line client</a>
               <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#interactive-shell" class="nav-link">Interactive shell</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#batch-mode" class="nav-link">Batch mode</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#flow-commands" class="nav-link">Flow commands</a>
               <ul class="nav flex-column">
               </ul>
@@ -132,9 +140,16 @@
                     <div class="col-md-9" role="main">
 
 <h1 id="command-line-client">Command-line client</h1>
-<p><code>weavster</code> without <code>server</code> is the command-line client. It talks to a running server over the
-REST API. Today it runs commands from a script file (batch mode):</p>
-<pre><code class="language-bash">weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
+<p><code>weavster</code> without <code>server</code> or <code>test</code> is the command-line client. It talks to a running server
+over the REST API, either as an interactive shell or running a script file (batch mode).</p>
+<pre><code class="language-bash"># Interactive shell
+weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd'
+weavster&gt; flow list
+adt started ADT normalize
+weavster&gt; quit
+
+# Batch mode
+weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
 </code></pre>
 <table>
 <thead>
@@ -145,23 +160,47 @@ REST API. Today it runs commands from a script file (batch mode):</p>
 </thead>
 <tbody>
 <tr>
-<td><code>-a</code></td>
-<td>Server address (default <code>http://127.0.0.1:8080</code>).</td>
+<td><code>-a address</code></td>
+<td>Server address (default <code>http://127.0.0.1:8080</code>). Include the scheme.</td>
 </tr>
 <tr>
-<td><code>-u</code>, <code>-p</code></td>
-<td>Username and password, sent as Basic credentials.</td>
+<td><code>-u user</code>, <code>-p password</code></td>
+<td>Log in as this user. The credentials are checked at startup. If they are wrong, or the account must change its password first, the client prints <code>Could not log in to server.</code> and the server's reason, then continues (commands then fail with <code>401</code> or <code>403</code>). A password without a user exits <code>2</code>.</td>
 </tr>
 <tr>
-<td><code>-s</code></td>
+<td><code>-c file</code></td>
+<td>Connection file with the address and credentials (see below). <code>-a</code>, <code>-u</code>, and <code>-p</code> override its values. A missing or invalid file exits <code>2</code>.</td>
+</tr>
+<tr>
+<td><code>-s file</code></td>
 <td>Script file: one command per line. Empty lines and lines starting with <code>#</code> are skipped.</td>
 </tr>
 <tr>
+<td><code>-v</code></td>
+<td>Print the server's version and exit. It needs <code>-u</code>/<code>-p</code> (or <code>-c</code>), because the server only answers signed-in users; it exits <code>2</code> if the server cannot be reached or refuses the credentials.</td>
+</tr>
+<tr>
+<td><code>-h</code></td>
+<td>Print usage and exit.</td>
+</tr>
+<tr>
 <td><code>-d</code></td>
-<td>Accepted; errors look the same with or without it.</td>
+<td>Debug mode: error messages also list each underlying cause.</td>
 </tr>
 </tbody>
 </table>
+<p>Connection file (<code>-c</code>), YAML with only these keys:</p>
+<pre><code class="language-yaml">address: http://127.0.0.1:8080
+user: admin
+password: A-Strong-Passw0rd
+</code></pre>
+<p>Keep it readable only by you (<code>chmod 600</code>), because it holds a password.</p>
+<h2 id="interactive-shell">Interactive shell</h2>
+<p>The shell prints the prompt <code>weavster&gt;</code>, runs each command you type, and shows errors without
+leaving. <code>quit</code>, <code>exit</code>, or end of input (Ctrl-D) ends it with exit code <code>0</code>. A line longer than
+1 MiB, or a read error, ends it with exit code <code>2</code>. It accepts the same
+commands as batch mode.</p>
+<h2 id="batch-mode">Batch mode</h2>
 <p>Commands are split on spaces: arguments (such as file names) cannot contain spaces, and there is
 no quoting. File names are relative to the directory you run <code>weavster</code> from.</p>
 <p>Every command in the script runs, even after an error. The client exits <code>0</code> when every command
@@ -284,7 +323,7 @@ one as <code>&lt;id&gt;</code> is an error.</p>
 <tbody>
 <tr>
 <td><code>status</code></td>
-<td>Prints the server's <code>GET /api/v1/system</code> reply.</td>
+<td>Lists deployed flows (every status except <code>undeployed</code>): id, status, and name per line, or <code>no deployed flows</code>.</td>
 </tr>
 <tr>
 <td><code>version</code></td>
@@ -300,14 +339,13 @@ one as <code>&lt;id&gt;</code> is an error.</p>
 </tr>
 <tr>
 <td><code>quit</code>, <code>exit</code></td>
-<td>Do nothing in batch mode.</td>
+<td>End the interactive shell; ignored in batch mode.</td>
 </tr>
 </tbody>
 </table>
 <h2 id="limits-today">Limits today</h2>
 <ul>
-<li>There is no interactive shell yet: without <code>-s</code>, <code>weavster</code> starts the server.</li>
-<li><code>status</code> exits <code>0</code> even when the server answers with an error; it prints the reply.</li>
+<li><code>user list</code> prints nothing yet.</li>
 </ul></div>
             </div>
         </div>
