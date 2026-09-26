@@ -255,7 +255,10 @@ func runServer(args []string, stderr io.Writer) int {
 		code = fail(err)
 	case <-ctx.Done():
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Drain in-flight requests up to the deadline. Work still unfinished
+	// afterwards is already stored and is resumed by the next start's
+	// recovery pass (RetryDue) with the same idempotency keys.
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Duration(cfg.Listen.ShutdownTimeoutMs)*time.Millisecond)
 	defer cancel()
 	for _, s := range servers {
 		_ = s.Shutdown(shutdownCtx)

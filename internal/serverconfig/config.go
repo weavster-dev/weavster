@@ -44,6 +44,9 @@ type Listen struct {
 	Address             string `yaml:"address"`
 	TLSAddress          string `yaml:"tlsAddress"`
 	RequireMarkerHeader bool   `yaml:"requireMarkerHeader"`
+	// ShutdownTimeoutMs bounds how long a stop signal waits for in-flight
+	// requests.
+	ShutdownTimeoutMs int `yaml:"shutdownTimeoutMs"`
 }
 
 // TLS configures the HTTPS listener's certificate and protocol floor.
@@ -91,7 +94,7 @@ type Lockout struct {
 // Default returns the configuration used when no file is given.
 func Default() Config {
 	return Config{
-		Listen: Listen{Address: "127.0.0.1:8080", RequireMarkerHeader: true},
+		Listen: Listen{Address: "127.0.0.1:8080", RequireMarkerHeader: true, ShutdownTimeoutMs: 10000},
 		TLS:    TLS{MinVersion: "1.2"},
 		Store:  Store{Dialect: DialectMemory, MaxConnections: 10, MaxRetry: 3, RetryWaitMs: 1000},
 		Paths:  Paths{},
@@ -169,6 +172,9 @@ func (c Config) Validate() error {
 	}
 	if c.Store.MaxRetry < 0 || c.Store.RetryWaitMs < 0 {
 		return errors.New("config: store.maxRetry and store.retryWaitMs must be >= 0")
+	}
+	if c.Listen.ShutdownTimeoutMs < 1 || c.Listen.ShutdownTimeoutMs > 600000 {
+		return errors.New("config: listen.shutdownTimeoutMs must be between 1 and 600000 (ten minutes)")
 	}
 	if d := c.Delivery; d.MaxAttempts < 1 || d.MaxAttempts > 1000 {
 		return errors.New("config: delivery.maxAttempts must be between 1 and 1000")

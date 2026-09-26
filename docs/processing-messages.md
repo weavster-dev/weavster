@@ -158,6 +158,11 @@ stopped is delivered once its destination is back. So is a message the server wa
 processing when it stopped or crashed: it is transformed if needed and delivered to every
 destination that has not received it.
 
+On SIGINT or SIGTERM the server stops accepting connections and waits up to
+`listen.shutdownTimeoutMs` (default 10 seconds) for requests in progress. A message still
+being delivered at that deadline is already stored. The next start finishes it and sends the
+same `Idempotency-Key`, so a destination that already received it can ignore the repeat.
+
 Messages of a flow whose `status` is `stopped`, `paused`, `halted`, or `undeployed` are not
 retried; they stay `queued`.
 
