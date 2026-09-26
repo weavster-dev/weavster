@@ -128,9 +128,11 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			id Identity
 			ok bool
 		)
+		info := auditInfoFrom(r.Context())
 		if token := bearerToken(r); token != "" {
 			id, ok = s.sessions.lookup(token)
 		} else if user, pass, basic := r.BasicAuth(); basic {
+			info.attempted = user
 			var err error
 			id, err = s.cfg.Auth.Authenticate(r.Context(), user, pass, r.Header.Get("X-Weavster-MFA"))
 			ok = err == nil
@@ -140,6 +142,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
 			return
 		}
+		info.id = id
 		if id.MustChangePassword && r.URL.Path != "/api/v1/auth/password" &&
 			r.URL.Path != "/api/v1/auth/logout" && r.URL.Path != "/api/v1/auth/me" {
 			writeError(w, http.StatusForbidden, "PASSWORD_CHANGE_REQUIRED",
@@ -199,6 +202,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "body must be JSON with username and password")
 		return
 	}
+	auditInfoFrom(r.Context()).attempted = req.Username
 	id, err := s.cfg.Auth.Authenticate(r.Context(), req.Username, req.Password, req.MFACode)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid username or password")

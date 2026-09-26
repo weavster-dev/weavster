@@ -35,7 +35,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | First-run `admin` account (env var, secret file, or one-time generated password with forced change) | Implemented (wired) | `TestBootstrapGeneratedPassword`, `TestBootstrapPasswordSources` |
 | Password policy and lockout (`auth.*` config) | Implemented (wired) | `TestBootstrapPasswordSources` |
 | Durable users; user administration API | Unsupported | Users are in memory and re-created at every start. `admin` is the only account. |
-| Audit of API calls | Library-only | The `audit` package exists, but request handlers never call it. |
+| Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction | Implemented (wired) | `TestAuditLog`. Written to stderr only; not stored or searchable. See [Audit log](audit-log.md). |
 | HTTPS listener (`listen.tlsAddress`, `tls.certFile/keyFile/minVersion`) | Implemented (wired) | `TestServerConfigTLS` |
 | mTLS | Unsupported | |
 | Message store selection: `memory` (default), `sqlite`, `disabled` | Implemented (wired) | `TestServerConfigStore`. SQLite creates `<dataDir>/weavster.db` and runs migrations at startup. `disabled` makes message search return `503`. Nothing writes messages yet, so every store is empty. |

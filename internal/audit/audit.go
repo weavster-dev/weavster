@@ -29,7 +29,8 @@ type AuditSink interface {
 type LocalSink struct {
 	mu      sync.Mutex
 	seq     int64
-	entries []Entry
+	entries []Entry // ring buffer of at most maxEntries
+	next    int     // ring index of the oldest entry once full
 	logger  *slog.Logger
 }
 
@@ -41,31 +42,43 @@ func NewLocalSink(logger *slog.Logger) *LocalSink {
 	return &LocalSink{logger: logger}
 }
 
-// Record appends an entry and emits a structured log line.
+// maxEntries bounds the in-memory history kept by LocalSink.
+const maxEntries = 10000
+
+// Record redacts sensitive detail, keeps the entry in a bounded in-memory
+// history, and emits a structured log line.
 func (s *LocalSink) Record(_ context.Context, e Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.seq++
 	e.ID = s.seq
 	e.At = time.Now()
-	s.entries = append(s.entries, e)
+	e.Detail = RedactSensitive(e.Detail)
+	if len(s.entries) < maxEntries {
+		s.entries = append(s.entries, e)
+	} else {
+		s.entries[s.next] = e // overwrite the oldest
+		s.next = (s.next + 1) % maxEntries
+	}
 
 	s.logger.Info("audit",
 		"id", e.ID,
 		"actor", e.Actor,
 		"action", e.Action,
 		"resource", e.Resource,
+		"detail", e.Detail,
 	)
 	return nil
 }
 
-// Entries returns a copy of all recorded entries (newest last).
+// Entries returns a copy of the newest (up to maxEntries) entries, newest
+// last.
 func (s *LocalSink) Entries() []Entry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]Entry, len(s.entries))
-	copy(out, s.entries)
-	return out
+	out := make([]Entry, 0, len(s.entries))
+	out = append(out, s.entries[s.next:]...)
+	return append(out, s.entries[:s.next]...)
 }
 
 var _ AuditSink = (*LocalSink)(nil)

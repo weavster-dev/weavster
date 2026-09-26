@@ -30,7 +30,7 @@ type Authorizer interface {
 
 // AuditSink records audit entries (arch §3.1).
 type AuditSink interface {
-	Record(ctx context.Context, actor, action, resource string) error
+	Record(ctx context.Context, e AuditEvent) error
 }
 
 // Flow is a minimal flow record exposed over REST.

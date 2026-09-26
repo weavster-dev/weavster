@@ -20,10 +20,13 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/api/v1", func(r chi.Router) {
+		// audited runs first so requests rejected by any later middleware
+		// (CSRF marker, authentication, authorization) are still recorded.
+		r.Use(s.audited)
 		if s.cfg.RequireCSRF {
 			r.Use(RequireMarkerHeader)
 		}
-		r.Post("/auth/login", s.handleLogin)
+		r.With(s.auditAs(AuditLogin)).Post("/auth/login", s.handleLogin)
 		r.Group(func(r chi.Router) {
 			r.Use(s.authenticate)
 			r.Post("/auth/logout", s.handleLogout)
@@ -36,7 +39,7 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("flows", "edit")).Post("/flows", s.handleFlowsCreate)
 			r.With(s.require("flows", "view")).Get("/flows/{id}", s.handleFlowsGet)
 			r.With(s.require("flows", "edit")).Delete("/flows/{id}", s.handleFlowsDelete)
-			r.With(s.require("messages", "view")).Get("/messages", s.handleMessagesSearch)
+			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "view")).Get("/messages", s.handleMessagesSearch)
 		})
 	})
 	return r

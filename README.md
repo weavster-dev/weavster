@@ -62,12 +62,12 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   read-only topology JSON built from those flows; message search against the configured
   store (`memory`, `sqlite`, or `disabled`), which is always empty because nothing writes messages.
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
-  account. Users are in memory; API calls are not audited.
+  account; security-relevant API calls are written to an audit log on stderr. Users are in memory.
 - **CLI**: `weavster server`, `weavster test` (four built-in codec round-trip fixtures,
   JUnit/JSON output), and `-s` batch scripts with `help`, `status`, `version`, `flow list`,
   `user list`, `quit`. `-u`/`-p` send Basic credentials; `-c` is parsed but ignored; `-v` prints
   the local version.
-- **Library-only** (source and unit tests exist, not used by the server): audit,
+- **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
   scheduler, adapters, outbox, codecs, WASM compiler/executor/registry, PostgreSQL
   store, config-as-code, Git store, alerts, notifiers, secrets, metrics/tracing.
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.
