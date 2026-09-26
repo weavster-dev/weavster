@@ -102,12 +102,15 @@ func TestFlowAdapter(t *testing.T) {
 	if flows, err := a.List(ctx); err != nil || len(flows) != 1 || flows[0] != want {
 		t.Errorf("List = %+v, %v", flows, err)
 	}
-	if _, err := a.Get(ctx, "missing"); !errors.Is(err, state.ErrFlowNotFound) {
+	if err := a.Create(ctx, want); !errors.Is(err, gateway.ErrFlowExists) {
+		t.Errorf("Create duplicate = %v, want gateway.ErrFlowExists", err)
+	}
+	if _, err := a.Get(ctx, "missing"); !errors.Is(err, gateway.ErrFlowNotFound) {
 		t.Errorf("Get missing = %v", err)
 	}
 
 	// A corrupt stored document is reported, not silently dropped.
-	if err := store.PutFlow(ctx, state.FlowDefinition{ID: "bad", Document: []byte("{")}); err != nil {
+	if err := store.CreateFlow(ctx, state.FlowDefinition{ID: "bad", Document: []byte("{")}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.Get(ctx, "bad"); err == nil {
@@ -122,8 +125,21 @@ func TestFlowAdapter(t *testing.T) {
 	if err := a.Delete(ctx, "f1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.Delete(ctx, "f1"); !errors.Is(err, state.ErrFlowNotFound) {
+	if err := a.Delete(ctx, "f1"); !errors.Is(err, gateway.ErrFlowNotFound) {
 		t.Errorf("Delete missing = %v", err)
+	}
+}
+
+func TestStoresImplementFlowRepository(t *testing.T) {
+	sqlite, err := state.OpenSQLite(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sqlite.Close() }()
+	for _, s := range []state.Store{state.NewMemStore(), sqlite} {
+		if _, ok := s.(flowRepository); !ok {
+			t.Errorf("%T does not implement flowRepository", s)
+		}
 	}
 }
 
@@ -153,7 +169,7 @@ func TestTopologyAdapter(t *testing.T) {
 	}
 }
 
-type failingFlowStore struct{ state.FlowStore }
+type failingFlowStore struct{ flowRepository }
 
 func (failingFlowStore) ListFlows(context.Context) ([]state.FlowDefinition, error) {
 	return nil, errors.New("store down")

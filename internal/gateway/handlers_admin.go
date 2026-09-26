@@ -27,7 +27,7 @@ func (s *Server) handleTopologyFlow(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("flowId")
 	g, err := s.cfg.Topology.FlowInternal(r.Context(), id)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeFlowError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, g)

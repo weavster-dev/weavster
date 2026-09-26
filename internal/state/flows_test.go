@@ -8,14 +8,21 @@ import (
 
 func TestFlowStore(t *testing.T) {
 	ctx := context.Background()
-	backends := map[string]func(t *testing.T) Store{
-		"memory": func(*testing.T) Store { return NewMemStore() },
-		"sqlite": func(t *testing.T) Store {
+	type flowStore interface {
+		Store
+		CreateFlow(context.Context, FlowDefinition) error
+		GetFlow(context.Context, string) (FlowDefinition, error)
+		ListFlows(context.Context) ([]FlowDefinition, error)
+		DeleteFlow(context.Context, string) error
+	}
+	backends := map[string]func(t *testing.T) flowStore{
+		"memory": func(*testing.T) flowStore { return NewMemStore() },
+		"sqlite": func(t *testing.T) flowStore {
 			s, err := OpenSQLite(ctx, ":memory:")
 			if err != nil {
 				t.Fatal(err)
 			}
-			return s
+			return s.(flowStore)
 		},
 	}
 	for name, open := range backends {
@@ -27,16 +34,16 @@ func TestFlowStore(t *testing.T) {
 				t.Fatalf("empty ListFlows = %v, %v", flows, err)
 			}
 			for _, f := range []FlowDefinition{{ID: "b", Document: []byte(`{"v":1}`)}, {ID: "a", Document: []byte(`{"v":2}`)}} {
-				if err := s.PutFlow(ctx, f); err != nil {
+				if err := s.CreateFlow(ctx, f); err != nil {
 					t.Fatal(err)
 				}
 			}
-			if err := s.PutFlow(ctx, FlowDefinition{ID: "b", Document: []byte(`{"v":3}`)}); err != nil {
-				t.Fatal(err)
+			if err := s.CreateFlow(ctx, FlowDefinition{ID: "b", Document: []byte(`{"v":3}`)}); !errors.Is(err, ErrFlowExists) {
+				t.Errorf("duplicate CreateFlow = %v, want ErrFlowExists", err)
 			}
 			got, err := s.GetFlow(ctx, "b")
-			if err != nil || string(got.Document) != `{"v":3}` || got.UpdatedAt.IsZero() {
-				t.Errorf("GetFlow(b) = %+v, %v; want replaced document", got, err)
+			if err != nil || string(got.Document) != `{"v":1}` {
+				t.Errorf("GetFlow(b) = %+v, %v; want the original document", got, err)
 			}
 			flows, err := s.ListFlows(ctx)
 			if err != nil || len(flows) != 2 || flows[0].ID != "a" || flows[1].ID != "b" {
@@ -57,13 +64,14 @@ func TestFlowStore(t *testing.T) {
 
 func TestFlowStoreClosedDB(t *testing.T) {
 	ctx := context.Background()
-	s, err := OpenSQLite(ctx, ":memory:")
+	st, err := OpenSQLite(ctx, ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
+	s := st.(*sqlStore)
 	_ = s.Close()
-	if err := s.PutFlow(ctx, FlowDefinition{ID: "x"}); err == nil {
-		t.Error("PutFlow on closed db: want error")
+	if err := s.CreateFlow(ctx, FlowDefinition{ID: "x"}); err == nil {
+		t.Error("CreateFlow on closed db: want error")
 	}
 	if _, err := s.GetFlow(ctx, "x"); err == nil || errors.Is(err, ErrFlowNotFound) {
 		t.Errorf("GetFlow on closed db = %v, want driver error", err)

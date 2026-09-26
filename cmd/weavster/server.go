@@ -61,11 +61,13 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 	sink := audit.NewLocalSink(logger)
 	// Flow definitions live in the configured store; with the store
 	// disabled they are kept in memory.
-	var flowStore state.FlowStore = state.NewMemStore()
+	// Every state backend implements flowRepository
+	// (TestStoresImplementFlowRepository).
+	var repo flowRepository = state.NewMemStore()
 	if store != nil {
-		flowStore = store
+		repo = store.(flowRepository)
 	}
-	flows := flowAdapter{store: flowStore}
+	flows := flowAdapter{store: repo}
 
 	srv := gateway.New(gateway.Config{
 		Auth:        authAdapter{provider},
@@ -286,8 +288,28 @@ func (a auditAdapter) Record(ctx context.Context, actor, action, resource string
 	return a.s.Record(ctx, audit.Entry{Actor: actor, Action: action, Resource: resource})
 }
 
-// flowAdapter stores gateway flows as JSON documents in the Store (D-12).
-type flowAdapter struct{ store state.FlowStore }
+// flowRepository is the durable flow-definition store (D-12), implemented by
+// state's SQL and in-memory stores.
+type flowRepository interface {
+	CreateFlow(ctx context.Context, f state.FlowDefinition) error
+	GetFlow(ctx context.Context, id string) (state.FlowDefinition, error)
+	ListFlows(ctx context.Context) ([]state.FlowDefinition, error)
+	DeleteFlow(ctx context.Context, id string) error
+}
+
+// flowAdapter stores gateway flows as JSON documents (D-12).
+type flowAdapter struct{ store flowRepository }
+
+// flowErr translates state's flow errors into the gateway's.
+func flowErr(err error) error {
+	switch {
+	case errors.Is(err, state.ErrFlowNotFound):
+		return gateway.ErrFlowNotFound
+	case errors.Is(err, state.ErrFlowExists):
+		return gateway.ErrFlowExists
+	}
+	return err
+}
 
 func (a flowAdapter) List(ctx context.Context) ([]gateway.Flow, error) {
 	defs, err := a.store.ListFlows(ctx)
@@ -308,7 +330,7 @@ func (a flowAdapter) List(ctx context.Context) ([]gateway.Flow, error) {
 func (a flowAdapter) Get(ctx context.Context, id string) (gateway.Flow, error) {
 	d, err := a.store.GetFlow(ctx, id)
 	if err != nil {
-		return gateway.Flow{}, err
+		return gateway.Flow{}, flowErr(err)
 	}
 	var f gateway.Flow
 	if err := json.Unmarshal(d.Document, &f); err != nil {
@@ -322,11 +344,11 @@ func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) error {
 	if err != nil {
 		return err
 	}
-	return a.store.PutFlow(ctx, state.FlowDefinition{ID: f.ID, Document: doc})
+	return flowErr(a.store.CreateFlow(ctx, state.FlowDefinition{ID: f.ID, Document: doc}))
 }
 
 func (a flowAdapter) Delete(ctx context.Context, id string) error {
-	return a.store.DeleteFlow(ctx, id)
+	return flowErr(a.store.DeleteFlow(ctx, id))
 }
 
 type topologyAdapter struct{ flows gateway.FlowStore }
