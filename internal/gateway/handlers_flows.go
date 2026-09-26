@@ -264,7 +264,8 @@ func decodeFlowList(w http.ResponseWriter, raws []json.RawMessage) ([]Flow, []bo
 // flowsDocument is the body of an import or a bulk update. Other
 // top-level fields are rejected.
 type flowsDocument struct {
-	Version *int               `json:"version"`
+	// Version is raw so a bulk update can reject it even when null.
+	Version json.RawMessage    `json:"version"`
 	Flows   *[]json.RawMessage `json:"flows"`
 }
 
@@ -335,12 +336,9 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if bundle.Version == nil || *bundle.Version != FlowBundleVersion {
-		version := 0
-		if bundle.Version != nil {
-			version = *bundle.Version
-		}
-		http.Error(w, fmt.Sprintf("unsupported export version %d; expected %d", version, FlowBundleVersion), http.StatusBadRequest)
+	var version int
+	if json.Unmarshal(bundle.Version, &version) != nil || version != FlowBundleVersion {
+		http.Error(w, fmt.Sprintf("unsupported export version %s; expected %d", bundle.Version, FlowBundleVersion), http.StatusBadRequest)
 		return
 	}
 	flows, _, ok := decodeFlowList(w, *bundle.Flows)

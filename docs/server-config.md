@@ -59,8 +59,8 @@ Keys you leave out keep their default.
 
 | Key | Default | Description |
 |---|---|---|
-| `address` | `127.0.0.1:8080` | Cleartext HTTP `host:port`. Set to `""` to serve HTTPS only. |
-| `tlsAddress` | `""` (off) | HTTPS `host:port`. Requires `tls.certFile` and `tls.keyFile`. |
+| `address` | `127.0.0.1:8080` | Cleartext HTTP `host:port`. The port is a number from 1 to 65535 or a service name such as `http`; `0` (a random port) is rejected. Set to `""` to serve HTTPS only. |
+| `tlsAddress` | `""` (off) | HTTPS `host:port`, with the same port rules as `address`. Requires `tls.certFile` and `tls.keyFile`. |
 | `requireMarkerHeader` | `true` | Require `X-Weavster-CSRF: 1` on every `/api/v1` request. Requests without it get `400`. |
 | `shutdownTimeoutMs` | `10000` | On SIGINT/SIGTERM, how long to wait for in-flight requests and the retry worker before closing connections and exiting (1–600000). |
 

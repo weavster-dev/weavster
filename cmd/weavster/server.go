@@ -317,8 +317,9 @@ func listeners(l serverconfig.Listen) []gateway.PortInUse {
 		if e.addr == "" {
 			continue
 		}
-		_, p, _ := net.SplitHostPort(e.addr) // validated by the config
-		port, _ := net.LookupPort("tcp", p)  // numeric or a service name
+		// The config guarantees host:port with a resolvable, non-zero port.
+		_, p, _ := net.SplitHostPort(e.addr)
+		port, _ := net.LookupPort("tcp", p)
 		out = append(out, gateway.PortInUse{Address: e.addr, Port: port, UsedBy: e.usedBy})
 	}
 	return out

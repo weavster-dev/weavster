@@ -172,7 +172,7 @@ func TestServerConfigErrors(t *testing.T) {
 		}, want: "unexpected arguments"},
 		{name: "unreadable-tls-cert", args: func(t *testing.T) []string {
 			dir := t.TempDir()
-			return []string{"server", "--config", writeConfig(t, "listen: {tlsAddress: \"127.0.0.1:0\"}\ntls: {certFile: \""+
+			return []string{"server", "--config", writeConfig(t, "listen: {tlsAddress: \"127.0.0.1:8443\"}\ntls: {certFile: \""+
 				filepath.Join(dir, "cert.pem")+"\", keyFile: \""+filepath.Join(dir, "key.pem")+"\"}\n")}
 		}, want: "Error: tls:"},
 	}
