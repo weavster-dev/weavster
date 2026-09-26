@@ -16,6 +16,7 @@ nav:
   - Audit Log: audit-log.md
   - Processing Messages: processing-messages.md
   - Flow Lifecycle: flow-lifecycle.md
+  - Flow Dependencies, Export, Import: flow-export-import.md
   - Docs Site Guide: documentation.md
   - MVP Project Plan: mvp-project-plan.md
   - Agent Onboarding: agent-onboarding.md

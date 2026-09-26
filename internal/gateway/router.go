@@ -36,6 +36,8 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("flows", "view")).Get("/topology", s.handleTopologyOverview)
 			r.With(s.require("flows", "view")).Get("/topology/flows/{flowId}", s.handleTopologyFlow)
 			r.With(s.require("flows", "view")).Get("/flows", s.handleFlowsList)
+			r.With(s.require("flows", "view")).Get("/flows/export", s.handleFlowsExport)
+			r.With(s.require("flows", "edit")).Post("/flows/import", s.handleFlowsImport)
 			r.With(s.require("flows", "edit")).Post("/flows", s.handleFlowsCreate)
 			r.With(s.require("flows", "view")).Get("/flows/{id}", s.handleFlowsGet)
 			r.With(s.require("flows", "edit")).Delete("/flows/{id}", s.handleFlowsDelete)

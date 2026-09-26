@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -184,4 +185,107 @@ type listFailRepo struct{ *state.MemStore }
 
 func (listFailRepo) ListFlows(context.Context) ([]state.FlowDefinition, error) {
 	return nil, errors.New("database is locked")
+}
+
+func TestCheckDependencies(t *testing.T) {
+	flow := func(id string, deps ...string) gateway.Flow { return gateway.Flow{ID: id, DependsOn: deps} }
+	tests := []struct {
+		name  string
+		flows []gateway.Flow
+		want  string
+	}{
+		{"none", []gateway.Flow{flow("a"), flow("b")}, ""},
+		{"chain", []gateway.Flow{flow("a", "b"), flow("b", "c"), flow("c")}, ""},
+		{"diamond", []gateway.Flow{flow("a", "b", "c"), flow("b", "d"), flow("c", "d"), flow("d")}, ""},
+		{"unknown", []gateway.Flow{flow("a", "zz")}, "unknown flow zz"},
+		{"self", []gateway.Flow{flow("a", "a")}, "itself"},
+		{"cycle", []gateway.Flow{flow("a", "b"), flow("b", "c"), flow("c", "a")}, "dependency cycle"},
+	}
+	for _, tt := range tests {
+		all := map[string]gateway.Flow{}
+		for _, f := range tt.flows {
+			all[f.ID] = f
+		}
+		roots := make([]string, 0, len(all))
+		for id := range all {
+			roots = append(roots, id)
+		}
+		err := checkDependencies(all, roots)
+		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
+			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
+		}
+	}
+}
+
+func TestCheckDependenciesScopedToRoots(t *testing.T) {
+	all := map[string]gateway.Flow{
+		"bad": {ID: "bad", DependsOn: []string{"gone"}}, // pre-existing dangling edge
+		"a":   {ID: "a", DependsOn: []string{"b"}},
+		"b":   {ID: "b"},
+	}
+	if err := checkDependencies(all, []string{"a"}); err != nil {
+		t.Errorf("an unrelated bad flow blocked the check: %v", err)
+	}
+	if got := dependencyOrder(all, []string{"a", "b"}); strings.Join(got, ",") != "b,a" {
+		t.Errorf("dependencyOrder = %v, want b before a", got)
+	}
+}
+
+type createFailRepo struct {
+	*state.MemStore
+	failID string
+}
+
+func (r createFailRepo) CreateFlow(ctx context.Context, f state.FlowDefinition) error {
+	if f.ID == r.failID {
+		return errors.New("database is locked")
+	}
+	return r.MemStore.CreateFlow(ctx, f)
+}
+
+// TestImportPartialFailure: writes happen dependencies-first, and a failure
+// reports what was already written.
+func TestImportPartialFailure(t *testing.T) {
+	ctx := context.Background()
+	flows := flowAdapter{store: createFailRepo{MemStore: state.NewMemStore(), failID: "top"}, locks: newFlowLocks(), defs: &sync.Mutex{}}
+	res, err := flows.Import(ctx, []gateway.Flow{{ID: "top", DependsOn: []string{"base"}}, {ID: "base"}}, false)
+	if !errors.Is(err, gateway.ErrImportIncomplete) || strings.Join(res.Created, ",") != "base" {
+		t.Errorf("Import = %+v, %v; want base written first, then the failure", res, err)
+	}
+}
+
+// TestDeleteFailsClosed: a flow cannot be deleted while another flow is
+// unreadable (its dependencies are unknown), but the unreadable flow itself
+// can always be deleted.
+func TestDeleteFailsClosed(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "ok", Document: []byte(`{"id":"ok"}`)})
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "corrupt", Document: []byte(`{`)})
+	flows := flowAdapter{store: mem, locks: newFlowLocks(), defs: &sync.Mutex{}}
+	if err := flows.Delete(ctx, "ok"); err == nil || !strings.Contains(err.Error(), "corrupt is unreadable") {
+		t.Errorf("delete with an unreadable neighbour = %v, want refusal", err)
+	}
+	if err := flows.Delete(ctx, "corrupt"); err != nil {
+		t.Errorf("deleting the unreadable flow itself: %v", err)
+	}
+	if err := flows.Delete(ctx, "ok"); err != nil {
+		t.Errorf("delete after cleanup: %v", err)
+	}
+	if err := (flowAdapter{store: listFailRepo{mem}}).Delete(ctx, "x"); err == nil {
+		t.Error("delete with a failing store list: want error")
+	}
+}
+
+// TestImportDependencyErrorsBeatConflicts: a bundle that both collides and
+// has a bad dependency is rejected as invalid (400), not as a conflict.
+func TestImportDependencyErrorsBeatConflicts(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "a", Document: []byte(`{"id":"a"}`)})
+	flows := flowAdapter{store: mem, locks: newFlowLocks(), defs: &sync.Mutex{}}
+	_, err := flows.Import(ctx, []gateway.Flow{{ID: "a", DependsOn: []string{"missing"}}}, false)
+	if !errors.Is(err, gateway.ErrInvalidFlow) {
+		t.Errorf("err = %v, want ErrInvalidFlow", err)
+	}
 }

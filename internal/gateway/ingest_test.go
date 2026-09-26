@@ -182,3 +182,43 @@ func TestFlowUpdateHandlers(t *testing.T) {
 		})
 	}
 }
+
+type fakeTransfer struct{ err error }
+
+func (f fakeTransfer) Export(context.Context, []string) ([]Flow, error) {
+	return []Flow{{ID: "a"}}, f.err
+}
+func (f fakeTransfer) Import(context.Context, []Flow, bool) (ImportResult, error) {
+	return ImportResult{Created: []string{"a"}}, f.err
+}
+
+func TestTransferHandlers(t *testing.T) {
+	tests := []struct {
+		name, method, path, body string
+		cfg                      Config
+		want                     int
+	}{
+		{"export", http.MethodGet, "/api/v1/flows/export?ids=a", ``, Config{Transfer: fakeTransfer{}}, http.StatusOK},
+		{"export unavailable", http.MethodGet, "/api/v1/flows/export", ``, Config{}, http.StatusServiceUnavailable},
+		{"export unknown", http.MethodGet, "/api/v1/flows/export?ids=x", ``, Config{Transfer: fakeTransfer{err: ErrFlowNotFound}}, http.StatusNotFound},
+		{"import", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"a"}]}`, Config{Transfer: fakeTransfer{}}, http.StatusOK},
+		{"import unavailable", http.MethodPost, "/api/v1/flows/import", `{}`, Config{}, http.StatusServiceUnavailable},
+		{"import conflict", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"a"}]}`, Config{Transfer: fakeTransfer{err: ErrImportConflict}}, http.StatusConflict},
+		{"import bad flow", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[1]}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
+		{"import bad id", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"import"}]}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
+		{"import missing flows", http.MethodPost, "/api/v1/flows/import", `{"version":1}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
+		{"import null flows", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":null}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
+		{"import trailing data", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[]}{}`, Config{Transfer: fakeTransfer{}}, http.StatusBadRequest},
+		{"import incomplete", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"a"}]}`, Config{Transfer: fakeTransfer{err: ErrImportIncomplete}}, http.StatusInternalServerError},
+		{"import too large", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":["` + strings.Repeat("x", maxImportBytes) + `"]}`, Config{Transfer: fakeTransfer{}}, http.StatusRequestEntityTooLarge},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))
+			if rec.Code != tt.want {
+				t.Errorf("got %d %q, want %d", rec.Code, rec.Body.String(), tt.want)
+			}
+		})
+	}
+}
