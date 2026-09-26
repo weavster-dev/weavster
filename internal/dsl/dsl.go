@@ -4,8 +4,10 @@
 package dsl
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
@@ -67,19 +69,44 @@ func compileStep(s compiler.Step) (step, error) {
 	}
 }
 
-// Run applies the program to doc, which it modifies in place. filtered
-// reports that a filter step dropped the message; no later steps run.
-func (p *Program) Run(doc map[string]any) (out map[string]any, filtered bool, err error) {
+// Run applies the program to a copy of in and returns the result; in is
+// never modified. A nil in is treated as an empty object. filtered reports
+// that a filter step dropped the message; no later steps run.
+func (p *Program) Run(in map[string]any) (out map[string]any, filtered bool, err error) {
+	doc, _ := deepCopy(in).(map[string]any)
+	if doc == nil {
+		doc = map[string]any{}
+	}
 	for i, st := range p.steps {
-		filtered, err := st.apply(doc)
+		dropped, err := st.apply(doc)
 		if err != nil {
 			return nil, false, fmt.Errorf("dsl: %s: step %d: %w", p.name, i+1, err)
 		}
-		if filtered {
+		if dropped {
 			return doc, true, nil
 		}
 	}
 	return doc, false, nil
+}
+
+// deepCopy copies JSON-shaped values so no two fields share an object or
+// array.
+func deepCopy(v any) any {
+	switch t := v.(type) {
+	case map[string]any:
+		m := make(map[string]any, len(t))
+		for k, e := range t {
+			m[k] = deepCopy(e)
+		}
+		return m
+	case []any:
+		a := make([]any, len(t))
+		for i, e := range t {
+			a[i] = deepCopy(e)
+		}
+		return a
+	}
+	return v
 }
 
 // --- paths ---
@@ -98,6 +125,7 @@ func parsePath(s string) (path, error) {
 }
 
 // get returns the value at p, or false when any segment is missing.
+// Numeric segments index arrays.
 func (p path) get(doc map[string]any) (any, bool) {
 	var cur any = doc
 	for _, seg := range p {
@@ -121,25 +149,39 @@ func (p path) get(doc map[string]any) (any, bool) {
 	return cur, true
 }
 
-// set assigns v at p, creating intermediate objects. It fails when an
-// existing non-object value is in the way.
+// set assigns v at p. Segments walk objects, and numeric segments index
+// existing arrays; missing intermediates are created as objects. It fails
+// when a scalar or an out-of-range index is in the way.
 func (p path) set(doc map[string]any, v any) error {
-	cur := doc
-	for i, seg := range p[:len(p)-1] {
-		next, ok := cur[seg]
-		if !ok {
-			m := map[string]any{}
-			cur[seg] = m
-			cur = m
-			continue
+	var cur any = doc
+	for i, seg := range p {
+		last := i == len(p)-1
+		switch c := cur.(type) {
+		case map[string]any:
+			if last {
+				c[seg] = v
+				return nil
+			}
+			next, ok := c[seg]
+			if !ok {
+				next = map[string]any{}
+				c[seg] = next
+			}
+			cur = next
+		case []any:
+			idx, err := strconv.Atoi(seg)
+			if err != nil || idx < 0 || idx >= len(c) {
+				return fmt.Errorf("cannot set %s: %s has no element %s", strings.Join(p, "."), strings.Join(p[:i], "."), seg)
+			}
+			if last {
+				c[idx] = v
+				return nil
+			}
+			cur = c[idx]
+		default:
+			return fmt.Errorf("cannot set %s: %s is not an object or array", strings.Join(p, "."), strings.Join(p[:i], "."))
 		}
-		m, ok := next.(map[string]any)
-		if !ok {
-			return fmt.Errorf("cannot set %s: %s is not an object", strings.Join(p, "."), strings.Join(p[:i+1], "."))
-		}
-		cur = m
 	}
-	cur[p[len(p)-1]] = v
 	return nil
 }
 
@@ -172,14 +214,19 @@ func (m mapStep) apply(doc map[string]any) (bool, error) {
 	if !ok {
 		return false, nil // a missing source leaves the target untouched
 	}
-	v, err := convert(v, m.typ)
+	// Copy so later edits to the target never change the source.
+	v, err := convert(deepCopy(v), m.typ)
 	if err != nil {
 		return false, fmt.Errorf("map %s: %w", strings.Join(m.from, "."), err)
 	}
 	return false, m.to.set(doc, v)
 }
 
+// convert applies a map type. null stays null for every type.
 func convert(v any, typ string) (any, error) {
+	if v == nil {
+		return nil, nil
+	}
 	switch typ {
 	case "string":
 		return text(v), nil
@@ -189,12 +236,12 @@ func convert(v any, typ string) (any, error) {
 			return n, nil
 		case string:
 			f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
-			if err != nil {
+			if err != nil || math.IsNaN(f) || math.IsInf(f, 0) {
 				return nil, fmt.Errorf("%q is not a number", n)
 			}
 			return f, nil
 		}
-		return nil, fmt.Errorf("%v is not a number", v)
+		return nil, fmt.Errorf("%s is not a number", text(v))
 	case "boolean":
 		switch b := v.(type) {
 		case bool:
@@ -206,12 +253,13 @@ func convert(v any, typ string) (any, error) {
 			}
 			return parsed, nil
 		}
-		return nil, fmt.Errorf("%v is not a boolean", v)
+		return nil, fmt.Errorf("%s is not a boolean", text(v))
 	}
 	return v, nil
 }
 
-// text renders a value for templates and string conversion.
+// text renders a value for templates and string conversion. Objects and
+// arrays render as JSON.
 func text(v any) string {
 	switch t := v.(type) {
 	case nil:
@@ -223,41 +271,59 @@ func text(v any) string {
 	case bool:
 		return strconv.FormatBool(t)
 	}
-	return fmt.Sprint(v)
+	b, err := json.Marshal(v)
+	if err != nil {
+		return fmt.Sprint(v)
+	}
+	return string(b)
 }
 
 // --- set ---
 
 var placeholder = regexp.MustCompile(`\{\{\s*([^{}]*?)\s*\}\}`)
 
-type setStep struct {
-	field    path
-	template string
-	refs     map[string]path
+// templatePart is literal text or, when ref is set, a placeholder.
+type templatePart struct {
+	literal string
+	ref     path
 }
 
+type setStep struct {
+	field path
+	parts []templatePart
+}
+
+// compileSet splits the template into literal and placeholder parts once.
 func compileSet(s compiler.SetStep) (step, error) {
 	field, err := parsePath(s.Field)
 	if err != nil {
 		return nil, fmt.Errorf("set.field: %w", err)
 	}
-	refs := map[string]path{}
-	for _, m := range placeholder.FindAllStringSubmatch(s.Expr, -1) {
-		p, err := parsePath(m[1])
+	var parts []templatePart
+	last := 0
+	for _, m := range placeholder.FindAllStringSubmatchIndex(s.Expr, -1) {
+		p, err := parsePath(s.Expr[m[2]:m[3]])
 		if err != nil {
 			return nil, fmt.Errorf("set.expr: %w", err)
 		}
-		refs[m[1]] = p
+		parts = append(parts, templatePart{literal: s.Expr[last:m[0]]}, templatePart{ref: p})
+		last = m[1]
 	}
-	return setStep{field: field, template: s.Expr, refs: refs}, nil
+	parts = append(parts, templatePart{literal: s.Expr[last:]})
+	return setStep{field: field, parts: parts}, nil
 }
 
 func (s setStep) apply(doc map[string]any) (bool, error) {
-	out := placeholder.ReplaceAllStringFunc(s.template, func(m string) string {
-		v, _ := s.refs[placeholder.FindStringSubmatch(m)[1]].get(doc)
-		return text(v)
-	})
-	return false, s.field.set(doc, out)
+	var b strings.Builder
+	for _, part := range s.parts {
+		if part.ref == nil {
+			b.WriteString(part.literal)
+			continue
+		}
+		v, _ := part.ref.get(doc)
+		b.WriteString(text(v))
+	}
+	return false, s.field.set(doc, b.String())
 }
 
 // --- filter ---
@@ -280,7 +346,12 @@ type filterStep struct {
 	reject      bool
 }
 
-var comparison = regexp.MustCompile(`^(.+?)\s*(==|!=)\s*(.+)$`)
+var (
+	comparison = regexp.MustCompile(`^(.+?)\s*(==|!=)\s*(.+)$`)
+	// numberLiteral is the only number syntax the DSL accepts; any other
+	// unquoted operand is a path, so a field named "inf" stays a field.
+	numberLiteral = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$`)
+)
 
 func compileFilter(f compiler.FilterStep) (step, error) {
 	var st filterStep
@@ -304,11 +375,14 @@ func compileFilter(f compiler.FilterStep) (step, error) {
 		st.left, st.op, st.right = left, m[2], right
 		return st, nil
 	}
-	p, err := parsePath(when)
+	left, err := parseOperand(when)
 	if err != nil {
-		return nil, fmt.Errorf("filter.when: %w", err)
+		return nil, fmt.Errorf("filter.when: %w (use a path, or <operand> == / != <operand>)", err)
 	}
-	st.left = operand{path: p}
+	if left.path == nil {
+		return nil, fmt.Errorf("filter.when: %q is a literal; use a path, or <operand> == / != <operand>", when)
+	}
+	st.left = left
 	return st, nil
 }
 
@@ -319,8 +393,8 @@ func parseOperand(s string) (operand, error) {
 		return operand{literal: s[1 : len(s)-1]}, nil
 	case s == "true" || s == "false":
 		return operand{literal: s == "true"}, nil
-	}
-	if f, err := strconv.ParseFloat(s, 64); err == nil {
+	case numberLiteral.MatchString(s):
+		f, _ := strconv.ParseFloat(s, 64)
 		return operand{literal: f}, nil
 	}
 	p, err := parsePath(s)
@@ -328,7 +402,7 @@ func parseOperand(s string) (operand, error) {
 		return operand{}, err
 	}
 	for _, seg := range p {
-		if strings.ContainsAny(seg, " '\"=!") {
+		if strings.ContainsAny(seg, " '\"=!<>&|()") {
 			return operand{}, fmt.Errorf("invalid operand %q", s)
 		}
 	}
