@@ -16,5 +16,10 @@ func OpenSQLite(ctx context.Context, dsn string) (Store, error) {
 	}
 	// Keep a single connection so an in-memory database is shared.
 	db.SetMaxOpenConns(1)
-	return openSQLStore(ctx, db)
+	s, err := openSQLStore(context.WithoutCancel(ctx), db)
+	if err != nil {
+		return nil, err
+	}
+	s.uncancelable = true
+	return s, nil
 }

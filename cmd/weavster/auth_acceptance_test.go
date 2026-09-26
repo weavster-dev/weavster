@@ -43,6 +43,7 @@ var protectedRoutes = []struct {
 	{http.MethodPost, "/api/v1/flows/admit/enable", "flows:edit"},
 	{http.MethodGet, "/api/v1/flows/export", "flows:view"},
 	{http.MethodPost, "/api/v1/flows/import", "flows:edit"},
+	{http.MethodPost, "/api/v1/flows/admit/destinations/d/stop", "flows:deploy"},
 }
 
 type apiClient struct {

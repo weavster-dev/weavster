@@ -84,6 +84,20 @@ type Store interface {
 // Postgres adapters (schema and query semantics are identical).
 type sqlStore struct {
 	db *sql.DB
+	// uncancelable detaches caller cancellation from every statement.
+	// SQLite sets it: modernc.org/sqlite (up to at least v1.38) leaves the
+	// file open and locked after Close when a context cancels a statement,
+	// so the next open of the same file fails with SQLITE_BUSY. SQLite
+	// statements are local and short, so they simply run to completion.
+	uncancelable bool
+}
+
+// bind returns the context statements run with.
+func (s *sqlStore) bind(ctx context.Context) context.Context {
+	if s.uncancelable {
+		return context.WithoutCancel(ctx)
+	}
+	return ctx
 }
 
 func openSQLStore(ctx context.Context, db *sql.DB) (*sqlStore, error) {
@@ -98,6 +112,7 @@ func openSQLStore(ctx context.Context, db *sql.DB) (*sqlStore, error) {
 func (s *sqlStore) Close() error { return s.db.Close() }
 
 func (s *sqlStore) Put(ctx context.Context, m Message) error {
+	ctx = s.bind(ctx)
 	now := time.Now()
 	if m.ReceivedAt.IsZero() {
 		m.ReceivedAt = now
@@ -151,6 +166,7 @@ func (s *sqlStore) Put(ctx context.Context, m Message) error {
 }
 
 func (s *sqlStore) Get(ctx context.Context, id string) (Message, error) {
+	ctx = s.bind(ctx)
 	row := s.db.QueryRowContext(ctx, `
 		SELECT id, flow_id, status, content_type, received_at, updated_at,
 			raw, processed, transformed, encoded, response, original
@@ -180,6 +196,7 @@ func (s *sqlStore) Get(ctx context.Context, id string) (Message, error) {
 }
 
 func (s *sqlStore) Delete(ctx context.Context, id string) error {
+	ctx = s.bind(ctx)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -198,6 +215,7 @@ func (s *sqlStore) Delete(ctx context.Context, id string) error {
 }
 
 func (s *sqlStore) Search(ctx context.Context, q Query) ([]Message, error) {
+	ctx = s.bind(ctx)
 	where, args := buildWhere(q)
 	limit := q.Limit
 	if limit <= 0 {

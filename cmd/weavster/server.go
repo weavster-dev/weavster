@@ -641,6 +641,68 @@ func (a flowAdapter) setStatus(ctx context.Context, f gateway.Flow, status strin
 	return f, nil
 }
 
+// SetDestinationRunning starts or stops one destination (spec §6.1
+// per-connector start/stop), logging flow.destination.<started|stopped>.
+func (a flowAdapter) SetDestinationRunning(ctx context.Context, id, destination string, running bool) (gateway.Flow, error) {
+	// Stop waits for the flow's in-flight messages, so nothing reaches the
+	// destination after the stop is confirmed; start needs no wait.
+	defer a.lock(id, running)()
+	f, err := a.Get(ctx, id)
+	if err != nil {
+		return gateway.Flow{}, err
+	}
+	if !hasDestination(f, destination) {
+		return gateway.Flow{}, fmt.Errorf("%w: flow %s has no destination %q", gateway.ErrDestinationNotFound, id, destination)
+	}
+	stopped := slices.Contains(f.StoppedDestinations, destination)
+	if stopped == !running {
+		return f, nil // already in the requested state
+	}
+	if running {
+		f.StoppedDestinations = slices.DeleteFunc(slices.Clone(f.StoppedDestinations), func(n string) bool { return n == destination })
+	} else {
+		f.StoppedDestinations = append(slices.Clone(f.StoppedDestinations), destination)
+		sort.Strings(f.StoppedDestinations)
+	}
+	updated, err := a.setStatus(ctx, f, f.Status)
+	if err == nil && a.events != nil {
+		verb := "stopped"
+		if running {
+			verb = "started"
+		}
+		a.events.Add("flow.destination."+verb, "", id, map[string]string{"destination": destination})
+	}
+	return updated, err
+}
+
+func hasDestination(f gateway.Flow, name string) bool {
+	return slices.ContainsFunc(f.Destinations, func(d gateway.FlowDestination) bool { return d.Name == name })
+}
+
+// Runtime state (status, stoppedDestinations) lives in the stored flow
+// document but is not part of a definition. Every definition write goes
+// through one of these two helpers.
+
+// withRuntime returns def carrying current's runtime state; stopped
+// destinations that def no longer has are dropped.
+func withRuntime(current, def gateway.Flow) gateway.Flow {
+	def.Status = current.Status
+	def.StoppedDestinations = nil
+	for _, name := range current.StoppedDestinations {
+		if hasDestination(def, name) {
+			def.StoppedDestinations = append(def.StoppedDestinations, name)
+		}
+	}
+	return def
+}
+
+// withoutRuntime returns def with no runtime state, as for a new or
+// exported definition; status is set to status.
+func withoutRuntime(def gateway.Flow, status string) gateway.Flow {
+	def.Status, def.StoppedDestinations = status, nil
+	return def
+}
+
 // Update replaces a flow's definition, keeping its runtime status (and
 // enabled, when keepEnabled). It is serialized with lifecycle changes of the
 // flow; later messages and queued retries use the new definition.
@@ -655,6 +717,7 @@ func (a flowAdapter) Update(ctx context.Context, id string, f gateway.Flow, keep
 		f.Enabled = current.Enabled
 	}
 	f.ID = id
+	f = withRuntime(current, f)
 	if err := a.validateDefinition(ctx, f); err != nil {
 		return gateway.Flow{}, err
 	}
@@ -928,8 +991,7 @@ func (a flowAdapter) Export(ctx context.Context, ids []string) ([]gateway.Flow, 
 	out := make([]gateway.Flow, 0, len(selected))
 	for id := range selected {
 		f := all[id]
-		f.Status = ""
-		out = append(out, f)
+		out = append(out, withoutRuntime(f, "")) // runtime state is not exported
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
@@ -988,7 +1050,7 @@ func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite
 			res.Updated = append(res.Updated, id)
 			continue
 		}
-		f.Status = flowlife.Undeployed
+		f = withoutRuntime(f, flowlife.Undeployed)
 		doc, err := json.Marshal(f)
 		if err == nil {
 			err = a.store.CreateFlow(ctx, state.FlowDefinition{ID: id, Document: doc})
@@ -1009,7 +1071,8 @@ func (a flowAdapter) replaceKeepingStatus(ctx context.Context, f gateway.Flow) e
 	if err != nil {
 		return err
 	}
-	_, err = a.setStatus(ctx, f, current.Status)
+	f = withRuntime(current, f)
+	_, err = a.setStatus(ctx, f, f.Status)
 	return err
 }
 
@@ -1017,6 +1080,10 @@ func (a flowAdapter) replaceKeepingStatus(ctx context.Context, f gateway.Flow) e
 // strictly decoding its transform.
 func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 	pf := pipeline.Flow{ID: f.ID, Paused: !flowlife.AcceptsMessages(f.Status)}
+	stopped := make(map[string]bool, len(f.StoppedDestinations))
+	for _, name := range f.StoppedDestinations {
+		stopped[name] = true
+	}
 	if raw := bytes.TrimSpace(f.Transform); len(raw) > 0 && !bytes.Equal(raw, []byte("null")) {
 		dec := json.NewDecoder(bytes.NewReader(f.Transform))
 		dec.DisallowUnknownFields()
@@ -1032,7 +1099,10 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 		}
 	}
 	for _, d := range f.Destinations {
-		pf.Destinations = append(pf.Destinations, pipeline.Destination{Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir})
+		pf.Destinations = append(pf.Destinations, pipeline.Destination{
+			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir,
+			Stopped: stopped[d.Name],
+		})
 	}
 	return pf, nil
 }
@@ -1172,7 +1242,7 @@ func (a flowAdapter) Create(ctx context.Context, f gateway.Flow) (gateway.Flow, 
 	if err := a.validateDefinition(ctx, f); err != nil {
 		return gateway.Flow{}, err
 	}
-	f.Status = flowlife.Undeployed // new flows are drafts (D-29)
+	f = withoutRuntime(f, flowlife.Undeployed) // new flows are drafts (D-29)
 	doc, err := json.Marshal(f)
 	if err != nil {
 		return gateway.Flow{}, err

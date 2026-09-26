@@ -122,7 +122,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `POST /api/v1/flows`, `PUT /api/v1/flows/{id}`, `DELETE /api/v1/flows/{id}`, `POST /api/v1/flows/{id}/{enable,disable}`, `POST /api/v1/flows/import` | `flows:edit` |
 | `GET /api/v1/messages` | `messages:view` |
 | `POST /api/v1/flows/{id}/messages` | `messages:send` |
-| `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all` | `flows:deploy` |
+| `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all`, `POST /api/v1/flows/{id}/destinations/{name}/{start,stop}` | `flows:deploy` |
 | `GET /api/v1/flows/{id}/stats` | `flows:view` |
 | `GET /api/v1/events` | `events:view` |
 

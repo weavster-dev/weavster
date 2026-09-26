@@ -43,6 +43,9 @@ type Flow struct {
 	Enabled    bool   `json:"enabled"`
 	// DependsOn lists flows this flow requires (ids); kept acyclic.
 	DependsOn []string `json:"dependsOn,omitempty"`
+	// StoppedDestinations is runtime state (like Status): destinations held
+	// by POST .../destinations/{name}/stop.
+	StoppedDestinations []string `json:"stoppedDestinations,omitempty"`
 	// Transform is the flow's YAML DSL transform as a JSON object (the
 	// transform.schema.json shape); the gateway passes it through unparsed.
 	Transform    json.RawMessage   `json:"transform,omitempty"`
@@ -92,6 +95,8 @@ type FlowTransfer interface {
 type FlowLifecycle interface {
 	Transition(ctx context.Context, id, action string) (Flow, error)
 	RedeployAll(ctx context.Context) ([]Flow, error)
+	// SetDestinationRunning starts (running) or stops one destination.
+	SetDestinationRunning(ctx context.Context, id, destination string, running bool) (Flow, error)
 }
 
 // IngestResult is the outcome of processing one received message.
@@ -121,6 +126,8 @@ var (
 	// ErrDependency: a flow's dependency is missing or cannot be deployed;
 	// wrapped with the reason.
 	ErrDependency = errors.New("dependency problem")
+	// ErrDestinationNotFound: the flow has no destination with that name.
+	ErrDestinationNotFound = errors.New("destination not found")
 	// ErrFlowInUse: another flow depends on this one.
 	ErrFlowInUse = errors.New("flow is a dependency of other flows")
 	// ErrImportConflict: the bundle contains flows that already exist.

@@ -47,6 +47,7 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("messages", "send")).Post("/flows/{id}/messages", s.handleIngest)
 			r.With(s.require("flows", "deploy")).Post("/flows/redeploy-all", s.handleRedeployAll)
 			r.With(s.require("flows", "deploy")).Post("/flows/{id}/{action}", s.handleFlowAction)
+			r.With(s.require("flows", "deploy")).Post("/flows/{id}/destinations/{dest}/{action}", s.handleDestinationAction)
 			r.With(s.require("flows", "view")).Get("/flows/{id}/stats", s.handleFlowStats)
 			r.With(s.require("events", "view")).Get("/events", s.handleEvents)
 			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "view")).Get("/messages", s.handleMessagesSearch)

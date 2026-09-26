@@ -38,6 +38,7 @@ func flowsMigration() Migration {
 
 // CreateFlow inserts f, returning ErrFlowExists if f.ID is taken.
 func (s *sqlStore) CreateFlow(ctx context.Context, f FlowDefinition) error {
+	ctx = s.bind(ctx)
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO flows (id, document) VALUES (?, ?) ON CONFLICT (id) DO NOTHING`, f.ID, string(f.Document))
 	if err != nil {
@@ -56,6 +57,7 @@ func (s *sqlStore) CreateFlow(ctx context.Context, f FlowDefinition) error {
 // UpdateFlow replaces an existing definition, returning ErrFlowNotFound if
 // f.ID does not exist.
 func (s *sqlStore) UpdateFlow(ctx context.Context, f FlowDefinition) error {
+	ctx = s.bind(ctx)
 	res, err := s.db.ExecContext(ctx, `UPDATE flows SET document = ? WHERE id = ?`, string(f.Document), f.ID)
 	if err != nil {
 		return err
@@ -71,6 +73,7 @@ func (s *sqlStore) UpdateFlow(ctx context.Context, f FlowDefinition) error {
 }
 
 func (s *sqlStore) GetFlow(ctx context.Context, id string) (FlowDefinition, error) {
+	ctx = s.bind(ctx)
 	var doc string
 	err := s.db.QueryRowContext(ctx, `SELECT document FROM flows WHERE id = ?`, id).Scan(&doc)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -83,6 +86,7 @@ func (s *sqlStore) GetFlow(ctx context.Context, id string) (FlowDefinition, erro
 }
 
 func (s *sqlStore) ListFlows(ctx context.Context) ([]FlowDefinition, error) {
+	ctx = s.bind(ctx)
 	rows, err := s.db.QueryContext(ctx, `SELECT id, document FROM flows ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -102,6 +106,7 @@ func (s *sqlStore) ListFlows(ctx context.Context) ([]FlowDefinition, error) {
 }
 
 func (s *sqlStore) DeleteFlow(ctx context.Context, id string) error {
+	ctx = s.bind(ctx)
 	res, err := s.db.ExecContext(ctx, `DELETE FROM flows WHERE id = ?`, id)
 	if err != nil {
 		return err

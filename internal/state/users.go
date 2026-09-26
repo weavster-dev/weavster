@@ -35,6 +35,7 @@ func usersMigration() Migration {
 var ErrUserExists = errors.New("state: user already exists")
 
 func (s *sqlStore) InsertUser(ctx context.Context, u UserDocument) error {
+	ctx = s.bind(ctx)
 	res, err := s.db.ExecContext(ctx,
 		`INSERT INTO users (username, document) VALUES (?, ?) ON CONFLICT (username) DO NOTHING`, u.Username, string(u.Document))
 	if err != nil {
@@ -51,6 +52,7 @@ func (s *sqlStore) InsertUser(ctx context.Context, u UserDocument) error {
 }
 
 func (s *sqlStore) PutUser(ctx context.Context, u UserDocument) error {
+	ctx = s.bind(ctx)
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO users (username, document) VALUES (?, ?)
 		ON CONFLICT (username) DO UPDATE SET document = excluded.document`, u.Username, string(u.Document))
@@ -58,6 +60,7 @@ func (s *sqlStore) PutUser(ctx context.Context, u UserDocument) error {
 }
 
 func (s *sqlStore) ListUsers(ctx context.Context) ([]UserDocument, error) {
+	ctx = s.bind(ctx)
 	rows, err := s.db.QueryContext(ctx, `SELECT username, document FROM users ORDER BY username`)
 	if err != nil {
 		return nil, err
@@ -77,6 +80,7 @@ func (s *sqlStore) ListUsers(ctx context.Context) ([]UserDocument, error) {
 }
 
 func (s *sqlStore) DeleteUser(ctx context.Context, username string) error {
+	ctx = s.bind(ctx)
 	_, err := s.db.ExecContext(ctx, `DELETE FROM users WHERE username = ?`, username)
 	return err
 }

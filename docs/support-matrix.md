@@ -52,10 +52,11 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 
 | Capability | Tier | Notes |
 |---|---|---|
+| Per-destination start/stop (`POST /api/v1/flows/{id}/destinations/{name}/{start,stop}`) | Implemented (wired) | `TestDestinationStartStop`. Sources are not separate connectors yet. |
 | Flow definitions validated against the published `agent-docs/schemas/flow.schema.json` (create, update, import; unknown fields rejected) | Implemented (wired) | `TestFlowSchemaEnforced`, `TestFlowSchemaPublished` |
 | Flow dependencies (`dependsOn`, validated, delete-protected), export (`GET /api/v1/flows/export`), import (`POST /api/v1/flows/import`, `overwrite`) | Implemented (wired) | `TestFlowExportImport`, `TestDeployDependenciesAndDeleteRunning`. Deploy also deploys undeployed dependencies; deleting a running flow undeploys it first. See [Flow dependencies, export, and import](flow-export-import.md). |
 | Flow update/rename (`PUT /api/v1/flows/{id}`), enable/disable, auto-deploy of enabled flows at startup (`flows.deployOnStartup`) | Implemented (wired) | `TestFlowUpdateAndEnable`, `TestDeployOnStartupDisabled` |
-| Flow lifecycle: deploy, undeploy, start, stop, pause, halt, resume, redeploy-all, with transitions enforced | Implemented (wired) | `TestFlowLifecycle`. API only; no per-destination start/stop. Deploy also deploys undeployed dependencies. See [Flow lifecycle](flow-lifecycle.md). |
+| Flow lifecycle: deploy, undeploy, start, stop, pause, halt, resume, redeploy-all, with transitions enforced | Implemented (wired) | `TestFlowLifecycle`. API only. Deploy also deploys undeployed dependencies. See [Flow lifecycle](flow-lifecycle.md). |
 | Message intake: `POST /api/v1/flows/{id}/messages` | Implemented (wired) | `TestPipelineEndToEnd`. See [Processing messages](processing-messages.md). |
 | Receive → persist → filter → transform → deliver to each destination, with per-destination results and aggregate status | Implemented (wired) | `TestPipelineEndToEnd`. Synchronous, one attempt; no response processing. |
 | `http` and `file` destinations | Implemented (wired) | `TestPipelineEndToEnd` |

@@ -28,10 +28,13 @@ var ErrInvalidMessage = errors.New("pipeline: invalid message")
 
 // Destination is one delivery target of a flow.
 type Destination struct {
-	Name string
-	Type string // "http" or "file"
-	URL  string // http
-	Dir  string // file
+	// Stopped destinations are not delivered to; their messages stay queued
+	// without using attempts until the destination is started.
+	Stopped bool
+	Name    string
+	Type    string // "http" or "file"
+	URL     string // http
+	Dir     string // file
 }
 
 // Flow is the processing definition the pipeline runs.
@@ -247,7 +250,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 	now := time.Now()
 	var attempted []string
 	for _, d := range f.Destinations {
-		if p.pending(m.Attempts[d.Name], now) {
+		if !d.Stopped && p.pending(m.Attempts[d.Name], now) {
 			if err := ob.Deliver(ctx, id, d.Name); err != nil {
 				return Result{}, err
 			}
@@ -300,21 +303,29 @@ func (p *Pipeline) deliverFunc(f Flow, contentType string) outbox.DeliverFunc {
 	}
 }
 
-// rollup is sent when every destination succeeded, dead-lettered when a
-// destination exhausted its attempts, and otherwise queued.
+// rollup is queued while any destination still has work (a retry, an
+// untried destination, or a stopped destination holding the message);
+// otherwise dead-lettered if a destination exhausted its attempts, and sent
+// when every destination succeeded.
 func (p *Pipeline) rollup(m state.Message, f Flow) state.Status {
-	status := state.StatusSent
+	pending, exhausted := false, false
 	for _, d := range f.Destinations {
 		a := m.Attempts[d.Name]
 		switch {
 		case a.Attempts > 0 && a.LastError == "":
 		case a.Attempts >= p.opts.MaxAttempts:
-			return state.StatusDeadLettered
+			exhausted = true
 		default:
-			status = state.StatusQueued
+			pending = true
 		}
 	}
-	return status
+	switch {
+	case pending:
+		return state.StatusQueued
+	case exhausted:
+		return state.StatusDeadLettered
+	}
+	return state.StatusSent
 }
 
 // retryPage is how many messages RetryDue loads per store query.
@@ -390,7 +401,7 @@ func (p *Pipeline) retryOne(ctx context.Context, m state.Message, lookup FlowLoo
 	if m.Status == state.StatusQueued {
 		now, due := time.Now(), false
 		for _, d := range f.Destinations {
-			due = due || p.pending(m.Attempts[d.Name], now)
+			due = due || (!d.Stopped && p.pending(m.Attempts[d.Name], now))
 		}
 		if !due {
 			// Nothing to deliver; fix the status if a crash hit between the
