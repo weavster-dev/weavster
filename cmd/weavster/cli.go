@@ -104,6 +104,9 @@ func runScript(script []byte, client Client, stdout, stderr io.Writer, debug boo
 	sc.Buffer(make([]byte, 0, 64<<10), maxShellLine+2) // the shell's line limit
 	rc := 0
 	for sc.Scan() {
+		if len(sc.Bytes()) > maxShellLine { // the buffer has room for CRLF only
+			return shellError(stderr, debug, fmt.Errorf("reading the script: %w", bufio.ErrTooLong))
+		}
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

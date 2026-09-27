@@ -56,6 +56,8 @@ func TestExitCodesAndDeprecatedCommands(t *testing.T) {
 		{"server error text", "snippet remove nope\n", 2, "", "Error: server returned 404 Not Found: snippet not found", false},
 		{"every line runs; any error exits 2", "bogus\nflow list\n", 2, "adt", "Error:", false},
 		{"all succeed", "flow list\nstatus\n", 0, "adt", "", true},
+		{"a line one byte over the limit ends the script", "flow list\n" + strings.Repeat("x", maxShellLine+1) + "\nflow list\n", 2, "adt", "reading the script", false},
+		{"a line at the limit runs", strings.Repeat(" ", maxShellLine-9) + "flow list\n", 0, "adt", "", true},
 		{"a line over the limit ends the script", "flow list\n" + strings.Repeat("x", maxShellLine+10) + "\nflow list\n", 2, "adt", "reading the script", false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
