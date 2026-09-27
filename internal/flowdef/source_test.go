@@ -55,3 +55,18 @@ func TestCheckSource(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceKind(t *testing.T) {
+	for _, tt := range []struct {
+		f    Flow
+		want string
+	}{
+		{Flow{}, ""},
+		{Flow{SourceType: "hl7"}, "hl7"},
+		{Flow{SourceType: "hl7", Source: &Source{Type: "http"}}, "http"},
+	} {
+		if got := tt.f.SourceKind(); got != tt.want {
+			t.Errorf("%+v: %q, want %q", tt.f, got, tt.want)
+		}
+	}
+}

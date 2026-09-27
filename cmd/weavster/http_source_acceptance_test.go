@@ -100,12 +100,24 @@ func TestHTTPSource(t *testing.T) {
 		t.Errorf("address without a port: %d %s", code, body)
 	}
 
-	// A port something else holds (here, the API) is reported as an event.
-	createFlow(t, c, `{"id":"busy","source":{"type":"http","address":"`+addr+`"}}`)
+	// The server's own port is refused; a port another program holds is
+	// reported as an event.
+	if code, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"api","source":{"type":"http","address":"`+addr+`"}}`, admin); code != http.StatusBadRequest || !strings.Contains(body, "the server's api port") {
+		t.Errorf("the API's port: %d %s", code, body)
+	}
+	held, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = held.Close() }()
+	createFlow(t, c, `{"id":"busy","source":{"type":"http","address":"`+held.Addr().String()+`"}}`)
 	waitFor("a source.http.failed event", func() bool {
 		_, body, _ := c.do(http.MethodGet, "/api/v1/events?type=source.http.failed", "", admin)
-		return strings.Contains(body, `"flowId":"busy"`) && strings.Contains(body, addr)
+		return strings.Contains(body, `"flowId":"busy"`) && strings.Contains(body, held.Addr().String())
 	})
+	if _, body, _ := c.do(http.MethodGet, "/api/v1/flows/connector-names", "", admin); !strings.Contains(body, `"id":"adt","name":"","sourceType":"http"`) {
+		t.Errorf("connector-names = %s", body)
+	}
 
 	// Server shutdown closes the flow's port.
 	stop()

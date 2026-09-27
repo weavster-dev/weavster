@@ -107,7 +107,11 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
 	series := observability.NewTimeSeries(time.Duration(cfg.Stats.RetentionHours)*time.Hour, maxStatsPoints)
-	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events}
+	serverPorts := map[int]string{}
+	for _, l := range listeners(cfg.Listen) {
+		serverPorts[l.Port] = l.UsedBy
+	}
+	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events, serverPorts: serverPorts}
 	if cfg.Flows.DeployOnStartup && store != nil {
 		flows.DeployEnabled(ctx, logger)
 	}
@@ -127,7 +131,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
 		sources := newFileSources(flows, ia, eventLogRecorder{events}, logger)
-		listening := newHTTPSources(flows, ia, eventLogRecorder{events}, logger)
+		listening := newHTTPSources(flows, ia, eventLogRecorder{events}, serverPorts, logger)
 		sourcePorts = listening
 		retry = func(ctx context.Context) {
 			polled, served := make(chan struct{}), make(chan struct{})
@@ -596,6 +600,9 @@ type flowAdapter struct {
 	// events, when set, receives a flow.<status> event for every status
 	// change and flow.deleted on removal.
 	events *observability.EventLog
+	// serverPorts are the server's own ports (port -> listener name), which
+	// no flow source may use.
+	serverPorts map[int]string
 }
 
 // definitions locks definition changes; it returns the unlock func.
@@ -943,7 +950,7 @@ func (a flowAdapter) UpdateMany(ctx context.Context, changes []gateway.FlowChang
 		if err != nil {
 			return updated, err
 		}
-		if err := checkSources(all); err != nil {
+		if err := checkSources(all, a.serverPorts); err != nil {
 			return updated, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 		}
 	}
@@ -1101,8 +1108,9 @@ func hasSource(flows []gateway.Flow) bool {
 }
 
 // checkSources refuses two flows reading the same directory, which would
-// take the same files (#107 D-56), or listening on the same port (D-57).
-func checkSources(all map[string]gateway.Flow) error {
+// take the same files (#107 D-56), or listening on the same port or on one
+// of the server's own ports (D-57).
+func checkSources(all map[string]gateway.Flow, serverPorts map[int]string) error {
 	ids := make([]string, 0, len(all))
 	for id := range all {
 		ids = append(ids, id)
@@ -1115,6 +1123,9 @@ func checkSources(all map[string]gateway.Flow) error {
 		case src == nil:
 		case src.Type == "http":
 			port, _ := flowdef.SourcePort(src) // checked with each definition
+			if name := serverPorts[port]; name != "" {
+				return fmt.Errorf("flow %s listens on port %d, the server's %s port", id, port, name)
+			}
 			if other, taken := listenedBy[port]; taken {
 				return fmt.Errorf("flows %s and %s both listen on port %d; a port can have one flow source", other, id, port)
 			}
@@ -1254,7 +1265,7 @@ func (a flowAdapter) validateDefinition(ctx context.Context, f gateway.Flow) err
 	if err := checkDependencies(all, []string{f.ID}); err != nil {
 		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
-	if err := checkSources(all); err != nil {
+	if err := checkSources(all, a.serverPorts); err != nil {
 		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
 	return nil
@@ -1336,7 +1347,7 @@ func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite
 	if err := checkDependencies(all, ids); err != nil {
 		return res, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
-	if err := checkSources(all); err != nil {
+	if err := checkSources(all, a.serverPorts); err != nil {
 		return res, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
 	if len(conflicts) > 0 && !overwrite {
@@ -1929,8 +1940,8 @@ func (t topologyAdapter) FlowInternal(ctx context.Context, id string) (topology.
 		return topology.Graph{}, err
 	}
 	detail := topology.FlowDetail{ID: f.ID, Name: f.Name, Status: f.Status}
-	if f.SourceType != "" {
-		detail.Sources = []topology.Connector{{ID: f.ID + "-source", Label: f.SourceType + "://incoming", Type: f.SourceType, Status: f.Status}}
+	if typ := f.SourceKind(); typ != "" {
+		detail.Sources = []topology.Connector{{ID: f.ID + "-source", Label: typ + "://incoming", Type: typ, Status: f.Status}}
 	}
 	return topology.FlowInternal(detail), nil
 }

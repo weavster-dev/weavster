@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"errors"
-	"io"
 	"net/http"
 )
 
@@ -15,7 +14,10 @@ type SourceIngester interface {
 
 // SourceHandler serves a flow's http source (#107 D-57): a request with the
 // source's method and path runs its body through the flow like POST
-// /api/v1/flows/{id}/messages, with the same limit and reply.
+// /api/v1/flows/{id}/messages, with the same limit and reply. Its errors are
+// for a sending system rather than an API client: a flow that is not
+// running is 503 (try again later), and a message stored before a later
+// failure is 202, because the flow has it and a resend would duplicate it.
 func SourceHandler(flowID string, src FlowSource, ingest SourceIngester) http.Handler {
 	path, method := src.Path, src.Method
 	if path == "" {
@@ -34,14 +36,8 @@ func SourceHandler(flowID string, src FlowSource, ingest SourceIngester) http.Ha
 			writeStatusError(w, http.StatusMethodNotAllowed, "use "+method)
 			return
 		}
-		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxMessageBytes))
-		if err != nil {
-			var tooLarge *http.MaxBytesError
-			if errors.As(err, &tooLarge) {
-				writeStatusError(w, http.StatusRequestEntityTooLarge, "message body larger than 10 MiB")
-				return
-			}
-			writeStatusError(w, http.StatusBadRequest, "could not read message body")
+		body, ok := readMessage(w, r)
+		if !ok {
 			return
 		}
 		res, err := ingest.IngestFrom(r.Context(), flowID, body, map[string]string{"source.http.path": r.URL.Path})

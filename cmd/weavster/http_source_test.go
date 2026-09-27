@@ -18,6 +18,10 @@ func (erringFlowList) List(context.Context) ([]gateway.Flow, error) {
 	return nil, errors.New("store down")
 }
 
+func (erringFlowList) Get(context.Context, string) (gateway.Flow, error) {
+	return gateway.Flow{}, errors.New("store down")
+}
+
 // sourceIngest is a gateway.SourceIngester that accepts everything.
 type sourceIngest struct{}
 
@@ -25,9 +29,10 @@ func (sourceIngest) IngestFrom(context.Context, string, []byte, map[string]strin
 	return gateway.IngestResult{ID: "m"}, nil
 }
 
-// TestHTTPSourcesReconcile: a changed source reopens its listener, a
-// failure is reported once and forgotten when the flow goes, a failed
-// flow list changes nothing, and ports-in-use is sorted by flow.
+// TestHTTPSourcesReconcile: a changed source reopens its listener, as does
+// one that stopped on its own; a failure (including a server port) is
+// reported once and forgotten when the flow goes; a failed flow list
+// changes nothing; ports-in-use is sorted by flow.
 func TestHTTPSourcesReconcile(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -40,9 +45,10 @@ func TestHTTPSourcesReconcile(t *testing.T) {
 	}
 	defer func() { _ = held.Close() }()
 	a, b := freeAddr(t), freeAddr(t)
-	flows := &fakeFlowList{flows: []gateway.Flow{started("b", b, "/"), started("a", a, "/"), started("busy", held.Addr().String(), "/")}}
+	flows := &fakeFlowList{flows: []gateway.Flow{started("b", b, "/"), started("a", a, "/"),
+		started("busy", held.Addr().String(), "/"), started("api", "127.0.0.1:8080", "/")}}
 	events := &fakeEvents{}
-	s := newHTTPSources(flows, sourceIngest{}, events, logger)
+	s := newHTTPSources(flows, sourceIngest{}, events, map[int]string{8080: "api"}, logger)
 	defer s.closeAll()
 
 	s.reconcile(ctx)
@@ -50,8 +56,8 @@ func TestHTTPSourcesReconcile(t *testing.T) {
 	if ports := s.Ports(); len(ports) != 2 || ports[0].UsedBy != "flow:a" || ports[1].UsedBy != "flow:b" {
 		t.Errorf("ports = %+v", ports)
 	}
-	if len(events.types) != 1 || events.types[0] != "source.http.failed" {
-		t.Errorf("events = %v, want one source.http.failed", events.types)
+	if len(events.types) != 2 || events.types[0] != "source.http.failed" || events.types[1] != "source.http.failed" {
+		t.Errorf("events = %v, want source.http.failed once for busy and once for api", events.types)
 	}
 
 	first := s.open["a"]
@@ -62,6 +68,14 @@ func TestHTTPSourcesReconcile(t *testing.T) {
 	}
 	if _, ok := s.failed["busy"]; ok {
 		t.Error("the failure of a flow that went away was kept")
+	}
+
+	dead := s.open["b"]
+	_ = dead.srv.Close()
+	<-dead.done
+	s.reconcile(ctx)
+	if s.open["b"] == dead || s.open["b"].stopped() {
+		t.Error("a listener that stopped on its own was not reopened")
 	}
 
 	s.flows = erringFlowList{}

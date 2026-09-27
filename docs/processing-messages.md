@@ -303,18 +303,21 @@ curl -s -X POST http://127.0.0.1:9001/adt -d '{"PID":{"5":{"1":"Doe"}}}'
 {"id":"6f1c…","status":"sent"}
 ```
 
-- The request body becomes a message exactly like one sent with
-  [`POST /api/v1/flows/{id}/messages`](#3-send-a-message): the same checks, transform, delivery,
-  10 MiB limit, and reply (`202` with the message id and status, plus `response` with a
-  `responseSelector`). Each message has the metadata `source.http.path`.
+- The request body goes through the same checks, transform, and delivery as a message sent with
+  [`POST /api/v1/flows/{id}/messages`](#3-send-a-message), with the same 10 MiB limit and the same
+  success reply (`202` with the message id and status, plus `response` with a
+  `responseSelector`). Only the error codes below differ, because they are meant for a sending
+  system. Each message has the metadata `source.http.path`.
 - Other paths get `404`, other methods `405` with an `Allow` header, a body over 10 MiB `413`, and
   a message the flow refuses (for example not a JSON object when the flow has a transform) `400`.
   While the flow is stopping, or after it was removed, requests get `503`.
-- A message stored before a later failure is still answered `202`: the flow has it, and
-  resending it would store it twice.
+- A message stored before a later failure is still answered `202` (the API answers `500`): the
+  flow has it, and resending it would store it twice. A flow that is not running answers `503`
+  (the API answers `409`), so the sender tries again later.
 - The port is open only while the flow is `started`. Starting, stopping, pausing, changing, or
   deleting the flow opens or closes it within about a second; stopping the server closes it.
-- A port can have one flow source; a second flow with the same port is refused. A port that
+- A port can have one flow source; a second flow with the same port, or one using the port of
+  `listen.address` or `listen.tlsAddress`, is refused. A port that
   cannot be opened (for example another program or the API uses it) is logged and recorded as a
   `source.http.failed` [event](#5-statistics-and-events) with the address, and tried again every
   second.

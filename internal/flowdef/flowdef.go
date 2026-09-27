@@ -42,6 +42,15 @@ type Flow struct {
 	ResponseSelector string `json:"responseSelector,omitempty"`
 }
 
+// SourceKind is the flow's source type: its source's, or else the
+// free-text sourceType.
+func (f Flow) SourceKind() string {
+	if f.Source != nil {
+		return f.Source.Type
+	}
+	return f.SourceType
+}
+
 // Source is a flow's own message source (#107 D-56).
 type Source struct {
 	Type string `json:"type"` // file or http
