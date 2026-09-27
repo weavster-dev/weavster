@@ -36,7 +36,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Content-Type: applicatio
   live configuration nothing is committed: `committed` is `false`, `changed` is empty, and `head`
   is the current commit.
 - `message` is required.
-- Commits run one at a time; each commits the configuration as it is when that commit starts.
+- Commits run one at a time. Each artifact is read once while the commit runs, so a change made
+  during a commit may show up only in the next one.
 - Only `.yaml` files directly in the directories below are managed. Other files (a `README.md`,
   `flows/examples/demo.yaml`) are kept, and committed along with the configuration when they
   changed.
@@ -63,7 +64,7 @@ scripts:
     deploy: log()
 ```
 
-- Names are URL-path-escaped in file names: a snippet `a/b` is `snippets/a%2Fb.yaml`.
+- The file name is the artifact's name (names use only letters, digits, `.`, `_`, and `-`).
 - Two artifacts of a kind whose names differ only in case (`ADT` and `adt`) would share a file on
   macOS and Windows, so the commit is refused with `409` naming both; rename one.
 - A deleted artifact's file is removed by the next commit.

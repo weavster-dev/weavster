@@ -31,9 +31,9 @@ func TestGitAdapterCommit(t *testing.T) {
 		return string(b)
 	}
 
-	// A failed write puts back what the commit touched: the removed
-	// settings file and the rewritten script.
-	if err := os.MkdirAll(filepath.Join(dir, "scripts", "new.yaml"), 0o750); err != nil { // cannot be written as a file
+	// A file that cannot be backed up (here a directory where a script
+	// file goes) aborts the commit before anything changes.
+	if err := os.MkdirAll(filepath.Join(dir, "scripts", "new.yaml"), 0o750); err != nil {
 		t.Fatal(err)
 	}
 	newScript := map[string]json.RawMessage{"deploy": json.RawMessage(`"two"`), "new": json.RawMessage(`"x"`)}
@@ -50,7 +50,28 @@ func TestGitAdapterCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	if changed, _ := a.store.WorkingTreeDiff(); len(changed) != 0 {
-		t.Errorf("rollback left changes: %v", changed)
+		t.Errorf("abort left changes: %v", changed)
+	}
+
+	// A failed write puts back what the commit touched: the removed
+	// settings file, and the new script file is removed again.
+	if os.Geteuid() != 0 { // root writes read-only files
+		deploy := filepath.Join(dir, "scripts", "deploy.yaml")
+		if err := os.Chmod(deploy, 0o400); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := a.GitCommit(ctx, gateway.ConfigBundle{Scripts: newScript}, "fails", "admin"); err == nil {
+			t.Fatal("commit over a read-only file succeeded")
+		}
+		if err := os.Chmod(deploy, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if got := read("settings/k.yaml"); got != "version: \"1\"\nsettings:\n    k: 1\n" {
+			t.Errorf("settings not restored: %q", got)
+		}
+		if changed, _ := a.store.WorkingTreeDiff(); len(changed) != 0 {
+			t.Errorf("rollback left changes: %v", changed)
+		}
 	}
 
 	// Files below a section directory are not managed.

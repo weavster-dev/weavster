@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/url"
 	"sort"
 	"strings"
@@ -62,25 +63,33 @@ func (a gitAdapter) GitCommit(_ context.Context, live gateway.ConfigBundle, mess
 			a.rollback(backup)
 		}
 	}()
-	save := func(f string) {
-		if _, ok := backup[f]; !ok {
-			b, readErr := a.store.ReadFile(f)
-			if readErr != nil {
-				b = nil
-			}
-			backup[f] = b
+	// save records f's content before it changes; a file that cannot be
+	// read aborts the commit, since it could not be put back.
+	save := func(f string) error {
+		if _, ok := backup[f]; ok {
+			return nil
 		}
+		b, readErr := a.store.ReadFile(f)
+		if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
+			return fmt.Errorf("git: back up %s: %w", f, readErr)
+		}
+		backup[f] = b // nil when it does not exist
+		return nil
 	}
 	for _, f := range existing {
 		if _, keep := files[f]; !keep && managedFile(f) {
-			save(f)
+			if err = save(f); err != nil {
+				return gateway.GitCommitResult{}, err
+			}
 			if err = a.store.RemoveFile(f); err != nil {
 				return gateway.GitCommitResult{}, err
 			}
 		}
 	}
 	for f, content := range files {
-		save(f)
+		if err = save(f); err != nil {
+			return gateway.GitCommitResult{}, err
+		}
 		if err = a.store.WriteFile(f, content); err != nil {
 			return gateway.GitCommitResult{}, err
 		}
