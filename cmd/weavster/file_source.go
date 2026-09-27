@@ -36,6 +36,7 @@ const (
 type (
 	flowLister interface {
 		List(ctx context.Context) ([]gateway.Flow, error)
+		Get(ctx context.Context, id string) (gateway.Flow, error)
 	}
 	messageIngester interface {
 		ingest(ctx context.Context, flowID string, body []byte, metadata map[string]string) (gateway.IngestResult, error)
@@ -187,11 +188,16 @@ func hidden(name, pattern string) bool {
 // to moveTo when set). It returns false when the flow stopped accepting
 // messages or the store failed, so the rest waits for the next poll.
 func (s *fileSources) readFile(ctx context.Context, f gateway.Flow, name, path string, stamp fileStamp) bool {
+	tooLarge := fmt.Sprintf("larger than %d MiB", gateway.MaxMessageBytes>>20)
 	if stamp.size > gateway.MaxMessageBytes {
-		s.reject(f, name, path, stamp, fmt.Sprintf("larger than %d MiB", gateway.MaxMessageBytes>>20))
+		s.reject(f, name, path, stamp, tooLarge)
 		return true
 	}
-	body, err := os.ReadFile(path)
+	body, err := readAtMost(path, gateway.MaxMessageBytes)
+	if errors.Is(err, errTooLarge) { // it grew after the listing
+		s.reject(f, name, path, stamp, tooLarge)
+		return true
+	}
 	if err != nil {
 		s.skip[path] = stamp // not again until it changes
 		s.logger.Warn("file source: cannot read a file; skipped until it changes", "flow", f.ID, "file", name, "error", err)
@@ -210,10 +216,16 @@ func (s *fileSources) readFile(ctx context.Context, f gateway.Flow, name, path s
 	case err != nil: // stored, then failed: the message exists, so the file is done
 		s.logger.Warn("file source: the message was stored but processing failed", "flow", f.ID, "file", name, "message", res.ID, "error", err)
 	}
-	if f.Source.MoveTo == "" {
+	// Clean up with the flow's current source: it may have been updated
+	// while the file was processed.
+	moveTo := f.Source.MoveTo
+	if cur, gerr := s.flows.Get(ctx, f.ID); gerr == nil && cur.Source != nil {
+		moveTo = cur.Source.MoveTo
+	}
+	if moveTo == "" {
 		err = os.Remove(path)
 	} else {
-		err = moveFile(path, f.Source.MoveTo, name, res.ID)
+		err = moveFile(path, moveTo, name, res.ID)
 	}
 	if err != nil {
 		// The message is stored: never send this version of the file again.
@@ -238,6 +250,24 @@ func (s *fileSources) reject(f gateway.Flow, name, path string, stamp fileStamp,
 		s.skip[path] = stamp
 	}
 	s.events.record("source.file.rejected", f.ID, map[string]string{"file": name, "reason": reason})
+}
+
+// errTooLarge: a file is larger than the limit readAtMost was given.
+var errTooLarge = errors.New("file too large")
+
+// readAtMost reads a file of at most limit bytes (errTooLarge otherwise),
+// never holding more than limit+1 bytes.
+func readAtMost(path string, limit int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	body, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err == nil && int64(len(body)) > limit {
+		return nil, errTooLarge
+	}
+	return body, err
 }
 
 // moveFile moves path into dir (created if missing) under name, or, when a

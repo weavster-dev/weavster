@@ -182,8 +182,8 @@ func (s *Server) handleFlowsDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// MaxMessageBytes caps a received message body (also a file a file source
-// reads).
+// MaxMessageBytes caps a received message body, and a file a file source
+// reads.
 const MaxMessageBytes = 10 << 20
 
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {

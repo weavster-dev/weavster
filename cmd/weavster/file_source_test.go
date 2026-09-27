@@ -84,6 +84,15 @@ func (f *fakeFlowList) List(context.Context) ([]gateway.Flow, error) {
 	return f.flows, nil
 }
 
+func (f *fakeFlowList) Get(_ context.Context, id string) (gateway.Flow, error) {
+	for _, fl := range f.flows {
+		if fl.ID == id {
+			return fl, nil
+		}
+	}
+	return gateway.Flow{}, gateway.ErrFlowNotFound
+}
+
 type fakeEvents struct{ types []string }
 
 func (f *fakeEvents) record(typ, _ string, _ map[string]string) { f.types = append(f.types, typ) }
@@ -238,5 +247,49 @@ func TestMoveFileRefusesItsOwnDirectory(t *testing.T) {
 	}
 	if err := moveFile(p, dir+"/", "a", ""); err == nil || !strings.Contains(err.Error(), "already in") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestReadAtMost(t *testing.T) {
+	dir := t.TempDir()
+	for _, tt := range []struct {
+		body string
+		err  error
+	}{
+		{"1234", nil},
+		{"12345", errTooLarge},
+	} {
+		p := filepath.Join(dir, "f")
+		if err := os.WriteFile(p, []byte(tt.body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		got, err := readAtMost(p, 4)
+		if !errors.Is(err, tt.err) || (err == nil && string(got) != tt.body) {
+			t.Errorf("%q: %q %v", tt.body, got, err)
+		}
+	}
+	if _, err := readAtMost(filepath.Join(dir, "none"), 4); err == nil {
+		t.Error("missing file read")
+	}
+}
+
+// TestFileSourceUsesCurrentMoveTo: cleanup follows the flow's current
+// moveTo, not the one cached when the poll began.
+func TestFileSourceUsesCurrentMoveTo(t *testing.T) {
+	dir, oldTo, newTo := t.TempDir(), t.TempDir(), t.TempDir()
+	settled(t, dir, "a.json", "{}")
+	ing := &fakeIngest{id: "m1"}
+	s, flows, _, run := newTestSources(t, &gateway.FlowSource{Type: "file", Dir: dir, MoveTo: oldTo}, ing)
+	run() // lists the flow with oldTo, and processes a.json
+	if _, err := os.Stat(filepath.Join(oldTo, "a.json")); err != nil {
+		t.Fatalf("not moved to the cached moveTo: %v", err)
+	}
+	settled(t, dir, "b.json", "{}")
+	flows.flows[0].Source = &gateway.FlowSource{Type: "file", Dir: dir, MoveTo: newTo} // updated; the cache is older
+	s.listed = s.now()                                                                 // keep the cached list for this pass
+	s.last["f"] = time.Time{}
+	s.pass(context.Background())
+	if _, err := os.Stat(filepath.Join(newTo, "b.json")); err != nil {
+		t.Errorf("not moved to the current moveTo: %v", err)
 	}
 }
