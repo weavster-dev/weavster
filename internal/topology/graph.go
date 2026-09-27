@@ -46,7 +46,8 @@ type Graph struct {
 
 // NewGraph returns a graph initialized with the schema version and timestamp.
 func NewGraph() Graph {
-	return Graph{SchemaVersion: "1", GeneratedAt: time.Now().UTC()}
+	// Empty node and edge lists serialize as [], never null (contract §2).
+	return Graph{SchemaVersion: "1", GeneratedAt: time.Now().UTC(), Nodes: []Node{}, Edges: []Edge{}}
 }
 
 // Node kinds and edge kinds (contract §2).

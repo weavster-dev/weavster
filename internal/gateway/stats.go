@@ -23,7 +23,7 @@ type FlowStats struct {
 	Errored       int64                     `json:"errored"`
 	Queued        int64                     `json:"queued"`
 	Destinations  map[string]ConnectorStats `json:"destinations"`
-	LastMessageAt *time.Time                `json:"lastMessageAt"`
+	LastMessageAt *time.Time                `json:"lastMessageAt,omitempty"` // absent until the first message
 }
 
 // StatsProvider reports flow statistics.

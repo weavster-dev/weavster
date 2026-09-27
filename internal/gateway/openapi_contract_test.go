@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -109,6 +110,59 @@ func TestAllFlowRoutesReserved(t *testing.T) {
 	for _, w := range words {
 		if !flowdef.Reserved(w) {
 			t.Errorf("%q names a route but is not a reserved flow id in flow.schema.json", w)
+		}
+	}
+}
+
+// TestOpenAPIResponsesHaveSchemas: every documented success response other
+// than 204 describes its body with a schema, so clients can be generated
+// from the contract.
+func TestOpenAPIResponsesHaveSchemas(t *testing.T) {
+	doc := loadSpec(t)
+	var missing []string
+	for path, item := range doc.Paths.Map() {
+		for method, op := range item.Operations() {
+			for code, r := range op.Responses.Map() {
+				if code[0] != '2' || code == "204" || r.Value == nil {
+					continue
+				}
+				ok := len(r.Value.Content) > 0
+				for _, mt := range r.Value.Content {
+					ok = ok && mt.Schema != nil
+				}
+				if !ok {
+					missing = append(missing, method+" "+path+" "+code)
+				}
+			}
+		}
+	}
+	sort.Strings(missing)
+	for _, m := range missing {
+		t.Errorf("%s: success response without a schema", m)
+	}
+}
+
+// TestOpenAPIFlowSchemaMatchesFlowdef: the Flow and FlowDestination
+// schemas list exactly the JSON fields of flowdef.Flow and
+// flowdef.Destination, so a new field cannot be left out of the contract.
+func TestOpenAPIFlowSchemaMatchesFlowdef(t *testing.T) {
+	doc := loadSpec(t)
+	for name, v := range map[string]any{"Flow": flowdef.Flow{}, "FlowDestination": flowdef.Destination{}} {
+		var fields []string
+		rt := reflect.TypeOf(v)
+		for i := 0; i < rt.NumField(); i++ {
+			if tag, _, _ := strings.Cut(rt.Field(i).Tag.Get("json"), ","); tag != "" && tag != "-" {
+				fields = append(fields, tag)
+			}
+		}
+		var props []string
+		for p := range doc.Components.Schemas[name].Value.Properties {
+			props = append(props, p)
+		}
+		sort.Strings(fields)
+		sort.Strings(props)
+		if strings.Join(fields, ",") != strings.Join(props, ",") {
+			t.Errorf("%s schema properties %v, Go JSON fields %v", name, props, fields)
 		}
 	}
 }
