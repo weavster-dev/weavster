@@ -632,7 +632,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, description: "Same fields as the collection; name is optional here"}}
+          application/json: {schema: {$ref: "#/components/schemas/SnippetUpdate"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "The saved code snippet", content: {application/json: {schema: {$ref: "#/components/schemas/Snippet"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -688,7 +688,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, description: "Same fields as the collection; name is optional here"}}
+          application/json: {schema: {$ref: "#/components/schemas/SnippetLibraryUpdate"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "The saved snippet library", content: {application/json: {schema: {$ref: "#/components/schemas/SnippetLibrary"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -858,6 +858,22 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    SnippetUpdate:
+      type: object
+      additionalProperties: false
+      description: "A snippet for PUT on /api/v1/snippets/{name}: name is optional and must match the path"
+      properties:
+        name: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}
+        library: {type: string, description: "Name of an existing snippet library"}
+        description: {type: string}
+        code: {type: string}
+    SnippetLibraryUpdate:
+      type: object
+      additionalProperties: false
+      description: "A library for PUT on /api/v1/snippet-libraries/{name}: name is optional and must match the path"
+      properties:
+        name: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}
+        description: {type: string}
     Snippet:
       type: object
       additionalProperties: false

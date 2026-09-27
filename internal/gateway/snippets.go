@@ -100,10 +100,15 @@ func saveNamed[T any, P namedDoc[T]](w http.ResponseWriter, r *http.Request, nou
 	var list []T
 	status, create, one := http.StatusOK, r.Method == http.MethodPost, r.Method == http.MethodPost
 	if name := r.PathValue("name"); name != "" || create {
-		var doc T
-		if !readItemsBody(w, r, &doc) {
+		var ptr *T
+		if !readItemsBody(w, r, &ptr) {
 			return
 		}
+		if ptr == nil {
+			writeStatusError(w, http.StatusBadRequest, "body must be a JSON "+noun+" object")
+			return
+		}
+		doc := *ptr
 		if ref := P(&doc).nameRef(); name != "" {
 			if *ref != "" && *ref != name {
 				writeStatusError(w, http.StatusBadRequest, "the name in the body does not match the path")

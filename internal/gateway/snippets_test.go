@@ -137,6 +137,8 @@ func TestSnippetHandlers(t *testing.T) {
 		{"repeated snippet", http.MethodPut, "/api/v1/snippets", `[{"name":"a"},{"name":"a"}]`, http.StatusBadRequest, "more than once"},
 		{"snippets null", http.MethodPut, "/api/v1/snippets", `null`, http.StatusBadRequest, "JSON array"},
 		{"put snippet", http.MethodPut, "/api/v1/snippets/trim", `{"code":"trim2()"}`, http.StatusOK, `{"name":"trim","code":"trim2()"}`},
+		{"null snippet", http.MethodPut, "/api/v1/snippets/trim", `null`, http.StatusBadRequest, "JSON snippet object"},
+		{"null library", http.MethodPost, "/api/v1/snippet-libraries", `null`, http.StatusBadRequest, "JSON library object"},
 		{"snippet name mismatch", http.MethodPut, "/api/v1/snippets/trim", `{"name":"x"}`, http.StatusBadRequest, "does not match"},
 		{"get snippet", http.MethodGet, "/api/v1/snippets/pid", ``, http.StatusOK, `"code":"v2"`},
 		{"get bad name", http.MethodGet, "/api/v1/snippets/a%20b", ``, http.StatusBadRequest, "must be 1-128"},
