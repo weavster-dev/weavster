@@ -196,7 +196,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>GET /api/openapi.yaml</code> (no marker header needed)</td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixWired/openapi</code>. The served document and <code>agent-docs/openapi.yaml</code> are maintained separately and can differ in detail.</td>
+<td><code>TestSupportMatrixWired/openapi</code>, <code>TestOpenAPIPublished</code>, <code>TestOpenAPIContract</code>. The served document is exactly <code>agent-docs/openapi.yaml</code>; every route is documented and every documented operation is contract-tested.</td>
 </tr>
 <tr>
 <td><code>GET /api/v1/system</code> status document</td>
