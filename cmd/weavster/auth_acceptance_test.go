@@ -16,6 +16,7 @@ import (
 
 	"github.com/weavster-dev/weavster/internal/auth"
 	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/pipeline"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 	"github.com/weavster-dev/weavster/internal/state"
 )
@@ -44,6 +45,17 @@ var protectedRoutes = []struct {
 	{http.MethodGet, "/api/v1/flows/export", "flows:view"},
 	{http.MethodPost, "/api/v1/flows/import", "flows:edit"},
 	{http.MethodPost, "/api/v1/flows/admit/destinations/d/stop", "flows:deploy"},
+	{http.MethodPut, "/api/v1/flows", "flows:edit"},
+	{http.MethodGet, "/api/v1/flows/connector-names", "flows:view"},
+	{http.MethodGet, "/api/v1/flows/ports-in-use", "flows:view"},
+	{http.MethodPost, "/api/v1/flows/start-all", "flows:deploy"},
+	{http.MethodGet, "/api/v1/flows/stats", "flows:view"},
+	{http.MethodPost, "/api/v1/flows/stats/reset", "flows:deploy"},
+	{http.MethodPost, "/api/v1/flows/admit/stats/reset", "flows:deploy"},
+	{http.MethodGet, "/api/v1/messages/m1", "messages:view"},
+	{http.MethodGet, "/api/v1/messages/m1/content", "messages:content"},
+	{http.MethodDelete, "/api/v1/messages/m1", "messages:delete"},
+	{http.MethodPost, "/api/v1/messages/m1/reprocess", "messages:send"},
 }
 
 type apiClient struct {
@@ -168,7 +180,9 @@ func TestPermissionMatrix(t *testing.T) {
 	provider := auth.NewLocalProvider(auth.Options{})
 	// Usernames are the permission with ":" replaced, since Basic auth
 	// usernames cannot contain a colon.
-	users := map[string][]string{"none": nil, "flows-view": {auth.PermFlowsView}, "flows-edit": {auth.PermFlowsEdit}, "messages-view": {auth.PermMessagesView}}
+	users := map[string][]string{"none": nil, "flows-view": {auth.PermFlowsView}, "flows-edit": {auth.PermFlowsEdit},
+		"messages-view": {auth.PermMessagesView}, "messages-content": {auth.PermMessagesContent},
+		"messages-delete": {auth.PermMessagesDelete}, "messages-send": {auth.PermMessagesSend}}
 	for name, perms := range users {
 		if err := provider.CreateUser(context.Background(), auth.User{Username: name, PasswordHash: "pw", Permissions: perms}); err != nil {
 			t.Fatal(err)
@@ -178,9 +192,12 @@ func TestPermissionMatrix(t *testing.T) {
 	if _, err := flows.Create(context.Background(), gateway.Flow{ID: "admit", Name: "Patient Admit"}); err != nil {
 		t.Fatal(err)
 	}
+	msgStore := state.NewMemStore()
+	pipe := pipeline.New(msgStore, newSink, nil, pipeline.Options{})
 	gw := gateway.New(gateway.Config{
 		Auth: authAdapter{provider}, Authorizer: authorizerAdapter{}, Passwords: provider,
-		Flows: flows, Messages: &messageAdapter{store: state.NewMemStore()}, Topology: topologyAdapter{flows: flows}, RequireCSRF: true,
+		Flows: flows, Messages: messageAdapter{store: msgStore, pipe: pipe, ingest: ingestAdapter{flows: flows, pipe: pipe}},
+		Topology: topologyAdapter{flows: flows}, RequireCSRF: true,
 	})
 	ts := httptest.NewServer(gw.Router())
 	defer ts.Close()

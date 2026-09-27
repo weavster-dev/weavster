@@ -16,6 +16,7 @@ import (
 	"github.com/weavster-dev/weavster/internal/flowlife"
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/observability"
+	"github.com/weavster-dev/weavster/internal/pipeline"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 	"github.com/weavster-dev/weavster/internal/state"
 )
@@ -608,5 +609,31 @@ func TestAllFlowActionsMatchLifecycle(t *testing.T) {
 	want := []string{flowlife.Deploy, flowlife.Undeploy, flowlife.Start, flowlife.Stop, flowlife.Pause, flowlife.Halt, flowlife.Resume}
 	if !slices.Equal(gateway.AllFlowActions, want) {
 		t.Errorf("gateway.AllFlowActions = %v, want %v", gateway.AllFlowActions, want)
+	}
+}
+
+// TestMessageAdapterContentAndReprocess: a message without transformed
+// content answers ErrNoContent; reprocessing keeps the original's metadata
+// (not its error) and records where it came from.
+func TestMessageAdapterContentAndReprocess(t *testing.T) {
+	ctx := context.Background()
+	mem := state.NewMemStore()
+	_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: "f", Document: []byte(`{"id":"f","status":"started","destinations":[{"name":"d","type":"file","dir":"` + t.TempDir() + `"}]}`)})
+	_ = mem.Put(ctx, state.Message{ID: "m", FlowID: "f", Status: state.StatusErrored, Raw: []byte("x"),
+		Metadata: map[string]string{"source": "lab", "error": "boom"}})
+	flows := flowAdapter{store: mem, stats: observability.NewStatsRegistry(), locks: newFlowLocks(), defs: &sync.Mutex{}, events: observability.NewEventLog()}
+	pipe := pipeline.New(mem, newSink, nil, pipeline.Options{})
+	ma := messageAdapter{store: mem, pipe: pipe, ingest: ingestAdapter{flows: flows, pipe: pipe}}
+
+	if _, err := ma.Content(ctx, "m", "transformed"); !errors.Is(err, gateway.ErrNoContent) {
+		t.Errorf("transformed content of an errored message = %v, want ErrNoContent", err)
+	}
+	res, err := ma.Reprocess(ctx, "m")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := mem.Get(ctx, res.ID)
+	if got.Metadata["source"] != "lab" || got.Metadata["reprocessedFrom"] != "m" || got.Metadata["error"] != "" {
+		t.Errorf("reprocessed metadata = %v", got.Metadata)
 	}
 }

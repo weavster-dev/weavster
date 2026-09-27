@@ -440,21 +440,64 @@ paths:
         "400": {description: Invalid limit, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/messages:
     get:
-      summary: Search messages
+      summary: Search stored messages, newest first by default (requires messages:view; audited)
       parameters:
-        - name: status
-          in: query
-          schema:
-            type: string
-        - name: flowId
-          in: query
-          schema:
-            type: string
+        - {name: flowId, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string}, description: "received, transformed, queued, sent, filtered, errored, or dead-lettered"}
+        - {name: from, in: query, schema: {type: string, format: date-time}, description: Received at or after (RFC 3339)}
+        - {name: to, in: query, schema: {type: string, format: date-time}, description: Received at or before (RFC 3339)}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 100}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: sort, in: query, schema: {type: string, enum: [-receivedAt, receivedAt, id, -id], default: -receivedAt}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "[{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: A filter or paging parameter is invalid, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/messages/{id}:
+    get:
+      summary: One stored message, without its content (requires messages:view; audited)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown message, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: Remove a stored message (requires messages:delete)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: Removed, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown message, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: The message is being processed or retried, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/messages/{id}/content:
+    get:
+      summary: A stored part of a message, as bytes (requires messages:content; every access is audited)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: part, in: query, schema: {type: string, enum: [raw, transformed], default: raw}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          description: The content (application/json for a transformed JSON message, otherwise application/octet-stream)
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
-          description: Message search results.
+          content:
+            application/octet-stream: {schema: {type: string, format: binary}}
+            application/json: {schema: {type: object}}
+        "400": {description: part is not raw or transformed, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown message, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/messages/{id}/reprocess:
+    post:
+      summary: Run the message's original content through its flow again, as a new message with metadata reprocessedFrom (requires messages:send)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "202": {description: "The new message: {id, status, response?}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: The flow now needs a JSON object and the content is not one, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown message or its flow no longer exists, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: The flow is not started, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
 security:
   - basicAuth: []
     csrfMarker: []

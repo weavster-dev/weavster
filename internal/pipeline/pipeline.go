@@ -201,7 +201,17 @@ func validHTTPURL(s string) bool {
 // Process runs body through flow f and returns the stored message's id and
 // aggregate status. Delivery failures do not return an error: they are
 // recorded per destination and leave the message queued for RetryDue.
-func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, err error) {
+func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (Result, error) {
+	return p.ProcessWithMetadata(ctx, f, body, nil)
+}
+
+// ErrInFlight is returned by Remove for a message that is being processed
+// or retried.
+var ErrInFlight = errors.New("pipeline: message is being processed")
+
+// ProcessWithMetadata is Process that stores metadata with the message from
+// the start (for example where a reprocessed message came from).
+func (p *Pipeline) ProcessWithMetadata(ctx context.Context, f Flow, body []byte, metadata map[string]string) (_ Result, err error) {
 	if f.Transform != nil {
 		if _, err := dsl.Compile(*f.Transform); err != nil {
 			return Result{}, err
@@ -225,7 +235,7 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, 
 	if f.Transform != nil {
 		contentType = "json"
 	}
-	m := state.Message{ID: id, FlowID: f.ID, ContentType: contentType, Raw: body, Original: body}
+	m := state.Message{ID: id, FlowID: f.ID, ContentType: contentType, Raw: body, Original: body, Metadata: metadata}
 	if err := p.outbox(f, contentType, nil, nil).Receive(ctx, m); err != nil {
 		return Result{}, err
 	}
@@ -252,6 +262,19 @@ func needsObject(f Flow) bool {
 		}
 	}
 	return false
+}
+
+// Remove deletes a stored message unless it is being processed or retried
+// (ErrInFlight); while it is removed, no retry can start on it.
+func (p *Pipeline) Remove(ctx context.Context, id string) error {
+	if _, busy := p.inflight.LoadOrStore(id, struct{}{}); busy {
+		return ErrInFlight
+	}
+	defer p.inflight.Delete(id)
+	if _, err := p.store.Get(ctx, id); err != nil {
+		return err
+	}
+	return p.store.Delete(ctx, id)
 }
 
 // decodeObject decodes body as a single JSON object, keeping numbers exact

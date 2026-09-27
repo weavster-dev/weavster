@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -74,5 +75,83 @@ func TestSQLStoreClosedDB(t *testing.T) {
 	}
 	if err := s.Put(ctx, Message{ID: "x", FlowID: "f", Status: StatusReceived}); err == nil {
 		t.Error("Put on closed store: error = nil, want error")
+	}
+}
+
+func TestSearchFlowFilterAndSortWhitelist(t *testing.T) {
+	for name, s := range testBackends(t) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			base := time.Now().Truncate(time.Millisecond)
+			for i, flow := range []string{"a", "b", "a", "a"} {
+				_ = s.Put(ctx, Message{ID: fmt.Sprintf("m%d", i), FlowID: flow, Status: StatusSent, ReceivedAt: base.Add(time.Duration(i) * time.Second)})
+			}
+			got, err := s.Search(ctx, Query{FlowID: "a", Sort: "-received_at", Limit: 2})
+			if err != nil || len(got) != 2 || got[0].ID != "m3" || got[1].ID != "m2" {
+				t.Errorf("flow a newest first, limit 2 = %+v, %v", got, err)
+			}
+			if got, err := s.Search(ctx, Query{Sort: "id; DROP TABLE messages", Limit: 10}); err != nil || len(got) != 4 {
+				t.Errorf("unknown sort field = %d results, %v; want the default order", len(got), err)
+			}
+		})
+	}
+}
+
+// TestSearchTieBreak: messages received in the same instant page in id
+// order in both directions, on every backend.
+func TestSearchTieBreak(t *testing.T) {
+	for name, s := range testBackends(t) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			at := time.UnixMilli(1_700_000_000_000)
+			for _, id := range []string{"c", "a", "b"} {
+				_ = s.Put(ctx, Message{ID: id, FlowID: "f", Status: StatusSent, ReceivedAt: at})
+			}
+			for sort, want := range map[string]string{"received_at": "abc", "-received_at": "cba"} {
+				var got string
+				for offset := 0; offset < 3; offset++ {
+					page, err := s.Search(ctx, Query{Sort: sort, Limit: 1, Offset: offset})
+					if err != nil || len(page) != 1 {
+						t.Fatalf("%s offset %d: %v, %v", sort, offset, page, err)
+					}
+					got += page[0].ID
+				}
+				if got != want {
+					t.Errorf("%s pages = %s, want %s", sort, got, want)
+				}
+			}
+		})
+	}
+}
+
+// TestMemStoreCopies: callers changing a message's maps never change the
+// stored one.
+func TestMemStoreCopies(t *testing.T) {
+	ctx := context.Background()
+	s := NewMemStore()
+	m := Message{ID: "m", Metadata: map[string]string{"k": "v"}, Attempts: map[string]DestinationAttempt{"d": {Attempts: 1}}}
+	_ = s.Put(ctx, m)
+	m.Metadata["k"] = "changed"
+	got, _ := s.Get(ctx, "m")
+	got.Attempts["d"] = DestinationAttempt{Attempts: 9}
+	again, _ := s.Get(ctx, "m")
+	if again.Metadata["k"] != "v" || again.Attempts["d"].Attempts != 1 {
+		t.Errorf("stored message changed through a copy: %+v", again)
+	}
+}
+
+// TestPutKeepsReceiveTime: updating a message without a receive time keeps
+// the stored one, on every backend.
+func TestPutKeepsReceiveTime(t *testing.T) {
+	for name, s := range testBackends(t) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			at := time.UnixMilli(1_700_000_000_000)
+			_ = s.Put(ctx, Message{ID: "m", FlowID: "f", Status: StatusReceived, ReceivedAt: at})
+			_ = s.Put(ctx, Message{ID: "m", FlowID: "f", Status: StatusSent})
+			if got, _ := s.Get(ctx, "m"); !got.ReceivedAt.Equal(at) {
+				t.Errorf("ReceivedAt = %v, want %v", got.ReceivedAt, at)
+			}
+		})
 	}
 }

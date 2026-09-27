@@ -272,11 +272,47 @@ Errors:
 
 ## 4. Find processed messages
 
-Every message is saved in the configured store with its final status:
+Every message is saved in the configured store with its final status. Search them (permission
+`messages:view`):
 
 ```bash
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
-  'http://127.0.0.1:8080/api/v1/messages?flowId=adt&status=queued'
+  'http://127.0.0.1:8080/api/v1/messages?flowId=adt&status=queued&limit=50'
+```
+
+```json
+[{"id":"6f1c…","flowId":"adt","status":"queued","contentType":"json",
+  "receivedAt":"2026-09-26T12:00:00Z","updatedAt":"2026-09-26T12:00:05Z",
+  "attempts":{"ehr":{"attempts":2,"lastError":"Service Unavailable","nextAttemptAt":"2026-09-26T12:00:09Z"}}}]
+```
+
+| Parameter | Meaning |
+|---|---|
+| `flowId`, `status` | Only messages of this flow / with this status. |
+| `from`, `to` | Received at or after / at or before this time (RFC 3339, for example `2026-09-26T12:00:00Z`). |
+| `limit` | Messages per page, 1–1000 (default 100). |
+| `offset` | Messages to skip, for the next pages. |
+| `sort` | `-receivedAt` (newest first, default), `receivedAt`, `id`, or `-id`. |
+
+The filters are applied before `limit` and `offset`, so every page holds only matching messages,
+and messages received in the same instant are ordered by id, so pages neither repeat nor skip
+messages while no new ones arrive.
+
+### Work with one message
+
+| Request | Permission | What it does |
+|---|---|---|
+| `GET /api/v1/messages/{id}` | `messages:view` | The message as in the search results. |
+| `GET /api/v1/messages/{id}/content?part=raw` | `messages:content` | The content as received (`part=transformed`: after the flow transform), as bytes. A message with no transformed content (for example one that errored in its transform) returns `404` for `part=transformed`. |
+| `POST /api/v1/messages/{id}/reprocess` | `messages:send` | Sends the original content through the message's flow again. The new message (`202`, same reply as sending) keeps the old message's metadata (except its `error`) and adds `reprocessedFrom` with the old id. The flow must be `started` (`409` otherwise). |
+| `DELETE /api/v1/messages/{id}` | `messages:delete` | Removes the message (`204`). A message that is being processed or retried right now returns `409`; try again. |
+
+An unknown id returns `404`. Message content can hold protected health information, so
+`messages:content` is a separate permission and every search, read, and content request is
+recorded in the [audit log](audit-log.md) as `phi.access`.
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/messages/6f1c…/content?part=raw'
 ```
 
 ## 5. Statistics and events

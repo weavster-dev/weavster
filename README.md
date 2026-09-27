@@ -64,7 +64,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   deploy/start/stop/pause/halt/resume/undeploy lifecycle;
   `POST /api/v1/flows/{id}/messages` runs a message through the flow's DSL transform and
   delivers it to each `http`/`file` destination, retrying failures with backoff (see
-  [Processing messages](docs/processing-messages.md)); message search by flow and status;
+  [Processing messages](docs/processing-messages.md)); message search (flow, status, time,
+  paging), reading one message and its content (audited), reprocessing, and removing messages;
   read-only topology JSON built from the flows.
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
   account; security-relevant API calls are written to an audit log on stderr. Users persist
