@@ -69,7 +69,10 @@ func TestDeadLetterRequeue(t *testing.T) {
 	if msg.Metadata["requeues"] != "1" || msg.Attempts["ehr"].Attempts != 1 || msg.Attempts["archive"].Attempts != 1 {
 		t.Errorf("message after requeue = %s", body)
 	}
-	if _, body, _ := c.do(http.MethodGet, "/api/v1/events?type=message.requeued", "", admin); !strings.Contains(body, `"previous.ehr.attempts":"2"`) || !strings.Contains(body, `"messageId":"`+id+`"`) {
+	// The event keeps the attempt counts, never the error text (it can
+	// quote message content, and events:view alone can read events).
+	if _, body, _ := c.do(http.MethodGet, "/api/v1/events?type=message.requeued", "", admin); !strings.Contains(body, `"previous.ehr.attempts":"2"`) ||
+		!strings.Contains(body, `"messageId":"`+id+`"`) || strings.Contains(body, "lastError") || strings.Contains(body, "503") {
 		t.Errorf("requeue event = %s", body)
 	}
 	// A sent message cannot be requeued.
@@ -83,7 +86,7 @@ func TestDeadLetterRequeue(t *testing.T) {
 	b, _ := sendMessage(t, c, "f", "b")
 	waitStatus(t, c, a, "dead-lettered")
 	waitStatus(t, c, b, "dead-lettered")
-	if code, _, errOut := cli("deadletter remove " + id); code != 2 || !strings.Contains(errOut, "is not dead-lettered (status sent)") {
+	if code, _, errOut := cli("deadletter remove " + id); code != 2 || !strings.Contains(errOut, "409") || !strings.Contains(errOut, "not dead-lettered (status sent)") {
 		t.Errorf("remove sent: %d %q", code, errOut)
 	}
 	if code, out, _ := cli("deadletter remove " + b); code != 0 || out != "removed "+b+"\n" {
@@ -104,9 +107,14 @@ func TestDeadLetterRequeue(t *testing.T) {
 			t.Errorf("%s: %d %q", tt.line, code, errOut)
 		}
 	}
-	// Requeue needs messages:send.
+	// Requeue needs messages:send (and, for one message, messages:view: the
+	// reply shows the previous errors).
 	c.do(http.MethodPost, "/api/v1/users", `{"username":"viewer","password":"View-Passw0rd-1","permissions":["messages:view"],"mustChangePassword":false}`, admin)
 	if code, body, _ := c.do(http.MethodPost, "/api/v1/messages/requeue", "", basic("viewer", "View-Passw0rd-1")); code != http.StatusForbidden || !strings.Contains(body, "messages:send") {
 		t.Errorf("viewer requeue: %d %s", code, body)
+	}
+	c.do(http.MethodPost, "/api/v1/users", `{"username":"sender","password":"Send-Passw0rd-1","permissions":["messages:send"],"mustChangePassword":false}`, admin)
+	if code, body, _ := c.do(http.MethodPost, "/api/v1/messages/"+a+"/requeue", "", basic("sender", "Send-Passw0rd-1")); code != http.StatusForbidden || !strings.Contains(body, "messages:view") {
+		t.Errorf("sender requeue one: %d %s", code, body)
 	}
 }

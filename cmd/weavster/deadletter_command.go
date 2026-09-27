@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/weavster-dev/weavster/internal/gateway"
 )
@@ -48,8 +50,11 @@ func deadLetterCommand(ctx context.Context, client Client, args []string, stdout
 	return 0
 }
 
+// listLimit is the most dead letters one list shows.
+const listLimit = 1000
+
 func listDeadLetters(ctx context.Context, client Client, flow []string, stdout io.Writer) error {
-	q := url.Values{"status": {"dead-lettered"}, "limit": {"1000"}, "sort": {"-receivedAt"}}
+	q := url.Values{"status": {"dead-lettered"}, "limit": {strconv.Itoa(listLimit)}, "sort": {"-receivedAt"}}
 	if len(flow) == 1 {
 		q.Set("flowId", flow[0])
 	}
@@ -62,7 +67,11 @@ func listDeadLetters(ctx context.Context, client Client, flow []string, stdout i
 		return err
 	}
 	for _, m := range msgs {
-		_, _ = fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", m.ID, m.FlowID, m.ReceivedAt.Format("2006-01-02T15:04:05Z"), attemptsText(m.Attempts, m.Metadata["error"]))
+		_, _ = fmt.Fprintf(stdout, "%s\t%s\t%s\t%s\n", m.ID, m.FlowID, m.ReceivedAt.UTC().Format(time.RFC3339), attemptsText(m.Attempts, m.Metadata["error"]))
+	}
+	if len(msgs) == listLimit {
+		_, _ = fmt.Fprintf(stdout, "the newest %d dead-lettered messages (there may be more; name a flow to narrow the list)\n", listLimit)
+		return nil
 	}
 	_, _ = fmt.Fprintf(stdout, "%d dead-lettered messages\n", len(msgs))
 	return nil
@@ -123,22 +132,11 @@ func requeueAll(ctx context.Context, client Client, flow []string, stdout io.Wri
 	return nil
 }
 
-// removeDeadLetter deletes a message only if it is dead-lettered, so a
-// mistyped id cannot remove a message that is still being delivered.
+// removeDeadLetter deletes a message only if it is dead-lettered (the
+// server checks while it holds the message), so a mistyped id cannot remove
+// a message that is still being delivered.
 func removeDeadLetter(ctx context.Context, client Client, id string, stdout io.Writer) error {
-	path := "/api/v1/messages/" + url.PathEscape(id)
-	reply, err := client.Call(ctx, http.MethodGet, path, nil)
-	if err != nil {
-		return err
-	}
-	var m gateway.Message
-	if err := json.Unmarshal(reply, &m); err != nil {
-		return err
-	}
-	if m.Status != "dead-lettered" {
-		return fmt.Errorf("message %s is not dead-lettered (status %s); use the API to delete other messages", id, m.Status)
-	}
-	if _, err := client.Call(ctx, http.MethodDelete, path, nil); err != nil {
+	if _, err := client.Call(ctx, http.MethodDelete, "/api/v1/messages/"+url.PathEscape(id)+"?status=dead-lettered", nil); err != nil {
 		return err
 	}
 	_, _ = fmt.Fprintf(stdout, "removed %s\n", id)

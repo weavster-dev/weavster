@@ -590,23 +590,29 @@ weavster> deadletter remove 7f3c9a1e
 removed 7f3c9a1e
 ```
 
-`deadletter list` without a flow lists every flow's dead letters (up to 1000, newest first);
-`requeue all` without a flow requeues every dead letter.
+`deadletter list` without a flow lists every flow's dead letters, newest first; it shows at most
+1000 and says so when there may be more. `requeue all` without a flow requeues every dead letter.
 
 **Requeue** gives the message another round of attempts:
 
 - Every destination that did not deliver starts again with no attempts; destinations that
   delivered keep their record and are **not sent again**. The message becomes `queued`, and the
   retry loop delivers it with the usual backoff, so fix the destination first.
-- The attempts the message had are kept: in the reply, in the [audit log](audit-log.md), and in a
-  `message.requeued` [event](#5-statistics-and-events) (`previous.<destination>.attempts`,
-  `previous.<destination>.lastError`). The message's `requeues` metadata counts its requeues.
+- The attempts the message had are kept: the reply shows each destination's attempts and last
+  error; the [audit log](audit-log.md) and a `message.requeued` [event](#5-statistics-and-events)
+  record the attempt counts (`previous.<destination>.attempts`) but not the error text, which can
+  quote message content. The message's `requeues` metadata counts its requeues.
+- A message that was never transformed (its flow was deleted before that) goes back to
+  `received`, so it is transformed before it is delivered.
+- Statistics count each outcome: a requeued message that is then sent counts once as errored
+  (when it was dead-lettered) and once as sent.
 - Only a dead-lettered message can be requeued (`409` otherwise, and while it is being
   processed). A message whose flow was deleted cannot be requeued (`404`); send its content again
   to another flow instead.
 - `requeue all` skips messages it cannot requeue and lists them with the reason.
 
-With the API (permission `messages:send`):
+With the API (permission `messages:send`; requeuing one message also needs `messages:view`,
+because the reply shows the previous errors, and is logged as PHI access):
 
 ```bash
 # One message
@@ -624,11 +630,12 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST 'http://127.0.0.1:80
 {"requeued":["7f3c9a1e","8a01b2c3"],"skipped":[]}
 ```
 
-Listing, inspecting, and removing use the message endpoints: `GET /api/v1/messages?status=dead-lettered`,
-`GET /api/v1/messages/{id}`, and `DELETE /api/v1/messages/{id}` (see
-[Work with one message](#work-with-one-message)). `deadletter remove` refuses a message that is
-not dead-lettered, so a mistyped id cannot remove one still being delivered. To send the original
-content again as a new message instead, use `reprocess`.
+Listing and inspecting use the message endpoints `GET /api/v1/messages?status=dead-lettered` and
+`GET /api/v1/messages/{id}` (see [Work with one message](#work-with-one-message)). Removing uses
+`DELETE /api/v1/messages/{id}?status=dead-lettered` (permission `messages:delete`), which deletes
+the message only if it is still dead-lettered (`409` otherwise), so a mistyped id or a message
+someone just requeued is never removed; `deadletter remove` uses it. To send the original content
+again as a new message instead, use `reprocess`.
 
 ## Limits today
 

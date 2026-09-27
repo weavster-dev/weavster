@@ -29,6 +29,16 @@ func (fakeRequeuer) Requeue(_ context.Context, id string) (RequeueResult, error)
 	return RequeueResult{}, errDisk
 }
 
+func (fakeRequeuer) Remove(_ context.Context, id string) error {
+	switch id {
+	case "dl":
+		return nil
+	case "sent":
+		return fmt.Errorf("%w (status sent)", ErrNotDeadLettered)
+	}
+	return ErrMessageNotFound
+}
+
 func (fakeRequeuer) RequeueAll(_ context.Context, flowID string) (RequeueAllResult, error) {
 	switch flowID {
 	case "":
@@ -58,10 +68,18 @@ func TestDeadLetterHandlers(t *testing.T) {
 		{"requeue all fails", "/api/v1/messages/requeue?flowId=x", ok, http.StatusInternalServerError, "internal error"},
 		{"unavailable", "/api/v1/messages/dl/requeue", Config{}, http.StatusServiceUnavailable, "dead-letter requeue unavailable"},
 		{"all unavailable", "/api/v1/messages/requeue", Config{}, http.StatusServiceUnavailable, "dead-letter requeue unavailable"},
+		{"remove dead letter", "/api/v1/messages/dl?status=dead-lettered", Config{DeadLetters: fakeRequeuer{}, Messages: fakeMessages{}}, http.StatusNoContent, ""},
+		{"remove not dead-lettered", "/api/v1/messages/sent?status=dead-lettered", Config{DeadLetters: fakeRequeuer{}, Messages: fakeMessages{}}, http.StatusConflict, "(status sent)"},
+		{"remove other status", "/api/v1/messages/dl?status=sent", Config{DeadLetters: fakeRequeuer{}, Messages: fakeMessages{}}, http.StatusBadRequest, "status can only be dead-lettered"},
+		{"remove without requeuer", "/api/v1/messages/dl?status=dead-lettered", Config{Messages: fakeMessages{}}, http.StatusServiceUnavailable, "dead-letter requeue unavailable"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, tt.path, nil))
+			method := http.MethodPost
+			if strings.HasPrefix(tt.name, "remove") {
+				method = http.MethodDelete
+			}
+			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(method, tt.path, nil))
 			if rec.Code != tt.status || !strings.Contains(rec.Body.String(), tt.want) {
 				t.Errorf("got %d %.300s; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.want)
 			}

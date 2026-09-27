@@ -277,12 +277,26 @@ func (p *Pipeline) Hold(id string) (release func(), ok bool) {
 // Remove deletes a stored message unless it is being processed or retried
 // (ErrInFlight); while it is removed, no retry can start on it.
 func (p *Pipeline) Remove(ctx context.Context, id string) error {
+	return p.remove(ctx, id, false)
+}
+
+// RemoveDeadLettered is Remove for a dead-lettered message only: any other
+// status is ErrNotDeadLettered, checked while the message is held.
+func (p *Pipeline) RemoveDeadLettered(ctx context.Context, id string) error {
+	return p.remove(ctx, id, true)
+}
+
+func (p *Pipeline) remove(ctx context.Context, id string, deadLetteredOnly bool) error {
 	if _, busy := p.inflight.LoadOrStore(id, struct{}{}); busy {
 		return ErrInFlight
 	}
 	defer p.inflight.Delete(id)
-	if _, err := p.store.Get(ctx, id); err != nil {
+	m, err := p.store.Get(ctx, id)
+	if err != nil {
 		return err
+	}
+	if deadLetteredOnly && m.Status != state.StatusDeadLettered {
+		return fmt.Errorf("%w (status %s)", ErrNotDeadLettered, m.Status)
 	}
 	return p.store.Delete(ctx, id)
 }
@@ -295,9 +309,11 @@ var ErrNotDeadLettered = errors.New("pipeline: message is not dead-lettered")
 // attempts: every destination that has not delivered starts again with no
 // attempts, delivered destinations keep their record (they are never sent
 // again), the processing error is cleared, the "requeues" metadata counts
-// the requeue, and the message is queued for the next retry pass. It
-// returns the message as it was before (ErrInFlight while the message is
-// busy, ErrNotDeadLettered for any other status).
+// the requeue, and the message is queued for the next retry pass — or, if
+// it was never transformed (its flow was deleted before that), put back to
+// received so the retry pass transforms it first. It returns the message as
+// it was before (ErrInFlight while the message is busy, ErrNotDeadLettered
+// with the current status for any other status).
 func (p *Pipeline) Requeue(ctx context.Context, id string) (state.Message, error) {
 	if _, busy := p.inflight.LoadOrStore(id, struct{}{}); busy {
 		return state.Message{}, ErrInFlight
@@ -330,6 +346,9 @@ func (p *Pipeline) Requeue(ctx context.Context, id string) (state.Message, error
 	n, _ := strconv.Atoi(md["requeues"])
 	md["requeues"] = strconv.Itoa(n + 1)
 	m.Attempts, m.Metadata, m.Status = attempts, md, state.StatusQueued
+	if m.Transformed == nil {
+		m.Status = state.StatusReceived
+	}
 	return before, p.store.Put(ctx, m)
 }
 

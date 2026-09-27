@@ -3,7 +3,6 @@ package gateway
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"sort"
 	"strconv"
@@ -41,6 +40,10 @@ type DeadLetterRequeuer interface {
 	// RequeueAll requeues every dead-lettered message (of flowID when set;
 	// ErrFlowNotFound for an unknown flow), skipping those it cannot.
 	RequeueAll(ctx context.Context, flowID string) (RequeueAllResult, error)
+	// Remove deletes a message only if it is dead-lettered (checked while
+	// it is held, so it cannot be requeued meanwhile): ErrNotDeadLettered,
+	// ErrMessageBusy, ErrMessageNotFound.
+	Remove(ctx context.Context, id string) error
 }
 
 func (s *Server) deadLettersAvailable(w http.ResponseWriter) bool {
@@ -51,8 +54,9 @@ func (s *Server) deadLettersAvailable(w http.ResponseWriter) bool {
 	return true
 }
 
-// handleMessageRequeue requeues one dead-lettered message; the audit record
-// keeps the attempts it had.
+// handleMessageRequeue requeues one dead-lettered message. The audit record
+// keeps how many attempts each destination had; the error texts, which can
+// quote message content (PHI), are only in the reply.
 func (s *Server) handleMessageRequeue(w http.ResponseWriter, r *http.Request) {
 	if !s.deadLettersAvailable(w) {
 		return
@@ -70,7 +74,7 @@ func (s *Server) handleMessageRequeue(w http.ResponseWriter, r *http.Request) {
 	kv := []string{"message.id", res.Message.ID}
 	for _, d := range dests {
 		a := res.Previous[d]
-		kv = append(kv, "previous."+d, fmt.Sprintf("attempts=%d lastError=%q", a.Attempts, a.LastError))
+		kv = append(kv, "previous."+d+".attempts", strconv.Itoa(a.Attempts))
 	}
 	s.auditDetail(r, kv...)
 	writeJSON(w, http.StatusOK, res)

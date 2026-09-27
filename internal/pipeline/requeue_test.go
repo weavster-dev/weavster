@@ -88,7 +88,41 @@ func TestRequeue(t *testing.T) {
 	if _, err := p.Requeue(ctx, "gone"); err != nil {
 		t.Fatal(err)
 	}
-	if m, _ := store.Get(ctx, "gone"); m.Metadata["error"] != "" || m.Metadata["requeues"] != "3" || m.Metadata["k"] != "v" {
-		t.Errorf("metadata = %v", m.Metadata)
+	// Never transformed (its flow was deleted first): back to received, so
+	// the retry pass transforms it before delivering.
+	if m, _ := store.Get(ctx, "gone"); m.Metadata["error"] != "" || m.Metadata["requeues"] != "3" || m.Metadata["k"] != "v" || m.Status != state.StatusReceived {
+		t.Errorf("never-transformed message after requeue = %+v", m)
+	}
+}
+
+func TestRemoveDeadLettered(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	p := New(store, nil, nil, Options{})
+	for id, st := range map[string]state.Status{"dl": state.StatusDeadLettered, "q": state.StatusQueued, "busy": state.StatusDeadLettered} {
+		if err := store.Put(ctx, state.Message{ID: id, FlowID: "f", Status: st}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	release, _ := p.Hold("busy")
+	defer release()
+	for _, tt := range []struct {
+		id   string
+		want error
+	}{
+		{"q", ErrNotDeadLettered},
+		{"busy", ErrInFlight},
+		{"nope", state.ErrNotFound},
+		{"dl", nil},
+	} {
+		if err := p.RemoveDeadLettered(ctx, tt.id); !errors.Is(err, tt.want) {
+			t.Errorf("%s: %v, want %v", tt.id, err, tt.want)
+		}
+	}
+	if _, err := store.Get(ctx, "dl"); !errors.Is(err, state.ErrNotFound) {
+		t.Errorf("dl still stored: %v", err)
+	}
+	if _, err := store.Get(ctx, "q"); err != nil {
+		t.Errorf("queued message removed: %v", err)
 	}
 }
