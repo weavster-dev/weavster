@@ -40,7 +40,7 @@ paths:
                 mfaCode: {type: string}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "Token, expiresAt, and user", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "Token, expiresAt, and user", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/LoginResponse"}}}}
         "401": {description: Invalid username or password, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/auth/logout:
     post:
@@ -53,7 +53,7 @@ paths:
       summary: Current user, permissions, and whether a password change is required
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: Current user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: Current user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Identity"}}}}
   /api/v1/auth/password:
     post:
       summary: Change the current user's password
@@ -111,6 +111,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          content: {application/json: {schema: {$ref: "#/components/schemas/TopologyGraph"}}}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Overview graph (flow nodes + route/dependency edges).
   /api/v1/topology/flows/{flowId}:
@@ -125,6 +126,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          content: {application/json: {schema: {$ref: "#/components/schemas/TopologyGraph"}}}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Flow-internal graph (source -> transform -> destination nodes + message-path edges).
   /api/v1/flows:
@@ -133,6 +135,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Flow"}}}}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Flow list.
     post:
@@ -145,6 +148,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "201":
+          content: {application/json: {schema: {$ref: "#/components/schemas/Flow"}}}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Created.
         "400":
@@ -165,6 +169,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          content: {application/json: {schema: {$ref: "#/components/schemas/UpdatedList"}}}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: "{updated: [ids]}"
         "400":
@@ -185,6 +190,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/ConnectorNames"}}}}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: "[{id, name, sourceType, destinations: [names]}]"
   /api/v1/flows/ports-in-use:
@@ -193,6 +199,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/PortInUse"}}}}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: "[{address, port, usedBy}]"
   /api/v1/flows/{id}:
@@ -207,7 +214,7 @@ paths:
             schema: {type: object}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Flow"}}}}
         "400": {description: "Invalid definition, a status field, or a different id in the body", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     get:
@@ -221,6 +228,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          content: {application/json: {schema: {$ref: "#/components/schemas/Flow"}}}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Flow record.
         "404":
@@ -252,7 +260,7 @@ paths:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Flow"}}}}
         "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/{id}/disable:
     post:
@@ -261,7 +269,7 @@ paths:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Flow"}}}}
         "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/{id}/destinations/{dest}/{action}:
     post:
@@ -272,7 +280,7 @@ paths:
         - {name: action, in: path, required: true, schema: {type: string, enum: [start, stop]}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "The flow; stoppedDestinations lists stopped destinations", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "The flow; stoppedDestinations lists stopped destinations", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Flow"}}}}
         "404": {description: "Unknown flow, destination, or action", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/{id}/{action}:
     post:
@@ -288,7 +296,7 @@ paths:
           schema: {type: string, enum: [deploy, undeploy, start, stop, pause, halt, resume]}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Flow"}}}}
         "404": {description: Unknown flow or action, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: "Transition not allowed from the flow's status", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/export:
@@ -301,7 +309,7 @@ paths:
           schema: {type: string}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{version: 1, flows: [definitions without status]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{version: 1, flows: [definitions without status]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/FlowBundle"}}}}
         "404": {description: Unknown flow id, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/import:
     post:
@@ -317,7 +325,7 @@ paths:
             schema: {type: object}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{created: [ids], updated: [ids]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{created: [ids], updated: [ids]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/FlowImportResult"}}}}
         "400": {description: "Invalid document, flow, or dependencies; nothing written", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: Flows already exist and overwrite is not set; nothing written, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: Document larger than 50 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -327,56 +335,56 @@ paths:
       summary: Undeploy and re-deploy every flow that is not undeployed (deployed, started, paused, halted, stopped); each ends deployed (requires flows:deploy)
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The redeployed flows, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: The redeployed flows, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Flow"}}}}}
         "500": {description: "Stopped part-way: {error: {code: REDEPLOY_INCOMPLETE}, redeployed: [flows already redeployed]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/deploy-all:
     post:
       summary: "Deploy every flow the action applies to, dependencies first; flows it does not apply to are skipped with the reason. Disabled flows are skipped. (requires flows:deploy)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/TransitionAllResult"}}}}
         "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/undeploy-all:
     post:
       summary: "Undeploy every flow the action applies to, dependents first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/TransitionAllResult"}}}}
         "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/start-all:
     post:
       summary: "Start every flow the action applies to, dependencies first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/TransitionAllResult"}}}}
         "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/stop-all:
     post:
       summary: "Stop every flow the action applies to, dependents first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/TransitionAllResult"}}}}
         "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/pause-all:
     post:
       summary: "Pause every flow the action applies to, dependents first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/TransitionAllResult"}}}}
         "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/halt-all:
     post:
       summary: "Halt every flow the action applies to, dependents first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/TransitionAllResult"}}}}
         "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/resume-all:
     post:
       summary: "Resume every flow the action applies to, dependencies first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/TransitionAllResult"}}}}
         "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/stats:
     get:
@@ -385,7 +393,7 @@ paths:
         - {name: lifetime, in: query, schema: {type: boolean}, description: Lifetime totals instead of current counters}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{<flow id>: statistics}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{<flow id>: statistics}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/FlowStatsMap"}}}}
         "400": {description: lifetime is not true or false, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/stats/series:
     get:
@@ -458,7 +466,7 @@ paths:
             schema: {type: string, format: binary}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "202": {description: "Processed: {id, status, response?} with status sent, queued, dead-lettered, filtered, or errored; response is the responseSelector destination's reply", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "202": {description: "Processed: {id, status, response?} with status sent, queued, dead-lettered, filtered, or errored; response is the responseSelector destination's reply", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/IngestResult"}}}}
         "400": {description: "The flow or a destination has a transform (a responseTransform does not count) and the body is not a single JSON object, or the body could not be read", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: The flow is not started, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -476,7 +484,7 @@ paths:
           schema: {type: boolean}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "received, filtered, transformed, sent, errored, queued, destinations, lastMessageAt", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "received, filtered, transformed, sent, errored, queued, destinations, lastMessageAt", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/FlowStats"}}}}
         "400": {description: lifetime is not a boolean, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/events:
@@ -555,7 +563,7 @@ paths:
         - {name: sort, in: query, schema: {type: string, enum: [-receivedAt, receivedAt, id, -id], default: -receivedAt}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "[{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "[{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Message"}}}}}
         "400": {description: A filter or paging parameter is invalid, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     delete:
       summary: "Remove every message matching the filters; all=true is required when no filter is given (requires messages:delete)"
@@ -602,7 +610,7 @@ paths:
       summary: "Every config map entry, as a JSON object of name: value (requires configmap:edit)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{name: value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{name: value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/ItemMap"}}}}
     put:
       summary: "Replace every config map entry with the body, a JSON object of name: value; each value is a string (requires configmap:edit)"
       requestBody:
@@ -611,7 +619,7 @@ paths:
           application/json: {schema: {type: object}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The new set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: The new set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/ItemMap"}}}}
         "400": {description: "A bad name, a wrong value type, or not a JSON object", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: Body larger than 10 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/configmap/{name}:
@@ -621,7 +629,7 @@ paths:
       summary: "One config map entry: {name, value} (requires configmap:edit)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Item"}}}}
         "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     put:
@@ -632,7 +640,7 @@ paths:
           application/json: {schema: {type: object, required: [value], properties: {value: {}}}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Item"}}}}
         "400": {description: "A bad name, a missing value, or a wrong value type", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     delete:
       summary: "Delete one config map entry (requires configmap:edit)"
@@ -646,7 +654,7 @@ paths:
       summary: "Every script, as a JSON object of name: value (requires scripts:edit)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{name: value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{name: value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/ItemMap"}}}}
     put:
       summary: "Replace every script with the body, a JSON object of name: value; each value is a string (the script source) (requires scripts:edit)"
       requestBody:
@@ -655,7 +663,7 @@ paths:
           application/json: {schema: {type: object}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The new set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: The new set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/ItemMap"}}}}
         "400": {description: "A bad name, a wrong value type, or not a JSON object", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: Body larger than 10 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/scripts/{name}:
@@ -665,7 +673,7 @@ paths:
       summary: "One script: {name, value} (requires scripts:edit)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Item"}}}}
         "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     put:
@@ -676,7 +684,7 @@ paths:
           application/json: {schema: {type: object, required: [value], properties: {value: {}}}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Item"}}}}
         "400": {description: "A bad name, a missing value, or a wrong value type", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     delete:
       summary: "Delete one script (requires scripts:edit)"
@@ -690,7 +698,7 @@ paths:
       summary: "Every setting, as a JSON object of name: value (requires settings:edit)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{name: value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{name: value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/ItemMap"}}}}
     put:
       summary: "Replace every setting with the body, a JSON object of name: value; each value is any JSON value (requires settings:edit)"
       requestBody:
@@ -699,7 +707,7 @@ paths:
           application/json: {schema: {type: object}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The new set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: The new set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/ItemMap"}}}}
         "400": {description: "A bad name, a wrong value type, or not a JSON object", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: Body larger than 10 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/settings/{name}:
@@ -709,7 +717,7 @@ paths:
       summary: "One setting: {name, value} (requires settings:edit)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Item"}}}}
         "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     put:
@@ -720,7 +728,7 @@ paths:
           application/json: {schema: {type: object, required: [value], properties: {value: {}}}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Item"}}}}
         "400": {description: "A bad name, a missing value, or a wrong value type", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     delete:
       summary: "Delete one setting (requires settings:edit)"
@@ -1099,7 +1107,7 @@ paths:
       summary: List user accounts (requires users:admin)
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "[{username, email, org, permissions, mustChangePassword, locked}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "[{username, email, org, permissions, mustChangePassword, locked}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/UserInfo"}}}}}
     post:
       summary: Create a user account; by default the user must change the password at first login (requires users:admin)
       requestBody:
@@ -1108,7 +1116,7 @@ paths:
           application/json: {schema: {$ref: "#/components/schemas/NewUser"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "201": {description: The new account, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "201": {description: The new account, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/UserInfo"}}}}
         "400": {description: "Invalid username, unknown permission, or a password the policy rejects", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: The username is taken, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/users/{name}:
@@ -1118,7 +1126,7 @@ paths:
       summary: One user account (requires users:admin)
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{username, email, org, permissions, mustChangePassword, locked}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{username, email, org, permissions, mustChangePassword, locked}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/UserInfo"}}}}
         "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     put:
       summary: Replace a user's permissions, email, and org; ends the user's sessions (requires users:admin)
@@ -1128,7 +1136,7 @@ paths:
           application/json: {schema: {$ref: "#/components/schemas/UserUpdate"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The updated account, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: The updated account, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/UserInfo"}}}}
         "400": {description: Unknown permission or invalid JSON, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: It would remove admin from the last account that has it, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -1190,7 +1198,7 @@ paths:
           application/octet-stream: {schema: {type: string, format: binary}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{imported, skipped, busy}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{imported, skipped, busy}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/MessageImportResult"}}}}
         "500": {description: "Stopped part-way: {error: {code: IMPORT_INCOMPLETE}, imported, skipped, busy}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "Not a readable archive (not gzip, wrong key, or not an export document), or a bad parameter", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: flowId names no flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -1202,7 +1210,7 @@ paths:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Message"}}}}
         "404": {description: Unknown message, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     delete:
       summary: Remove a stored message (requires messages:delete)
@@ -1280,7 +1288,7 @@ paths:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "202": {description: "The new message: {id, status, response?}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "202": {description: "The new message: {id, status, response?}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/IngestResult"}}}}
         "400": {description: The flow now needs a JSON object and the content is not one, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown message or its flow no longer exists, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: The flow is not started, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -1295,6 +1303,196 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    Identity:
+      type: object
+      required: [username, permissions, mustChangePassword]
+      properties:
+        username: {type: string}
+        permissions: {type: array, items: {type: string}}
+        mustChangePassword: {type: boolean}
+    LoginResponse:
+      type: object
+      required: [token, expiresAt, user]
+      properties:
+        token: {type: string, description: Bearer token for later requests}
+        expiresAt: {type: string, format: date-time}
+        user: {$ref: "#/components/schemas/Identity"}
+    ItemMap:
+      type: object
+      description: "Name -> value. Config map entries and scripts are strings; settings are any JSON."
+      additionalProperties: {}
+    Item:
+      type: object
+      required: [name, value]
+      properties:
+        name: {type: string}
+        value: {description: "A string for config map entries and scripts; any JSON for settings"}
+    FlowDestination:
+      type: object
+      required: [name, type]
+      properties:
+        name: {type: string}
+        type: {type: string, description: "file or http"}
+        url: {type: string}
+        dir: {type: string}
+        transform: {description: A destination transform}
+        responseTransform: {description: A response transform}
+    Flow:
+      type: object
+      description: "A flow definition (agent-docs/schemas/flow.schema.json) with its runtime status."
+      required: [id, name, sourceType, enabled]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        sourceType: {type: string}
+        status: {type: string, enum: [undeployed, deployed, started, paused, halted, stopped]}
+        enabled: {type: boolean}
+        initialState: {type: string}
+        dependsOn: {type: array, items: {type: string}}
+        stoppedDestinations: {type: array, items: {type: string}}
+        transform: {description: The flow's transform}
+        destinations: {type: array, items: {$ref: "#/components/schemas/FlowDestination"}}
+        responseSelector: {type: string}
+    UpdatedList:
+      type: object
+      required: [updated]
+      properties:
+        updated: {type: array, items: {type: string}}
+    ConnectorNames:
+      type: object
+      required: [id, name, sourceType, destinations]
+      properties:
+        id: {type: string}
+        name: {type: string}
+        sourceType: {type: string}
+        destinations: {type: array, items: {type: string}}
+    FlowBundle:
+      type: object
+      required: [version, flows]
+      properties:
+        version: {type: integer}
+        flows: {type: array, items: {$ref: "#/components/schemas/Flow"}}
+    FlowImportResult:
+      type: object
+      required: [created, updated]
+      properties:
+        created: {type: array, items: {type: string}}
+        updated: {type: array, items: {type: string}}
+    SkippedFlow:
+      type: object
+      required: [id, reason]
+      properties:
+        id: {type: string}
+        reason: {type: string}
+    TransitionAllResult:
+      type: object
+      required: [changed, skipped]
+      properties:
+        changed: {type: array, items: {type: string}}
+        skipped: {type: array, items: {$ref: "#/components/schemas/SkippedFlow"}}
+    PortInUse:
+      type: object
+      required: [address, port, usedBy]
+      properties:
+        address: {type: string}
+        port: {type: integer}
+        usedBy: {type: string}
+    ConnectorStats:
+      type: object
+      required: [sent, errored]
+      properties:
+        sent: {type: integer}
+        errored: {type: integer}
+    FlowStats:
+      type: object
+      required: [received, filtered, transformed, sent, errored, queued, destinations, lastMessageAt]
+      properties:
+        received: {type: integer}
+        filtered: {type: integer}
+        transformed: {type: integer}
+        sent: {type: integer}
+        errored: {type: integer}
+        queued: {type: integer}
+        destinations: {type: object, additionalProperties: {$ref: "#/components/schemas/ConnectorStats"}}
+        lastMessageAt: {type: string, format: date-time, nullable: true, description: Null until the first message}
+    FlowStatsMap:
+      type: object
+      description: Flow id -> statistics
+      additionalProperties: {$ref: "#/components/schemas/FlowStats"}
+    MessageAttempt:
+      type: object
+      required: [attempts]
+      properties:
+        attempts: {type: integer}
+        lastError: {type: string}
+        nextAttemptAt: {type: string, format: date-time}
+    Message:
+      type: object
+      required: [id, flowId, status, contentType, receivedAt, updatedAt]
+      properties:
+        id: {type: string}
+        flowId: {type: string}
+        status: {type: string, enum: [received, transformed, queued, sent, filtered, errored, dead-lettered]}
+        contentType: {type: string}
+        receivedAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+        attempts: {type: object, additionalProperties: {$ref: "#/components/schemas/MessageAttempt"}, description: Destination name -> attempts}
+        metadata: {type: object, additionalProperties: {type: string}}
+    MessageImportResult:
+      type: object
+      required: [imported, skipped, busy]
+      properties:
+        imported: {type: integer}
+        skipped: {type: integer}
+        busy: {type: integer}
+    IngestResult:
+      type: object
+      required: [id, status]
+      properties:
+        id: {type: string}
+        status: {type: string}
+        response: {description: "The selected destination's reply, when the flow has a response selector"}
+    TopologyActivity:
+      type: object
+      required: [received, sent, errored, queued]
+      properties:
+        received: {type: integer}
+        sent: {type: integer}
+        errored: {type: integer}
+        queued: {type: integer}
+        lastMessageAt: {type: string}
+    TopologyNode:
+      type: object
+      required: [id, kind, label]
+      properties:
+        id: {type: string}
+        kind: {type: string, enum: [flow, source, transform, destination]}
+        label: {type: string}
+        status: {type: string}
+        activity: {$ref: "#/components/schemas/TopologyActivity"}
+        meta: {type: object, additionalProperties: {type: string}}
+    TopologyEdge:
+      type: object
+      required: [id, from, to, kind]
+      properties:
+        id: {type: string}
+        from: {type: string}
+        to: {type: string}
+        kind: {type: string}
+        label: {type: string}
+        status: {type: string}
+        activity: {$ref: "#/components/schemas/TopologyActivity"}
+    TopologyGraph:
+      type: object
+      required: [schemaVersion, generatedAt, nodes, edges]
+      properties:
+        schemaVersion: {type: string}
+        generatedAt: {type: string, format: date-time}
+        flowId: {type: string}
+        flowName: {type: string}
+        flowStatus: {type: string}
+        nodes: {type: array, items: {$ref: "#/components/schemas/TopologyNode"}}
+        edges: {type: array, items: {$ref: "#/components/schemas/TopologyEdge"}}
     SystemStatus:
       type: object
       required: [id, status, version, time, uptimeSeconds, tls]

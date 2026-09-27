@@ -112,3 +112,31 @@ func TestAllFlowRoutesReserved(t *testing.T) {
 		}
 	}
 }
+
+// TestOpenAPIResponsesHaveSchemas: every documented success response other
+// than 204 describes its body with a schema, so clients can be generated
+// from the contract.
+func TestOpenAPIResponsesHaveSchemas(t *testing.T) {
+	doc := loadSpec(t)
+	var missing []string
+	for path, item := range doc.Paths.Map() {
+		for method, op := range item.Operations() {
+			for code, r := range op.Responses.Map() {
+				if code[0] != '2' || code == "204" || r.Value == nil {
+					continue
+				}
+				ok := len(r.Value.Content) > 0
+				for _, mt := range r.Value.Content {
+					ok = ok && mt.Schema != nil
+				}
+				if !ok {
+					missing = append(missing, method+" "+path+" "+code)
+				}
+			}
+		}
+	}
+	sort.Strings(missing)
+	for _, m := range missing {
+		t.Errorf("%s: success response without a schema", m)
+	}
+}
