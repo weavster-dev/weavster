@@ -1343,16 +1343,25 @@ components:
     FlowSource:
       example: {"type": "file", "dir": "/var/lib/weavster/in/adt", "pattern": "*.json", "pollIntervalMs": 1000, "moveTo": "/var/lib/weavster/done/adt"}
       type: object
-      description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs, and moveTo; an http source takes address, path, and method."
+      description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs, and moveTo; an http source takes address, path, method, username with passwordEnv, and certFile with keyFile."
       required: [type]
       additionalProperties: false
       oneOf:
         - required: [dir]
           properties: {type: {enum: [file]}}
-          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}]}
+          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}]}
         - required: [address]
           properties: {type: {enum: [http]}}
-          not: {anyOf: [{required: [dir]}, {required: [pattern]}, {required: [pollIntervalMs]}, {required: [moveTo]}]}
+          not:
+            anyOf:
+              - {required: [dir]}
+              - {required: [pattern]}
+              - {required: [pollIntervalMs]}
+              - {required: [moveTo]}
+              - {required: [username], not: {required: [passwordEnv]}}
+              - {required: [passwordEnv], not: {required: [username]}}
+              - {required: [certFile], not: {required: [keyFile]}}
+              - {required: [keyFile], not: {required: [certFile]}}
       properties:
         type: {type: string, enum: [file, http]}
         dir: {type: string, description: "file: absolute directory to poll"}
@@ -1362,6 +1371,10 @@ components:
         address: {type: string, description: "http: host:port the flow listens on while it is started"}
         path: {type: string, description: "http: request path accepted (default /)"}
         method: {type: string, enum: [POST, PUT], description: "http: request method accepted (default POST)"}
+        username: {type: string, minLength: 1, pattern: "^[^:]+$", description: "http: HTTP Basic user name senders must present (with passwordEnv)"}
+        passwordEnv: {type: string, pattern: "^WEAVSTER_SOURCE_[A-Z0-9_]+$", description: "http: server environment variable holding the Basic password, WEAVSTER_SOURCE_... (with username)"}
+        certFile: {type: string, minLength: 1, description: "http: absolute path of the PEM certificate chain; the port serves HTTPS (with keyFile)"}
+        keyFile: {type: string, minLength: 1, description: "http: absolute path of the PEM private key (with certFile)"}
     FlowDestination:
       example: {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}
       type: object

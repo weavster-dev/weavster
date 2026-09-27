@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -124,5 +125,71 @@ func TestHTTPSource(t *testing.T) {
 	stopped = true
 	if listening() {
 		t.Error("the source still listens after the server stopped")
+	}
+}
+
+// TestHTTPSourceSecured: an http source with a certificate serves HTTPS and
+// with a username requires HTTP Basic credentials, the password read from
+// the server's environment; without that variable the port stays closed.
+func TestHTTPSourceSecured(t *testing.T) {
+	t.Setenv("WEAVSTER_SOURCE_TEST_LAB", "s3cret")
+	addr, src := freeAddr(t), freeAddr(t)
+	certFile, keyFile, pool := selfSignedCert(t, t.TempDir())
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
+	defer stop()
+	c := apiClient{t: t, base: "http://" + addr}
+	admin := basic(bootstrapAdmin, testAdminPassword)
+	createFlow(t, c, `{"id":"lab","source":{"type":"http","address":"`+src+`","username":"lab","passwordEnv":"WEAVSTER_SOURCE_TEST_LAB",`+
+		`"certFile":"`+certFile+`","keyFile":"`+keyFile+`"}}`)
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
+	post := func(scheme, user, password string) (int, string) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodPost, scheme+"://"+src+"/", strings.NewReader(`{"k":"v"}`))
+		if user != "" {
+			req.SetBasicAuth(user, password)
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			return 0, err.Error()
+		}
+		defer func() { _ = res.Body.Close() }()
+		b, _ := io.ReadAll(res.Body)
+		return res.StatusCode, string(b)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for code, _ := post("https", "lab", "s3cret"); code != http.StatusAccepted; code, _ = post("https", "lab", "s3cret") {
+		if time.Now().After(deadline) {
+			t.Fatal("timed out waiting for the HTTPS source")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if code, body := post("https", "lab", "wrong"); code != http.StatusUnauthorized {
+		t.Errorf("wrong password: %d %s", code, body)
+	}
+	if code, body := post("https", "", ""); code != http.StatusUnauthorized {
+		t.Errorf("no credentials: %d %s", code, body)
+	}
+	if code, body := post("http", "lab", "s3cret"); code == http.StatusAccepted {
+		t.Errorf("plain HTTP to the HTTPS source: %d %s", code, body)
+	}
+
+	// A password variable that is not set keeps the port closed.
+	other := freeAddr(t)
+	createFlow(t, c, `{"id":"nopw","source":{"type":"http","address":"`+other+`","username":"lab","passwordEnv":"WEAVSTER_SOURCE_TEST_UNSET"}}`)
+	deadline = time.Now().Add(10 * time.Second)
+	for {
+		_, body, _ := c.do(http.MethodGet, "/api/v1/events?type=source.http.failed", "", admin)
+		if strings.Contains(body, `"flowId":"nopw"`) && strings.Contains(body, "environment variable WEAVSTER_SOURCE_TEST_UNSET is not set") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no source.http.failed event: %s", body)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if conn, err := net.DialTimeout("tcp", other, 200*time.Millisecond); err == nil {
+		_ = conn.Close()
+		t.Error("a source without its password listens")
 	}
 }

@@ -22,6 +22,7 @@ func TestParseValidChecksFlowSources(t *testing.T) {
 		{"version: \"1\"\nflows:\n  adt: {id: adt, source: {type: file, dir: /in, pattern: \"a/*\"}}\n", "flows.adt: source.pattern"},
 		{"version: \"1\"\nflows:\n  adt: {id: adt, source: {type: http, address: \":9001\", path: /adt}}\n", ""},
 		{"version: \"1\"\nflows:\n  adt: {id: adt, source: {type: http, address: \":0\"}}\n", "flows.adt: source.address needs a port"},
+		{"version: \"1\"\nflows:\n  adt: {id: adt, source: {type: http, address: \":9001\", certFile: c.pem, keyFile: k.pem}}\n", "flows.adt: source.certFile and source.keyFile must be absolute paths"},
 	} {
 		_, err := ParseValid([]byte(tt.doc))
 		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {

@@ -292,6 +292,8 @@ the configured method and path is a message:
 | `address` | Required. `host:port` to listen on, for example `127.0.0.1:9001`, or `:9001` for every interface. The port must be a number from 1 to 65535. |
 | `path` | Request path accepted; default `/`. Must start with `/`. |
 | `method` | `POST` (default) or `PUT`. |
+| `username`, `passwordEnv` | Optional, together: senders must use HTTP Basic authentication with this user name (no `:`, which separates user and password in Basic authentication) and the password in the server's environment variable `passwordEnv`. The variable name must start with `WEAVSTER_SOURCE_` followed by capital letters, digits, or `_`, so a flow cannot use the server's other secrets. The password never goes into the flow definition. |
+| `certFile`, `keyFile` | Optional, together: absolute paths of a PEM certificate chain and private key on the server. The port then serves HTTPS only (HTTP/1.1 and HTTP/2), with the server's TLS settings (`tls.minVersion`). The server's own `tls.keyFile` is refused: give each flow its own certificate. |
 
 Once the flow is started, send it a message:
 
@@ -323,9 +325,39 @@ curl -s -X POST http://127.0.0.1:9001/adt -d '{"PID":{"5":{"1":"Doe"}}}'
   second.
 - `weavster flow ports` (`GET /api/v1/flows/ports-in-use`) lists the open flow ports as
   `flow:<id>`.
-- **The listener has no authentication or TLS yet.** Anyone who can reach the address can send
-  the flow messages. Listen on `127.0.0.1` or a private network, or put a reverse proxy with TLS
-  and authentication in front of it.
+- Without `username`, anyone who can reach the address can send the flow messages, and without
+  `certFile` messages (and the Basic password) cross the network unencrypted. Use both whenever
+  the port is reachable from other machines, or listen on `127.0.0.1` only.
+
+#### Require a password and HTTPS
+
+```bash
+export WEAVSTER_SOURCE_LAB_PASSWORD='a long random password'
+weavster server --config weavster.yaml
+```
+
+```json
+{
+  "id": "lab",
+  "source": {"type": "http", "address": ":9443", "path": "/results",
+             "username": "lab", "passwordEnv": "WEAVSTER_SOURCE_LAB_PASSWORD",
+             "certFile": "/etc/weavster/tls/lab.crt", "keyFile": "/etc/weavster/tls/lab.key"}
+}
+```
+
+```bash
+curl -s -u 'lab:a long random password' https://weavster.example.com:9443/results -d '{"result":"ok"}'
+```
+
+- A request without the right user name and password gets `401` with a
+  `WWW-Authenticate: Basic` header, before the path or method is checked.
+- The password and certificate are read when the port opens. After changing the variable (restart
+  the server) or replacing the certificate files, stop and start the flow to use them.
+- If the variable is not set (or empty), or the certificate cannot be loaded, the port stays
+  closed: the reason is logged and recorded in a `source.http.failed` event (field `reason`; a
+  new reason is recorded again), and opening is tried again every second.
+- The server reads the certificate and key files with its own permissions; only give
+  `flows:edit` to users you trust with the files it can read.
 
 ## 2. Deploy and start the flow
 
@@ -749,7 +781,7 @@ again as a new message instead, use `reprocess`.
 - Only `http` and `file` destinations are available.
 - Besides this API, messages enter only through [file sources](#read-files-from-a-directory) and
   [http sources](#receive-messages-over-http); TCP/MLLP and database sources are not available
-  yet, and http sources have no authentication or TLS.
+  yet.
 - A `file` destination writes wherever `dir` points, with the server's permissions, and an
   `http` destination can target any address the server can reach, including internal ones.
   Only give `flows:edit` to trusted users.

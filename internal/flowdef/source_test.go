@@ -26,6 +26,11 @@ func TestCheckSource(t *testing.T) {
 		{"http port zero", &Source{Type: "http", Address: ":0"}, "port from 1 to 65535"},
 		{"http named port", &Source{Type: "http", Address: ":http"}, "port from 1 to 65535"},
 		{"http port too big", &Source{Type: "http", Address: ":70000"}, "port from 1 to 65535"},
+		{"http secured", &Source{Type: "http", Address: ":9001", Username: "lab", PasswordEnv: "WEAVSTER_SOURCE_LAB", CertFile: "/tls/c.pem", KeyFile: "/tls/k.pem"}, ""},
+		{"http user without password", &Source{Type: "http", Address: ":9001", Username: "lab"}, "go together"},
+		{"http password without user", &Source{Type: "http", Address: ":9001", PasswordEnv: "LAB_PW"}, "go together"},
+		{"http cert without key", &Source{Type: "http", Address: ":9001", CertFile: "/tls/c.pem"}, "go together"},
+		{"http relative cert", &Source{Type: "http", Address: ":9001", CertFile: "c.pem", KeyFile: "/tls/k.pem"}, "must be absolute paths"},
 	} {
 		err := CheckSource(tt.src)
 		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
@@ -49,6 +54,14 @@ func TestCheckSource(t *testing.T) {
 		{`{"id":"a","source":{"type":"http","address":":9001","method":"GET"}}`, false},
 		{`{"id":"a","source":{"type":"http","address":":9001","dir":"/in"}}`, false},
 		{`{"id":"a","source":{"type":"file","dir":"/in","address":":9001"}}`, false},
+		{`{"id":"a","source":{"type":"http","address":":9001","username":"lab","passwordEnv":"WEAVSTER_SOURCE_LAB","certFile":"/c","keyFile":"/k"}}`, true},
+		{`{"id":"a","source":{"type":"http","address":":9001","username":"lab"}}`, false},
+		{`{"id":"a","source":{"type":"http","address":":9001","keyFile":"/k"}}`, false},
+		{`{"id":"a","source":{"type":"http","address":":9001","username":"a:b","passwordEnv":"WEAVSTER_SOURCE_LAB"}}`, false},
+		{`{"id":"a","source":{"type":"http","address":":9001","username":"lab","passwordEnv":"WEAVSTER_SOURCE_LAB-PW"}}`, false},
+		{`{"id":"a","source":{"type":"http","address":":9001","username":"lab","passwordEnv":"AWS_SECRET_ACCESS_KEY"}}`, false},
+		{`{"id":"a","source":{"type":"http","address":":9001","password":"secret"}}`, false},
+		{`{"id":"a","source":{"type":"http","address":":9001","certFile":"","keyFile":""}}`, false},
 	} {
 		if err := ValidateJSON([]byte(tt.doc)); (err == nil) != tt.ok {
 			t.Errorf("%s: %v", tt.doc, err)

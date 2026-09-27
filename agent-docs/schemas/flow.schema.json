@@ -122,7 +122,54 @@
                 null
               ],
               "description": "Request method accepted (default POST)"
+            },
+            "username": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "pattern": "^[^:]+$",
+              "description": "HTTP Basic user name senders must present (with passwordEnv)"
+            },
+            "passwordEnv": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^WEAVSTER_SOURCE_[A-Z0-9_]+$",
+              "description": "Name of the server environment variable holding the Basic password, WEAVSTER_SOURCE_... (with username)"
+            },
+            "certFile": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Absolute path of the PEM certificate chain; the port serves HTTPS (with keyFile)"
+            },
+            "keyFile": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Absolute path of the PEM private key (with certFile)"
             }
+          },
+          "dependentRequired": {
+            "username": [
+              "passwordEnv"
+            ],
+            "passwordEnv": [
+              "username"
+            ],
+            "certFile": [
+              "keyFile"
+            ],
+            "keyFile": [
+              "certFile"
+            ]
           }
         }
       ]

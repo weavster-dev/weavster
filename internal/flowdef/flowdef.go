@@ -69,6 +69,14 @@ type Source struct {
 	Path string `json:"path,omitempty"`
 	// Method is the request method an http source accepts (default POST).
 	Method string `json:"method,omitempty"`
+	// Username and PasswordEnv require HTTP Basic credentials on an http
+	// source; the password is read from the server's environment variable
+	// PasswordEnv when the port opens (#107 D-58).
+	Username    string `json:"username,omitempty"`
+	PasswordEnv string `json:"passwordEnv,omitempty"`
+	// CertFile and KeyFile make an http source serve HTTPS.
+	CertFile string `json:"certFile,omitempty"`
+	KeyFile  string `json:"keyFile,omitempty"`
 }
 
 // Destination is one delivery target of a flow.
@@ -92,6 +100,14 @@ func CheckSource(s *Source) error {
 		return nil
 	}
 	if s.Type == "http" {
+		switch {
+		case (s.Username == "") != (s.PasswordEnv == ""):
+			return errors.New("source.username and source.passwordEnv go together")
+		case (s.CertFile == "") != (s.KeyFile == ""):
+			return errors.New("source.certFile and source.keyFile go together")
+		case s.CertFile != "" && (!filepath.IsAbs(s.CertFile) || !filepath.IsAbs(s.KeyFile)):
+			return errors.New("source.certFile and source.keyFile must be absolute paths")
+		}
 		_, err := SourcePort(s)
 		return err
 	}

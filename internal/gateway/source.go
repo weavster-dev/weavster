@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
 	"errors"
 	"net/http"
 )
@@ -18,7 +20,9 @@ type SourceIngester interface {
 // for a sending system rather than an API client: a flow that is not
 // running is 503 (try again later), and a message stored before a later
 // failure is 202, because the flow has it and a resend would duplicate it.
-func SourceHandler(flowID string, src FlowSource, ingest SourceIngester) http.Handler {
+// With src.Username set, every request must carry that user and password
+// (HTTP Basic), checked before anything else.
+func SourceHandler(flowID string, src FlowSource, password string, ingest SourceIngester) http.Handler {
 	path, method := src.Path, src.Method
 	if path == "" {
 		path = "/"
@@ -26,7 +30,20 @@ func SourceHandler(flowID string, src FlowSource, ingest SourceIngester) http.Ha
 	if method == "" {
 		method = http.MethodPost
 	}
+	wantUser, wantPassword := sha256.Sum256([]byte(src.Username)), sha256.Sum256([]byte(password))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if src.Username != "" {
+			user, pw, _ := r.BasicAuth()
+			gotUser, gotPassword := sha256.Sum256([]byte(user)), sha256.Sum256([]byte(pw))
+			// Both compared, in constant time, whatever the first gives.
+			userOK := subtle.ConstantTimeCompare(gotUser[:], wantUser[:])
+			passwordOK := subtle.ConstantTimeCompare(gotPassword[:], wantPassword[:])
+			if userOK&passwordOK != 1 {
+				w.Header().Set("WWW-Authenticate", `Basic realm="weavster", charset="UTF-8"`)
+				writeStatusError(w, http.StatusUnauthorized, "authentication required")
+				return
+			}
+		}
 		if r.URL.Path != path {
 			writeStatusError(w, http.StatusNotFound, "no source at this path")
 			return
