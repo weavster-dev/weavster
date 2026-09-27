@@ -6,6 +6,8 @@
 # secret. WEAVSTER_USER / WEAVSTER_PASSWORD twice: as repository secrets for
 # the plan user, and as secrets of the `production` environment for the apply
 # user (environment secrets override repository secrets in the apply job).
+# GitHub gives no secrets to pull requests from forks: their plan job fails to
+# log in, and a maintainer runs the plan from a branch in this repository.
 name: weavster-config
 
 on:
@@ -81,7 +83,12 @@ jobs:
       - *setup-go
       - *install
       - *connect
-      - name: Apply and deploy
+      - name: Apply, deploy, and start
+        # Separate runs, so nothing is deployed or started if the apply fails.
         run: |
-          printf 'config apply "weavster.yaml" %s\ndeploy 120\nflow start-all\n' "merged ${GITHUB_SHA}" > "$RUNNER_TEMP/apply.txt"
-          weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/apply.txt"
+          printf 'config apply "weavster.yaml" %s\n' "merged ${GITHUB_SHA}" > "$RUNNER_TEMP/apply.txt"
+          printf 'deploy 120\n' > "$RUNNER_TEMP/deploy.txt"
+          printf 'flow start-all\n' > "$RUNNER_TEMP/start.txt"
+          weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/apply.txt" &&
+            weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/deploy.txt" &&
+            weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/start.txt"

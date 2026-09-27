@@ -86,14 +86,14 @@ func TestCISamples(t *testing.T) {
 
 	// The weavster scripts each sample writes: printf 'config …\n…' with
 	// %s filled in as the pipeline would.
-	printf := regexp.MustCompile(`printf '(config [^']*)'`)
+	printf := regexp.MustCompile(`printf '((?:config|deploy|flow) [^']*)'`)
 	lines := map[string][][]string{} // sample -> scripts -> lines
 	for name, sample := range map[string]string{"github": github, "gitlab": gitlab} {
 		for _, m := range printf.FindAllStringSubmatch(sample, -1) {
 			script := strings.Split(strings.TrimSuffix(strings.ReplaceAll(m[1], "%s", "merged 0123abc"), `\n`), `\n`)
 			lines[name] = append(lines[name], script)
 		}
-		if got := fmt.Sprint(lines[name]); len(lines[name]) != 2 || !strings.HasPrefix(got, `[[config diff "weavster.yaml"] [config apply "weavster.yaml" merged 0123abc deploy 120 flow start-all]]`) {
+		if got := fmt.Sprint(lines[name]); got != `[[config diff "weavster.yaml"] [config apply "weavster.yaml" merged 0123abc] [deploy 120] [flow start-all]]` {
 			t.Fatalf("%s scripts = %s", name, got)
 		}
 	}
@@ -152,8 +152,18 @@ func TestCISamples(t *testing.T) {
 			if code, out, errOut := runLine(script[0]); code != 0 || !strings.Contains(out, "+ flow/adt") || !strings.Contains(out, "+ script/deploy") {
 				t.Errorf("plan: %d %q %q", code, out, errOut)
 			}
-			if code, out, errOut := runLine(script[1]); code != 0 || !strings.Contains(out, "applied 3 changes") || !strings.Contains(out, "deployed adt") {
-				t.Errorf("apply and deploy: %d %q %q", code, out, errOut)
+			// Apply, deploy, and start run one after another, each only if
+			// the previous one succeeded.
+			var applied strings.Builder
+			for _, step := range scripts[1:] {
+				code, out, errOut := runLine(step)
+				applied.WriteString(out)
+				if code != 0 {
+					t.Fatalf("%v: %d %q %q", step, code, out, errOut)
+				}
+			}
+			if out := applied.String(); !strings.Contains(out, "applied 3 changes") || !strings.Contains(out, "deployed adt") {
+				t.Errorf("apply, deploy, start = %q", out)
 			}
 			if _, out, _ := c.do(http.MethodGet, "/api/v1/flows/adt", "", basic(bootstrapAdmin, testAdminPassword)); !strings.Contains(out, `"status":"started"`) {
 				t.Errorf("flow after apply = %s", out)
@@ -193,4 +203,36 @@ func dedent(s string) string {
 		lines[i] = strings.TrimLeft(l, " ")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// TestCISamplesStopAfterFailedApply: the samples run deploy and start only
+// when the apply succeeded (separate runs chained with && / separate script
+// lines, which GitLab stops at the first failure).
+func TestCISamplesStopAfterFailedApply(t *testing.T) {
+	b, err := os.ReadFile(filepath.Join("..", "..", "docs", "examples", "ci", "github-actions.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !regexp.MustCompile(`-s "\$RUNNER_TEMP/apply.txt" &&\s+weavster [^\n]*deploy.txt" &&\s+weavster [^\n]*start.txt"`).Match(b) {
+		t.Error("github: deploy and start are not chained after the apply")
+	}
+	b, err = os.ReadFile(filepath.Join("..", "..", "docs", "examples", "ci", "gitlab-ci.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Apply struct{ Script []string } `yaml:"apply"`
+	}
+	if err := yaml.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var runs []string
+	for _, line := range doc.Apply.Script {
+		if strings.HasPrefix(line, "weavster ") {
+			runs = append(runs, line)
+		}
+	}
+	if len(runs) != 3 || !strings.HasSuffix(runs[0], "apply.txt") || !strings.HasSuffix(runs[1], "deploy.txt") || !strings.HasSuffix(runs[2], "start.txt") {
+		t.Errorf("gitlab apply runs = %q", runs)
+	}
 }

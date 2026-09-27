@@ -10,8 +10,9 @@ Keep the server's configuration in a repository as a [config-as-code document](c
   and then deploys the flows that are `enabled` but not yet deployed ([`deploy`](cli.md)) and
   starts them ([`flow start-all`](cli.md)), so the merged change takes effect. The
   apply plans again first, so it applies what the server needs at that moment, and records the
-  commit in the [audit log](audit-log.md) as the reason. If any change fails, the whole apply is
-  undone.
+  commit in the [audit log](audit-log.md) as the reason. If a change fails, the apply undoes the
+  changes it already made; if undoing one also fails, it reports `rollback failed` with what is
+  left, and the job fails. Deploying and starting run only after a successful apply.
 
 Copy a sample below into the repository that holds `weavster.yaml`; the files are also available
 to download: [`github-actions.yml`](examples/ci/github-actions.yml),
@@ -78,6 +79,8 @@ have a person approve each apply.
 # secret. WEAVSTER_USER / WEAVSTER_PASSWORD twice: as repository secrets for
 # the plan user, and as secrets of the `production` environment for the apply
 # user (environment secrets override repository secrets in the apply job).
+# GitHub gives no secrets to pull requests from forks: their plan job fails to
+# log in, and a maintainer runs the plan from a branch in this repository.
 name: weavster-config
 
 on:
@@ -153,10 +156,15 @@ jobs:
       - *setup-go
       - *install
       - *connect
-      - name: Apply and deploy
+      - name: Apply, deploy, and start
+        # Separate runs, so nothing is deployed or started if the apply fails.
         run: |
-          printf 'config apply "weavster.yaml" %s\ndeploy 120\nflow start-all\n' "merged ${GITHUB_SHA}" > "$RUNNER_TEMP/apply.txt"
-          weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/apply.txt"
+          printf 'config apply "weavster.yaml" %s\n' "merged ${GITHUB_SHA}" > "$RUNNER_TEMP/apply.txt"
+          printf 'deploy 120\n' > "$RUNNER_TEMP/deploy.txt"
+          printf 'flow start-all\n' > "$RUNNER_TEMP/start.txt"
+          weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/apply.txt" &&
+            weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/deploy.txt" &&
+            weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/start.txt"
 ```
 
 ## GitLab CI
@@ -175,6 +183,13 @@ not.
 # the plan user (not protected: merge request pipelines run on unprotected
 # branches), and masked + protected for the `production` environment for the
 # apply user (the environment-scoped values win in the apply job).
+# Anyone who can push a branch to this project can read the plan user's
+# password (a branch can change this file); merge requests from forks run in
+# the fork without these variables.
+#
+# Set the resource group to run applies in order, once per project:
+#   curl --request PUT --header "PRIVATE-TOKEN: $TOKEN" \
+#     "https://gitlab.example.com/api/v4/projects/$PROJECT_ID/resource_groups/weavster-config?process_mode=oldest_first"
 stages: [plan, apply]
 
 variables:
@@ -206,23 +221,35 @@ plan:
 apply:
   extends: .weavster
   stage: apply
-  resource_group: weavster-config # one apply at a time
+  resource_group: weavster-config # one apply at a time, oldest first (see above)
   environment: production
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
       changes: [weavster.yaml]
   script:
-    - printf 'config apply "weavster.yaml" %s\ndeploy 120\nflow start-all\n' "merged ${CI_COMMIT_SHORT_SHA}" > /tmp/apply.txt
+    # Separate runs, so nothing is deployed or started if the apply fails.
+    - printf 'config apply "weavster.yaml" %s\n' "merged ${CI_COMMIT_SHORT_SHA}" > /tmp/apply.txt
+    - printf 'deploy 120\n' > /tmp/deploy.txt
+    - printf 'flow start-all\n' > /tmp/start.txt
     - weavster -c /tmp/weavster.conn -s /tmp/apply.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/deploy.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/start.txt
 ```
 
 ## Pitfalls
 
 - **Pin the version.** `WEAVSTER_VERSION: latest` installs the newest client from the default
   branch. Pin the commit hash (or, once releases exist, the release tag) that matches your server.
-- **The plan user can edit.** The plan needs the same permissions as a configuration export, which
-  include editing alerts, snippets, scripts, settings, and the config map through the API; it
-  cannot apply a document or change flows. Treat its password like any other write credential.
+- **Who can use the plan user.** The plan needs the same permissions as a configuration export,
+  which include editing alerts, snippets, scripts, settings, and the config map through the API
+  (there is no read-only plan permission yet); it cannot apply a document or change flows. Anyone
+  who can push a branch to the repository can change the pipeline and read the plan user's
+  password, so give push access only to people you would trust with those permissions. Pull and
+  merge requests from forks get no secrets: their plan job cannot log in, and a maintainer runs the
+  plan from a branch in the repository instead.
+- **Order applies on GitLab.** A resource group runs one job at a time but not in order by
+  default. Set its process mode to `oldest_first` once (the command is in the sample's header),
+  or an older queued apply could run after a newer one and restore an older `weavster.yaml`.
 - **The server moved on.** If someone changes the server between the plan and the merge, the
   apply job plans again and applies the current differences, which may be more than the pull
   request showed. Check the apply job's output; to be warned instead, run the pull request plan
