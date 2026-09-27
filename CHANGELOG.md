@@ -83,6 +83,8 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- Preserve test failure diagnostics in `scripts/check-coverage.sh` alongside the per-package coverage summary.
+
 - With `store.dialect: sqlite`, a restart could fail writes with `database is locked (SQLITE_BUSY)` when the previous run had stopped during a store query. SQLite statements now run to completion instead of being cancelled.
 - Flow API status codes (#151):
   - `DELETE /api/v1/flows/{id}` for an unknown flow returns `404`, not `204`.
