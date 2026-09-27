@@ -89,6 +89,9 @@
                                 <a href="../system-info/" class="nav-link">System Information</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../api-formats/" class="nav-link">JSON and XML</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -316,6 +319,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Message trends (<code>GET /api/v1/messages/trends</code>: hourly or daily counts by status, optional flow)</td>
 <td>Implemented (wired)</td>
 <td><code>TestMessageTrends</code> (SQLite and memory). Counted from stored messages. See <a href="../processing-messages/#message-trends">Processing messages</a>.</td>
+</tr>
+<tr>
+<td>XML responses by content negotiation (<code>Accept: application/xml</code>); request bodies JSON only</td>
+<td>Implemented (wired)</td>
+<td><code>TestXMLResponses</code>, <code>TestJSONToXML</code>. See <a href="../api-formats/">JSON and XML</a>.</td>
 </tr>
 <tr>
 <td>Alert definitions (<code>/api/v1/alerts</code>: create, get, update, delete, enable/disable, import with <code>force</code>, options); CLI <code>importalert</code>, <code>exportalert</code></td>

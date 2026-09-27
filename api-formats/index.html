@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/system-info/">
+        <link rel="canonical" href="https://docs.weavster.dev/api-formats/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>System Information - Weavster</title>
+        <title>JSON and XML - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -86,10 +86,10 @@
                                 <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">System Information</a>
+                                <a href="../system-info/" class="nav-link">System Information</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../api-formats/" class="nav-link">JSON and XML</a>
+                                <a href="./" class="nav-link active" aria-current="page">JSON and XML</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
@@ -109,17 +109,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../config-as-code/" class="nav-link">
+                                <a rel="prev" href="../system-info/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../api-formats/" class="nav-link">
+                                <a rel="next" href="../documentation/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/system-info.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/api-formats.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -140,13 +140,17 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#system-information" class="nav-link">System information</a>
+            <li class="nav-item" data-bs-level="1"><a href="#json-and-xml" class="nav-link">JSON and XML</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#status" class="nav-link">Status</a>
+            <li class="nav-item" data-bs-level="2"><a href="#ask-for-xml" class="nav-link">Ask for XML</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#other-requests" class="nav-link">Other requests</a>
+            <li class="nav-item" data-bs-level="2"><a href="#how-json-becomes-xml" class="nav-link">How JSON becomes XML</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#what-stays-as-it-is" class="nav-link">What stays as it is</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -157,58 +161,110 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="system-information">System information</h1>
-<p>Any signed-in user can ask the server about itself. Nothing here changes anything.</p>
-<h2 id="status">Status</h2>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/system
+<h1 id="json-and-xml">JSON and XML</h1>
+<p>The API speaks JSON. A client that explicitly asks for XML gets the API's responses as XML
+instead, errors included.</p>
+<h2 id="ask-for-xml">Ask for XML</h2>
+<p>Send <code>Accept: application/xml</code> (or <code>text/xml</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Accept: application/xml' \
+  http://127.0.0.1:8080/api/v1/flows/adt
 </code></pre>
-<pre><code class="language-json">{&quot;id&quot;:&quot;weavster&quot;,&quot;status&quot;:&quot;running&quot;,&quot;version&quot;:&quot;0.1.0&quot;,&quot;buildDate&quot;:&quot;2026-09-27&quot;,
- &quot;time&quot;:&quot;2026-09-27T12:00:00-04:00&quot;,&quot;timezone&quot;:&quot;EDT -04:00&quot;,&quot;uptimeSeconds&quot;:3600,&quot;runtime&quot;:&quot;go1.25.4&quot;,
- &quot;charsets&quot;:[&quot;UTF-8&quot;,&quot;ISO-8859-1&quot;],
- &quot;tls&quot;:{&quot;enabled&quot;:true,&quot;address&quot;:&quot;0.0.0.0:8443&quot;,&quot;minVersion&quot;:&quot;1.3&quot;,&quot;protocols&quot;:[&quot;TLS 1.3&quot;],
-        &quot;ciphers&quot;:[&quot;TLS_AES_128_GCM_SHA256&quot;,&quot;TLS_AES_256_GCM_SHA384&quot;,&quot;TLS_CHACHA20_POLY1305_SHA256&quot;]},
- &quot;license&quot;:&quot;MVP (no entitlement gating)&quot;}
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;response&gt;&lt;id&gt;adt&lt;/id&gt;&lt;name&gt;ADT Inbound&lt;/name&gt;&lt;sourceType&gt;&lt;/sourceType&gt;&lt;status&gt;started&lt;/status&gt;&lt;enabled type=&quot;boolean&quot;&gt;true&lt;/enabled&gt;&lt;destinations type=&quot;array&quot;&gt;&lt;item&gt;&lt;name&gt;out&lt;/name&gt;&lt;type&gt;file&lt;/type&gt;&lt;dir&gt;/var/out&lt;/dir&gt;&lt;/item&gt;&lt;/destinations&gt;&lt;/response&gt;
 </code></pre>
-<ul>
-<li><code>time</code> and <code>uptimeSeconds</code> are computed for each request; <code>timezone</code> is the server's zone
-  abbreviation and offset.</li>
-<li><code>tls</code> describes the HTTPS listener as configured (<code>listen.tlsAddress</code>, <code>tls.minVersion</code>; see
-  <a href="../server-config/">Server configuration</a>). Without an HTTPS listener it is
-  <code>{"enabled":false,"protocols":[],"ciphers":[]}</code>. With <code>minVersion: "1.2"</code> the list also has
-  TLS 1.2 and the ECDHE AES-GCM suites that match the certificate's key (RSA, or ECDSA for ECDSA and Ed25519 keys).</li>
-</ul>
-<h2 id="other-requests">Other requests</h2>
+<p>XML is used only when the <code>Accept</code> header names <code>application/xml</code> or <code>text/xml</code> with the highest
+quality (<code>q</code>) of everything it lists, and higher than JSON's. JSON's quality comes from the most
+specific range that matches it: <code>application/json</code>, then <code>application/*</code>, then <code>*/*</code>.
+Otherwise — no <code>Accept</code> header, <code>*/*</code>, or a web browser's usual header — the reply is JSON.</p>
 <table>
 <thead>
 <tr>
-<th>Request</th>
-<th>What it returns</th>
+<th><code>Accept</code></th>
+<th>Reply</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>GET /api/v1/system/about</code></td>
-<td><code>name</code>, <code>version</code>, <code>buildDate</code>, <code>runtime</code>, <code>os</code>, <code>arch</code>, <code>license</code>.</td>
+<td><code>application/xml</code></td>
+<td>XML</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/system/password-requirements</code></td>
-<td>The <a href="../server-config/#auth">password policy</a>: <code>minLength</code>, <code>minUpper</code>, <code>minLower</code>, <code>minNumeric</code>, <code>minSpecial</code> (<code>0</code> = no requirement, <code>-1</code> = not allowed), and <code>rules</code>, the same in words for showing to users.</td>
+<td><code>application/json;q=0.5, application/xml</code></td>
+<td>XML</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/system/resources</code></td>
-<td><code>cpus</code>, <code>goroutines</code>, <code>memoryAllocBytes</code>, <code>memorySysBytes</code>, <code>uptimeSeconds</code> of the server process.</td>
+<td><code>application/xml;q=0.9, */*;q=0.8</code></td>
+<td>XML</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/system/guid</code></td>
-<td><code>{"guid": "…"}</code>: a new random UUID each time.</td>
+<td><code>application/json, application/xml</code></td>
+<td>JSON (same quality)</td>
+</tr>
+<tr>
+<td><code>application/xml, */*</code></td>
+<td>JSON (<code>*/*</code> gives JSON the same quality)</td>
+</tr>
+<tr>
+<td><code>text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8</code> (a browser)</td>
+<td>JSON</td>
 </tr>
 </tbody>
 </table>
-<pre><code class="language-json">{&quot;minLength&quot;:12,&quot;minUpper&quot;:1,&quot;minLower&quot;:1,&quot;minNumeric&quot;:1,&quot;minSpecial&quot;:-1,
- &quot;rules&quot;:[&quot;at least 12 characters&quot;,&quot;at least 1 uppercase letter&quot;,&quot;at least 1 lowercase letter&quot;,&quot;at least 1 digit&quot;,&quot;no special characters (only letters and digits)&quot;]}
+<p>A range with a malformed <code>q</code> (not a number from 0 to 1) is ignored. Replies carry
+<code>Vary: Accept</code>.</p>
+<h2 id="how-json-becomes-xml">How JSON becomes XML</h2>
+<table>
+<thead>
+<tr>
+<th>JSON</th>
+<th>XML</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The whole reply</td>
+<td><code>&lt;response&gt;</code></td>
+</tr>
+<tr>
+<td>An object</td>
+<td>Its keys as child elements, in the same order: <code>{"id":"adt"}</code> → <code>&lt;id&gt;adt&lt;/id&gt;</code>.</td>
+</tr>
+<tr>
+<td>A key that is not an XML name (<code>ICD/10</code>, <code>1st</code>, the empty key, one starting with <code>xml</code>)</td>
+<td><code>&lt;entry key="ICD/10"&gt;…&lt;/entry&gt;</code></td>
+</tr>
+<tr>
+<td>An array</td>
+<td><code>type="array"</code>, with one <code>&lt;item&gt;</code> per element.</td>
+</tr>
+<tr>
+<td>An empty object <code>{}</code></td>
+<td>An empty element with <code>type="object"</code> (an empty string is an empty element with no <code>type</code>).</td>
+</tr>
+<tr>
+<td>A string</td>
+<td>Text (<code>&lt;</code>, <code>&amp;</code>, and quotes escaped).</td>
+</tr>
+<tr>
+<td>A number, <code>true</code>/<code>false</code>, <code>null</code></td>
+<td>Text with <code>type="number"</code>, <code>type="boolean"</code>, or an empty element with <code>type="null"</code>. Numbers keep every digit.</td>
+</tr>
+</tbody>
+</table>
+<p>An error is the same envelope as in JSON:</p>
+<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
+&lt;response&gt;&lt;error&gt;&lt;code&gt;NOT_FOUND&lt;/code&gt;&lt;message&gt;flow not found&lt;/message&gt;&lt;/error&gt;&lt;/response&gt;
 </code></pre>
-<p>If the server was built without system information (only in embedded test setups), every
-request except <code>/guid</code> returns <code>503</code>.</p></div>
+<h2 id="what-stays-as-it-is">What stays as it is</h2>
+<ul>
+<li><strong>Request bodies are JSON only</strong> (and YAML for <a href="../config-as-code/">config-as-code documents</a>).
+  Send <code>Content-Type: application/json</code>; an XML body is refused as invalid JSON.</li>
+<li>Message content from <code>GET /api/v1/messages/{id}/content</code> is sent exactly as stored, with its
+  own content type, even when it is JSON.</li>
+<li>Message archives (<code>application/gzip</code> or encrypted) and the OpenAPI document
+  (<code>GET /api/openapi.yaml</code>) are never converted.</li>
+<li><code>GET /api/v1/events/export</code> served as XML is named <code>events.xml</code> instead of <code>events.json</code>.</li>
+</ul></div>
             </div>
         </div>
 
