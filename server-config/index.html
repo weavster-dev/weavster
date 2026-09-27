@@ -413,10 +413,29 @@ that the oldest are dropped.</p>
 <td><code>""</code></td>
 <td>Directory of the server's <a href="../git/">Git repository</a> of configuration. It is created, with an empty repository on branch <code>main</code>, when missing; an existing repository is used as it is. Empty turns the Git endpoints off (they answer <code>503</code>).</td>
 </tr>
+<tr>
+<td><code>remote.url</code></td>
+<td><code>""</code></td>
+<td>The <a href="../git/#share-through-a-remote">remote repository</a> to push to and pull from: an <code>https://</code> URL, a <code>file://</code> URL, or a local path. SSH (<code>ssh://</code>, <code>git@host:path</code>) and plain <code>http://</code> are refused at startup. Needs <code>path</code>. Must not contain a password.</td>
+</tr>
+<tr>
+<td><code>remote.username</code></td>
+<td><code>""</code></td>
+<td>HTTPS user name.</td>
+</tr>
+<tr>
+<td><code>remote.passwordEnv</code></td>
+<td><code>""</code></td>
+<td>Name of the environment variable holding the HTTPS password or access token. It is read at each push, pull, or status check, so a rotated token needs no restart.</td>
+</tr>
 </tbody>
 </table>
 <pre><code class="language-yaml">git:
   path: /var/lib/weavster/config-repo
+  remote:
+    url: https://github.com/example/weavster-config.git
+    username: x-access-token
+    passwordEnv: WEAVSTER_GIT_TOKEN
 </code></pre>
 <h3 id="paths"><code>paths</code></h3>
 <table>

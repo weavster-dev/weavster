@@ -378,8 +378,12 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>lookups:edit</code></td>
 </tr>
 <tr>
-<td><code>GET /api/v1/git</code>, <code>GET /api/v1/git/log</code></td>
+<td><code>GET /api/v1/git</code>, <code>GET /api/v1/git/log</code>, <code>GET /api/v1/git/remote</code></td>
 <td><code>git:view</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/git/push</code>, <code>POST /api/v1/git/pull</code></td>
+<td><code>git:commit</code></td>
 </tr>
 <tr>
 <td><code>GET /api/v1/git/drift</code></td>

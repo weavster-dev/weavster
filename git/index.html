@@ -165,6 +165,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#share-through-a-remote" class="nav-link">Share through a remote</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#permissions" class="nav-link">Permissions</a>
               <ul class="nav flex-column">
               </ul>
@@ -334,6 +338,51 @@ or a commit hash.</p>
 <li>The audit record of a plan or apply from the repository names the revision and the commit it
   resolved to (<code>git.rev</code>, <code>git.commit</code>).</li>
 </ul>
+<h2 id="share-through-a-remote">Share through a remote</h2>
+<p>Set <a href="../server-config/#git"><code>git.remote</code></a> to push the repository to a remote (GitHub, GitLab, a
+bare repository on disk) and pull changes others pushed:</p>
+<pre><code class="language-yaml">git:
+  path: /var/lib/weavster/config-repo
+  remote:
+    url: https://github.com/example/weavster-config.git
+    username: x-access-token
+    passwordEnv: WEAVSTER_GIT_TOKEN   # the token itself is in this environment variable
+</code></pre>
+<p>The server uses the remote's branch of the same name as its own (<code>main</code>).</p>
+<p>Compare with the remote (it is fetched first; permission <code>git:view</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/git/remote
+</code></pre>
+<pre><code class="language-json">{&quot;url&quot;:&quot;https://github.com/example/weavster-config.git&quot;,&quot;branch&quot;:&quot;main&quot;,&quot;head&quot;:&quot;5f0c1e9a8d...&quot;,&quot;remoteHead&quot;:&quot;77b2d0c41e...&quot;,&quot;ahead&quot;:1,&quot;behind&quot;:0}
+</code></pre>
+<p><code>ahead</code> counts your commits the remote does not have; <code>behind</code> the remote's commits you do not
+have. <code>remoteHead</code> is empty until the branch exists on the remote.</p>
+<p>Push (permission <code>git:commit</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/git/push
+</code></pre>
+<p>It replies with the comparison after the push. When the remote has commits you do not have, the
+push is refused with <code>409</code> (<code>… pull first</code>).</p>
+<p>Pull (permission <code>git:commit</code>): the <strong>remote wins</strong>. The branch and the repository's files
+become exactly the remote's; your commits that are not on the remote are dropped and listed:</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/git/pull
+</code></pre>
+<pre><code class="language-json">{&quot;head&quot;:&quot;77b2d0c41e...&quot;,&quot;dropped&quot;:[&quot;5f0c1e9a8d...&quot;]}
+</code></pre>
+<ul>
+<li>Push before you pull if you want to keep your commits; a dropped commit cannot be pulled back.</li>
+<li>A pull changes only the repository, never the live configuration. Check
+  <a href="#check-for-drift">drift</a>, then <a href="#plan-and-apply-from-the-repository">apply</a> to take the
+  pulled configuration, or commit to record the live one on top.</li>
+<li>Without <code>git.remote.url</code> these endpoints answer <code>409</code> (<code>no remote configured</code>), as they do when
+  the repository's HEAD is not on a branch. A remote that cannot be reached, refuses the
+  credentials, or does not answer within a minute gives <code>502</code> with the reason; the password or
+  token is never shown.</li>
+<li>A branch deleted on the remote stops being reported at the next status, push, or pull.</li>
+<li>A pull is refused with <code>409</code> while the repository has uncommitted files (they would be
+  overwritten); commit or remove them first. If a pull fails part way, the branch and files are
+  put back as they were committed.</li>
+<li>Checking the status fetches from the remote with the server's credentials; like <code>git fetch</code>,
+  it updates only the repository's record of the remote.</li>
+</ul>
 <h2 id="permissions">Permissions</h2>
 <table>
 <thead>
@@ -344,8 +393,12 @@ or a commit hash.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>GET /api/v1/git</code>, <code>GET /api/v1/git/log</code></td>
+<td><code>GET /api/v1/git</code>, <code>GET /api/v1/git/log</code>, <code>GET /api/v1/git/remote</code></td>
 <td><code>git:view</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/git/push</code>, <code>POST /api/v1/git/pull</code></td>
+<td><code>git:commit</code></td>
 </tr>
 <tr>
 <td><code>GET /api/v1/git/drift</code></td>
