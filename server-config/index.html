@@ -365,6 +365,36 @@ stops the server immediately with exit code <code>0</code>. When every attempt f
 </tr>
 </tbody>
 </table>
+<h3 id="stats"><code>stats</code></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sampleIntervalMs</code></td>
+<td><code>60000</code></td>
+<td>How often every flow's lifetime statistics are sampled for <a href="../processing-messages/#statistics-over-time">statistics over time</a>.</td>
+</tr>
+<tr>
+<td><code>retentionHours</code></td>
+<td><code>24</code></td>
+<td>How long samples are kept.</td>
+</tr>
+</tbody>
+</table>
+<p><code>sampleIntervalMs</code> must be 100–3,600,000 ms (one hour) and <code>retentionHours</code> 1–8760 (one year),
+and together they may keep at most 100,000 samples per flow (for example, a 1-second interval
+allows up to 27 hours). Samples are held in memory, at most 1,000,000 for all flows together; past
+that the oldest are dropped.</p>
+<pre><code class="language-yaml">stats:
+  sampleIntervalMs: 10000   # every 10 seconds
+  retentionHours: 48
+</code></pre>
 <h3 id="paths"><code>paths</code></h3>
 <table>
 <thead>

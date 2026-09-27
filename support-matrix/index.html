@@ -326,6 +326,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestXMLResponses</code>, <code>TestJSONToXML</code>. See <a href="../api-formats/">JSON and XML</a>.</td>
 </tr>
 <tr>
+<td>Statistics over time (<code>GET /api/v1/stats/series</code>: sampled lifetime statistics per flow; server config <code>stats.sampleIntervalMs</code>, <code>stats.retentionHours</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestStatsSeries</code>. Samples are held in memory and restart empty. See <a href="../processing-messages/#statistics-over-time">Processing messages</a>.</td>
+</tr>
+<tr>
 <td>Alert definitions (<code>/api/v1/alerts</code>: create, get, update, delete, enable/disable, import with <code>force</code>, options); CLI <code>importalert</code>, <code>exportalert</code></td>
 <td>Implemented (wired)</td>
 <td><code>TestAlerts</code>. Definitions are stored and validated only: alerts do not fire yet. See <a href="../alerts/">Alerts</a>.</td>
