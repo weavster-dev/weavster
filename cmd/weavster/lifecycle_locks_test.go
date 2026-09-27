@@ -637,3 +637,17 @@ func TestMessageAdapterContentAndReprocess(t *testing.T) {
 		t.Errorf("reprocessed metadata = %v", got.Metadata)
 	}
 }
+
+// TestStoresImplementItemRepository: every state backend can hold config
+// items (the composition root asserts it).
+func TestStoresImplementItemRepository(t *testing.T) {
+	var _ itemRepository = state.NewMemStore()
+	sqlite, err := state.OpenSQLite(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sqlite.Close() }()
+	if _, ok := sqlite.(itemRepository); !ok {
+		t.Error("the SQLite store is not an itemRepository")
+	}
+}

@@ -45,6 +45,8 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return flowCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	case "deploy":
 		return deployAll(ctx, client, fields[1:], stdout, stderr, debug)
+	case "importmap", "exportmap", "importscripts", "exportscripts": // spec §3.2
+		return itemsFileCommand(ctx, client, fields[0], fields[1:], stdout, stderr, debug)
 	case "exportmessages": // spec §3.2: exportmessages "path" <flow id|name|*>
 		return exportMessages(ctx, client, fields[1:], stdout, stderr, debug)
 	case "importmessages": // spec §3.2: importmessages "path" <flow id|name>
@@ -103,7 +105,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -349,6 +351,47 @@ func userCommand(ctx context.Context, client Client, args []string, stdout, stde
 		}
 	default:
 		return usage()
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	return 0
+}
+
+// itemsFileCommand imports or exports the config map or the global scripts
+// as a JSON file of name: value (spec §3.2 importmap, exportmap,
+// importscripts, exportscripts). An import replaces the whole set.
+func itemsFileCommand(ctx context.Context, client Client, cmd string, args []string, stdout, stderr io.Writer, debug bool) int {
+	if len(args) != 1 {
+		_, _ = fmt.Fprintf(stderr, "Error: usage: %s \"path\"\n", cmd)
+		return 2
+	}
+	kind, noun := "configmap", "config map entries"
+	if strings.HasSuffix(cmd, "scripts") {
+		kind, noun = "scripts", "scripts"
+	}
+	count := func(doc []byte) int {
+		var m map[string]json.RawMessage
+		_ = json.Unmarshal(doc, &m)
+		return len(m)
+	}
+	var err error
+	if strings.HasPrefix(cmd, "export") {
+		var out []byte
+		if out, err = client.Call(ctx, http.MethodGet, "/api/v1/"+kind, nil); err == nil {
+			err = os.WriteFile(args[0], out, 0o600)
+		}
+		if err == nil {
+			_, _ = fmt.Fprintf(stdout, "exported %d %s to %s\n", count(out), noun, args[0])
+		}
+	} else {
+		var doc []byte
+		if doc, err = os.ReadFile(args[0]); err == nil {
+			_, err = client.Call(ctx, http.MethodPut, "/api/v1/"+kind, doc)
+		}
+		if err == nil {
+			_, _ = fmt.Fprintf(stdout, "imported %d %s from %s (they replace the previous set)\n", count(doc), noun, args[0])
+		}
 	}
 	if err != nil {
 		return shellError(stderr, debug, err)

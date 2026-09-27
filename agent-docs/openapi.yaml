@@ -453,6 +453,132 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "[{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: A filter or paging parameter is invalid, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/configmap:
+    get:
+      summary: "Every config map entry, as a JSON object of name: value (requires configmap:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{name: value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Replace every config map entry with the body, a JSON object of name: value; each value is a string (requires configmap:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: The new set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name, a wrong value type, or not a JSON object", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: Body larger than 10 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/configmap/{name}:
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    get:
+      summary: "One config map entry: {name, value} (requires configmap:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Create or replace one config map entry; the body is {\"value\": ...} with a string (requires configmap:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [value], properties: {value: {}}}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name, a missing value, or a wrong value type", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: "Delete one config map entry (requires configmap:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/scripts:
+    get:
+      summary: "Every script, as a JSON object of name: value (requires scripts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{name: value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Replace every script with the body, a JSON object of name: value; each value is a string (the script source) (requires scripts:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: The new set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name, a wrong value type, or not a JSON object", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: Body larger than 10 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/scripts/{name}:
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    get:
+      summary: "One script: {name, value} (requires scripts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Create or replace one script; the body is {\"value\": ...} with a string (the script source) (requires scripts:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [value], properties: {value: {}}}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name, a missing value, or a wrong value type", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: "Delete one script (requires scripts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/settings:
+    get:
+      summary: "Every setting, as a JSON object of name: value (requires settings:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{name: value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Replace every setting with the body, a JSON object of name: value; each value is any JSON value (requires settings:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: The new set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name, a wrong value type, or not a JSON object", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: Body larger than 10 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/settings/{name}:
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    get:
+      summary: "One setting: {name, value} (requires settings:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Create or replace one setting; the body is {\"value\": ...} with any JSON value (requires settings:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [value], properties: {value: {}}}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name, a missing value, or a wrong value type", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: "Delete one setting (requires settings:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/users:
     get:
       summary: List user accounts (requires users:admin)

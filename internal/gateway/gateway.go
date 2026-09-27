@@ -266,6 +266,7 @@ type Config struct {
 	Auth        AuthProvider // nil disables authentication and authorization
 	Passwords   PasswordChanger
 	Users       UserAdmin
+	Items       ItemStore
 	Authorizer  Authorizer
 	Audit       AuditSink
 	Flows       FlowStore
