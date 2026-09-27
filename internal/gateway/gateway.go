@@ -280,6 +280,8 @@ type Config struct {
 	Passwords PasswordChanger
 	Users     UserAdmin
 	Items     ItemStore
+	// ConfigPlanner plans config-as-code documents against the server.
+	ConfigPlanner ConfigPlanner
 	// ConfigValidator checks config-as-code documents.
 	ConfigValidator ConfigValidator
 	// Alerts keeps alert definitions.

@@ -81,7 +81,18 @@ func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	ctx := r.Context()
+	b, err := s.liveConfig(r.Context(), opts["includeConfigMap"])
+	if err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, b)
+}
+
+// liveConfig gathers the server's configuration as a bundle (the config
+// map only with includeConfigMap): what export writes and plan compares
+// with. Lists are sorted and empty sets are {}, never null.
+func (s *Server) liveConfig(ctx context.Context, includeConfigMap bool) (ConfigBundle, error) {
 	b := ConfigBundle{Format: ConfigFormat}
 	var err error
 	if b.Flows, err = s.cfg.Transfer.Export(ctx, nil); err == nil {
@@ -99,25 +110,23 @@ func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		b.Settings, err = s.cfg.Items.ListItems(ctx, "settings")
 	}
-	if err == nil && opts["includeConfigMap"] {
+	if err == nil && includeConfigMap {
 		var m map[string]json.RawMessage
 		m, err = s.cfg.Items.ListItems(ctx, "configmap")
 		b.ConfigMap = &m
 	}
-	// Empty sets are written as {}, never null.
+	if err != nil {
+		return b, err
+	}
 	for _, m := range []*map[string]json.RawMessage{&b.Scripts, &b.Settings, b.ConfigMap} {
 		if m != nil && *m == nil {
 			*m = map[string]json.RawMessage{}
 		}
 	}
-	if err != nil {
-		writeBackendError(w, err)
-		return
-	}
 	sort.Slice(b.Alerts, func(i, j int) bool { return b.Alerts[i].ID < b.Alerts[j].ID })
 	sort.Slice(b.Snippets, func(i, j int) bool { return b.Snippets[i].Name < b.Snippets[j].Name })
 	sort.Slice(b.SnippetLibraries, func(i, j int) bool { return b.SnippetLibraries[i].Name < b.SnippetLibraries[j].Name })
-	writeJSON(w, http.StatusOK, b)
+	return b, nil
 }
 
 // configDocument is ConfigBundle as read: flows stay raw so they are

@@ -227,6 +227,7 @@ flows:
   new:
     name: New
     sourceType: http
+alerts: {}
 `))
 
 	p := Diff(desired, live)
@@ -266,6 +267,7 @@ flows:
   a:
     name: A
     sourceType: file
+alerts:
 `))
 	live, _ := Parse([]byte(`
 version: "1"

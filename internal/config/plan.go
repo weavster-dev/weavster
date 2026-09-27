@@ -1,10 +1,8 @@
 package config
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"sort"
 )
 
 // Plan is a machine-readable plan of config changes (added/updated/removed)
@@ -13,6 +11,12 @@ type Plan struct {
 	Added   []string `json:"added"`
 	Updated []string `json:"updated"`
 	Removed []string `json:"removed"`
+	// Unchanged counts artifacts that already match.
+	Unchanged int `json:"unchanged,omitempty"`
+	// Fingerprint identifies the live configuration the plan compares with.
+	Fingerprint string `json:"fingerprint,omitempty"`
+	// Changes describes each change with its content (LivePlan).
+	Changes []Change `json:"changes,omitempty"`
 }
 
 // Empty reports whether the plan contains no changes.
@@ -39,26 +43,7 @@ func (p Plan) DiffText() string {
 }
 
 // Diff computes the plan of changes between the desired and live configs
-// (gap #6). Artifacts are compared by serialized content.
+// (gap #6): LivePlan, so apply and drift plan exactly what config diff shows.
 func Diff(desired, live *Config) Plan {
-	d := desired.Artifacts()
-	l := live.Artifacts()
-
-	var p Plan
-	for k, dv := range d {
-		if lv, ok := l[k]; !ok {
-			p.Added = append(p.Added, k)
-		} else if !bytes.Equal(lv, dv) {
-			p.Updated = append(p.Updated, k)
-		}
-	}
-	for k := range l {
-		if _, ok := d[k]; !ok {
-			p.Removed = append(p.Removed, k)
-		}
-	}
-	sort.Strings(p.Added)
-	sort.Strings(p.Updated)
-	sort.Strings(p.Removed)
-	return p
+	return LivePlan(desired, live)
 }

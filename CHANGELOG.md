@@ -69,6 +69,7 @@ All notable changes to this project are documented here, following
 - Deprecated command names `channel` (→ `flow`) and `codetemplate` (→ `snippet`) run with a warning naming the replacement (#231). Exit codes and error format documented in one table.
 - CLI golden tests (#233): every command in `help`, every `flow` subcommand, and their error paths, in batch and interactive mode, pinned in `cmd/weavster/testdata/golden/` (`go test ./cmd/weavster -run TestCLIGolden -update` rewrites them).
 - Config-as-code documents (#237): typed `alerts`, `snippets`, `snippetLibraries`, `scripts`, `configmap`, `settings` sections sharing the API shapes; unknown fields rejected everywhere; cross-artifact checks; JSON Schemas `alert`, `snippet`, `snippet-library` published in `agent-docs/schemas/`; `POST /api/v1/config/validate` and CLI `config validate "path"`.
+- Config-as-code plan (#239): `POST /api/v1/config/plan` and CLI `config diff` / `config plan` compare a document with the live configuration (adds, field-level updates, removals only in sections the document includes) without changing anything; the plan carries a fingerprint of the live state.
 
 ### Changed
 

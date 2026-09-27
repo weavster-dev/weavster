@@ -1,10 +1,6 @@
 package gateway
 
-import (
-	"errors"
-	"io"
-	"net/http"
-)
+import "net/http"
 
 // ConfigSummary counts what a valid config-as-code document holds.
 type ConfigSummary struct {
@@ -30,14 +26,8 @@ func (s *Server) handleConfigValidate(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusServiceUnavailable, "configuration validation unavailable")
 		return
 	}
-	doc, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxImportBytes))
-	var tooLarge *http.MaxBytesError
-	if errors.As(err, &tooLarge) {
-		writeStatusError(w, http.StatusRequestEntityTooLarge, "configuration document larger than 50 MiB")
-		return
-	}
-	if err != nil {
-		writeStatusError(w, http.StatusBadRequest, "could not read the body")
+	doc, ok := readConfigBody(w, r)
+	if !ok {
 		return
 	}
 	summary, err := s.cfg.ConfigValidator.ValidateConfig(doc)

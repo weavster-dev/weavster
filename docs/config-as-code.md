@@ -4,10 +4,10 @@ A config-as-code document describes a server's configuration in one YAML (or JSO
 you keep in version control: flows, alerts, code snippets and libraries, global scripts, the
 config map, and settings. Every artifact has the same shape it has in the API.
 
-!!! note "Checked, not applied yet"
-    Today you can check a document with `config validate`. Applying it to a server is not
-    available yet; to copy configuration between servers use
-    [export and import](config-transfer.md).
+!!! note "Checked and planned, not applied yet"
+    Today you can check a document (`config validate`) and see what applying it would change
+    (`config diff`, `config plan`). Applying it is not available yet; to copy configuration
+    between servers use [export and import](config-transfer.md).
 
 ## Example
 
@@ -84,6 +84,53 @@ document, for example:
 ```text
 Error: server returned 400 Bad Request: config: alerts.adt-errors: alert adt-errors: unknown trigger event "message.sent"; use [message.errored message.queued message.dead-lettered]
 ```
+
+## See what would change
+
+`config diff` compares the document with the server's live configuration and shows what
+applying it would change. Nothing on the server changes.
+
+```text
+weavster> config diff "weavster.yaml"
+~ configmap/region
+    value: "us" → "eu"
+~ flow/adt
+    destinations[0].url: "https://old.example.com/in" → "https://ehr.example.com/in"
+    name: "ADT" → "ADT Inbound"
++ flow/lab
+- flow/legacy
+1 to add, 2 to change, 1 to remove, 4 unchanged
+```
+
+- `+` adds, `~` changes (one line per changed value), `-` removes. Adds and changes come first,
+  sorted by key, then removals; changed values are sorted by path.
+- **A section you leave out is not managed.** Nothing in it is changed or removed. A section you
+  include is managed completely: an artifact the server has but the section lacks is removed.
+  Write `settings: {}` (or `settings:` with nothing under it) to remove every setting; leave
+  `settings` out to keep them.
+- Flows are compared without their runtime state, so a deployed flow is not "changed" because
+  it is deployed. Formatting and key order never count as changes.
+
+`config plan` prints the same plan as JSON for scripts and CI:
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @weavster.yaml \
+  http://127.0.0.1:8080/api/v1/config/plan
+```
+
+```json
+{"fingerprint":"78ff2b…","added":["flow/lab"],"updated":["configmap/region","flow/adt"],
+ "removed":["flow/legacy"],"unchanged":4,
+ "changes":[{"key":"configmap/region","action":"update","before":"us","after":"eu",
+             "fields":[{"path":"value","before":"us","after":"eu"}]}, …],
+ "text":"~ configmap/region\n    value: \"us\" → \"eu\"\n…"}
+```
+
+Artifact keys are `flow/…`, `alert/…`, `snippet/…`, `library/…`, `script/…`, `configmap/…`,
+and `settings/…`. `fingerprint` identifies the live configuration the plan was made against: it
+changes whenever anything in it changes. Planning needs the permissions an
+[export](config-transfer.md#permissions) with the config map needs: `flows:view`,
+`alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit`.
 
 ## Editor support
 

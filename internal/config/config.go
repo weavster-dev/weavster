@@ -34,6 +34,9 @@ type Config struct {
 	Scripts   map[string]string `json:"scripts" yaml:"scripts"`
 	ConfigMap map[string]string `json:"configmap" yaml:"configmap"`
 	Settings  map[string]any    `json:"settings" yaml:"settings"`
+	// Managed names the sections a parsed document writes; a plan removes
+	// nothing from the others (#107 D-47). Nil means every section.
+	Managed map[string]bool `json:"-" yaml:"-"`
 }
 
 // Parse decodes a config document. YAML is the canonical format; JSON is a
@@ -67,8 +70,12 @@ func parse(data []byte) (*Config, map[string]json.RawMessage, error) {
 	var doc document
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
-	err := dec.Decode(&doc)
-	if errors.Is(err, io.EOF) {
+	var keys map[string]yaml.Node // which sections are written, even empty
+	err := yaml.Unmarshal(data, &keys)
+	if err == nil {
+		err = dec.Decode(&doc)
+	}
+	if errors.Is(err, io.EOF) || (err == nil && len(keys) == 0 && doc.Version == "") {
 		return nil, nil, errors.New("config: the document is empty")
 	}
 	if err != nil {
@@ -85,6 +92,11 @@ func parse(data []byte) (*Config, map[string]json.RawMessage, error) {
 		Scripts: doc.Scripts, ConfigMap: doc.ConfigMap, Settings: doc.Settings}
 	if c.Version == "" {
 		c.Version = "1"
+	}
+	c.Managed = map[string]bool{}
+	for section := range sections {
+		_, written := keys[section] // "flows:" with no entries still counts
+		c.Managed[section] = written
 	}
 	normalize(c)
 	for key, a := range c.Alerts {

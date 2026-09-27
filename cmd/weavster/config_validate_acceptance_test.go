@@ -87,7 +87,7 @@ func TestConfigValidate(t *testing.T) {
 		{`config validate "` + good + `"`, good + " is valid: 1 flows, 1 alerts, 1 snippets, 1 snippet libraries, 1 scripts, 1 config map entries, 1 settings", "", 0},
 		{`config validate "` + bad + `"`, "", "field map not found", 2},
 		{`config validate "` + filepath.Join(dir, "none.yaml") + `"`, "", "no such file", 2},
-		{`config plan "` + good + `"`, "", "usage: config validate", 2},
+		{`config apply "` + good + `"`, "", "usage: config validate|diff|plan", 2},
 	} {
 		if err := os.WriteFile(script, []byte(tt.line+"\n"), 0o600); err != nil {
 			t.Fatal(err)

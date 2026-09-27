@@ -128,6 +128,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Snippets:        snippetsAdapter{repo: items, mu: &sync.Mutex{}},
 		Alerts:          alertsAdapter{repo: items, mu: &sync.Mutex{}},
 		ConfigValidator: configValidator{},
+		ConfigPlanner:   configPlanner{},
 		Authorizer:      authorizerAdapter{},
 		Audit:           auditAdapter{sink},
 		Flows:           flows,
