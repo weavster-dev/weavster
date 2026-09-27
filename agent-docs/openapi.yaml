@@ -300,6 +300,84 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: The redeployed flows, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "500": {description: "Stopped part-way: {error: {code: REDEPLOY_INCOMPLETE}, redeployed: [flows already redeployed]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/flows/deploy-all:
+    post:
+      summary: "Deploy every flow the action applies to, dependencies first; flows it does not apply to are skipped with the reason. Disabled flows are skipped. (requires flows:deploy)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/flows/undeploy-all:
+    post:
+      summary: "Undeploy every flow the action applies to, dependents first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/flows/start-all:
+    post:
+      summary: "Start every flow the action applies to, dependencies first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/flows/stop-all:
+    post:
+      summary: "Stop every flow the action applies to, dependents first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/flows/pause-all:
+    post:
+      summary: "Pause every flow the action applies to, dependents first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/flows/halt-all:
+    post:
+      summary: "Halt every flow the action applies to, dependents first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/flows/resume-all:
+    post:
+      summary: "Resume every flow the action applies to, dependencies first; flows it does not apply to are skipped with the reason. (requires flows:deploy)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{changed: [ids], skipped: [{id, reason}]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "Stopped part-way: {error: {code: TRANSITION_INCOMPLETE}, changed, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/flows/stats:
+    get:
+      summary: Statistics of every flow, by flow id (requires flows:view)
+      parameters:
+        - {name: lifetime, in: query, schema: {type: boolean}, description: Lifetime totals instead of current counters}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{<flow id>: statistics}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: lifetime is not true or false, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/flows/stats/reset:
+    post:
+      summary: Clear every flow's current statistics; with lifetime=true also the lifetime totals (requires flows:deploy)
+      parameters:
+        - {name: lifetime, in: query, schema: {type: boolean}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: Cleared, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: lifetime is not true or false, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/flows/{id}/stats/reset:
+    post:
+      summary: Clear one flow's current statistics; with lifetime=true also its lifetime totals (requires flows:deploy)
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: lifetime, in: query, schema: {type: boolean}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: Cleared, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: lifetime is not true or false, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/{id}/messages:
     post:
       summary: Send a message into a flow (requires messages:send)

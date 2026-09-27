@@ -564,10 +564,22 @@ func (a flowAdapter) lock(id string, skipDrain bool) func() {
 // halt waits for the flow's in-flight messages; halt takes effect at once
 // (force-stop, D-30).
 func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway.Flow, error) {
+	return a.transition(ctx, id, action, nil)
+}
+
+// errNotEligible is returned by transition when its check refuses the flow.
+var errNotEligible = errors.New("flow not eligible")
+
+// transition is Transition with an optional check of the flow, made under
+// the flow's lock before anything changes (errNotEligible when it fails).
+func (a flowAdapter) transition(ctx context.Context, id, action string, check func(gateway.Flow) bool) (gateway.Flow, error) {
 	defer a.lock(id, action == flowlife.Halt)()
 	f, err := a.Get(ctx, id)
 	if err != nil {
 		return gateway.Flow{}, err
+	}
+	if check != nil && !check(f) {
+		return f, errNotEligible
 	}
 	next, err := flowlife.Next(f.Status, action)
 	if errors.Is(err, flowlife.ErrUnknownAction) {
@@ -895,6 +907,66 @@ func checkBatch(flows []gateway.Flow) ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// TransitionAll applies action to every flow it applies to, in dependency
+// order: dependencies first for deploy, start, and resume; dependents first
+// otherwise. deploy skips disabled flows (checked under each flow's lock, as
+// at startup), but an enabled flow's deploy still deploys its dependencies
+// (D-31), disabled or not. Changed lists every flow whose status the run
+// changed, those included; flows left alone are skipped with the reason. A
+// store failure stops the run (ErrTransitionIncomplete).
+func (a flowAdapter) TransitionAll(ctx context.Context, action string) (gateway.TransitionAllResult, error) {
+	res := gateway.TransitionAllResult{Changed: []string{}, Skipped: []gateway.SkippedFlow{}}
+	all, err := a.withFlows(ctx)
+	if err != nil {
+		return res, err
+	}
+	ids := make([]string, 0, len(all))
+	for id := range all {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	order := dependencyOrder(all, ids)
+	switch action {
+	case flowlife.Deploy, flowlife.Start, flowlife.Resume:
+	default:
+		slices.Reverse(order)
+	}
+	var check func(gateway.Flow) bool
+	if action == flowlife.Deploy {
+		// Only undeployed flows would be deployed; others report why not.
+		check = func(f gateway.Flow) bool { return f.Enabled || f.Status != flowlife.Undeployed }
+	}
+	skipped := map[string]string{}
+	var runErr error
+	for _, id := range order {
+		_, err := a.transition(ctx, id, action, check)
+		switch {
+		case err == nil:
+		case errors.Is(err, errNotEligible):
+			skipped[id] = "disabled"
+		case errors.Is(err, gateway.ErrUnknownAction):
+			return res, err
+		case errors.Is(err, gateway.ErrInvalidTransition), errors.Is(err, gateway.ErrDependency), errors.Is(err, gateway.ErrFlowNotFound):
+			skipped[id] = err.Error()
+		default:
+			runErr = fmt.Errorf("%w: flow %s: %w", gateway.ErrTransitionIncomplete, id, err)
+		}
+		if runErr != nil {
+			break
+		}
+	}
+	// Report what actually changed: a dependency deployed along with its
+	// dependent counts as changed even if it was skipped itself.
+	for _, id := range order {
+		if cur, err := a.Get(ctx, id); err == nil && cur.Status != all[id].Status {
+			res.Changed = append(res.Changed, id)
+		} else if reason, ok := skipped[id]; ok {
+			res.Skipped = append(res.Skipped, gateway.SkippedFlow{ID: id, Reason: reason})
+		}
+	}
+	return res, runErr
 }
 
 // RedeployAll undeploys and re-deploys every flow that is not undeployed;
@@ -1523,7 +1595,36 @@ func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime boo
 	if _, err := a.flows.Get(ctx, flowID); err != nil {
 		return gateway.FlowStats{}, err
 	}
-	s := a.stats.Snapshot(flowID, lifetime)
+	return toGatewayStats(a.stats.Snapshot(flowID, lifetime)), nil
+}
+
+// AllFlowStats returns the statistics of every flow.
+func (a statsAdapter) AllFlowStats(ctx context.Context, lifetime bool) (map[string]gateway.FlowStats, error) {
+	flows, err := a.flows.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	all := a.stats.SnapshotAll(lifetime) // one instant for every flow
+	out := make(map[string]gateway.FlowStats, len(flows))
+	for _, f := range flows {
+		out[f.ID] = toGatewayStats(all[f.ID])
+	}
+	return out, nil
+}
+
+// ResetStats clears current statistics of one flow (all flows when flowID
+// is empty), and lifetime totals too when lifetime is set.
+func (a statsAdapter) ResetStats(ctx context.Context, flowID string, lifetime bool) error {
+	if flowID != "" {
+		if _, err := a.flows.Get(ctx, flowID); err != nil {
+			return err
+		}
+	}
+	a.stats.Clear(flowID, lifetime)
+	return nil
+}
+
+func toGatewayStats(s observability.FlowStats) gateway.FlowStats {
 	out := gateway.FlowStats{
 		Received: s.Received, Filtered: s.Filtered, Transformed: s.Transformed,
 		Sent: s.Sent, Errored: s.Errored, Queued: s.Queued,
@@ -1536,7 +1637,7 @@ func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime boo
 		t := s.LastMessageAt.UTC()
 		out.LastMessageAt = &t
 	}
-	return out, nil
+	return out
 }
 
 type eventsAdapter struct{ log *observability.EventLog }

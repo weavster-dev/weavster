@@ -18,7 +18,15 @@
           "import",
           "redeploy-all",
           "connector-names",
-          "ports-in-use"
+          "ports-in-use",
+          "stats",
+          "deploy-all",
+          "undeploy-all",
+          "start-all",
+          "stop-all",
+          "pause-all",
+          "halt-all",
+          "resume-all"
         ]
       }
     },

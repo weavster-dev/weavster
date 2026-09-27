@@ -42,6 +42,20 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return flowCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	case "deploy":
 		return deployAll(ctx, client, fields[1:], stdout, stderr, debug)
+	case "resetstats": // spec §3.2: resetstats [lifetime]
+		path := "/api/v1/flows/stats/reset"
+		switch {
+		case len(fields) == 2 && fields[1] == "lifetime":
+			path += "?lifetime=true"
+		case len(fields) != 1:
+			_, _ = fmt.Fprintln(stderr, "Error: usage: resetstats [lifetime]")
+			return 2
+		}
+		if _, err := client.Call(ctx, http.MethodPost, path, nil); err != nil {
+			return shellError(stderr, debug, err)
+		}
+		_, _ = fmt.Fprintln(stdout, "statistics reset for every flow")
+		return 0
 	case "import": // spec §3.2: import "path" [force]
 		switch {
 		case len(fields) == 2:
@@ -93,7 +107,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list, quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list, quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words

@@ -297,6 +297,30 @@ func decodeFlowsBody(w http.ResponseWriter, r *http.Request, shape string) (flow
 	return doc, true
 }
 
+// AllFlowActions are the lifecycle actions with an all-flows form,
+// POST /api/v1/flows/{action}-all (redeploy-all is separate).
+var AllFlowActions = []string{"deploy", "undeploy", "start", "stop", "pause", "halt", "resume"}
+
+func (s *Server) handleActionAll(action string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.Lifecycle == nil {
+			writeStatusError(w, http.StatusServiceUnavailable, "flow lifecycle unavailable")
+			return
+		}
+		res, err := s.cfg.Lifecycle.TransitionAll(r.Context(), action)
+		switch {
+		case errors.Is(err, ErrTransitionIncomplete):
+			writeErrorWith(w, http.StatusInternalServerError, "TRANSITION_INCOMPLETE", action+"-all stopped before finishing; changed lists what was done", map[string]any{
+				"changed": res.Changed, "skipped": res.Skipped,
+			})
+		case err != nil:
+			writeFlowError(w, err)
+		default:
+			writeJSON(w, http.StatusOK, res)
+		}
+	}
+}
+
 // FlowBundleVersion is the export/import document version.
 const FlowBundleVersion = 1
 

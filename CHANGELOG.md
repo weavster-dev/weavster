@@ -57,6 +57,7 @@ All notable changes to this project are documented here, following
 - CLI flow commands (#196) in batch mode (`-s`): `flow list|get|create|update|update-all|rename|enable|disable|remove|export|import|deploy|undeploy|start|stop|pause|halt|resume|redeploy-all|start-destination|stop-destination|connectors|ports`; server errors print `Error: server returned <status>: <message>` and exit `2`. See `docs/cli.md`.
 - CLI spec §3.2 flow commands (#200): `deploy [timeout]`, `flow stats [id|name]`, `import "path" [force]`, `export id|"name"|* "path"`; flow commands accept a flow id or name; arguments can be double-quoted (`\"` and `\\` escapes).
 - Unversioned API paths (#206): every `/api/v1/...` endpoint is also served at `/api/...`, resolving to the latest version (spec §5); replies carry `Weavster-API-Version: v1`. See `docs/api.md`.
+- All-flows lifecycle and statistics (#208): `POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all` (dependency order; skipped flows with reasons; `deploy-all` skips disabled flows), `GET /api/v1/flows/stats`, and statistics reset for one or all flows (`?lifetime=true` also clears lifetime totals). CLI: `resetstats [lifetime]`, `flow reset-stats <id> [lifetime]`, `flow <action>-all`; `flow stats` without an id uses the new one-call endpoint. `stats` and `<action>-all` are reserved flow ids.
 
 ### Changed
 
