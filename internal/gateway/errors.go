@@ -21,7 +21,6 @@ var statusCodes = map[int]string{
 	http.StatusRequestEntityTooLarge: "PAYLOAD_TOO_LARGE",
 	http.StatusInternalServerError:   "INTERNAL",
 	http.StatusNotImplemented:        "NOT_IMPLEMENTED",
-	http.StatusBadGateway:            "BAD_GATEWAY",
 	http.StatusServiceUnavailable:    "SERVICE_UNAVAILABLE",
 }
 

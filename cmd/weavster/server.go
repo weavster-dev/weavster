@@ -109,15 +109,6 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		flows.DeployEnabled(ctx, logger)
 	}
 	statsPort := statsAdapter{flows: flows, stats: stats, series: series}
-	var gitRepo gateway.GitRepository // nil: Git not configured
-	if cfg.Git.Path != "" {
-		g, err := newGitAdapter(cfg.Git)
-		if err != nil {
-			_ = closeStore()
-			return nil, nil, nil, err
-		}
-		gitRepo = g
-	}
 	var ingest gateway.MessageIngester
 	retry := func(context.Context) {}
 	if store != nil {
@@ -166,7 +157,6 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Transfer:        flows,
 		Stats:           statsPort,
 		StatsHistory:    statsPort,
-		Git:             gitRepo,
 		Events:          eventsAdapter{events},
 		Topology:        topologyAdapter{flows: flows, stats: stats},
 		System:          newSystemAdapter(cfg, policy),

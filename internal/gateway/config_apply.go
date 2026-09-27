@@ -59,7 +59,7 @@ func (s *Server) handleConfigApply(w http.ResponseWriter, r *http.Request) {
 		refuse(http.StatusBadRequest, "refused", "reason must be at most 500 characters")
 		return
 	}
-	doc, ok := s.configDocument(w, r)
+	doc, ok := readConfigBody(w, r)
 	if !ok {
 		s.auditApply(r, ConfigPlan{}, "refused")
 		return

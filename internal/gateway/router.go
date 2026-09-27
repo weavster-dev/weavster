@@ -168,13 +168,11 @@ func (s *Server) Router() http.Handler {
 			// Validation reads nothing from the server, but parsing up to
 			// 50 MiB is work: it needs flows:edit like the other large bodies.
 			r.With(s.require("flows", "edit")).Post("/config/validate", s.handleConfigValidate)
-			// Apply writes every kind of configuration; from the repository
-			// (gitRev) it also reads it.
-			fromGit := s.requireWhen(func(r *http.Request) bool { return r.URL.Query().Has("gitRev") }, "git", "view")
-			r.With(fromGit, s.require("flows", "view"), s.require("flows", "edit"), s.require("alerts", "edit"), s.require("snippets", "edit"),
+			// Apply writes every kind of configuration.
+			r.With(s.require("flows", "view"), s.require("flows", "edit"), s.require("alerts", "edit"), s.require("snippets", "edit"),
 				s.require("scripts", "edit"), s.require("settings", "edit"), s.require("configmap", "edit")).Post("/config/apply", s.handleConfigApply)
 			// A plan reads the whole live configuration: the export permissions.
-			r.With(fromGit, s.require("flows", "view"), s.require("alerts", "edit"), s.require("snippets", "edit"),
+			r.With(s.require("flows", "view"), s.require("alerts", "edit"), s.require("snippets", "edit"),
 				s.require("scripts", "edit"), s.require("settings", "edit"), s.require("configmap", "edit")).Post("/config/plan", s.handleConfigPlan)
 			// The config map and deploying need their permissions only when
 			// the request touches them.
@@ -185,21 +183,6 @@ func (s *Server) Router() http.Handler {
 				s.require("scripts", "edit"), s.require("settings", "edit"),
 				s.requireWhen(func(r *http.Request) bool { return !queryTrue("nodeploy")(r) }, "flows", "deploy"),
 				s.requireWhen(queryTrue("overwriteConfigMap"), "configmap", "edit")).Post("/config/import", s.handleConfigImport)
-			// Committing and reading files expose the whole configuration:
-			// they also need the export permissions.
-			exportPerms := []func(http.Handler) http.Handler{s.require("flows", "view"), s.require("alerts", "edit"),
-				s.require("snippets", "edit"), s.require("scripts", "edit"), s.require("settings", "edit")}
-			r.With(s.require("git", "view")).Get("/git", s.handleGitInfo)
-			r.With(s.require("git", "view")).Get("/git/log", s.handleGitLog)
-			r.With(s.require("git", "view")).Get("/git/remote", s.handleGitRemote)
-			r.With(s.require("git", "commit")).Post("/git/push", s.handleGitPush)
-			r.With(s.require("git", "commit")).Post("/git/pull", s.handleGitPull)
-			r.With(s.require("git", "view"), s.require("flows", "view"), s.require("alerts", "edit"), s.require("snippets", "edit"),
-				s.require("scripts", "edit"), s.require("settings", "edit"), s.require("configmap", "edit")).Get("/git/drift", s.handleGitDrift)
-			r.With(append([]func(http.Handler) http.Handler{s.require("git", "view")}, exportPerms...)...).Get("/git/content", s.handleGitContent)
-			r.With(append([]func(http.Handler) http.Handler{s.require("git", "commit")}, exportPerms...)...).Post("/git/commit", s.handleGitCommit)
-			r.With(append([]func(http.Handler) http.Handler{s.require("git", "view")}, exportPerms...)...).Get("/git/diff", s.handleGitDiff)
-			r.With(append([]func(http.Handler) http.Handler{s.require("git", "commit")}, exportPerms...)...).Post("/git/restore", s.handleGitRestore)
 			lookupsView, lookupsEdit := s.require("lookups", "view"), s.require("lookups", "edit")
 			r.With(lookupsView).Get("/lookups", s.handleLookupGroups)
 			r.With(lookupsView).Get("/lookups/{group}", s.handleLookupMatching)

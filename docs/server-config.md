@@ -141,24 +141,6 @@ stats:
   retentionHours: 48
 ```
 
-### `git`
-
-| Key | Default | Description |
-|---|---|---|
-| `path` | `""` | Directory of the server's [Git repository](git.md) of configuration. It is created, with an empty repository on branch `main`, when missing; an existing repository is used as it is. Empty turns the Git endpoints off (they answer `503`). |
-| `remote.url` | `""` | The [remote repository](git.md#share-through-a-remote) to push to and pull from: an `https://` URL, a `file://` URL, or a local path. SSH (`ssh://`, `git@host:path`) and plain `http://` are refused at startup. Needs `path`. Must not contain a password. |
-| `remote.username` | `""` | HTTPS user name. |
-| `remote.passwordEnv` | `""` | Name of the environment variable holding the HTTPS password or access token. It is read at each push, pull, or status check, so a rotated token needs no restart. |
-
-```yaml
-git:
-  path: /var/lib/weavster/config-repo
-  remote:
-    url: https://github.com/example/weavster-config.git
-    username: x-access-token
-    passwordEnv: WEAVSTER_GIT_TOKEN
-```
-
 ### `paths`
 
 | Key | Default | Description |

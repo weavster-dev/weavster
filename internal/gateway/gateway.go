@@ -301,9 +301,6 @@ type Config struct {
 	FlowUpdates FlowUpdater
 	Transfer    FlowTransfer
 	Stats       StatsProvider
-	// Git is the server's configuration repository; nil when not
-	// configured.
-	Git GitRepository
 	// StatsHistory reads the sampled statistics time series.
 	StatsHistory StatsHistory
 	Events       EventSearcher
@@ -319,7 +316,6 @@ type Server struct {
 	cfg      Config
 	sessions *sessions
 	applyMu  sync.Mutex // one configuration apply at a time
-	gitMu    sync.Mutex // one Git commit at a time
 }
 
 // New returns a gateway server.
