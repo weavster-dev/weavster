@@ -88,3 +88,27 @@ func TestAuditQueryDetail(t *testing.T) {
 		t.Errorf("events = %+v; the gateway passes query parameters for the sink to redact", sink.events)
 	}
 }
+
+// TestAuditRecordsRequestedPath: an unversioned call is audited with the
+// path the client called, and a rejected one with that literal path.
+func TestAuditRecordsRequestedPath(t *testing.T) {
+	sink := &captureSink{}
+	s := newAuthServer(fakePasswords{})
+	s.cfg.Audit, s.cfg.RequireCSRF = sink, true
+	s = New(s.cfg)
+	serve(s, http.MethodDelete, "/api/flows/a", "", nil)
+	if len(sink.events) != 1 || sink.events[0].Action != "DELETE /api/flows/a" || sink.events[0].Resource != "/api/flows/a" {
+		t.Errorf("events = %+v; want the unversioned path recorded", sink.events)
+	}
+}
+
+func TestAuditUnversionedRouteAction(t *testing.T) {
+	sink := &captureSink{}
+	s := newAuthServer(fakePasswords{})
+	s.cfg.Audit = sink
+	s = New(s.cfg)
+	serve(s, http.MethodDelete, "/api/flows/a", "", func(r *http.Request) { r.SetBasicAuth("viewer", "pw") })
+	if len(sink.events) != 1 || sink.events[0].Action != "DELETE /api/flows/{id}" || sink.events[0].Resource != "/api/flows/a" {
+		t.Errorf("events = %+v; want the unversioned route recorded", sink.events)
+	}
+}

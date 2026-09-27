@@ -5,6 +5,8 @@ info:
   description: >
     REST API for the Weavster message-oriented integration platform.
     Errors use the JSON error envelope (components.schemas.Error).
+    Every /api/v1 path is also served unversioned (/api/flows), resolving to
+    the latest version; replies carry Weavster-API-Version.
 paths:
   /api/openapi.yaml:
     get:
@@ -35,20 +37,20 @@ paths:
                 mfaCode: {type: string}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "Token, expiresAt, and user"}
-        "401": {description: Invalid username or password}
+        "200": {description: "Token, expiresAt, and user", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "401": {description: Invalid username or password, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/auth/logout:
     post:
       summary: Revoke the bearer token used for this request
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "204": {description: Logged out}
+        "204": {description: Logged out, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/auth/me:
     get:
       summary: Current user, permissions, and whether a password change is required
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: Current user}
+        "200": {description: Current user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/auth/password:
     post:
       summary: Change the current user's password
@@ -64,14 +66,15 @@ paths:
                 newPassword: {type: string}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "204": {description: Password changed}
-        "400": {description: New password rejected by the password policy}
+        "204": {description: Password changed, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: New password rejected by the password policy, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/system:
     get:
       summary: System status
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: System information (id, version, build date, runtime, charsets, protocols/ciphers, license).
   /api/v1/topology:
     get:
@@ -79,6 +82,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Overview graph (flow nodes + route/dependency edges).
   /api/v1/topology/flows/{flowId}:
     get:
@@ -92,6 +96,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Flow-internal graph (source -> transform -> destination nodes + message-path edges).
   /api/v1/flows:
     get:
@@ -99,6 +104,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Flow list.
     post:
       summary: Create a flow, undeployed (requires flows:edit)
@@ -110,10 +116,13 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "201":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Created.
         "400":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: The definition is invalid (schema, transform, destinations, or dependencies).
         "409":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: A flow with this id already exists.
     put:
       summary: Replace several flow definitions; each keeps its status, stopped destinations, and (unless set) enabled (requires flows:edit)
@@ -127,14 +136,19 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: "{updated: [ids]}"
         "400":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Invalid document, flow, or dependencies; nothing written.
         "404":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Unknown flows (listed); nothing written.
         "413":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Document larger than 50 MiB.
         "500":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: "Stopped part-way: {error: {code: UPDATE_INCOMPLETE}, updated: [ids]} lists what was written."
   /api/v1/flows/connector-names:
     get:
@@ -142,6 +156,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: "[{id, name, sourceType, destinations: [names]}]"
   /api/v1/flows/ports-in-use:
     get:
@@ -149,6 +164,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: "[{address, port, usedBy}]"
   /api/v1/flows/{id}:
     put:
@@ -162,9 +178,9 @@ paths:
             schema: {type: object}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The updated flow}
-        "400": {description: "Invalid definition, a status field, or a different id in the body"}
-        "404": {description: Unknown flow}
+        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "Invalid definition, a status field, or a different id in the body", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     get:
       summary: Get a flow (requires flows:view)
       parameters:
@@ -176,8 +192,10 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Flow record.
         "404":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Unknown flow.
     delete:
       summary: Delete a flow (requires flows:edit)
@@ -190,10 +208,13 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "204":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Deleted.
         "404":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Unknown flow.
         "409":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Other flows depend on this flow.
   /api/v1/flows/{id}/enable:
     post:
@@ -202,8 +223,8 @@ paths:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The updated flow}
-        "404": {description: Unknown flow}
+        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/{id}/disable:
     post:
       summary: Remove a flow's auto-deploy eligibility (requires flows:edit)
@@ -211,8 +232,8 @@ paths:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The updated flow}
-        "404": {description: Unknown flow}
+        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/{id}/destinations/{dest}/{action}:
     post:
       summary: Stop (hold deliveries to) or start one destination of a flow (requires flows:deploy)
@@ -222,8 +243,8 @@ paths:
         - {name: action, in: path, required: true, schema: {type: string, enum: [start, stop]}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "The flow; stoppedDestinations lists stopped destinations"}
-        "404": {description: "Unknown flow, destination, or action"}
+        "200": {description: "The flow; stoppedDestinations lists stopped destinations", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown flow, destination, or action", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/{id}/{action}:
     post:
       summary: Change a flow's lifecycle state (requires flows:deploy)
@@ -238,9 +259,9 @@ paths:
           schema: {type: string, enum: [deploy, undeploy, start, stop, pause, halt, resume]}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The updated flow}
-        "404": {description: Unknown flow or action}
-        "409": {description: "Transition not allowed from the flow's status"}
+        "200": {description: The updated flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown flow or action, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "Transition not allowed from the flow's status", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/export:
     get:
       summary: Export flow definitions plus their transitive dependencies (requires flows:view)
@@ -251,8 +272,8 @@ paths:
           schema: {type: string}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{version: 1, flows: [definitions without status]}"}
-        "404": {description: Unknown flow id}
+        "200": {description: "{version: 1, flows: [definitions without status]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown flow id, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/import:
     post:
       summary: Import an export document, validated as a whole before writing (requires flows:edit)
@@ -267,18 +288,18 @@ paths:
             schema: {type: object}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{created: [ids], updated: [ids]}"}
-        "400": {description: "Invalid document, flow, or dependencies; nothing written"}
-        "409": {description: Flows already exist and overwrite is not set; nothing written}
-        "413": {description: Document larger than 50 MiB}
-        "500": {description: "Stopped part-way: {error: {code: IMPORT_INCOMPLETE}, created: [ids], updated: [ids]} lists what was written"}
+        "200": {description: "{created: [ids], updated: [ids]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "Invalid document, flow, or dependencies; nothing written", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: Flows already exist and overwrite is not set; nothing written, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: Document larger than 50 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "Stopped part-way: {error: {code: IMPORT_INCOMPLETE}, created: [ids], updated: [ids]} lists what was written", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/redeploy-all:
     post:
       summary: Undeploy and re-deploy every flow that is not undeployed (deployed, started, paused, halted, stopped); each ends deployed (requires flows:deploy)
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The redeployed flows}
-        "500": {description: "Stopped part-way: {error: {code: REDEPLOY_INCOMPLETE}, redeployed: [flows already redeployed]}"}
+        "200": {description: The redeployed flows, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "Stopped part-way: {error: {code: REDEPLOY_INCOMPLETE}, redeployed: [flows already redeployed]}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/{id}/messages:
     post:
       summary: Send a message into a flow (requires messages:send)
@@ -300,11 +321,11 @@ paths:
             schema: {type: string, format: binary}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "202": {description: "Processed: {id, status, response?} with status sent, queued, dead-lettered, filtered, or errored; response is the responseSelector destination's reply"}
-        "400": {description: "The flow or a destination has a transform (a responseTransform does not count) and the body is not a single JSON object, or the body could not be read"}
-        "404": {description: Unknown flow}
-        "409": {description: The flow is not started}
-        "413": {description: Body larger than 10 MiB}
+        "202": {description: "Processed: {id, status, response?} with status sent, queued, dead-lettered, filtered, or errored; response is the responseSelector destination's reply", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "The flow or a destination has a transform (a responseTransform does not count) and the body is not a single JSON object, or the body could not be read", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: The flow is not started, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: Body larger than 10 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/{id}/stats:
     get:
       summary: Flow message counters (requires flows:view)
@@ -318,9 +339,9 @@ paths:
           schema: {type: boolean}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "received, filtered, transformed, sent, errored, queued, destinations, lastMessageAt"}
-        "400": {description: lifetime is not a boolean}
-        "404": {description: Unknown flow}
+        "200": {description: "received, filtered, transformed, sent, errored, queued, destinations, lastMessageAt", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: lifetime is not a boolean, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/events:
     get:
       summary: Search the event log (requires events:view)
@@ -337,8 +358,8 @@ paths:
           schema: {type: integer, minimum: 1, maximum: 10000}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "Events, oldest first: id, at, type, flowId, data"}
-        "400": {description: Invalid limit}
+        "200": {description: "Events, oldest first: id, at, type, flowId, data", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: Invalid limit, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/messages:
     get:
       summary: Search messages
@@ -354,6 +375,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Message search results.
 security:
   - basicAuth: []
@@ -377,9 +399,15 @@ components:
           properties:
             code: {type: string, description: "Stable code, e.g. NOT_FOUND, CONFLICT, NOT_IMPLEMENTED"}
             message: {type: string}
+  headers:
+    WeavsterAPIVersion:
+      description: The API version that answered (every /api/v1 and unversioned /api reply).
+      schema: {type: string, example: v1}
   responses:
     Error:
       description: Error envelope
+      headers:
+        Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}
