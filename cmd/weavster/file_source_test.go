@@ -62,6 +62,61 @@ func TestMoveFile(t *testing.T) {
 	}
 }
 
+func TestCopyThenRemove(t *testing.T) {
+	tests := []struct {
+		name                  string
+		source                string
+		destination           string
+		wantErr               bool
+		wantSource            string
+		wantDestination       string
+		wantSourceExists      bool
+		wantDestinationExists bool
+	}{
+		{name: "success", source: "message", wantDestination: "message", wantDestinationExists: true},
+		{name: "missing source", wantErr: true},
+		{name: "destination exists", source: "new", destination: "existing", wantErr: true, wantSource: "new", wantDestination: "existing", wantSourceExists: true, wantDestinationExists: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			src := filepath.Join(dir, "source")
+			dest := filepath.Join(dir, "destination")
+			if tt.source != "" {
+				if err := os.WriteFile(src, []byte(tt.source), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if tt.destination != "" {
+				if err := os.WriteFile(dest, []byte(tt.destination), 0o600); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			err := copyThenRemove(src, dest)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("copyThenRemove() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			gotSource, sourceErr := os.ReadFile(src)
+			if tt.wantSourceExists {
+				if sourceErr != nil || string(gotSource) != tt.wantSource {
+					t.Errorf("source = %q, %v", gotSource, sourceErr)
+				}
+			} else if !os.IsNotExist(sourceErr) {
+				t.Errorf("source exists: %v", sourceErr)
+			}
+			gotDestination, destinationErr := os.ReadFile(dest)
+			if tt.wantDestinationExists {
+				if destinationErr != nil || string(gotDestination) != tt.wantDestination {
+					t.Errorf("destination = %q, %v", gotDestination, destinationErr)
+				}
+			} else if !os.IsNotExist(destinationErr) {
+				t.Errorf("destination exists: %v", destinationErr)
+			}
+		})
+	}
+}
+
 // fakeIngest records ingested files and answers with err (and id).
 type fakeIngest struct {
 	files []string
