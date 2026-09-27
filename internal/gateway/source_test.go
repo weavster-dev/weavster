@@ -48,7 +48,7 @@ func TestSourceHandler(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			SourceHandler("f", tt.src, tt.ingest).ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, tt.body))
+			SourceHandler("f", tt.src, "", tt.ingest).ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, tt.body))
 			if rec.Code != tt.want || !strings.Contains(rec.Body.String(), tt.bodyIn) {
 				t.Errorf("got %d %q, want %d containing %q", rec.Code, rec.Body.String(), tt.want, tt.bodyIn)
 			}
@@ -78,5 +78,36 @@ func TestPortsInUseListsSources(t *testing.T) {
 	want := `[{"address":":8080","port":8080,"usedBy":"api"},{"address":":9001","port":9001,"usedBy":"flow:adt"}]`
 	if got := strings.TrimSpace(rec.Body.String()); got != want {
 		t.Errorf("got %s, want %s", got, want)
+	}
+}
+
+// TestSourceHandlerBasicAuth: with a username, only requests with that user
+// and password get through; the rest get 401 before path or method checks.
+func TestSourceHandlerBasicAuth(t *testing.T) {
+	h := SourceHandler("f", FlowSource{Type: "http", Path: "/adt", Username: "lab"}, "s3cret", &fakeSourceIngest{res: IngestResult{ID: "m1"}})
+	for _, tt := range []struct {
+		name, user, password, path string
+		basic                      bool
+		want                       int
+	}{
+		{"right", "lab", "s3cret", "/adt", true, http.StatusAccepted},
+		{"wrong password", "lab", "nope", "/adt", true, http.StatusUnauthorized},
+		{"wrong user", "other", "s3cret", "/adt", true, http.StatusUnauthorized},
+		{"no credentials", "", "", "/adt", false, http.StatusUnauthorized},
+		{"no credentials, other path", "", "", "/x", false, http.StatusUnauthorized},
+		{"right, other path", "lab", "s3cret", "/x", true, http.StatusNotFound},
+	} {
+		req := httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader("{}"))
+		if tt.basic {
+			req.SetBasicAuth(tt.user, tt.password)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != tt.want {
+			t.Errorf("%s: %d %s, want %d", tt.name, rec.Code, rec.Body.String(), tt.want)
+		}
+		if tt.want == http.StatusUnauthorized && !strings.HasPrefix(rec.Header().Get("WWW-Authenticate"), "Basic ") {
+			t.Errorf("%s: WWW-Authenticate = %q", tt.name, rec.Header().Get("WWW-Authenticate"))
+		}
 	}
 }

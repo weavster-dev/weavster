@@ -131,7 +131,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
 		sources := newFileSources(flows, ia, eventLogRecorder{events}, logger)
-		listening := newHTTPSources(flows, ia, eventLogRecorder{events}, serverPorts, logger)
+		listening := newHTTPSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), logger)
 		sourcePorts = listening
 		retry = func(ctx context.Context) {
 			polled, served := make(chan struct{}), make(chan struct{})

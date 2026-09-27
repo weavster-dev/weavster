@@ -48,7 +48,7 @@ func TestHTTPSourcesReconcile(t *testing.T) {
 	flows := &fakeFlowList{flows: []gateway.Flow{started("b", b, "/"), started("a", a, "/"),
 		started("busy", held.Addr().String(), "/"), started("api", "127.0.0.1:8080", "/")}}
 	events := &fakeEvents{}
-	s := newHTTPSources(flows, sourceIngest{}, events, map[int]string{8080: "api"}, logger)
+	s := newHTTPSources(flows, sourceIngest{}, events, map[int]string{8080: "api"}, gateway.DefaultTLSOptions(), logger)
 	defer s.closeAll()
 
 	s.reconcile(ctx)

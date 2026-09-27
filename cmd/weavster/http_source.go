@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -42,14 +44,17 @@ type httpSources struct {
 	// reserved are the server's own ports (port -> listener name), never
 	// opened for a flow.
 	reserved map[int]string
+	// tlsOpts are the server's TLS settings, used by sources with a
+	// certificate.
+	tlsOpts gateway.TLSOptions
 
 	mu     sync.Mutex // guards open, which ports-in-use reads
 	open   map[string]*sourceListener
 	failed map[string]gateway.FlowSource // flow id -> source that could not listen (reported once)
 }
 
-func newHTTPSources(flows flowLister, ingest gateway.SourceIngester, events eventRecorder, reserved map[int]string, logger *slog.Logger) *httpSources {
-	return &httpSources{flows: flows, ingest: ingest, events: events, reserved: reserved, logger: logger,
+func newHTTPSources(flows flowLister, ingest gateway.SourceIngester, events eventRecorder, reserved map[int]string, tlsOpts gateway.TLSOptions, logger *slog.Logger) *httpSources {
+	return &httpSources{flows: flows, ingest: ingest, events: events, reserved: reserved, tlsOpts: tlsOpts, logger: logger,
 		open: map[string]*sourceListener{}, failed: map[string]gateway.FlowSource{}}
 }
 
@@ -114,22 +119,18 @@ func (s *httpSources) reconcile(ctx context.Context) {
 // source definition, and retried on the next reconcile.
 func (s *httpSources) start(id string, src gateway.FlowSource) {
 	port, _ := flowdef.SourcePort(&src) // validated with the definition
-	var ln net.Listener
-	err := fmt.Errorf("port %d is the server's %s port", port, s.reserved[port])
-	if s.reserved[port] == "" {
-		ln, err = net.Listen("tcp", src.Address)
-	}
+	ln, password, err := s.listen(src, port)
 	if err != nil {
 		if prev, seen := s.failed[id]; !seen || prev != src {
 			s.failed[id] = src
 			s.logger.Warn("http source: cannot listen", "flow", id, "address", src.Address, "error", err)
-			s.events.record("source.http.failed", id, map[string]string{"address": src.Address})
+			s.events.record("source.http.failed", id, map[string]string{"address": src.Address, "reason": err.Error()})
 		}
 		return
 	}
 	delete(s.failed, id)
 	l := &sourceListener{src: src, port: port, done: make(chan struct{})}
-	handler := gateway.SourceHandler(id, src, s.ingest)
+	handler := gateway.SourceHandler(id, src, password, s.ingest)
 	l.srv = &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			l.handlers.Add(1)
@@ -145,6 +146,38 @@ func (s *httpSources) start(id string, src gateway.FlowSource) {
 	s.open[id] = l
 	s.mu.Unlock()
 	s.logger.Info("http source listening", "flow", id, "address", ln.Addr().String())
+}
+
+// listen opens src's port, over TLS when it has a certificate, and reads its
+// Basic password from the environment (#107 D-58). A secured source whose
+// password or certificate is missing stays closed rather than open without.
+func (s *httpSources) listen(src gateway.FlowSource, port int) (net.Listener, string, error) {
+	if name := s.reserved[port]; name != "" {
+		return nil, "", fmt.Errorf("port %d is the server's %s port", port, name)
+	}
+	password := os.Getenv(src.PasswordEnv)
+	if src.PasswordEnv != "" && password == "" {
+		return nil, "", fmt.Errorf("environment variable %s is not set", src.PasswordEnv)
+	}
+	var tlsCfg *tls.Config
+	if src.CertFile != "" {
+		cert, err := tls.LoadX509KeyPair(src.CertFile, src.KeyFile)
+		if err != nil {
+			return nil, "", fmt.Errorf("tls: %w", err)
+		}
+		if tlsCfg, err = gateway.BuildTLSConfig(s.tlsOpts); err != nil {
+			return nil, "", err
+		}
+		tlsCfg.Certificates = []tls.Certificate{cert}
+	}
+	ln, err := net.Listen("tcp", src.Address)
+	if err != nil {
+		return nil, "", err
+	}
+	if tlsCfg != nil {
+		ln = tls.NewListener(ln, tlsCfg)
+	}
+	return ln, password, nil
 }
 
 // stopped reports whether Serve has returned.
