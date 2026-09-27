@@ -513,7 +513,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>HTTP source: a flow listens on its own address (<code>source: {type: http, address, path, method}</code>) while it is started</td>
 <td>Implemented (wired)</td>
-<td><code>TestHTTPSource</code>, <code>TestSourceHandler</code>, <code>TestCheckSource</code>. No authentication or TLS on the flow's listener yet; one flow source per port; listed by <code>GET /api/v1/flows/ports-in-use</code>. See <a href="../processing-messages/#receive-messages-over-http">Receive messages over HTTP</a>.</td>
+<td><code>TestHTTPSource</code>, <code>TestHTTPSourceSecured</code>, <code>TestSourceHandler</code>, <code>TestSourceHandlerBasicAuth</code>, <code>TestCheckSource</code>. Optional HTTP Basic (<code>username</code>, <code>passwordEnv</code>) and HTTPS (<code>certFile</code>, <code>keyFile</code>); one flow source per port; listed by <code>GET /api/v1/flows/ports-in-use</code>. See <a href="../processing-messages/#receive-messages-over-http">Receive messages over HTTP</a>.</td>
 </tr>
 <tr>
 <td>Other sources and destinations (TCP-MLLP listener, database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>

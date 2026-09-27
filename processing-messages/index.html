@@ -538,6 +538,14 @@ the configured method and path is a message:</p>
 <td><code>method</code></td>
 <td><code>POST</code> (default) or <code>PUT</code>.</td>
 </tr>
+<tr>
+<td><code>username</code>, <code>passwordEnv</code></td>
+<td>Optional, together: senders must use HTTP Basic authentication with this user name (no <code>:</code>, which separates user and password in Basic authentication) and the password in the server's environment variable <code>passwordEnv</code>. The variable name must start with <code>WEAVSTER_SOURCE_</code> followed by capital letters, digits, or <code>_</code>, so a flow cannot use the server's other secrets. The password never goes into the flow definition.</td>
+</tr>
+<tr>
+<td><code>certFile</code>, <code>keyFile</code></td>
+<td>Optional, together: absolute paths of a PEM certificate chain and private key on the server. The port then serves HTTPS only (HTTP/1.1 and HTTP/2), with the server's TLS settings (<code>tls.minVersion</code>). The server's own <code>tls.keyFile</code> is refused: give each flow its own certificate.</td>
+</tr>
 </tbody>
 </table>
 <p>Once the flow is started, send it a message:</p>
@@ -566,9 +574,33 @@ the configured method and path is a message:</p>
   second.</li>
 <li><code>weavster flow ports</code> (<code>GET /api/v1/flows/ports-in-use</code>) lists the open flow ports as
   <code>flow:&lt;id&gt;</code>.</li>
-<li><strong>The listener has no authentication or TLS yet.</strong> Anyone who can reach the address can send
-  the flow messages. Listen on <code>127.0.0.1</code> or a private network, or put a reverse proxy with TLS
-  and authentication in front of it.</li>
+<li>Without <code>username</code>, anyone who can reach the address can send the flow messages, and without
+  <code>certFile</code> messages (and the Basic password) cross the network unencrypted. Use both whenever
+  the port is reachable from other machines, or listen on <code>127.0.0.1</code> only.</li>
+</ul>
+<h4 id="require-a-password-and-https">Require a password and HTTPS</h4>
+<pre><code class="language-bash">export WEAVSTER_SOURCE_LAB_PASSWORD='a long random password'
+weavster server --config weavster.yaml
+</code></pre>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;lab&quot;,
+  &quot;source&quot;: {&quot;type&quot;: &quot;http&quot;, &quot;address&quot;: &quot;:9443&quot;, &quot;path&quot;: &quot;/results&quot;,
+             &quot;username&quot;: &quot;lab&quot;, &quot;passwordEnv&quot;: &quot;WEAVSTER_SOURCE_LAB_PASSWORD&quot;,
+             &quot;certFile&quot;: &quot;/etc/weavster/tls/lab.crt&quot;, &quot;keyFile&quot;: &quot;/etc/weavster/tls/lab.key&quot;}
+}
+</code></pre>
+<pre><code class="language-bash">curl -s -u 'lab:a long random password' https://weavster.example.com:9443/results -d '{&quot;result&quot;:&quot;ok&quot;}'
+</code></pre>
+<ul>
+<li>A request without the right user name and password gets <code>401</code> with a
+  <code>WWW-Authenticate: Basic</code> header, before the path or method is checked.</li>
+<li>The password and certificate are read when the port opens. After changing the variable (restart
+  the server) or replacing the certificate files, stop and start the flow to use them.</li>
+<li>If the variable is not set (or empty), or the certificate cannot be loaded, the port stays
+  closed: the reason is logged and recorded in a <code>source.http.failed</code> event (field <code>reason</code>; a
+  new reason is recorded again), and opening is tried again every second.</li>
+<li>The server reads the certificate and key files with its own permissions; only give
+  <code>flows:edit</code> to users you trust with the files it can read.</li>
 </ul>
 <h2 id="2-deploy-and-start-the-flow">2. Deploy and start the flow</h2>
 <p>A new flow is <code>undeployed</code> and rejects messages until you deploy and start it (permission
@@ -1054,7 +1086,7 @@ again as a new message instead, use <code>reprocess</code>.</p>
 <li>Only <code>http</code> and <code>file</code> destinations are available.</li>
 <li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a> and
   <a href="#receive-messages-over-http">http sources</a>; TCP/MLLP and database sources are not available
-  yet, and http sources have no authentication or TLS.</li>
+  yet.</li>
 <li>A <code>file</code> destination writes wherever <code>dir</code> points, with the server's permissions, and an
   <code>http</code> destination can target any address the server can reach, including internal ones.
   Only give <code>flows:edit</code> to trusted users.</li>
