@@ -718,7 +718,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H &quot;Weavster-Archive-Ke
 <ul>
 <li><code>transformed</code> counts messages that got past the transform (sent plus queued).</li>
 <li><code>destinations</code> counts successful and failed deliveries per destination.</li>
-<li><code>lastMessageAt</code> is the arrival time of the newest message, <code>null</code> until the first one.</li>
+<li><code>lastMessageAt</code> is the arrival time of the newest message; it is left out until the first one.</li>
 <li>Deleting a flow clears its counters, so a new flow with the same <code>id</code> starts at zero.</li>
 <li>Add <code>?lifetime=true</code> for lifetime totals, which are kept when you reset the current counters.</li>
 <li><code>GET /api/v1/flows/stats</code> returns every flow's statistics at once, keyed by flow id (also with
