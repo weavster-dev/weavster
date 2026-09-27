@@ -49,6 +49,8 @@ func (p PasswordPolicy) Validate(password string) error {
 			lower++
 		case unicode.IsDigit(r):
 			numeric++
+		case unicode.IsLetter(r):
+			// Letters without case (titlecase, CJK, …) are not special.
 		default:
 			special++
 		}

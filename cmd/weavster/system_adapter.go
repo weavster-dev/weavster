@@ -2,6 +2,7 @@ package main
 
 import (
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rsa"
 	"crypto/tls"
 	"fmt"
@@ -24,7 +25,8 @@ type systemAdapter struct {
 	cfg     serverconfig.Config
 	policy  auth.PasswordPolicy
 	started time.Time
-	// certKey is the certificate's key type ("rsa", "ecdsa"), "" if unknown.
+	// certKey is the TLS 1.2 suite family the certificate can sign ("rsa",
+	// "ecdsa"); "" when unknown, and then no 1.2 suite is claimed.
 	certKey string
 }
 
@@ -35,7 +37,7 @@ func newSystemAdapter(cfg serverconfig.Config, policy auth.PasswordPolicy) syste
 			switch cert.PrivateKey.(type) {
 			case *rsa.PrivateKey:
 				s.certKey = "rsa"
-			case *ecdsa.PrivateKey:
+			case *ecdsa.PrivateKey, ed25519.PrivateKey: // Go signs TLS 1.2 ECDSA suites with Ed25519 too
 				s.certKey = "ecdsa"
 			}
 		}
@@ -65,7 +67,7 @@ func (s systemAdapter) tlsStatus() gateway.TLSStatus {
 		st.Protocols = append(st.Protocols, "TLS 1.2")
 		for _, id := range opts.CipherSuites {
 			name := tls.CipherSuiteName(id)
-			if s.certKey == "" || strings.Contains(name, "_"+strings.ToUpper(s.certKey)+"_") {
+			if s.certKey != "" && strings.Contains(name, "_"+strings.ToUpper(s.certKey)+"_") {
 				st.Ciphers = append(st.Ciphers, name)
 			}
 		}

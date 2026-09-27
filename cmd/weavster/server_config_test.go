@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"io"
 	"math/big"
@@ -130,6 +131,39 @@ func TestServerConfigTLS(t *testing.T) {
 	if resp, err := old.Get("https://" + tlsAddr + "/api/openapi.yaml"); err == nil {
 		_ = resp.Body.Close()
 		t.Error("TLS 1.2 client connected despite minVersion 1.3")
+	}
+}
+
+// TestSystemTLSMatchesListener: over the real HTTPS listener, the suite a
+// TLS 1.2 client negotiates is one /api/v1/system reports, and no suite for
+// another key type is claimed.
+func TestSystemTLSMatchesListener(t *testing.T) {
+	dir := t.TempDir()
+	certFile, keyFile, pool := selfSignedCert(t, dir) // ECDSA
+	addr, tlsAddr := freeAddr(t), freeAddr(t)
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\", tlsAddress: \""+tlsAddr+"\"}\n"+
+		"tls: {certFile: \""+certFile+"\", keyFile: \""+keyFile+"\", minVersion: \"1.2\"}\n")
+	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
+	defer stop()
+
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MaxVersion: tls.VersionTLS12}}}
+	req, _ := http.NewRequest(http.MethodGet, "https://"+tlsAddr+"/api/v1/system", nil)
+	req.Header.Set(gateway.MarkerHeader, gateway.MarkerValue)
+	req.SetBasicAuth(bootstrapAdmin, testAdminPassword)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var status struct {
+		TLS struct{ Ciphers []string }
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		t.Fatal(err)
+	}
+	reported := strings.Join(status.TLS.Ciphers, ",")
+	if negotiated := tls.CipherSuiteName(resp.TLS.CipherSuite); !strings.Contains(reported, negotiated) || strings.Contains(reported, "_RSA_") {
+		t.Errorf("negotiated %s; reported %s", negotiated, reported)
 	}
 }
 

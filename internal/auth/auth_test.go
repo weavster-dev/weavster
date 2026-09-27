@@ -80,6 +80,12 @@ func TestPasswordPolicy(t *testing.T) {
 	if err := pol.Validate("short1A"); err == nil {
 		t.Error("short password must be rejected")
 	}
+	// Titlecase and caseless letters are letters, not special characters.
+	for _, pw := range []string{"ǅabcdef1A", "字abcdef1A"} {
+		if err := pol.Validate(pw); err != nil {
+			t.Errorf("%q: %v", pw, err)
+		}
+	}
 	// Length counts characters: five two-byte letters are five, not ten.
 	if err := (PasswordPolicy{MinLength: 8}).Validate("ééééé"); err == nil {
 		t.Error("5 characters accepted as 8")

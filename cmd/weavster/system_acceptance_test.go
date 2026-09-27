@@ -66,10 +66,11 @@ func TestSystemInfo(t *testing.T) {
 	if _, body, _ := plain.do(http.MethodGet, "/api/v1/system", "", viewer); !strings.Contains(body, `"tls":{"enabled":false,"protocols":[],"ciphers":[]}`) {
 		t.Errorf("no TLS = %s", body)
 	}
-	// TLS 1.2 also lists the 1.2 suites.
+	// TLS 1.2 is listed; its suites depend on the certificate
+	// (TestSystemTLSMatchesListener checks them over the real listener).
 	cfg.TLS.MinVersion = "1.2"
 	tls12 := startComposed(t, cfg, io.Discard)
-	if _, body, _ := tls12.do(http.MethodGet, "/api/v1/system", "", viewer); !strings.Contains(body, `"protocols":["TLS 1.2","TLS 1.3"]`) || !strings.Contains(body, "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256") {
+	if _, body, _ := tls12.do(http.MethodGet, "/api/v1/system", "", viewer); !strings.Contains(body, `"protocols":["TLS 1.2","TLS 1.3"]`) {
 		t.Errorf("TLS 1.2 = %s", body)
 	}
 }
@@ -100,7 +101,7 @@ func TestSystemAdapter(t *testing.T) {
 	}{
 		{"rsa", "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", 5},
 		{"ecdsa", "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", 5},
-		{"", "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384", 7},
+		{"", "TLS_AES_128_GCM_SHA256", 3}, // unknown key: no 1.2 suite claimed
 	} {
 		st := (systemAdapter{cfg: cfg, certKey: tt.key}).tlsStatus()
 		if len(st.Ciphers) != tt.n || !strings.Contains(strings.Join(st.Ciphers, ","), tt.want) {

@@ -22,7 +22,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1
 - `tls` describes the HTTPS listener as configured (`listen.tlsAddress`, `tls.minVersion`; see
   [Server configuration](server-config.md)). Without an HTTPS listener it is
   `{"enabled":false,"protocols":[],"ciphers":[]}`. With `minVersion: "1.2"` the list also has
-  TLS 1.2 and the ECDHE AES-GCM suites that match the certificate's key (RSA or ECDSA).
+  TLS 1.2 and the ECDHE AES-GCM suites that match the certificate's key (RSA, or ECDSA for ECDSA and Ed25519 keys).
 
 ## Other requests
 
