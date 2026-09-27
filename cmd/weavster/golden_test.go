@@ -171,7 +171,10 @@ func checkGoldenCoverage(t *testing.T) {
 	for _, gc := range goldenCases {
 		for _, line := range strings.Split(gc.lines, "\n") {
 			words := strings.Fields(line)
-			if gc.interactive && len(words) > 0 && (words[0] == "quit" || words[0] == "exit") {
+			if len(words) == 0 || strings.HasPrefix(words[0], "#") {
+				continue // blank lines and comments run nothing
+			}
+			if gc.interactive && (words[0] == "quit" || words[0] == "exit") {
 				used[words[0]] = true
 				break // the shell stops here; later lines never run
 			}
