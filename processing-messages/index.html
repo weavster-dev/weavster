@@ -283,6 +283,10 @@ below, in order, on the message as a JSON object.</p>
 <td><code>responseSelector</code></td>
 <td>The destination whose reply is returned to the sender; see <a href="#return-a-destinations-reply">Return a destination's reply</a>.</td>
 </tr>
+<tr>
+<td><code>source</code></td>
+<td>Where the flow reads messages on its own; see <a href="#read-files-from-a-directory">Read files from a directory</a>. Without it, messages arrive only through the API.</td>
+</tr>
 </tbody>
 </table>
 <h3 id="destinations"><code>destinations</code></h3>
@@ -433,6 +437,74 @@ response to <a href="#3-send-a-message"><code>POST /api/v1/flows/{id}/messages</
 </code></pre>
 <p><code>usedBy</code> is <code>api</code> for <code>listen.address</code> and <code>api-tls</code> for <code>listen.tlsAddress</code>. Flows do not
 listen on their own ports yet, so no flow appears in this list.</p>
+<h3 id="read-files-from-a-directory">Read files from a directory</h3>
+<p>A flow with a file <code>source</code> picks up the files that appear in a directory, sends each one through
+the flow as a message, and then deletes it (or moves it into <code>moveTo</code>):</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;adt&quot;,
+  &quot;source&quot;: {&quot;type&quot;: &quot;file&quot;, &quot;dir&quot;: &quot;/var/lib/weavster/in/adt&quot;, &quot;pattern&quot;: &quot;*.json&quot;,
+             &quot;pollIntervalMs&quot;: 1000, &quot;moveTo&quot;: &quot;/var/lib/weavster/done/adt&quot;},
+  &quot;destinations&quot;: [{&quot;name&quot;: &quot;ehr&quot;, &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://ehr.example.com/in&quot;}]
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>file</code>.</td>
+</tr>
+<tr>
+<td><code>dir</code></td>
+<td>Required. Absolute directory to read. It does not have to exist yet.</td>
+</tr>
+<tr>
+<td><code>pattern</code></td>
+<td>File-name glob (<code>*.json</code>, <code>ADT_*.hl7</code>); default <code>*</code>. No path separators.</td>
+</tr>
+<tr>
+<td><code>pollIntervalMs</code></td>
+<td>How often the directory is read: 100–3600000, default 1000.</td>
+</tr>
+<tr>
+<td><code>moveTo</code></td>
+<td>Absolute directory processed files are moved into (created if missing; a name that is already there gets the message id appended). Without it, processed files are deleted.</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>The directory is read only while the flow is <code>started</code>. Stopping, pausing, or deleting the flow
+  stops reading; starting it again picks up what arrived meanwhile.</li>
+<li>Only regular files directly in <code>dir</code> are read: subdirectories, symbolic links, and hidden files
+  (names starting with <code>.</code>, such as <code>rsync</code> temporary files and <code>.DS_Store</code>) are skipped. A
+  pattern starting with <code>.</code> reads hidden files.</li>
+<li>A directory can be read by one flow only; a second flow with the same <code>dir</code> is refused.</li>
+<li>Each poll reads at most 100 files, so one busy directory does not hold up other flows; the
+  rest are read at the next poll.</li>
+<li>A file is read once it has not changed for a second, so a file still being written is not taken
+  half-way. Writing to a temporary name and renaming it into <code>dir</code> is safest.</li>
+<li>Files are read in name order. Each message has the metadata <code>source.file</code> with the file name.</li>
+<li>A file becomes a message exactly like one sent with the API (the same checks, transform, and
+  delivery). After the message is stored, the file is deleted or moved. If the server stops
+  between the two, the file is read again when it starts: delivery is at least once, so
+  destinations should tolerate a repeat. If the file cannot be deleted or moved (for example
+  the server may read but not write the directory), it is logged and not read again until it
+  changes.</li>
+<li>A file the flow refuses (larger than 10 MiB, or not a JSON object when the flow has a transform)
+  is moved into <code>moveTo/rejected</code>, or, without <code>moveTo</code>, left where it is and skipped until it
+  changes. Either way a <code>source.file.rejected</code> <a href="#5-statistics-and-events">event</a> records the file
+  and the reason.</li>
+<li>A directory that cannot be read is logged (once per distinct error) and read again at the next
+  interval. A file that cannot be read is logged once and skipped until it changes.</li>
+<li><code>dir</code> must not be <code>moveTo/rejected</code>, where refused files go.</li>
+<li>The server reads and moves files with its own permissions; only give <code>flows:edit</code> to users you
+  trust with the directories it can reach.</li>
+</ul>
 <h2 id="2-deploy-and-start-the-flow">2. Deploy and start the flow</h2>
 <p>A new flow is <code>undeployed</code> and rejects messages until you deploy and start it (permission
 <code>flows:deploy</code>). See <a href="../flow-lifecycle/">Flow lifecycle</a>.</p>
@@ -915,7 +987,8 @@ again as a new message instead, use <code>reprocess</code>.</p>
   and only the newest 10,000 events are kept.</li>
 <li>The first delivery attempt runs while your request waits; retries run in the background.</li>
 <li>Only <code>http</code> and <code>file</code> destinations are available.</li>
-<li>Messages enter only through this API; flows do not listen on their own ports or read files yet.</li>
+<li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a>; flows do
+  not listen on their own ports yet.</li>
 <li>A <code>file</code> destination writes wherever <code>dir</code> points, with the server's permissions, and an
   <code>http</code> destination can target any address the server can reach, including internal ones.
   Only give <code>flows:edit</code> to trusted users.</li>

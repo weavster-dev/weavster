@@ -506,9 +506,14 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestPipelineEndToEnd</code></td>
 </tr>
 <tr>
-<td>Other sources and destinations (file/HTTP/TCP-MLLP listeners, database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>
+<td>File source: a flow polls a directory (<code>source: {type: file, dir, pattern, pollIntervalMs, moveTo}</code>); files deleted or moved after the message is stored; rejected files moved aside or skipped</td>
+<td>Implemented (wired)</td>
+<td><code>TestFileSource</code>, <code>TestCheckSource</code>. At-least-once; only while the flow is started; regular files directly in <code>dir</code>, not symlinks or subdirectories. See <a href="../processing-messages/#read-files-from-a-directory">Read files from a directory</a>.</td>
+</tr>
+<tr>
+<td>Other sources and destinations (HTTP and TCP-MLLP listeners, database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>
 <td>Library-only</td>
-<td>Flows do not listen on their own ports or poll anything.</td>
+<td>Flows do not listen on their own ports yet; only file sources poll.</td>
 </tr>
 <tr>
 <td>Per-flow and per-destination statistics (<code>GET /api/v1/flows/{id}/stats</code>)</td>
@@ -802,9 +807,9 @@ not yet true.</p>
 <tbody>
 <tr>
 <td>File</td>
-<td>library</td>
 <td>wired</td>
-<td>at-least-once (a retry rewrites the same file name)</td>
+<td>wired</td>
+<td>at-least-once (a retry rewrites the same file name; a source file is read again if the server stops between storing the message and removing the file)</td>
 <td>no</td>
 </tr>
 <tr>
