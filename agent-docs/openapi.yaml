@@ -813,7 +813,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, required: [value], properties: {value: {type: string, maxLength: 65536}}}}
+          application/json: {schema: {type: object, required: [value], properties: {value: {type: string, description: "UTF-8 text of at most 64 KiB (65536 bytes)"}}}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{key, value}", content: {application/json: {schema: {type: object, properties: {key: {type: string}, value: {type: string}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
