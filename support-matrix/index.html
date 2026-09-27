@@ -503,7 +503,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>http</code> and <code>file</code> destinations</td>
 <td>Implemented (wired)</td>
-<td><code>TestPipelineEndToEnd</code></td>
+<td><code>TestPipelineEndToEnd</code>, <code>TestHTTPDestinationOptions</code>. <code>http</code> takes <code>method</code> (POST/PUT/PATCH), <code>timeoutMs</code>, and <code>maxRedirects</code> (default 0; only 307/308, never https to http).</td>
 </tr>
 <tr>
 <td>File source: a flow polls a directory (<code>source: {type: file, dir, pattern, pollIntervalMs, moveTo}</code>); files deleted or moved after the message is stored; rejected files moved aside or skipped</td>
@@ -513,7 +513,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>HTTP source: a flow listens on its own address (<code>source: {type: http, address, path, method}</code>) while it is started</td>
 <td>Implemented (wired)</td>
-<td><code>TestHTTPSource</code>, <code>TestHTTPSourceSecured</code>, <code>TestSourceHandler</code>, <code>TestSourceHandlerBasicAuth</code>, <code>TestCheckSource</code>. Optional HTTP Basic (<code>username</code>, <code>passwordEnv</code>) and HTTPS (<code>certFile</code>, <code>keyFile</code>); one flow source per port; listed by <code>GET /api/v1/flows/ports-in-use</code>. See <a href="../processing-messages/#receive-messages-over-http">Receive messages over HTTP</a>.</td>
+<td><code>TestHTTPSource</code>, <code>TestHTTPSourceSecured</code>, <code>TestSourceHandler</code>, <code>TestSourceHandlerBasicAuth</code>, <code>TestCheckSource</code>. Optional HTTP Basic (<code>username</code>, <code>passwordEnv</code>), HTTPS (<code>certFile</code>, <code>keyFile</code>), and <code>readTimeoutMs</code> (<code>TestHTTPSourceReadTimeout</code>); one flow source per port; listed by <code>GET /api/v1/flows/ports-in-use</code>. See <a href="../processing-messages/#receive-messages-over-http">Receive messages over HTTP</a>.</td>
 </tr>
 <tr>
 <td>Other sources and destinations (TCP-MLLP listener, database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>

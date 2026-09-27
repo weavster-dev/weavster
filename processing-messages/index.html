@@ -304,15 +304,27 @@ below, in order, on the message as a JSON object.</p>
 </tr>
 <tr>
 <td><code>type</code></td>
-<td><code>http</code> (POST to <code>url</code>) or <code>file</code> (write one file per message into <code>dir</code>, named by message ID).</td>
+<td><code>http</code> (send to <code>url</code>) or <code>file</code> (write one file per message into <code>dir</code>, named by message ID).</td>
 </tr>
 <tr>
 <td><code>url</code></td>
-<td>Required for <code>http</code>: an absolute <code>http://</code> or <code>https://</code> URL. Each delivery is a <code>POST</code> with <code>Content-Type: application/json</code> (transformed messages) or <code>application/octet-stream</code> (passthrough), and it times out after 30 seconds. The request carries an <code>Idempotency-Key</code> header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates.</td>
+<td>Required for <code>http</code>: an absolute <code>http://</code> or <code>https://</code> URL. Each delivery is a request (<code>POST</code> unless <code>method</code> says otherwise) with <code>Content-Type: application/json</code> (transformed messages) or <code>application/octet-stream</code> (passthrough). The request carries an <code>Idempotency-Key</code> header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates.</td>
 </tr>
 <tr>
 <td><code>dir</code></td>
 <td>Required for <code>file</code>. Created if missing.</td>
+</tr>
+<tr>
+<td><code>method</code></td>
+<td><code>http</code> only: <code>POST</code> (default), <code>PUT</code>, or <code>PATCH</code>.</td>
+</tr>
+<tr>
+<td><code>timeoutMs</code></td>
+<td><code>http</code> only: time allowed for one delivery request, including reading the response, 1000–120000 ms; default 30000. A request that takes longer is a failed attempt and is retried. Stopping or pausing the flow, and stopping the server, wait for deliveries in progress, so keep it as short as the receiver allows.</td>
+</tr>
+<tr>
+<td><code>maxRedirects</code></td>
+<td><code>http</code> only: how many redirects to follow, 0–10; default 0. See <a href="#redirects">Redirects</a>.</td>
 </tr>
 <tr>
 <td><code>transform</code></td>
@@ -324,6 +336,21 @@ below, in order, on the message as a JSON object.</p>
 </tr>
 </tbody>
 </table>
+<h3 id="redirects">Redirects</h3>
+<p>By default an <code>http</code> destination does not follow redirects: a <code>3xx</code> reply is a failed delivery,
+retried and then dead-lettered like any other failure, so a moved endpoint shows up in the
+message's errors (for example <code>Found: redirect to https://new.example.com/in not followed</code>)
+instead of losing messages. To follow them, set <code>maxRedirects</code>:</p>
+<pre><code class="language-json">{&quot;name&quot;: &quot;ehr&quot;, &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://ehr.example.com/in&quot;, &quot;method&quot;: &quot;PUT&quot;,
+ &quot;timeoutMs&quot;: 10000, &quot;maxRedirects&quot;: 2}
+</code></pre>
+<ul>
+<li>Only <code>307</code> and <code>308</code> redirects are followed; they repeat the same method and body.</li>
+<li><code>301</code>, <code>302</code>, and <code>303</code> are never followed, because clients turn them into a <code>GET</code> without the
+  message: the delivery fails with that status. Update <code>url</code> to the new address instead.</li>
+<li>A redirect from <code>https://</code> to <code>http://</code> is never followed.</li>
+<li>Each redirect counts toward <code>maxRedirects</code>; one more is a failed delivery.</li>
+</ul>
 <h3 id="per-destination-transforms-and-filters">Per-destination transforms and filters</h3>
 <p>A destination's <code>transform</code> runs on the flow's output, just before delivery to that
 destination. The other destinations are not affected. A <code>filter</code> step in it drops the message
@@ -541,6 +568,10 @@ the configured method and path is a message:</p>
 <tr>
 <td><code>username</code>, <code>passwordEnv</code></td>
 <td>Optional, together: senders must use HTTP Basic authentication with this user name (no <code>:</code>, which separates user and password in Basic authentication) and the password in the server's environment variable <code>passwordEnv</code>. The variable name must start with <code>WEAVSTER_SOURCE_</code> followed by capital letters, digits, or <code>_</code>, so a flow cannot use the server's other secrets. The password never goes into the flow definition.</td>
+</tr>
+<tr>
+<td><code>readTimeoutMs</code></td>
+<td>Time allowed to read one request, headers and body, 1000–600000 ms; default 60000. The headers must also arrive within 10 seconds (or <code>readTimeoutMs</code>, if shorter). A sender slower than that gets its connection closed.</td>
 </tr>
 <tr>
 <td><code>certFile</code>, <code>keyFile</code></td>
