@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/weavster-dev/weavster/internal/artifact"
 )
 
 // ConfigFormat names the full-configuration document (spec §2.9).
@@ -162,7 +164,7 @@ func checkConfigDocument(doc configDocument, withConfigMap bool) error {
 	}
 	for _, sn := range doc.Snippets {
 		if sn.Library != "" && !libs[sn.Library] {
-			if err := checkName(sn.Library); err != nil {
+			if err := artifact.CheckName(sn.Library); err != nil {
 				return fmt.Errorf("snippet %s: library: %w", sn.Name, err)
 			}
 		}
@@ -171,7 +173,7 @@ func checkConfigDocument(doc configDocument, withConfigMap bool) error {
 		return err
 	}
 	for _, a := range doc.Alerts {
-		if err := checkAlert(a); err != nil {
+		if err := artifact.CheckAlert(a); err != nil {
 			return err
 		}
 	}

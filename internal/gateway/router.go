@@ -155,6 +155,9 @@ func (s *Server) Router() http.Handler {
 				r.With(edit).Put("/"+k.kind+"/{name}", s.handleItemPut(k))
 				r.With(edit).Delete("/"+k.kind+"/{name}", s.handleItemDelete(k))
 			}
+			// Validation reads nothing from the server, but parsing up to
+			// 50 MiB is work: it needs flows:edit like the other large bodies.
+			r.With(s.require("flows", "edit")).Post("/config/validate", s.handleConfigValidate)
 			// The config map and deploying need their permissions only when
 			// the request touches them.
 			r.With(s.require("flows", "view"), s.require("alerts", "edit"), s.require("snippets", "edit"),

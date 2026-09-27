@@ -600,6 +600,19 @@ paths:
         "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/config/validate:
+    post:
+      summary: "Check a config-as-code document (YAML or JSON) without changing anything (requires flows:edit)"
+      requestBody:
+        required: true
+        content:
+          application/yaml: {schema: {type: string}}
+          application/json: {schema: {type: object}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "Valid: {valid: true, counts}", content: {application/json: {schema: {$ref: "#/components/schemas/ConfigValidation"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "Invalid: the message names every problem", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/config/export:
     get:
       summary: "The full configuration: flows, alerts, snippets, snippet libraries, global scripts, settings, and optionally the config map; never users (requires flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit; configmap:edit with includeConfigMap)"
@@ -985,6 +998,21 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    ConfigValidation:
+      type: object
+      required: [valid, counts]
+      properties:
+        valid: {type: boolean}
+        counts:
+          type: object
+          properties:
+            flows: {type: integer}
+            alerts: {type: integer}
+            snippets: {type: integer}
+            snippetLibraries: {type: integer}
+            scripts: {type: integer}
+            configmap: {type: integer}
+            settings: {type: integer}
     ConfigBundle:
       type: object
       additionalProperties: false

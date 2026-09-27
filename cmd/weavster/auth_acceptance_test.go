@@ -62,6 +62,7 @@ var protectedRoutes = []struct {
 	{http.MethodPut, "/api/v1/scripts/s", "scripts:edit"},
 	{http.MethodDelete, "/api/v1/settings/s", "settings:edit"},
 	{http.MethodDelete, "/api/v1/messages?all=true", "messages:delete"},
+	{http.MethodPost, "/api/v1/config/validate", "flows:edit"},
 	{http.MethodGet, "/api/v1/config/export", "flows:view,alerts:edit,snippets:edit,scripts:edit,settings:edit"},
 	{http.MethodGet, "/api/v1/config/export?includeConfigMap=true", "flows:view,alerts:edit,snippets:edit,scripts:edit,settings:edit,configmap:edit"},
 	{http.MethodPost, "/api/v1/config/import", "flows:edit,alerts:edit,snippets:edit,scripts:edit,settings:edit,flows:deploy"},

@@ -152,3 +152,31 @@ func TestUniqueStaysWithinLimit(t *testing.T) {
 		t.Errorf("unique = %q (%d chars)", got, len(got))
 	}
 }
+
+// TestRunRenamesInvalidItemNames: legacy snippet, script, and config-map
+// names with spaces are renamed (and flagged) rather than failing the load.
+func TestRunRenamesInvalidItemNames(t *testing.T) {
+	doc := `<weavster-export>
+  <snippets><snippet name="Patient Name">PID.5</snippet><snippet name="Patient-Name">x</snippet></snippets>
+  <scripts><script name="on deploy">log()</script></scripts>
+  <configmap><entry key="db url" value="postgres://db"/></configmap>
+</weavster-export>`
+	store := config.NewMemStore()
+	rep, err := Run(context.Background(), []byte(doc), Options{}, store, false)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	arts, _ := store.List(context.Background())
+	for _, key := range []string{"snippet/Patient-Name", "snippet/Patient-Name-2", "script/on-deploy", "configmap/db-url"} {
+		if _, ok := arts[key]; !ok {
+			t.Errorf("%s missing: %v", key, arts)
+		}
+	}
+	want := map[string]bool{"snippet:Patient Name:renamed:Patient-Name": true, "script:on deploy:renamed:on-deploy": true, "configmap:db url:renamed:db-url": true}
+	for _, r := range rep.ReviewRequired {
+		delete(want, r)
+	}
+	if len(want) != 0 {
+		t.Errorf("review = %v; missing %v", rep.ReviewRequired, want)
+	}
+}

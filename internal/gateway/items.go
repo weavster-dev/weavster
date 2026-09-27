@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
+
+	"github.com/weavster-dev/weavster/internal/artifact"
 )
 
 // ItemStore keeps named JSON values per kind (the config map, global
@@ -38,23 +39,12 @@ var itemKinds = []itemKind{
 	{kind: "settings", resource: "settings", label: "setting"},
 }
 
-// validItemName: 1–128 of A-Z a-z 0-9 . _ -.
-var validItemName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
-
 // maxItemsBody caps an item request body.
 const maxItemsBody = 10 << 20
 
-// checkName validates an item name; the error is safe to show.
-func checkName(name string) error {
-	if !validItemName.MatchString(name) {
-		return fmt.Errorf("name %q must be 1-128 characters from A-Z a-z 0-9 . _ -", name)
-	}
-	return nil
-}
-
 // checkItem validates a name and value for kind k; the error is safe to show.
 func (k itemKind) checkItem(name string, value json.RawMessage) error {
-	if err := checkName(name); err != nil {
+	if err := artifact.CheckName(name); err != nil {
 		return err
 	}
 	if string(value) == "null" {

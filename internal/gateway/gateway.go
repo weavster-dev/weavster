@@ -280,6 +280,8 @@ type Config struct {
 	Passwords PasswordChanger
 	Users     UserAdmin
 	Items     ItemStore
+	// ConfigValidator checks config-as-code documents.
+	ConfigValidator ConfigValidator
 	// Alerts keeps alert definitions.
 	Alerts AlertStore
 	// Snippets keeps code snippets and snippet libraries.

@@ -94,6 +94,8 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return userCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	case "snippet": // spec §3.2: snippet [library] list|import|export|remove
 		return snippetCommand(ctx, client, fields[1:], stdout, stderr, debug)
+	case "config": // config validate "path" (D-04)
+		return configCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	case "exportcfg": // spec §3.2: exportcfg "path" [overwriteconfigmap]
 		return exportConfig(ctx, client, fields[1:], stdout, stderr, debug)
 	case "importcfg": // spec §3.2: importcfg "path" [nodeploy] [overwriteconfigmap]
@@ -129,7 +131,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate "path", exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -690,5 +692,29 @@ func importConfig(ctx context.Context, client Client, args []string, stdout, std
 	if len(res.Deployed) > 0 {
 		_, _ = fmt.Fprintf(stdout, "deployed %s\n", strings.Join(res.Deployed, ", "))
 	}
+	return 0
+}
+
+// configCommand runs config-as-code commands: validate checks a YAML or
+// JSON config document on the server without changing anything.
+func configCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	if len(args) != 2 || args[0] != "validate" {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: config validate \"path\"")
+		return 2
+	}
+	doc, err := os.ReadFile(args[1])
+	if err == nil {
+		doc, err = client.Call(ctx, http.MethodPost, "/api/v1/config/validate", doc)
+	}
+	var res struct{ Counts gateway.ConfigSummary }
+	if err == nil {
+		err = json.Unmarshal(doc, &res)
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	n := res.Counts
+	_, _ = fmt.Fprintf(stdout, "%s is valid: %d flows, %d alerts, %d snippets, %d snippet libraries, %d scripts, %d config map entries, %d settings\n",
+		args[1], n.Flows, n.Alerts, n.Snippets, n.SnippetLibraries, n.Scripts, n.ConfigMap, n.Settings)
 	return 0
 }
