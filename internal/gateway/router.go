@@ -80,6 +80,7 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(apiVersion)
 	r.Use(SecurityHeaders)
+	r.Use(negotiateXML)
 	// BlockTrace refuses TRACE before routing; say which methods the path
 	// does allow (RFC 9110 requires Allow on 405).
 	r.Use(func(next http.Handler) http.Handler {

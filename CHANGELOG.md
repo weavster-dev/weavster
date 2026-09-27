@@ -75,6 +75,7 @@ All notable changes to this project are documented here, following
 - System information (#245): `GET /api/v1/system/about`, `/password-requirements`, `/resources`, and `/guid`.
 - Dynamic lookups (#249): `/api/v1/lookups` groups of text key → text value with prefix matching, get, exists, batch, put, delete, and import (merge or replace); SQLite-durable (migration 7); permissions `lookups:view` and `lookups:edit`. Flows do not read lookups yet.
 - Message trends (#251): `GET /api/v1/messages/trends?from=&to=&interval=hour|day[&flowId=]` counts the stored messages per bucket and status, empty buckets included.
+- XML responses (#253): every JSON response, errors included, is sent as XML when the client prefers it (`Accept: application/xml`), with a documented mapping; request bodies stay JSON.
 
 ### Changed
 

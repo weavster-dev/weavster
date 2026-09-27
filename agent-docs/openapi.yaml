@@ -5,6 +5,9 @@ info:
   description: >
     REST API for the Weavster message-oriented integration platform.
     Errors use the JSON error envelope (components.schemas.Error).
+    Every JSON response is also available as XML: send Accept application/xml
+    (ranked above JSON). The mapping is described in the user docs (JSON and
+    XML); request bodies are JSON only.
     Every /api/v1 path is also served unversioned (/api/flows), resolving to
     the latest version; replies carry Weavster-API-Version.
 paths:
