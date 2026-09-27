@@ -26,7 +26,7 @@ func (f fixedTrends) MessageTrends(_ context.Context, q MessageTrendQuery) (map[
 
 func TestMessageTrendsHandler(t *testing.T) {
 	var got MessageTrendQuery
-	ok := Config{Trends: fixedTrends{got: &got}}
+	ok := Config{Trends: fixedTrends{got: &got}, Flows: &fakeFlows{flows: []Flow{{ID: "a"}}}}
 	for _, tt := range []struct {
 		name, query string
 		cfg         Config
@@ -38,6 +38,7 @@ func TestMessageTrendsHandler(t *testing.T) {
 		{"unknown status counted", "?from=2026-09-27T10:00:00Z&to=2026-09-27T12:00:00Z", ok, http.StatusOK, `"retrying":1`},
 		{"centuries", "?from=0001-01-01T00:00:01Z&to=9999-01-01T00:00:00Z", ok, http.StatusBadRequest, "more than 1000 buckets"},
 		{"flow lookup fails", "?from=2026-09-27T10:00:00Z&to=2026-09-27T11:00:00Z&flowId=nope", Config{Trends: fixedTrends{got: &got}, Flows: &errFlows{}}, http.StatusInternalServerError, "internal error"},
+		{"flow filter without flows", "?from=2026-09-27T10:00:00Z&to=2026-09-27T11:00:00Z&flowId=a", Config{Trends: fixedTrends{got: &got}}, http.StatusServiceUnavailable, "flows unavailable"},
 		{"days", "?from=2026-09-01T00:00:00Z&to=2026-09-08T00:00:00Z&interval=day", ok, http.StatusOK, `"start":"2026-09-07T00:00:00Z"`},
 		{"missing range", "", ok, http.StatusBadRequest, "from and to are required"},
 		{"to before from", "?from=2026-09-27T12:00:00Z&to=2026-09-27T12:00:00Z", ok, http.StatusBadRequest, "to must be after from"},

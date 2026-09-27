@@ -562,6 +562,7 @@ paths:
                     total: {type: integer}
                     statuses: {type: object, additionalProperties: {type: integer}, description: "Every status (received, transformed, queued, sent, filtered, errored, dead-lettered) with its count"}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "404": {description: flowId names no flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "Missing or bad from/to, a bad interval, or more than 1000 buckets", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/configmap:
     get:

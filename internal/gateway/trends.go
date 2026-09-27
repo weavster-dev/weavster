@@ -69,7 +69,12 @@ func (s *Server) handleMessageTrends(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	n := int((q.To.Sub(q.From) + q.Interval - 1) / q.Interval) // buckets, the last one may be shorter
-	if q.FlowID != "" && s.cfg.Flows != nil {
+	if q.FlowID != "" {
+		// An unknown flow is 404, never a series of zeros.
+		if s.cfg.Flows == nil {
+			writeStatusError(w, http.StatusServiceUnavailable, "flows unavailable")
+			return
+		}
 		if _, err := s.cfg.Flows.Get(r.Context(), q.FlowID); err != nil {
 			writeFlowError(w, err)
 			return
