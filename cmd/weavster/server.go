@@ -103,16 +103,14 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		lookups = store.(lookupRepository)
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
-	flows := flowAdapter{store: repo, stats: stats, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events}
+	series := observability.NewTimeSeries(time.Duration(cfg.Stats.RetentionHours)*time.Hour, maxStatsPoints)
+	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events}
 	if cfg.Flows.DeployOnStartup && store != nil {
 		flows.DeployEnabled(ctx, logger)
 	}
-	series := observability.NewTimeSeries(time.Duration(cfg.Stats.RetentionHours) * time.Hour)
-	history := statsHistory{flows: flows, stats: stats, series: series}
+	statsPort := statsAdapter{flows: flows, stats: stats, series: series}
 	var ingest gateway.MessageIngester
-	workers := func(ctx context.Context) {
-		history.sampleLoop(ctx, time.Duration(cfg.Stats.SampleIntervalMs)*time.Millisecond, logger)
-	}
+	retry := func(context.Context) {}
 	if store != nil {
 		pipe := pipeline.New(store, newSink, processingObserver{stats, events}, pipeline.Options{
 			MaxAttempts: cfg.Delivery.MaxAttempts,
@@ -123,13 +121,19 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		ingest = ia
 		messages = messageAdapter{store: store, pipe: pipe, ingest: ia}
 		trends = messageAdapter{store: store}
-		sample := workers
-		workers = func(ctx context.Context) {
-			done := make(chan struct{})
-			go func() { sample(ctx); close(done) }()
+		retry = func(ctx context.Context) {
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
-			<-done
 		}
+	}
+
+	workers := func(ctx context.Context) {
+		sampled := make(chan struct{})
+		go func() {
+			statsPort.sampleLoop(ctx, time.Duration(cfg.Stats.SampleIntervalMs)*time.Millisecond, logger)
+			close(sampled)
+		}()
+		retry(ctx)
+		<-sampled
 	}
 
 	srv := gateway.New(gateway.Config{
@@ -151,8 +155,8 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Lifecycle:       flows,
 		FlowUpdates:     flows,
 		Transfer:        flows,
-		Stats:           statsAdapter{flows: flows, stats: stats},
-		StatsHistory:    history,
+		Stats:           statsPort,
+		StatsHistory:    statsPort,
 		Events:          eventsAdapter{events},
 		Topology:        topologyAdapter{flows: flows, stats: stats},
 		System:          newSystemAdapter(cfg, policy),
@@ -568,7 +572,9 @@ func (l *flowLocks) exclusive(id string, skipDrain bool) func() {
 type flowAdapter struct {
 	store flowRepository
 	stats *observability.StatsRegistry
-	locks *flowLocks // nil: no coordination (tests)
+	// series, when set, loses a deleted flow's statistics samples.
+	series *observability.TimeSeries
+	locks  *flowLocks // nil: no coordination (tests)
 	// defs serializes definition changes (create, update, import, delete),
 	// so dependency checks always see the flows they are written against.
 	defs *sync.Mutex
@@ -1573,6 +1579,9 @@ func (a flowAdapter) Delete(ctx context.Context, id string) error {
 		a.stats.Reset(id, false)
 		a.stats.Reset(id, true)
 	}
+	if a.series != nil {
+		a.series.Forget(id)
+	}
 	return nil
 }
 
@@ -1645,8 +1654,9 @@ func (o processingObserver) Processed(m state.Message) {
 }
 
 type statsAdapter struct {
-	flows gateway.FlowStore
-	stats *observability.StatsRegistry
+	flows  gateway.FlowStore
+	stats  *observability.StatsRegistry
+	series *observability.TimeSeries
 }
 
 func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime bool) (gateway.FlowStats, error) {
@@ -1682,52 +1692,62 @@ func (a statsAdapter) ResetStats(ctx context.Context, flowID string, lifetime bo
 	return nil
 }
 
-// statsHistory samples every flow's lifetime statistics into series
-// (spec §2.11.37).
-type statsHistory struct {
-	flows  gateway.FlowStore
-	stats  *observability.StatsRegistry
-	series *observability.TimeSeries
-}
+// maxStatsPoints bounds the statistics samples kept for all flows together;
+// past it the oldest are dropped.
+const maxStatsPoints = 1000000
 
-// sampleLoop takes a sample every interval until ctx is cancelled.
-func (h statsHistory) sampleLoop(ctx context.Context, interval time.Duration, logger *slog.Logger) {
+// sampleLoop records a sample now and every interval until ctx is
+// cancelled (spec §2.11.37).
+func (a statsAdapter) sampleLoop(ctx context.Context, interval time.Duration, logger *slog.Logger) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
+		if err := a.sample(ctx, time.Now()); err != nil && ctx.Err() == nil {
+			logger.Warn("statistics sample failed", "error", err)
+		}
 		select {
 		case <-ctx.Done():
 			return
-		case now := <-ticker.C:
-			if err := h.sample(ctx, now); err != nil && ctx.Err() == nil {
-				logger.Warn("statistics sample failed", "error", err)
-			}
+		case <-ticker.C:
 		}
 	}
 }
 
 // sample records every flow's lifetime statistics, taken at one instant.
-func (h statsHistory) sample(ctx context.Context, now time.Time) error {
-	flows, err := h.flows.List(ctx)
+func (a statsAdapter) sample(ctx context.Context, now time.Time) error {
+	flows, err := a.flows.List(ctx)
 	if err != nil {
 		return err
 	}
-	all := h.stats.SnapshotAll(true)
+	all := a.stats.SnapshotAll(true)
+	snap := make(map[string]observability.FlowStats, len(flows))
 	for _, f := range flows {
-		h.series.Record(now, f.ID, all[f.ID])
+		snap[f.ID] = all[f.ID]
 	}
+	a.series.RecordAll(now, snap)
 	return nil
 }
 
-// StatsSeries returns the samples of one flow (every flow when flowID is
-// empty).
-func (h statsHistory) StatsSeries(ctx context.Context, flowID string, from, to time.Time) ([]gateway.StatsSample, error) {
-	if flowID != "" {
-		if _, err := h.flows.Get(ctx, flowID); err != nil {
+// StatsSeries returns the sampled statistics of one flow, or of every
+// existing flow when q.FlowID is empty.
+func (a statsAdapter) StatsSeries(ctx context.Context, q gateway.StatsSeriesQuery) ([]gateway.StatsSample, error) {
+	keep := func(flow string) bool { return flow == q.FlowID }
+	if q.FlowID != "" {
+		if _, err := a.flows.Get(ctx, q.FlowID); err != nil {
 			return nil, err
 		}
+	} else {
+		flows, err := a.flows.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		exists := make(map[string]bool, len(flows))
+		for _, f := range flows {
+			exists[f.ID] = true
+		}
+		keep = func(flow string) bool { return exists[flow] }
 	}
-	points := h.series.Series(flowID, from, to)
+	points := a.series.Series(keep, q.From, q.To, q.Limit)
 	out := make([]gateway.StatsSample, len(points))
 	for i, p := range points {
 		out[i] = gateway.StatsSample{At: p.At.UTC(), FlowID: p.Flow, Stats: toGatewayStats(p.Stats)}

@@ -510,7 +510,8 @@ The topology overview (`GET /api/v1/topology`) shows each flow's `received`, `se
 
 ### Statistics over time
 
-The server samples every flow's lifetime totals once a minute and keeps the samples for 24 hours
+The server samples every flow's lifetime totals when it starts and then once a minute, and keeps
+the samples for 24 hours
 (change both with [`stats`](server-config.md#stats) in the server configuration).
 `GET /api/v1/stats/series` (permission `flows:view`) returns them, oldest first:
 
@@ -528,9 +529,13 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
   difference between two samples is the traffic in between.
 - `flowId`, `from`, and `to` (RFC 3339, both inclusive) are optional; without `flowId` every
   flow's samples are returned, interleaved by time.
+- At most `limit` samples are returned (default 1000, up to 10000): the newest ones that match,
+  still oldest first. Narrow with `flowId` or `from` to reach older samples.
 - Samples are kept in memory: they start again after a restart, and a lifetime reset shows as a
-  drop to zero.
-- An unknown `flowId` returns `404`; a bad time, or `from` after `to`, returns `400`.
+  drop to zero. Deleting a flow drops its samples, so a new flow with the same `id` starts a new
+  series. The server keeps at most 1,000,000 samples in total and drops the oldest past that.
+- An unknown `flowId` returns `404`; a bad time, `from` after `to`, or a `limit` outside 1–10000
+  returns `400`.
 - For message counts by status over hours or days from the stored messages, use
   [message trends](#message-trends) instead.
 

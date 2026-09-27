@@ -391,13 +391,15 @@ paths:
     get:
       summary: "Sampled lifetime statistics of every flow (or one), oldest first (requires flows:view)"
       description: >
-        The server samples every flow's lifetime counters every stats.sampleIntervalMs and keeps
-        the samples for stats.retentionHours (server configuration). Samples are kept in memory
-        and start again after a restart.
+        The server samples every flow's lifetime counters when it starts and every
+        stats.sampleIntervalMs, and keeps the samples for stats.retentionHours (server
+        configuration; at most 1,000,000 samples in total, oldest dropped first). Samples are kept
+        in memory and start again after a restart; a deleted flow's samples are dropped.
       parameters:
         - {name: flowId, in: query, schema: {type: string}}
         - {name: from, in: query, schema: {type: string, format: date-time}, description: Samples taken at or after this time (RFC 3339)}
         - {name: to, in: query, schema: {type: string, format: date-time}, description: Samples taken at or before this time (RFC 3339)}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 10000, default: 1000}, description: The newest N matching samples}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
@@ -413,7 +415,7 @@ paths:
                     flowId: {type: string}
                     stats: {type: object, description: "The flow's lifetime statistics at that time (same shape as GET /api/v1/flows/{id}/stats)"}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
-        "400": {description: "A bad from/to, or from after to", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad from/to, from after to, or a limit outside 1-10000", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: flowId names no flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/stats/reset:
     post:

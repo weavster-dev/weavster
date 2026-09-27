@@ -20,16 +20,7 @@ import (
 func TestStatsSeries(t *testing.T) {
 	cfg := serverconfig.Default()
 	cfg.Stats.SampleIntervalMs = 100
-	ctx, cancel := context.WithCancel(context.Background())
-	handler, closeStore, workers, err := buildServerWithWorkers(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), io.Discard, cfg)
-	if err != nil {
-		t.Fatal(err)
-	}
-	done := make(chan struct{})
-	go func() { workers(ctx); close(done) }()
-	ts := httptest.NewServer(handler)
-	t.Cleanup(func() { cancel(); <-done; ts.Close(); _ = closeStore() })
-	c := apiClient{t: t, base: ts.URL}
+	c := startWithWorkers(t, cfg)
 	admin := basic(bootstrapAdmin, testAdminPassword)
 
 	createFlow(t, c, `{"id":"adt","destinations":[{"name":"out","type":"file","dir":"`+t.TempDir()+`"}]}`)
@@ -87,6 +78,26 @@ func TestStatsSeries(t *testing.T) {
 	if s := series("?to=" + start.Add(-time.Hour).Format(time.RFC3339)); len(s) != 0 {
 		t.Errorf("before the start = %+v", s)
 	}
+	if s := series("?limit=1"); len(s) != 1 || s[0].FlowID != "lab" {
+		t.Errorf("limit=1 keeps the newest sample (flows are sampled in id order) = %+v", s)
+	}
+	// A deleted flow's samples go with it; a new flow with the same id
+	// starts a new series.
+	if code, body, _ := c.do(http.MethodDelete, "/api/v1/flows/lab", "", admin); code != http.StatusNoContent {
+		t.Fatalf("delete: %d %s", code, body)
+	}
+	for _, s := range series("") {
+		if s.FlowID == "lab" {
+			t.Errorf("deleted flow still listed: %+v", s)
+		}
+	}
+	recreated := time.Now().UTC()
+	createFlow(t, c, `{"id":"lab","destinations":[{"name":"out","type":"file","dir":"`+t.TempDir()+`"}]}`)
+	for _, s := range series("?flowId=lab") {
+		if s.At.Before(recreated) {
+			t.Errorf("old sample of a recreated flow: %+v", s)
+		}
+	}
 	for _, tt := range []struct {
 		q, user string
 		status  int
@@ -94,6 +105,7 @@ func TestStatsSeries(t *testing.T) {
 	}{
 		{"?flowId=nope", "", http.StatusNotFound, "flow not found"},
 		{"?from=yesterday", "", http.StatusBadRequest, "RFC 3339"},
+		{"?limit=0", "", http.StatusBadRequest, "limit must be between"},
 		{"", "ops", http.StatusForbidden, "flows:view"},
 	} {
 		auth := admin
@@ -105,4 +117,45 @@ func TestStatsSeries(t *testing.T) {
 			t.Errorf("%s %s: %d %s", tt.q, tt.user, code, body)
 		}
 	}
+}
+
+// TestStatsSeriesFirstSample: the first sample is taken when the server
+// starts, not one interval later.
+func TestStatsSeriesFirstSample(t *testing.T) {
+	cfg := serverconfig.Default()
+	cfg.Store.Dialect = serverconfig.DialectSQLite
+	cfg.Paths.DataDir = t.TempDir()
+	first := startComposed(t, cfg, io.Discard)
+	createFlow(t, first, `{"id":"adt","destinations":[{"name":"out","type":"file","dir":"`+t.TempDir()+`"}]}`)
+
+	cfg.Stats.SampleIntervalMs = 3600000 // the next sample is an hour away
+	c := startWithWorkers(t, cfg)
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		code, body, _ := c.do(http.MethodGet, "/api/v1/stats/series?flowId=adt", "", basic(bootstrapAdmin, testAdminPassword))
+		if code == http.StatusOK && strings.Contains(body, `"flowId":"adt"`) {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("no startup sample: %d %s", code, body)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+}
+
+// startWithWorkers is startComposed that also runs the background workers
+// (statistics sampling, delivery retries) until the test ends.
+func startWithWorkers(t *testing.T, cfg serverconfig.Config) apiClient {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	handler, closeStore, workers, err := buildServerWithWorkers(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), io.Discard, cfg)
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	done := make(chan struct{})
+	go func() { workers(ctx); close(done) }()
+	ts := httptest.NewServer(handler)
+	t.Cleanup(func() { cancel(); <-done; ts.Close(); _ = closeStore() })
+	return apiClient{t: t, base: ts.URL}
 }

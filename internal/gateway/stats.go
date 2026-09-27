@@ -44,12 +44,24 @@ type StatsSample struct {
 	Stats  FlowStats `json:"stats"`
 }
 
+// StatsSeriesQuery narrows a statistics time-series read.
+type StatsSeriesQuery struct {
+	FlowID   string    // empty = every flow
+	From, To time.Time // at or after / at or before; zero = open
+	Limit    int       // the newest N matching samples
+}
+
+// Statistics time-series limits.
+const (
+	DefaultStatsSeriesLimit = 1000
+	MaxStatsSeriesLimit     = 10000
+)
+
 // StatsHistory reads the statistics time series.
 type StatsHistory interface {
-	// StatsSeries returns the samples of one flow (every flow when flowID is
-	// empty; ErrFlowNotFound for an unknown flow) taken at or after from and
-	// at or before to (zero = open), oldest first.
-	StatsSeries(ctx context.Context, flowID string, from, to time.Time) ([]StatsSample, error)
+	// StatsSeries returns the newest q.Limit matching samples, oldest first;
+	// ErrFlowNotFound when q.FlowID names no flow.
+	StatsSeries(ctx context.Context, q StatsSeriesQuery) ([]StatsSample, error)
 }
 
 // Event is one entry of the event log.
@@ -115,12 +127,20 @@ func (s *Server) handleStatsSeries(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	v := r.URL.Query()
-	var from, to time.Time
-	if msg := timeRange(v, &from, &to); msg != "" {
+	q := StatsSeriesQuery{FlowID: v.Get("flowId"), Limit: DefaultStatsSeriesLimit}
+	if msg := timeRange(v, &q.From, &q.To); msg != "" {
 		writeStatusError(w, http.StatusBadRequest, msg)
 		return
 	}
-	samples, err := s.cfg.StatsHistory.StatsSeries(r.Context(), v.Get("flowId"), from, to)
+	if raw := v.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > MaxStatsSeriesLimit {
+			writeStatusError(w, http.StatusBadRequest, "limit must be between 1 and 10000")
+			return
+		}
+		q.Limit = n
+	}
+	samples, err := s.cfg.StatsHistory.StatsSeries(r.Context(), q)
 	if err != nil {
 		writeFlowError(w, err)
 		return

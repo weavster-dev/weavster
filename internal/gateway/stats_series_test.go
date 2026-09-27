@@ -11,12 +11,12 @@ import (
 
 // fixedHistory returns one sample and records the query; err makes it fail.
 type fixedHistory struct {
-	got *[3]any
+	got *StatsSeriesQuery
 	err error
 }
 
-func (f fixedHistory) StatsSeries(_ context.Context, flowID string, from, to time.Time) ([]StatsSample, error) {
-	*f.got = [3]any{flowID, from, to}
+func (f fixedHistory) StatsSeries(_ context.Context, q StatsSeriesQuery) ([]StatsSample, error) {
+	*f.got = q
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -24,7 +24,7 @@ func (f fixedHistory) StatsSeries(_ context.Context, flowID string, from, to tim
 }
 
 func TestStatsSeriesHandler(t *testing.T) {
-	var got [3]any
+	var got StatsSeriesQuery
 	ok := Config{StatsHistory: fixedHistory{got: &got}}
 	for _, tt := range []struct {
 		name, query string
@@ -35,6 +35,8 @@ func TestStatsSeriesHandler(t *testing.T) {
 		{"all", "", ok, http.StatusOK, `[{"at":"2026-09-27T10:00:00Z","flowId":"a","stats":{"received":3,`},
 		{"range and flow", "?flowId=a&from=2026-09-27T10:00:00Z&to=2026-09-27T11:00:00Z", ok, http.StatusOK, `"flowId":"a"`},
 		{"bad time", "?from=yesterday", ok, http.StatusBadRequest, "RFC 3339"},
+		{"zero limit", "?limit=0", ok, http.StatusBadRequest, "limit must be between 1 and 10000"},
+		{"huge limit", "?limit=10001", ok, http.StatusBadRequest, "limit must be between 1 and 10000"},
 		{"reversed range", "?from=2026-09-27T11:00:00Z&to=2026-09-27T10:00:00Z", ok, http.StatusBadRequest, "from must not be after to"},
 		{"unknown flow", "?flowId=nope", Config{StatsHistory: fixedHistory{got: &got, err: ErrFlowNotFound}}, http.StatusNotFound, "flow not found"},
 		{"fails", "", Config{StatsHistory: fixedHistory{got: &got, err: errDisk}}, http.StatusInternalServerError, "internal error"},
@@ -50,8 +52,13 @@ func TestStatsSeriesHandler(t *testing.T) {
 	}
 	// The filter and range reach the port.
 	rec := httptest.NewRecorder()
-	New(ok).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/stats/series?flowId=a&from=2026-09-27T10:00:00Z", nil))
-	if got[0] != "a" || !got[1].(time.Time).Equal(time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)) || !got[2].(time.Time).IsZero() {
-		t.Errorf("query = %v", got)
+	for query, want := range map[string]StatsSeriesQuery{
+		"?flowId=a&from=2026-09-27T10:00:00Z": {FlowID: "a", From: time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC), Limit: DefaultStatsSeriesLimit},
+		"?limit=10000":                        {Limit: 10000},
+	} {
+		New(ok).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/stats/series"+query, nil))
+		if got != want {
+			t.Errorf("%s: query = %+v", query, got)
+		}
 	}
 }
