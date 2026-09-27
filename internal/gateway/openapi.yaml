@@ -771,7 +771,7 @@ paths:
           application/json: {schema: {type: object}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{applied, plan}", content: {application/json: {schema: {type: object, properties: {applied: {type: boolean}, plan: {$ref: "#/components/schemas/ConfigPlan"}}}, example: {"applied": true, "plan": {"fingerprint": "9c1d4e2a", "added": ["script/deploy"], "updated": [], "removed": [], "unchanged": 7, "changes": [{"key": "script/deploy", "action": "add", "after": "log()"}], "text": "+ script/deploy\n1 to add, 0 to change, 0 to remove\n"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{applied, plan}", content: {application/json: {schema: {type: object, properties: {applied: {type: boolean}, plan: {$ref: "#/components/schemas/ConfigPlan"}}}, example: {"applied": true, "plan": {"fingerprint": "3f9b1c7e0d4a2f6b8c5e1a9d7b3f0c2e4a6d8b1f3c5e7a9b0d2f4c6e8a1b3d5f", "added": ["script/deploy"], "updated": [], "removed": [], "unchanged": 7, "changes": [{"key": "script/deploy", "action": "add", "after": "log()"}], "text": "+ script/deploy\n1 to add, 0 to change, 0 to remove, 7 unchanged\n"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "Missing fingerprint, a bad parameter, or an invalid document", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: "The plan is stale, or a change failed because of the configuration (every applied change was rolled back)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -1321,7 +1321,7 @@ components:
         permissions: {type: array, items: {type: string}}
         mustChangePassword: {type: boolean}
     LoginResponse:
-      example: {"token": "wv_3q2v9k1m...", "expiresAt": "2026-09-27T18:00:00Z", "user": {"username": "admin", "permissions": ["admin"], "mustChangePassword": false}}
+      example: {"token": "4f7a1c9e2b8d0f3a6c5e7b9d1f2a4c6e8b0d2f4a6c8e0b2d4f6a8c0e2b4d6f8a", "expiresAt": "2026-09-27T18:00:00Z", "user": {"username": "admin", "permissions": ["admin"], "mustChangePassword": false}}
       type: object
       required: [token, expiresAt, user]
       properties:
@@ -1398,14 +1398,14 @@ components:
         created: {type: array, items: {type: string}}
         updated: {type: array, items: {type: string}}
     SkippedFlow:
-      example: {"id": "lab", "reason": "already started"}
+      example: {"id": "lab", "reason": "disabled"}
       type: object
       required: [id, reason]
       properties:
         id: {type: string}
         reason: {type: string}
     TransitionAllResult:
-      example: {"changed": ["adt"], "skipped": [{"id": "lab", "reason": "already started"}]}
+      example: {"changed": ["adt"], "skipped": [{"id": "lab", "reason": "disabled"}]}
       type: object
       required: [changed, skipped]
       properties:
@@ -1503,7 +1503,7 @@ components:
         activity: {$ref: "#/components/schemas/TopologyActivity"}
         meta: {type: object, additionalProperties: {type: string}}
     TopologyEdge:
-      example: {"id": "edge:flow:adt:dep:flow:lab", "from": "flow:adt", "to": "flow:lab", "kind": "dependency"}
+      example: {"id": "edge:flow:adt:dependency:flow:lab", "from": "flow:adt", "to": "flow:lab", "kind": "dependency"}
       type: object
       required: [id, from, to, kind]
       properties:
@@ -1515,7 +1515,7 @@ components:
         status: {type: string}
         activity: {$ref: "#/components/schemas/TopologyActivity"}
     TopologyGraph:
-      example: {"schemaVersion": "1", "generatedAt": "2026-09-27T10:00:00Z", "nodes": [{"id": "flow:adt", "kind": "flow", "label": "ADT inbound", "status": "started", "activity": {"received": 42, "sent": 39, "errored": 1, "queued": 0, "lastMessageAt": "2026-09-27T10:00:00Z"}}, {"id": "flow:lab", "kind": "flow", "label": "Lab results", "status": "started", "activity": {"received": 0, "sent": 0, "errored": 0, "queued": 0}}], "edges": [{"id": "edge:flow:adt:dep:flow:lab", "from": "flow:adt", "to": "flow:lab", "kind": "dependency"}]}
+      example: {"schemaVersion": "1", "generatedAt": "2026-09-27T10:00:00Z", "nodes": [{"id": "flow:adt", "kind": "flow", "label": "ADT inbound", "status": "started", "activity": {"received": 42, "sent": 39, "errored": 1, "queued": 0, "lastMessageAt": "2026-09-27T10:00:00Z"}}, {"id": "flow:lab", "kind": "flow", "label": "Lab results", "status": "started", "activity": {"received": 0, "sent": 0, "errored": 0, "queued": 0}}], "edges": [{"id": "edge:flow:adt:dependency:flow:lab", "from": "flow:adt", "to": "flow:lab", "kind": "dependency"}]}
       type: object
       required: [schemaVersion, generatedAt, nodes, edges]
       properties:
@@ -1527,7 +1527,7 @@ components:
         nodes: {type: array, items: {$ref: "#/components/schemas/TopologyNode"}}
         edges: {type: array, items: {$ref: "#/components/schemas/TopologyEdge"}}
     SystemStatus:
-      example: {"id": "weavster-1", "status": "running", "version": "0.1.0", "time": "2026-09-27T10:00:00Z", "timezone": "UTC", "uptimeSeconds": 3600, "runtime": "go1.22", "tls": {"enabled": true, "address": "0.0.0.0:8443", "minVersion": "1.2", "protocols": ["TLSv1.2", "TLSv1.3"], "ciphers": ["TLS_AES_128_GCM_SHA256"]}}
+      example: {"id": "weavster", "status": "running", "version": "0.1.0", "time": "2026-09-27T10:00:00Z", "timezone": "UTC +00:00", "uptimeSeconds": 3600, "runtime": "go1.22", "tls": {"enabled": true, "address": "0.0.0.0:8443", "minVersion": "1.3", "protocols": ["TLS 1.3"], "ciphers": ["TLS_AES_128_GCM_SHA256", "TLS_AES_256_GCM_SHA384", "TLS_CHACHA20_POLY1305_SHA256"]}}
       type: object
       required: [id, status, version, time, uptimeSeconds, tls]
       properties:
@@ -1591,7 +1591,7 @@ components:
         flowId: {type: string}
         data: {type: object, additionalProperties: {type: string}}
     ConfigPlan:
-      example: {"fingerprint": "9c1d4e2a", "added": ["script/deploy"], "updated": ["flow/adt"], "removed": [], "unchanged": 7, "changes": [{"key": "script/deploy", "action": "add", "after": "log()"}, {"key": "flow/adt", "action": "update", "fields": [{"path": "destinations[0].url", "before": "https://old.example.com/in", "after": "https://ehr.example.com/in"}]}], "text": "+ script/deploy\n~ flow/adt\n    destinations[0].url: \"https://old.example.com/in\" → \"https://ehr.example.com/in\"\n1 to add, 1 to change, 0 to remove\n"}
+      example: {"fingerprint": "3f9b1c7e0d4a2f6b8c5e1a9d7b3f0c2e4a6d8b1f3c5e7a9b0d2f4c6e8a1b3d5f", "added": ["script/deploy"], "updated": ["flow/adt"], "removed": [], "unchanged": 7, "changes": [{"key": "script/deploy", "action": "add", "after": "log()"}, {"key": "flow/adt", "action": "update", "fields": [{"path": "destinations[0].url", "before": "https://old.example.com/in", "after": "https://ehr.example.com/in"}]}], "text": "+ script/deploy\n~ flow/adt\n    destinations[0].url: \"https://old.example.com/in\" → \"https://ehr.example.com/in\"\n1 to add, 1 to change, 0 to remove, 7 unchanged\n"}
       type: object
       required: [fingerprint, added, updated, removed, unchanged, changes, text]
       properties:
