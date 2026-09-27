@@ -83,6 +83,7 @@ All notable changes to this project are documented here, following
 - HTTP source (#290): a flow with `source: {type: http, address, path, method}` listens on its own address while it is started and runs each request with that method and path through the flow like `POST /api/v1/flows/{id}/messages` (`source.http.path` metadata); the port opens and closes with the flow, one flow source per port and never the server's own listen ports, a port that cannot be opened is a `source.http.failed` event, and `ports-in-use` lists open flow ports as `flow:<id>`; `flow connectors` and the topology report a flow's `source.type`. No authentication or TLS on the flow listener yet.
 - HTTP source authentication and TLS (#295): an http source takes `username` with `passwordEnv` (HTTP Basic; the password comes from the server's environment variable, which must be named `WEAVSTER_SOURCE_…`, when the port opens) and `certFile` with `keyFile` (the port serves HTTPS, HTTP/1.1 and HTTP/2, with the server's TLS settings; the server's own key is refused). A missing variable or certificate keeps the port closed and is a `source.http.failed` event, which now carries a `reason`.
 - HTTP request options (#297): an http destination takes `method` (POST, PUT, PATCH), `timeoutMs` (default 30000), and `maxRedirects`; an http source takes `readTimeoutMs` (default 60000).
+- MLLP source (#300): a flow with `source: {type: mllp, address}` accepts HL7 v2 messages over TCP (MLLP framing, several connections at once, 10 MiB frames) while it is started, runs each through the flow with `source.mllp.controlId` metadata, and answers each with an HL7 ACK stamped with the current time: `AA` once stored, `AR` when refused, `AE` when not stored. The port follows the flow like an http source.
 
 ### Changed
 
@@ -118,6 +119,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- HL7 v2 parsing (#300): components and repetitions were split with the wrong MSH-2 characters (the repetition and escape characters), so a field such as `ADT^A01` was never split into components; HL7 ACKs now also carry MSH-8, so the message type is in MSH-9, and MSH-7 is the time the ACK was made instead of the original message's.
 - `auth.passwordPolicy.minLength` counts characters, not bytes, so a password with accented letters is not accepted as longer than it is (#245).
 - `GET /api/v1/messages?flowId=…` filters in the store before the page limit (#212); before, it filtered the first page afterwards and could miss that flow's messages. With `store.dialect: memory`, messages now get their receive and update times.
 - With `store.dialect: sqlite`, a restart could fail writes with `database is locked (SQLITE_BUSY)` when the previous run had stopped during a store query. SQLite statements now run to completion instead of being cancelled.

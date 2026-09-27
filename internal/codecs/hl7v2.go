@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"time"
 )
 
 // HL7Message is the structured form of an HL7 v2 message.
@@ -58,9 +59,10 @@ func (c *HL7Codec) Parse(in []byte) (any, error) {
 		// Resolve delimiters declared by the MSH segment.
 		if strings.HasPrefix(line, "MSH") && len(line) > 3 {
 			seps.fieldSep = line[3]
-			if enc := mshEncoding(line, seps.fieldSep); len(enc) >= 4 {
-				seps.compSep = enc[1]
-				seps.repSep = enc[2]
+			// MSH-2 is component, repetition, escape, subcomponent.
+			if enc := mshEncoding(line, seps.fieldSep); len(enc) >= 2 {
+				seps.compSep = enc[0]
+				seps.repSep = enc[1]
 			}
 		}
 		msg.Segments = append(msg.Segments, seps.parseSegment(line))
@@ -157,12 +159,7 @@ func (c *HL7Codec) serializeSegment(seg HL7Segment) string {
 }
 
 func (c *HL7Codec) Acknowledge(in []byte) ([]byte, error) {
-	v, err := c.Parse(in)
-	if err != nil {
-		return nil, err
-	}
-	ack := hl7ACK(v.(*HL7Message))
-	return c.Serialize(ack)
+	return HL7ACK(in, HL7AckOptions{Code: AckApplicationAccept, Now: time.Now()})
 }
 
 func normalizeSegTerminators(s string) string {

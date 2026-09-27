@@ -37,7 +37,7 @@ func (sourceIngest) IngestFrom(context.Context, string, []byte, map[string]strin
 // one that stopped on its own; a failure (including a server port) is
 // reported once and forgotten when the flow goes; a failed flow list
 // changes nothing; ports-in-use is sorted by flow.
-func TestHTTPSourcesReconcile(t *testing.T) {
+func TestPortSourcesReconcile(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	started := func(id, addr, path string) gateway.Flow {
@@ -52,7 +52,7 @@ func TestHTTPSourcesReconcile(t *testing.T) {
 	flows := &fakeFlowList{flows: []gateway.Flow{started("b", b, "/"), started("a", a, "/"),
 		started("busy", held.Addr().String(), "/"), started("api", "127.0.0.1:8080", "/")}}
 	events := &fakeEvents{}
-	s := newHTTPSources(flows, sourceIngest{}, events, map[int]string{8080: "api"}, gateway.DefaultTLSOptions(), "", logger)
+	s := newPortSources(flows, sourceIngest{}, events, map[int]string{8080: "api"}, gateway.DefaultTLSOptions(), "", logger)
 	defer s.closeAll()
 
 	s.reconcile(ctx)
@@ -75,8 +75,7 @@ func TestHTTPSourcesReconcile(t *testing.T) {
 	}
 
 	dead := s.open["b"]
-	_ = dead.srv.Close()
-	<-dead.done
+	dead.shut()
 	s.reconcile(ctx)
 	if s.open["b"] == dead || s.open["b"].stopped() {
 		t.Error("a listener that stopped on its own was not reopened")
@@ -99,7 +98,7 @@ func (e *reasonEvents) record(_, _ string, data map[string]string) {
 // TestHTTPSourcesSecuredFailures: a certificate that cannot be loaded, or
 // the server's own key, keeps the port closed with a reason; a new reason
 // for the same definition is reported again.
-func TestHTTPSourcesSecuredFailures(t *testing.T) {
+func TestPortSourcesSecuredFailures(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	dir := t.TempDir()
@@ -114,7 +113,7 @@ func TestHTTPSourcesSecuredFailures(t *testing.T) {
 	missing := filepath.Join(dir, "missing.pem")
 	flows := &fakeFlowList{flows: []gateway.Flow{src("bad", freeAddr(t), missing, missing), src("server", freeAddr(t), certFile, link)}}
 	events := &reasonEvents{}
-	s := newHTTPSources(flows, sourceIngest{}, events, nil, gateway.DefaultTLSOptions(), keyFile, logger)
+	s := newPortSources(flows, sourceIngest{}, events, nil, gateway.DefaultTLSOptions(), keyFile, logger)
 	defer s.closeAll()
 	s.reconcile(ctx)
 	s.reconcile(ctx)

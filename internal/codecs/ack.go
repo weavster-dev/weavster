@@ -37,27 +37,65 @@ func hl7Value(seg *HL7Segment, n int) string {
 // hl7Field wraps a single component into a field value.
 func hl7Field(v string) [][]string { return [][]string{{v}} }
 
-// hl7ACK builds a minimal ACK (MSH + MSA) echoing the original control id and
-// swapping sender/receiver (spec §7).
-func hl7ACK(msg *HL7Message) *HL7Message {
+// HL7AckOptions describe an HL7 acknowledgment: its MSA-1 code (AA, AE,
+// or AR), MSA-3 text, the ACK's own MSH-10 control id (default: the
+// original's), and its MSH-7 time.
+type HL7AckOptions struct {
+	Code      string
+	Text      string
+	ControlID string
+	Now       time.Time
+}
+
+// HL7ACK builds the MSH + MSA acknowledgment of the HL7 v2 message in: the
+// sender and receiver swapped, MSH-9 ACK^<original trigger>, and MSA-2 the
+// original control id. A message without an MSH segment gets an ACK with
+// those fields empty, so even unreadable input can be answered (AR). A zero
+// Now is the current time.
+func HL7ACK(in []byte, opts HL7AckOptions) ([]byte, error) {
+	if opts.Now.IsZero() {
+		opts.Now = time.Now()
+	}
+	c := HL7v2()
+	v, err := c.Parse(in)
+	if err != nil {
+		return nil, err
+	}
+	return c.Serialize(hl7ACK(v.(*HL7Message), opts))
+}
+
+// hl7ACK builds the acknowledgment described by opts (spec §7).
+func hl7ACK(msg *HL7Message, opts HL7AckOptions) *HL7Message {
 	msh := findSegment(msg, "MSH")
 	controlID := hl7Value(msh, 10)
+	ackID := opts.ControlID
+	if ackID == "" {
+		ackID = controlID
+	}
+	msgType := []string{"ACK"}
+	if msh != nil {
+		if typ := msh.Field(9); len(typ) > 1 && typ[1] != "" {
+			msgType = append(msgType, typ[1]) // ACK^<trigger event>
+		}
+	}
 	ackMSH := HL7Segment{Name: "MSH", Fields: [][][]string{
-		{{"^", "~", `\`, "&"}},     // MSH-2 encoding characters
-		hl7Field(hl7Value(msh, 5)), // sending app = original receiving app
-		hl7Field(hl7Value(msh, 6)), // sending facility = original receiving facility
-		hl7Field(hl7Value(msh, 3)), // receiving app = original sending app
-		hl7Field(hl7Value(msh, 4)), // receiving facility = original sending facility
-		hl7Field(hl7Value(msh, 7)), // timestamp
-		{{"ACK"}},                  // MSH-9 message type
-		hl7Field(controlID),        // MSH-10 message control id
+		{{"^", "~", `\`, "&"}},                      // MSH-2 encoding characters
+		hl7Field(hl7Value(msh, 5)),                  // sending app = original receiving app
+		hl7Field(hl7Value(msh, 6)),                  // sending facility = original receiving facility
+		hl7Field(hl7Value(msh, 3)),                  // receiving app = original sending app
+		hl7Field(hl7Value(msh, 4)),                  // receiving facility = original sending facility
+		hl7Field(opts.Now.Format("20060102150405")), // MSH-7: when the ACK was made
+		{{}},            // MSH-8 security
+		{msgType},       // MSH-9 message type
+		hl7Field(ackID), // MSH-10 message control id
 		hl7Field(hl7Value(msh, 11)),
 		hl7Field(hl7Value(msh, 12)),
 	}}
-	msa := HL7Segment{Name: "MSA", Fields: [][][]string{
-		{{AckApplicationAccept}},
-		hl7Field(controlID),
-	}}
+	msaFields := [][][]string{{{opts.Code}}, hl7Field(controlID)}
+	if opts.Text != "" {
+		msaFields = append(msaFields, hl7Field(opts.Text))
+	}
+	msa := HL7Segment{Name: "MSA", Fields: msaFields}
 	return &HL7Message{Segments: []HL7Segment{ackMSH, msa}}
 }
 
