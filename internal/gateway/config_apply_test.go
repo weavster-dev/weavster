@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -106,32 +107,98 @@ func TestConfigApplyHandler(t *testing.T) {
 	}
 }
 
-// TestRunStepsRemovesDependentsFirst: a flow in use is removed after the
-// flow using it; one that stays in use rolls everything back.
-func TestRunStepsRemovesDependentsFirst(t *testing.T) {
-	removed := map[string]bool{}
+// TestRemovalOrder: a removed flow goes before the removed flows it uses.
+func TestRemovalOrder(t *testing.T) {
+	change := func(id string, deps ...string) ConfigChange {
+		before, _ := json.Marshal(Flow{ID: id, DependsOn: deps})
+		return ConfigChange{Key: "flow/" + id, Action: "remove", Before: before}
+	}
+	got, err := removalOrder([]ConfigChange{change("base"), change("mid", "base"), change("app", "mid", "kept")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for _, c := range got {
+		keys = append(keys, c.Key)
+	}
+	if strings.Join(keys, ",") != "flow/app,flow/mid,flow/base" {
+		t.Errorf("order = %v", keys)
+	}
+	if _, err := removalOrder([]ConfigChange{{Key: "flow/x", Before: json.RawMessage(`[`)}}); err == nil {
+		t.Error("bad before: no error")
+	}
+}
+
+// TestRunStepsUndoesPastFailures: undo continues after an undo fails, and
+// reports both the failures and the restored flows.
+func TestRunStepsUndoesPastFailures(t *testing.T) {
 	var undone []string
-	flowStep := func(id, usedBy string) configStep {
-		return configStep{key: "flow/" + id, removeFlow: true,
-			do: func(context.Context) error {
-				if usedBy != "" && !removed[usedBy] {
-					return ErrFlowInUse
-				}
-				removed[id] = true
-				return nil
-			},
-			undo: func(context.Context) error { undone = append(undone, id); return nil }}
+	step := func(key string, doErr, undoErr error, restores string) configStep {
+		return configStep{key: key, restores: restores,
+			do:   func(context.Context) error { return doErr },
+			undo: func(context.Context) error { undone = append(undone, key); return undoErr }}
 	}
-	if failed, err := runSteps(context.Background(), []configStep{flowStep("base", "app"), flowStep("app", "")}); err != nil {
-		t.Fatalf("runSteps = %s %v", failed, err)
+	failed, undoFailed, restored, err := runSteps(context.Background(), []configStep{
+		step("a", nil, nil, ""), step("b", nil, errDisk, ""), step("flow/c", nil, nil, "c"), step("d", errDisk, nil, ""),
+	})
+	if failed != "d" || !errors.Is(err, errDisk) || strings.Join(undone, ",") != "flow/c,b,a" ||
+		strings.Join(undoFailed, ",") != "b" || strings.Join(restored, ",") != "c" {
+		t.Errorf("runSteps = %s %v; undone %v, undo failed %v, restored %v", failed, err, undone, undoFailed, restored)
 	}
-	if !removed["base"] || !removed["app"] {
-		t.Errorf("removed = %v", removed)
+}
+
+// TestFlowPutStep: every added and updated flow is imported in one call,
+// and undo deletes the added ones and re-imports the old versions.
+func TestFlowPutStep(t *testing.T) {
+	var imported [][]string
+	flows := &deletingFlows{}
+	s := New(Config{Transfer: recordingTransfer{&imported}, Flows: flows})
+	st, err := s.flowPutStep([]ConfigChange{
+		{Key: "flow/new", Action: "add", After: json.RawMessage(`{"id":"new"}`)},
+		{Key: "flow/old", Action: "update", Before: json.RawMessage(`{"id":"old","name":"A"}`), After: json.RawMessage(`{"id":"old","name":"B"}`)},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	failed, err := runSteps(context.Background(), []configStep{flowStep("x", "kept"), flowStep("y", "")})
-	if failed != "flow/x" || !errors.Is(err, ErrFlowInUse) || strings.Join(undone, ",") != "y" {
-		t.Errorf("stuck removal = %s %v, undone %v", failed, err, undone)
+	if err := st.do(context.Background()); err != nil || fmt.Sprint(imported) != "[[new old]]" {
+		t.Fatalf("do: %v, imported %v", err, imported)
 	}
+	if err := st.undo(context.Background()); err != nil || fmt.Sprint(imported) != "[[new old] [old]]" || fmt.Sprint(flows.deleted) != "[new]" {
+		t.Errorf("undo: %v, imported %v, deleted %v", err, imported, flows.deleted)
+	}
+	if _, err := s.flowPutStep([]ConfigChange{{Key: "flow/x", Action: "add", After: json.RawMessage(`[`)}}); err == nil {
+		t.Error("bad after: no error")
+	}
+	if _, err := s.flowPutStep([]ConfigChange{{Key: "flow/x", Action: "update", After: json.RawMessage(`{}`), Before: json.RawMessage(`[`)}}); err == nil {
+		t.Error("bad before: no error")
+	}
+	if _, err := s.applySteps(ConfigPlan{Changes: []ConfigChange{{Key: "widget/x", Action: "add"}}}); !errors.Is(err, ErrInvalidConfig) {
+		t.Errorf("unknown kind = %v", err)
+	}
+}
+
+// deletingFlows records deleted flow ids.
+type deletingFlows struct {
+	fakeFlows
+	deleted []string
+}
+
+func (d *deletingFlows) Delete(_ context.Context, id string) error {
+	d.deleted = append(d.deleted, id)
+	return nil
+}
+
+// recordingTransfer records the flow ids of every import.
+type recordingTransfer struct{ imports *[][]string }
+
+func (recordingTransfer) Export(context.Context, []string) ([]Flow, error) { return nil, nil }
+func (r recordingTransfer) Import(_ context.Context, flows []Flow, _ bool) (ImportResult, error) {
+	var ids []string
+	for _, f := range flows {
+		ids = append(ids, f.ID)
+	}
+	*r.imports = append(*r.imports, ids)
+	return ImportResult{}, nil
 }
 
 func TestFirstN(t *testing.T) {

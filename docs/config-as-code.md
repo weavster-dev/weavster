@@ -142,20 +142,26 @@ applied 1 changes
 ```
 
 `config apply` plans the document, prints the plan, and applies exactly that plan. Words after
-the path (other than `--dry-run`) are the reason, recorded in the audit log.
+the path (other than `--dry-run`) are the reason, recorded in the audit log; a word starting
+with `-` that is not `--dry-run` is refused, so a mistyped flag never applies.
 
-- **Stale plans are refused.** The plan's `fingerprint` goes with the apply. If anything in the
-  live configuration changed in between, the apply is refused with `409` and nothing changes; plan
-  again and review the new plan.
-- **All or nothing.** Changes are applied in a safe order: libraries, snippets, flows, alerts,
-  then scripts, config map, and settings; removals come last, and a flow used by another flow is
-  removed after it. If any change fails, every change already made is undone and the reply says
-  which change failed (`409` for a problem in the configuration, such as removing a flow that a
-  flow you keep depends on; `500` for a server problem). If undoing itself fails, the reply says
-  the configuration is partly applied: plan again to see where it stands.
+- **Stale plans are refused.** The plan's `fingerprint` covers both the live configuration and
+  the document, and goes with the apply. If either changed in between, the apply is refused with
+  `409` and nothing changes; plan again and review the new plan.
+- **All or nothing.** Changes are applied in a safe order: libraries, snippets, flows (all added
+  and changed flows together, so new flows may depend on each other), alerts, then scripts,
+  config map, and settings; removals come last, and a flow is removed before the flows it uses.
+  If any change fails, every change already made is undone and the reply says which change
+  failed (`409` for a problem in the configuration, such as removing a flow that a flow you keep
+  depends on; `500` for a server problem). If undoing a change fails, the others are still
+  undone, and the reply names what could not be undone: the configuration is partly applied, so
+  plan again to see where it stands.
+- One apply runs at a time, but other API calls are not blocked: avoid editing the same flows,
+  alerts, or items through the API while an apply runs, because a rollback puts back the values
+  from the plan.
 - New flows are created undeployed; deploy them as usual. A removed flow that was running is
-  undeployed first; if the apply is rolled back, the flow comes back undeployed.
-- One apply runs at a time.
+  undeployed first; if the apply is rolled back, the flow comes back undeployed and the reply
+  lists it so you can deploy it again.
 - `--dry-run` checks that the plan is still current and changes nothing.
 
 With the API, send the plan's fingerprint:
@@ -173,7 +179,8 @@ Applying needs `flows:view`, `flows:edit`, `alerts:edit`, `snippets:edit`, `scri
 `settings:edit`, and `configmap:edit`. Every attempt is written to the
 [audit log](audit-log.md) as `POST /api/v1/config/apply`, with the planned keys
 (`plan.added`, `plan.updated`, `plan.removed`), the fingerprint, the reason, and the result:
-`applied`, `dry run`, `stale`, `invalid`, `rolled back`, or `rollback failed`.
+`applied`, `dry run`, `stale`, `invalid`, `refused` (a bad parameter), `failed` (the live
+configuration could not be read), `rolled back`, or `rollback failed`.
 
 ## Editor support
 

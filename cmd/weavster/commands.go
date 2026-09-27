@@ -755,11 +755,15 @@ func configApply(ctx context.Context, client Client, path string, rest []string,
 	query := url.Values{}
 	var reason []string
 	for _, a := range rest {
-		if a == "--dry-run" {
+		switch {
+		case a == "--dry-run":
 			query.Set("dryRun", "true")
-			continue
+		case strings.HasPrefix(a, "-"): // a mistyped --dry-run must not apply
+			_, _ = fmt.Fprintf(stderr, "Error: unknown option %q; use --dry-run (reason words cannot start with -)\n", a)
+			return 2
+		default:
+			reason = append(reason, a)
 		}
-		reason = append(reason, a)
 	}
 	if len(reason) > 0 {
 		query.Set("reason", strings.Join(reason, " "))

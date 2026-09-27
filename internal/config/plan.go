@@ -13,7 +13,8 @@ type Plan struct {
 	Removed []string `json:"removed"`
 	// Unchanged counts artifacts that already match.
 	Unchanged int `json:"unchanged,omitempty"`
-	// Fingerprint identifies the live configuration the plan compares with.
+	// Fingerprint identifies the live configuration and the document the
+	// plan compares.
 	Fingerprint string `json:"fingerprint,omitempty"`
 	// Changes describes each change with its content (LivePlan).
 	Changes []Change `json:"changes,omitempty"`

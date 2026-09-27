@@ -105,6 +105,20 @@ configmap:
 			t.Errorf("after apply %s = %s", path, body)
 		}
 	}
+	// New flows that depend on each other apply together; a document edited
+	// after its plan is refused even though the server did not change.
+	deps := strings.Replace(doc, "  c: {name: C}\n", "  c: {name: C}\n  a: {name: A, dependsOn: [y]}\n  y: {name: Y, dependsOn: [z]}\n  z: {name: Z}\n", 1)
+	fpDeps := plan(deps)
+	if code, body := apply(strings.Replace(deps, "  z: {name: Z}\n", "  z: {name: Z}\n  extra: {name: X}\n", 1), "?fingerprint="+fpDeps); code != http.StatusConflict || !strings.Contains(body, "the document changed") {
+		t.Errorf("edited document: %d %s", code, body)
+	}
+	if code, body := apply(deps, "?fingerprint="+fpDeps); code != http.StatusOK {
+		t.Errorf("dependent new flows: %d %s", code, body)
+	}
+	if _, body := apply(deps, "?fingerprint="+plan(deps)); !strings.Contains(body, `"text":"no changes\n"`) {
+		t.Errorf("second apply = %s", body)
+	}
+	doc = deps
 	if _, body := apply(doc, "?fingerprint="+plan(doc)); !strings.Contains(body, `"text":"no changes\n"`) {
 		t.Errorf("second apply = %s", body)
 	}
@@ -130,6 +144,7 @@ configmap:
 		{`config apply "` + path + `" "rotate region"`, "applied 1 changes\n", 0},
 		{`config apply "` + path + `"`, "no changes\n", 0},
 		{`config apply "` + filepath.Join(dir, "none.yaml") + `"`, "", 2},
+		{`config apply "` + path + `" --dryrun`, "", 2},
 	} {
 		if err := os.WriteFile(script, []byte(tt.line+"\n"), 0o600); err != nil {
 			t.Fatal(err)
