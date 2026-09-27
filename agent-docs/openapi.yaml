@@ -600,6 +600,33 @@ paths:
         "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/config/export:
+    get:
+      summary: "The full configuration: flows, alerts, snippets, snippet libraries, global scripts, settings, and optionally the config map; never users (requires flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit, configmap:edit)"
+      parameters:
+        - {name: includeConfigMap, in: query, schema: {type: boolean}, description: Include the config map}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The configuration document", content: {application/json: {schema: {$ref: "#/components/schemas/ConfigBundle"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad parameter", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/config/import:
+    post:
+      summary: "Restore a configuration document; everything is validated and checked for conflicts before anything is written (requires flows:edit, flows:deploy, alerts:edit, snippets:edit, scripts:edit, settings:edit, configmap:edit)"
+      parameters:
+        - {name: force, in: query, schema: {type: boolean}, description: "Replace flows, alerts, snippets, and libraries that already exist"}
+        - {name: nodeploy, in: query, schema: {type: boolean}, description: Leave imported flows undeployed}
+        - {name: overwriteConfigMap, in: query, schema: {type: boolean}, description: "Replace the config map with the document's (otherwise it is kept)"}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/ConfigBundle"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "What was imported", content: {application/json: {schema: {$ref: "#/components/schemas/ConfigImportResult"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "An invalid document, or snippets naming missing libraries", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "Items that already exist (without force); the message lists them", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "Import stopped part-way, or a flow did not deploy (the message says which)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/alerts:
     get:
       summary: "Every alert definition, sorted by id (requires alerts:edit)"
@@ -958,6 +985,30 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    ConfigBundle:
+      type: object
+      additionalProperties: false
+      required: [format]
+      properties:
+        format: {type: string, enum: [weavster-config-v1]}
+        flows: {type: array, items: {type: object}, description: Flow definitions as in a flow export}
+        alerts: {type: array, items: {$ref: "#/components/schemas/Alert"}}
+        snippets: {type: array, items: {$ref: "#/components/schemas/Snippet"}}
+        snippetLibraries: {type: array, items: {$ref: "#/components/schemas/SnippetLibrary"}}
+        scripts: {type: object, additionalProperties: {type: string}}
+        settings: {type: object}
+        configmap: {type: object, additionalProperties: {type: string}}
+    ConfigImportResult:
+      type: object
+      properties:
+        flows: {type: object, properties: {created: {type: array, items: {type: string}}, updated: {type: array, items: {type: string}}}}
+        alerts: {type: integer}
+        snippets: {type: integer}
+        snippetLibraries: {type: integer}
+        scripts: {type: integer}
+        settings: {type: integer}
+        configMapReplaced: {type: boolean}
+        deployed: {type: array, items: {type: string}}
     AlertTrigger:
       type: object
       additionalProperties: false

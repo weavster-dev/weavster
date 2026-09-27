@@ -155,6 +155,10 @@ func (s *Server) Router() http.Handler {
 				r.With(edit).Put("/"+k.kind+"/{name}", s.handleItemPut(k))
 				r.With(edit).Delete("/"+k.kind+"/{name}", s.handleItemDelete(k))
 			}
+			r.With(s.require("flows", "view"), s.require("alerts", "edit"), s.require("snippets", "edit"),
+				s.require("scripts", "edit"), s.require("settings", "edit"), s.require("configmap", "edit")).Get("/config/export", s.handleConfigExport)
+			r.With(s.require("flows", "edit"), s.require("flows", "deploy"), s.require("alerts", "edit"), s.require("snippets", "edit"),
+				s.require("scripts", "edit"), s.require("settings", "edit"), s.require("configmap", "edit")).Post("/config/import", s.handleConfigImport)
 			alerts := s.require("alerts", "edit")
 			r.With(alerts).Get("/alerts", s.handleAlertsList)
 			r.With(alerts).Post("/alerts", s.handleAlertsSave)
