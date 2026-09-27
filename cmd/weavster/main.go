@@ -48,6 +48,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return runTest(args[1:], stdout, stderr)
 		case "server":
 			return runServer(args[1:], stderr)
+		case "config":
+			return runConfig(args[1:], stdout, stderr)
 		}
 	}
 
@@ -118,6 +120,7 @@ func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintf(w, `Usage: weavster [flags]            interactive shell (or batch mode with -s)
        weavster server [--config FILE] [address]
        weavster test [--filter NAME] [--format junit|json] [--output DIR]
+       weavster config validate FILE...   check config-as-code files offline
 
 Flags:
   -a address   Server address to connect to (default http://127.0.0.1:8080)
@@ -129,4 +132,38 @@ Flags:
   -h           Print usage and exit
   -d           Debug mode (print the cause chain of errors)
 `)
+}
+
+// runConfig runs the config-as-code commands that need no server:
+// `weavster config validate FILE...` checks each file offline. It exits 0
+// when every file is valid, 1 when any is invalid, and 2 on a usage error or
+// an unreadable file.
+func runConfig(args []string, stdout, stderr io.Writer) int {
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			_, _ = fmt.Fprintln(stdout, "Usage: weavster config validate FILE...")
+			return 0
+		}
+	}
+	if len(args) < 2 || args[0] != "validate" {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: weavster config validate FILE... (config diff, plan, and apply need a server: run them in the shell or with -s)")
+		return 2
+	}
+	code := 0
+	for _, path := range args[1:] {
+		doc, err := readDocument(path)
+		if err != nil { // unreadable: missing, a directory, too large, ...
+			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+			code = 2
+			continue
+		}
+		out, err := checkDocument(path, doc)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+			code = max(code, 1)
+			continue
+		}
+		_, _ = fmt.Fprint(stdout, out)
+	}
+	return code
 }

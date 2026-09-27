@@ -1,7 +1,9 @@
 # Command-line client
 
-`weavster` without `server` or `test` is the command-line client. It talks to a running server
-over the REST API, either as an interactive shell or running a script file (batch mode).
+`weavster` without `server`, `test`, or `config` is the command-line client. It talks to a
+running server over the REST API, either as an interactive shell or running a script file (batch
+mode). Checking config-as-code files needs no server: `weavster config validate FILE...` (see
+[Check a document](config-as-code.md#check-a-document)).
 
 ```bash
 # Interactive shell
@@ -108,7 +110,7 @@ Commands that change a flow print the server's reply (the flow, or the import/up
 | `exportmap "path"`, `importmap "path"` | Writes the config map to a JSON file, or replaces it with one. See [Config map, scripts, and settings](config-items.md). |
 | `exportscripts "path"`, `importscripts "path"` | The same for the global scripts. |
 | `snippet list`, `snippet import "path"`, `snippet export "path"`, `snippet remove <name>` | Manages code snippets; `snippet library …` does the same for libraries. See [Code snippets and libraries](snippets.md). |
-| `config validate "path"` | Checks a config-as-code document (YAML or JSON) on the server without changing anything. See [Config-as-code documents](config-as-code.md). |
+| `config validate "path"` | Checks a config-as-code document (YAML or JSON) on this machine; it needs no server or login. See [Config-as-code documents](config-as-code.md). |
 | `config diff "path"`, `config plan "path"` | Shows what applying the document would change: `diff` as text (`+`, `~` with changed values, `-`), `plan` as JSON. Nothing changes. |
 | `config apply "path" [--dry-run] [reason…]` | Plans the document, prints the plan, and applies it; refused if the server changed meanwhile, undone completely if a change fails. See [Apply](config-as-code.md#apply). |
 | `exportcfg "path" [overwriteconfigmap]`, `importcfg "path" [nodeploy] [overwriteconfigmap] [force]` | Exports or imports the whole configuration (flows, alerts, snippets, scripts, settings, and optionally the config map). See [Export and import the whole configuration](config-transfer.md). |
@@ -166,6 +168,7 @@ Update your scripts to the new names; the old ones may be removed in a later rel
 | `weavster` (interactive shell) | `quit`, `exit`, or end of input, even after failed commands (their errors are shown) | — | A line longer than 1 MiB, a read error, an unknown flag, or a missing connection file |
 | `weavster server` | `-h`, or a clean stop on SIGINT/SIGTERM | The configuration is invalid, the server could not start (store, TLS, bootstrap), or it runs as a privileged user without `WEAVSTER_ALLOW_ROOT=1` | An unknown flag or extra arguments |
 | `weavster test` | Every fixture passed, or `-h` | A fixture failed | An unknown flag, or the results could not be written |
+| `weavster config validate FILE...` | Every file is valid, or `-h` | A file is invalid | No file given, a file cannot be read or is larger than 50 MiB, or another `config` command (`diff`, `plan`, and `apply` need a server: run them in the shell or with `-s`) |
 
 `-h` (or `--help`) prints usage and exits `0` for every command. Usage errors are checked
 before anything else runs.
