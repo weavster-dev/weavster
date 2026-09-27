@@ -301,9 +301,11 @@ type Config struct {
 	FlowUpdates FlowUpdater
 	Transfer    FlowTransfer
 	Stats       StatsProvider
-	Events      EventSearcher
-	Topology    TopologyProvider
-	System      SystemReporter
+	// StatsHistory reads the sampled statistics time series.
+	StatsHistory StatsHistory
+	Events       EventSearcher
+	Topology     TopologyProvider
+	System       SystemReporter
 	// Listeners are the ports the server listens on (ports-in-use).
 	Listeners   []PortInUse
 	RequireCSRF bool

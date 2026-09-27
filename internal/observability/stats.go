@@ -247,35 +247,40 @@ type TimeSeriesPoint struct {
 	Stats FlowStats `json:"stats"`
 }
 
-// TimeSeries is a bounded ring of per-flow snapshots for trending.
+// TimeSeries keeps per-flow snapshots for trending, dropping those older
+// than its retention.
 type TimeSeries struct {
-	mu     sync.Mutex
-	points []TimeSeriesPoint
-	limit  int
+	mu        sync.Mutex
+	points    []TimeSeriesPoint // oldest first
+	retention time.Duration
 }
 
-// NewTimeSeries returns a time-series ring holding at most limit points.
-func NewTimeSeries(limit int) *TimeSeries {
-	return &TimeSeries{limit: limit}
+// NewTimeSeries returns a time series keeping snapshots for retention.
+func NewTimeSeries(retention time.Duration) *TimeSeries {
+	return &TimeSeries{retention: retention}
 }
 
-// Record appends a snapshot.
-func (ts *TimeSeries) Record(flow string, s FlowStats) {
+// Record appends a snapshot taken at at, and drops snapshots older than the
+// retention before at.
+func (ts *TimeSeries) Record(at time.Time, flow string, s FlowStats) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	ts.points = append(ts.points, TimeSeriesPoint{At: time.Now(), Flow: flow, Stats: s})
-	if len(ts.points) > ts.limit {
-		ts.points = ts.points[len(ts.points)-ts.limit:]
+	ts.points = append(ts.points, TimeSeriesPoint{At: at, Flow: flow, Stats: s})
+	cut := 0
+	for cut < len(ts.points) && ts.points[cut].At.Before(at.Add(-ts.retention)) {
+		cut++
 	}
+	ts.points = ts.points[cut:]
 }
 
-// Series returns snapshots for a flow (or all flows when flow is empty).
-func (ts *TimeSeries) Series(flow string) []TimeSeriesPoint {
+// Series returns a flow's snapshots (every flow's when flow is empty) taken
+// at or after from and at or before to (zero = open), oldest first.
+func (ts *TimeSeries) Series(flow string, from, to time.Time) []TimeSeriesPoint {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	out := make([]TimeSeriesPoint, 0)
 	for _, p := range ts.points {
-		if flow == "" || p.Flow == flow {
+		if (flow == "" || p.Flow == flow) && (from.IsZero() || !p.At.Before(from)) && (to.IsZero() || !p.At.After(to)) {
 			out = append(out, p)
 		}
 	}

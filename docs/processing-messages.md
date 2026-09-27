@@ -508,6 +508,32 @@ To save statistics or events to a file from the command-line client, use `dump s
 The topology overview (`GET /api/v1/topology`) shows each flow's `received`, `sent`,
 `errored`, and `queued` counts under `activity`. Zero counts are included.
 
+### Statistics over time
+
+The server samples every flow's lifetime totals once a minute and keeps the samples for 24 hours
+(change both with [`stats`](server-config.md#stats) in the server configuration).
+`GET /api/v1/stats/series` (permission `flows:view`) returns them, oldest first:
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/stats/series?flowId=adt&from=2026-09-27T10:00:00Z'
+```
+
+```json
+[{"at":"2026-09-27T10:00:30Z","flowId":"adt","stats":{"received":3,"filtered":1,"transformed":2,"sent":1,"errored":0,"queued":1,"destinations":{"ehr":{"sent":1,"errored":1}},"lastMessageAt":"2026-09-26T12:00:00Z"}},
+ {"at":"2026-09-27T10:01:30Z","flowId":"adt","stats":{"received":5,"filtered":1,"transformed":4,"sent":3,"errored":0,"queued":1,"destinations":{"ehr":{"sent":3,"errored":1}},"lastMessageAt":"2026-09-27T10:01:12Z"}}]
+```
+
+- Each sample has the same `stats` as `GET /api/v1/flows/{id}/stats?lifetime=true`. The
+  difference between two samples is the traffic in between.
+- `flowId`, `from`, and `to` (RFC 3339, both inclusive) are optional; without `flowId` every
+  flow's samples are returned, interleaved by time.
+- Samples are kept in memory: they start again after a restart, and a lifetime reset shows as a
+  drop to zero.
+- An unknown `flowId` returns `404`; a bad time, or `from` after `to`, returns `400`.
+- For message counts by status over hours or days from the stored messages, use
+  [message trends](#message-trends) instead.
+
 ## Retries
 
 A failed destination is retried in the background. The delay before retry *n* is

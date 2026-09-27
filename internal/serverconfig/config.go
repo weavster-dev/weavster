@@ -31,7 +31,19 @@ type Config struct {
 	Auth     Auth     `yaml:"auth"`
 	Delivery Delivery `yaml:"delivery"`
 	Flows    Flows    `yaml:"flows"`
+	Stats    Stats    `yaml:"stats"`
 }
+
+// Stats configures time-series statistics (spec §2.11.37): every flow's
+// lifetime counters are sampled every SampleIntervalMs and kept for
+// RetentionHours.
+type Stats struct {
+	SampleIntervalMs int `yaml:"sampleIntervalMs"`
+	RetentionHours   int `yaml:"retentionHours"`
+}
+
+// MaxStatsSamples bounds the samples kept per flow.
+const MaxStatsSamples = 100000
 
 // Flows configures flow handling at startup (spec §4.5).
 type Flows struct {
@@ -112,6 +124,7 @@ func Default() Config {
 		},
 		Delivery: Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000},
 		Flows:    Flows{DeployOnStartup: true},
+		Stats:    Stats{SampleIntervalMs: 60000, RetentionHours: 24},
 	}
 }
 
@@ -197,6 +210,14 @@ func (c Config) Validate() error {
 		if v < 1 || v > 3600000 {
 			return fmt.Errorf("config: %s must be between 1 and 3600000 (one hour)", key)
 		}
+	}
+	if st := c.Stats; st.SampleIntervalMs < 100 || st.SampleIntervalMs > 3600000 {
+		return errors.New("config: stats.sampleIntervalMs must be between 100 and 3600000 (one hour)")
+	}
+	if st := c.Stats; st.RetentionHours < 1 || st.RetentionHours > 8760 {
+		return errors.New("config: stats.retentionHours must be between 1 and 8760 (one year)")
+	} else if int64(st.RetentionHours)*3600000/int64(st.SampleIntervalMs) > MaxStatsSamples {
+		return fmt.Errorf("config: stats.retentionHours / stats.sampleIntervalMs keeps more than %d samples per flow", MaxStatsSamples)
 	}
 	p := c.Auth.PasswordPolicy
 	for _, v := range []int{p.MinLength, c.Auth.Lockout.RetryLimit, c.Auth.Lockout.LockoutPeriodSeconds} {

@@ -36,6 +36,22 @@ type StatsProvider interface {
 	ResetStats(ctx context.Context, flowID string, lifetime bool) error
 }
 
+// StatsSample is one flow's lifetime statistics at one sampling time
+// (spec §2.11.37).
+type StatsSample struct {
+	At     time.Time `json:"at"`
+	FlowID string    `json:"flowId"`
+	Stats  FlowStats `json:"stats"`
+}
+
+// StatsHistory reads the statistics time series.
+type StatsHistory interface {
+	// StatsSeries returns the samples of one flow (every flow when flowID is
+	// empty; ErrFlowNotFound for an unknown flow) taken at or after from and
+	// at or before to (zero = open), oldest first.
+	StatsSeries(ctx context.Context, flowID string, from, to time.Time) ([]StatsSample, error)
+}
+
 // Event is one entry of the event log.
 type Event struct {
 	ID     int64             `json:"id"`
@@ -91,6 +107,25 @@ func (s *Server) handleFlowStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) handleStatsSeries(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.StatsHistory == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "statistics unavailable")
+		return
+	}
+	v := r.URL.Query()
+	var from, to time.Time
+	if msg := timeRange(v, &from, &to); msg != "" {
+		writeStatusError(w, http.StatusBadRequest, msg)
+		return
+	}
+	samples, err := s.cfg.StatsHistory.StatsSeries(r.Context(), v.Get("flowId"), from, to)
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, samples)
 }
 
 // lifetimeParam reads the optional lifetime=true|false query parameter; on

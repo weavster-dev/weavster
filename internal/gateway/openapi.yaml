@@ -387,6 +387,34 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{<flow id>: statistics}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: lifetime is not true or false, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/stats/series:
+    get:
+      summary: "Sampled lifetime statistics of every flow (or one), oldest first (requires flows:view)"
+      description: >
+        The server samples every flow's lifetime counters every stats.sampleIntervalMs and keeps
+        the samples for stats.retentionHours (server configuration). Samples are kept in memory
+        and start again after a restart.
+      parameters:
+        - {name: flowId, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}, description: Samples taken at or after this time (RFC 3339)}
+        - {name: to, in: query, schema: {type: string, format: date-time}, description: Samples taken at or before this time (RFC 3339)}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: The samples, oldest first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    at: {type: string, format: date-time}
+                    flowId: {type: string}
+                    stats: {type: object, description: "The flow's lifetime statistics at that time (same shape as GET /api/v1/flows/{id}/stats)"}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "400": {description: "A bad from/to, or from after to", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: flowId names no flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows/stats/reset:
     post:
       summary: Clear every flow's current statistics; with lifetime=true also the lifetime totals (requires flows:deploy)

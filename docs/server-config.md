@@ -123,6 +123,23 @@ The store holds messages, flow definitions, and users. With `sqlite`, flows and 
 |---|---|---|
 | `deployOnStartup` | `true` | At startup, deploy and start every flow that is `enabled` and `undeployed`. See [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
 
+### `stats`
+
+| Key | Default | Description |
+|---|---|---|
+| `sampleIntervalMs` | `60000` | How often every flow's lifetime statistics are sampled for [statistics over time](processing-messages.md#statistics-over-time). |
+| `retentionHours` | `24` | How long samples are kept. |
+
+`sampleIntervalMs` must be 100–3,600,000 ms (one hour) and `retentionHours` 1–8760 (one year),
+and together they may keep at most 100,000 samples per flow (for example, a 1-second interval
+allows up to 27 hours). Samples are held in memory.
+
+```yaml
+stats:
+  sampleIntervalMs: 10000   # every 10 seconds
+  retentionHours: 48
+```
+
 ### `paths`
 
 | Key | Default | Description |

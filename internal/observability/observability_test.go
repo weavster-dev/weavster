@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -82,16 +83,32 @@ func TestEventLogSearchCount(t *testing.T) {
 }
 
 func TestTimeSeries(t *testing.T) {
-	ts := NewTimeSeries(3)
-	for i := 0; i < 5; i++ {
-		ts.Record("flow:a", FlowStats{Received: int64(i)})
+	ts := NewTimeSeries(2 * time.Minute)
+	t0 := time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ { // one snapshot a minute for flows a and b
+		at := t0.Add(time.Duration(i) * time.Minute)
+		ts.Record(at, "a", FlowStats{Received: int64(i)})
+		ts.Record(at, "b", FlowStats{Received: int64(10 + i)})
 	}
-	got := ts.Series("flow:a")
-	if len(got) != 3 {
-		t.Errorf("series length = %d, want 3 (bounded)", len(got))
-	}
-	if got[0].Stats.Received != 2 {
-		t.Errorf("oldest retained = %+v, want Received=2", got[0])
+	for _, tt := range []struct {
+		name     string
+		flow     string
+		from, to time.Time
+		want     []int64
+	}{
+		{"retention drops older snapshots", "a", time.Time{}, time.Time{}, []int64{2, 3, 4}},
+		{"every flow", "", time.Time{}, time.Time{}, []int64{2, 12, 3, 13, 4, 14}},
+		{"from inclusive", "b", t0.Add(3 * time.Minute), time.Time{}, []int64{13, 14}},
+		{"to inclusive", "a", time.Time{}, t0.Add(3 * time.Minute), []int64{2, 3}},
+		{"unknown flow", "c", time.Time{}, time.Time{}, []int64{}},
+	} {
+		got := []int64{}
+		for _, p := range ts.Series(tt.flow, tt.from, tt.to) {
+			got = append(got, p.Stats.Received)
+		}
+		if fmt.Sprint(got) != fmt.Sprint(tt.want) {
+			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
+		}
 	}
 }
 
