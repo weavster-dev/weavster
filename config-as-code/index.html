@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/server-config/">
+        <link rel="canonical" href="https://docs.weavster.dev/config-as-code/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Server Configuration - Weavster</title>
+        <title>Config-as-Code Documents - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -41,7 +41,7 @@
                                 <a href="../support-matrix/" class="nav-link">Support Matrix</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Server Configuration</a>
+                                <a href="../server-config/" class="nav-link">Server Configuration</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../authentication/" class="nav-link">Authentication</a>
@@ -80,7 +80,7 @@
                                 <a href="../config-transfer/" class="nav-link">Configuration Export and Import</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
+                                <a href="./" class="nav-link active" aria-current="page">Config-as-Code Documents</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
@@ -100,17 +100,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../support-matrix/" class="nav-link">
+                                <a rel="prev" href="../config-transfer/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../authentication/" class="nav-link">
+                                <a rel="next" href="../documentation/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/server-config.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/config-as-code.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -131,17 +131,21 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#server-configuration" class="nav-link">Server configuration</a>
+            <li class="nav-item" data-bs-level="1"><a href="#config-as-code-documents" class="nav-link">Config-as-code documents</a>
               <ul class="nav flex-column">
             <li class="nav-item" data-bs-level="2"><a href="#example" class="nav-link">Example</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#keys" class="nav-link">Keys</a>
+            <li class="nav-item" data-bs-level="2"><a href="#sections" class="nav-link">Sections</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#root-accounts" class="nav-link">Root accounts</a>
+            <li class="nav-item" data-bs-level="2"><a href="#check-a-document" class="nav-link">Check a document</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#editor-support" class="nav-link">Editor support</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -152,264 +156,118 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="server-configuration">Server configuration</h1>
-<p><code>weavster server</code> reads an optional YAML configuration file:</p>
-<pre><code class="language-bash">weavster server --config /etc/weavster/weavster.yaml
-</code></pre>
-<p>Without <code>--config</code>, the server uses the defaults below. A positional address overrides
-<code>listen.address</code>, for example <code>weavster server --config weavster.yaml 127.0.0.1:9090</code>. Put
-<code>--config</code> <strong>before</strong> the address. Anything after the address is rejected with
-<code>Error: unexpected arguments</code>.</p>
-<p>The file is checked strictly at startup. It must contain exactly one YAML document. An unknown
-key, a value of the wrong type, an address that isn't <code>host:port</code>, or an invalid combination (for
-example a password policy that forbids every character class) stops the server with exit code <code>1</code> and a message like:</p>
-<pre><code class="language-text">Error: config: /etc/weavster/weavster.yaml: yaml: unmarshal errors:
-  line 3: field dialekt not found in type serverconfig.Store
-</code></pre>
+<h1 id="config-as-code-documents">Config-as-code documents</h1>
+<p>A config-as-code document describes a server's configuration in one YAML (or JSON) file that
+you keep in version control: flows, alerts, code snippets and libraries, global scripts, the
+config map, and settings. Every artifact has the same shape it has in the API.</p>
+<p>!!! note "Checked, not applied yet"
+    Today you can check a document with <code>config validate</code>. Applying it to a server is not
+    available yet; to copy configuration between servers use
+    <a href="../config-transfer/">export and import</a>.</p>
 <h2 id="example">Example</h2>
-<p>A single-node server with a durable SQLite store and HTTPS:</p>
-<pre><code class="language-yaml">listen:
-  address: 127.0.0.1:8080        # cleartext listener; &quot;&quot; disables it
-  tlsAddress: 0.0.0.0:8443       # HTTPS listener; &quot;&quot; disables it
-  requireMarkerHeader: true
-tls:
-  certFile: /etc/weavster/tls/cert.pem
-  keyFile: /etc/weavster/tls/key.pem
-  minVersion: &quot;1.2&quot;
-store:
-  dialect: sqlite
-  maxRetry: 3
-  retryWaitMs: 1000
-paths:
-  dataDir: /var/lib/weavster     # SQLite file: /var/lib/weavster/weavster.db
-auth:
-  passwordPolicy:
-    minLength: 12
-    minUpper: 1
-    minLower: 1
-    minNumeric: 1
-    minSpecial: 1
-  lockout:
-    retryLimit: 5
-    lockoutPeriodSeconds: 300
+<pre><code class="language-yaml">version: &quot;1&quot;
+flows:
+  adt:                       # the key is the flow id
+    name: ADT Inbound
+    enabled: true
+    destinations:
+      - {name: ehr, type: http, url: https://ehr.example.com/in}
+alerts:
+  adt-errors:                # the key is the alert id
+    name: ADT errors
+    enabled: true
+    trigger: {events: [message.errored], flows: [adt]}
+    actions: [{type: email, to: [ops@example.com]}]
+snippetLibraries:
+  hl7: {description: HL7 helpers}
+snippets:
+  pid: {library: hl7, code: &quot;get('PID.3')&quot;}
+scripts:
+  deploy: log('deployed')
+configmap:
+  region: eu
+settings:
+  retention: {days: 30}
 </code></pre>
-<h2 id="keys">Keys</h2>
-<p>Keys you leave out keep their default.</p>
-<h3 id="listen"><code>listen</code></h3>
+<h2 id="sections">Sections</h2>
 <table>
 <thead>
 <tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
+<th>Section</th>
+<th>Keyed by</th>
+<th>Each value</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>address</code></td>
-<td><code>127.0.0.1:8080</code></td>
-<td>Cleartext HTTP <code>host:port</code>. The port is a number from 1 to 65535 or a service name such as <code>http</code>; <code>0</code> (a random port) is rejected. Set to <code>""</code> to serve HTTPS only.</td>
+<td><code>flows</code></td>
+<td>flow id</td>
+<td>A flow, as in the <a href="../processing-messages/#1-create-a-flow">flow API</a> (no <code>status</code>).</td>
 </tr>
 <tr>
-<td><code>tlsAddress</code></td>
-<td><code>""</code> (off)</td>
-<td>HTTPS <code>host:port</code>, with the same port rules as <code>address</code>. Requires <code>tls.certFile</code> and <code>tls.keyFile</code>.</td>
+<td><code>alerts</code></td>
+<td>alert id</td>
+<td>An <a href="../alerts/">alert</a>.</td>
 </tr>
 <tr>
-<td><code>requireMarkerHeader</code></td>
-<td><code>true</code></td>
-<td>Require <code>X-Weavster-CSRF: 1</code> on every <code>/api/v1</code> request. Requests without it get <code>400</code>.</td>
+<td><code>snippetLibraries</code></td>
+<td>library name</td>
+<td>A <a href="../snippets/">snippet library</a>.</td>
 </tr>
 <tr>
-<td><code>shutdownTimeoutMs</code></td>
-<td><code>10000</code></td>
-<td>On SIGINT/SIGTERM, how long to wait for in-flight requests and the retry worker before closing connections and exiting (1–600000).</td>
-</tr>
-</tbody>
-</table>
-<p>At least one of <code>address</code> and <code>tlsAddress</code> must be set.</p>
-<h3 id="tls"><code>tls</code></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>certFile</code></td>
-<td><code>""</code></td>
-<td>PEM certificate (chain) for the HTTPS listener.</td>
+<td><code>snippets</code></td>
+<td>snippet name</td>
+<td>A <a href="../snippets/">snippet</a>; its <code>library</code> must be in <code>snippetLibraries</code>.</td>
 </tr>
 <tr>
-<td><code>keyFile</code></td>
-<td><code>""</code></td>
-<td>PEM private key matching <code>certFile</code>.</td>
+<td><code>scripts</code></td>
+<td>script name</td>
+<td>The script source (text).</td>
 </tr>
 <tr>
-<td><code>minVersion</code></td>
-<td><code>"1.2"</code></td>
-<td>Lowest accepted TLS version: <code>"1.2"</code> or <code>"1.3"</code>. Quote the value so YAML reads it as a string.</td>
-</tr>
-</tbody>
-</table>
-<p>With TLS 1.2, only ECDHE AES-GCM cipher suites are offered. The certificate and key are loaded
-before any listener starts. If they can't be read, the server exits <code>1</code> with <code>Error: tls: …</code>
-and serves nothing.</p>
-<h3 id="store"><code>store</code></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>dialect</code></td>
-<td><code>memory</code></td>
-<td><code>memory</code>, <code>sqlite</code>, <code>postgres</code>, or <code>disabled</code>.</td>
+<td><code>configmap</code></td>
+<td>entry name</td>
+<td>A text value.</td>
 </tr>
 <tr>
-<td><code>dsn</code></td>
-<td>see below</td>
-<td>Connection string. For <code>sqlite</code>, a file path. For <code>postgres</code>, a URL such as <code>postgres://user:pass@db:5432/weavster</code>.</td>
-</tr>
-<tr>
-<td><code>maxConnections</code></td>
-<td><code>10</code></td>
-<td>Maximum open PostgreSQL connections. SQLite always uses one.</td>
-</tr>
-<tr>
-<td><code>maxRetry</code></td>
-<td><code>3</code></td>
-<td>PostgreSQL only: extra connection attempts after the first failure.</td>
-</tr>
-<tr>
-<td><code>retryWaitMs</code></td>
-<td><code>1000</code></td>
-<td>PostgreSQL only: wait between attempts, in milliseconds.</td>
+<td><code>settings</code></td>
+<td>setting name</td>
+<td>Any JSON value except <code>null</code>.</td>
 </tr>
 </tbody>
 </table>
 <ul>
-<li><strong><code>memory</code></strong>: messages, flow definitions, and users live in process memory and are lost on restart.</li>
-<li><strong><code>sqlite</code></strong>: set <code>dsn</code> or <code>paths.dataDir</code>. <code>dsn</code> defaults to <code>&lt;paths.dataDir&gt;/weavster.db</code>.
-  The parent directory is created (mode <code>0700</code>) if missing. Migrations run at startup. A SQLite
-  failure is never retried.</li>
-<li><strong><code>postgres</code></strong>: <code>dsn</code> is required. <strong>PostgreSQL does not work yet:</strong> the schema uses
-  SQLite-only SQL, so startup fails after the retries.</li>
-<li><strong><code>disabled</code></strong>: runs with no message store. <code>GET /api/v1/messages</code> returns <code>503 messages unavailable</code>.
-  Flow definitions and users are kept in memory.</li>
+<li>Every section is optional; <code>version</code> defaults to <code>"1"</code>, the only version.</li>
+<li>The file holds one YAML document: a second one after <code>---</code> is an error, and so is an empty
+  file.</li>
+<li>An artifact's <code>id</code> (flows, alerts) or <code>name</code> (snippets, libraries) defaults to its key. If you
+  write it, it must equal the key.</li>
+<li>Names are 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>.</li>
+<li>Unknown fields are errors anywhere in the document, so a typo such as <code>recipient:</code> is caught
+  instead of ignored.</li>
 </ul>
-<p>If every PostgreSQL attempt fails, the server exits <code>1</code>. SIGINT/SIGTERM during the retries
-stops the server immediately with exit code <code>0</code>. When every attempt fails:</p>
-<pre><code class="language-text">Error: store: postgres: giving up after 4 attempts: ...
+<h2 id="check-a-document">Check a document</h2>
+<p>From the command-line client:</p>
+<pre><code class="language-text">weavster&gt; config validate &quot;weavster.yaml&quot;
+weavster.yaml is valid: 1 flows, 1 alerts, 1 snippets, 1 snippet libraries, 1 scripts, 1 config map entries, 1 settings
 </code></pre>
-<p>The store holds messages, flow definitions, and users. With <code>sqlite</code>, flows and users
-(including password changes and lockouts) survive a restart.</p>
-<h3 id="delivery"><code>delivery</code></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>maxAttempts</code></td>
-<td><code>5</code></td>
-<td>Attempts per destination, including the first, before a message is <code>dead-lettered</code>.</td>
-</tr>
-<tr>
-<td><code>backoffBaseMs</code></td>
-<td><code>1000</code></td>
-<td>Delay before the first retry; it doubles for each further retry, up to one minute.</td>
-</tr>
-<tr>
-<td><code>retryIntervalMs</code></td>
-<td><code>1000</code></td>
-<td>How often the server checks for retries that are due.</td>
-</tr>
-</tbody>
-</table>
-<p><code>maxAttempts</code> must be 1–1000; the two intervals must be 1–3,600,000 ms (one hour). See <a href="../processing-messages/#retries">Processing messages</a>.</p>
-<h3 id="flows"><code>flows</code></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>deployOnStartup</code></td>
-<td><code>true</code></td>
-<td>At startup, deploy and start every flow that is <code>enabled</code> and <code>undeployed</code>. See <a href="../flow-lifecycle/#enabled-flows-start-automatically">Flow lifecycle</a>.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="paths"><code>paths</code></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>dataDir</code></td>
-<td><code>""</code></td>
-<td>Directory for the default SQLite file. Use an absolute path; a relative one resolves against the working directory, which is <code>/</code> under most service managers.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="auth"><code>auth</code></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>passwordPolicy.minLength</code></td>
-<td><code>8</code></td>
-<td>Minimum password length (<code>0</code> = none).</td>
-</tr>
-<tr>
-<td><code>passwordPolicy.minUpper</code> / <code>minLower</code> / <code>minNumeric</code> / <code>minSpecial</code></td>
-<td><code>1</code> / <code>1</code> / <code>1</code> / <code>0</code></td>
-<td>Required characters of each class. <code>-1</code> forbids the class.</td>
-</tr>
-<tr>
-<td><code>lockout.retryLimit</code></td>
-<td><code>5</code></td>
-<td>Failed logins before lockout (<code>0</code> = never lock).</td>
-</tr>
-<tr>
-<td><code>lockout.lockoutPeriodSeconds</code></td>
-<td><code>300</code></td>
-<td>Lockout duration in seconds.</td>
-</tr>
-</tbody>
-</table>
-<p>These settings apply to the first-run <code>admin</code> password and to every login. See
-<a href="../authentication/">Authentication</a>.</p>
-<h2 id="root-accounts">Root accounts</h2>
-<p>The server refuses to run as <code>root</code>. Set the environment variable <code>WEAVSTER_ALLOW_ROOT=1</code> to
-override this.</p></div>
+<p>Or with the API (permission <code>flows:edit</code>; nothing on the server changes):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @weavster.yaml \
+  http://127.0.0.1:8080/api/v1/config/validate
+</code></pre>
+<pre><code class="language-json">{&quot;counts&quot;:{&quot;flows&quot;:1,&quot;alerts&quot;:1,&quot;snippets&quot;:1,&quot;snippetLibraries&quot;:1,&quot;scripts&quot;:1,&quot;configmap&quot;:1,&quot;settings&quot;:1},&quot;valid&quot;:true}
+</code></pre>
+<p>An invalid document returns <code>400</code>, and the message names each problem with its place in the
+document, for example:</p>
+<pre><code class="language-text">Error: server returned 400 Bad Request: config: alerts.adt-errors: alert adt-errors: unknown trigger event &quot;message.sent&quot;; use [message.errored message.queued message.dead-lettered]
+</code></pre>
+<h2 id="editor-support">Editor support</h2>
+<p>JSON Schemas for the document and each artifact kind are published in the repository under
+<code>agent-docs/schemas/</code>: <code>config.schema.json</code>, <code>flow.schema.json</code>, <code>alert.schema.json</code>,
+<code>snippet.schema.json</code>, and <code>snippet-library.schema.json</code>. Point your editor's YAML/JSON schema
+support at <code>config.schema.json</code> for completion and inline errors. The schemas check shapes;
+<code>config validate</code> also checks the rules that span artifacts (for example, that a snippet's
+library exists).</p></div>
             </div>
         </div>
 

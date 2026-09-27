@@ -80,6 +80,9 @@
                                 <a href="../config-transfer/" class="nav-link">Configuration Export and Import</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -289,6 +292,10 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <tr>
 <td><code>GET /api/v1/flows</code>, <code>GET /api/v1/flows/{id}</code>, <code>GET /api/v1/flows/export</code>, <code>GET /api/v1/flows/connector-names</code>, <code>GET /api/v1/flows/ports-in-use</code>, <code>GET /api/v1/topology</code>, <code>GET /api/v1/topology/flows/{flowId}</code></td>
 <td><code>flows:view</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/config/validate</code></td>
+<td><code>flows:edit</code></td>
 </tr>
 <tr>
 <td><code>POST /api/v1/flows</code>, <code>PUT /api/v1/flows</code>, <code>PUT /api/v1/flows/{id}</code>, <code>DELETE /api/v1/flows/{id}</code>, <code>POST /api/v1/flows/{id}/{enable,disable}</code>, <code>POST /api/v1/flows/import</code></td>
