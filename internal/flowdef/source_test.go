@@ -28,6 +28,7 @@ func TestCheckSource(t *testing.T) {
 		{"http port too big", &Source{Type: "http", Address: ":70000"}, "port from 1 to 65535"},
 		{"mllp", &Source{Type: "mllp", Address: ":2575"}, ""},
 		{"mllp without port", &Source{Type: "mllp", Address: "localhost"}, "source.address must be host:port"},
+		{"mllp with TLS fields", &Source{Type: "mllp", Address: ":2575", CertFile: "/c", KeyFile: "/k"}, "takes only type and address"},
 		{"http secured", &Source{Type: "http", Address: ":9001", Username: "lab", PasswordEnv: "WEAVSTER_SOURCE_LAB", CertFile: "/tls/c.pem", KeyFile: "/tls/k.pem"}, ""},
 		{"http user without password", &Source{Type: "http", Address: ":9001", Username: "lab"}, "go together"},
 		{"http password without user", &Source{Type: "http", Address: ":9001", PasswordEnv: "LAB_PW"}, "go together"},

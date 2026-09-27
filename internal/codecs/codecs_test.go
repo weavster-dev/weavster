@@ -70,6 +70,9 @@ func TestHL7Ack(t *testing.T) {
 func TestHL7ACKOptions(t *testing.T) {
 	now := time.Date(2026, 9, 27, 1, 2, 3, 0, time.UTC)
 	in := []byte("MSH|^~\\&|SENDAPP|SENDFAC|RECVAPP|RECVFAC|20240101120000||ADT^A01|MSG0001|P|2.5\rPID|1||12345||DOE^JOHN\r")
+	if ack, _ := HL7ACK(in, HL7AckOptions{Code: AckApplicationAccept}); strings.Contains(string(ack), "|00010101") {
+		t.Errorf("zero Now gave %q", ack)
+	}
 	for _, tt := range []struct {
 		name string
 		in   []byte

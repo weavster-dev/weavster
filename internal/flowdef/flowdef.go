@@ -109,6 +109,9 @@ func CheckSource(s *Source) error {
 		return nil
 	}
 	if s.Type == "mllp" {
+		if *s != (Source{Type: "mllp", Address: s.Address}) {
+			return errors.New("an mllp source takes only type and address")
+		}
 		_, err := SourcePort(s)
 		return err
 	}

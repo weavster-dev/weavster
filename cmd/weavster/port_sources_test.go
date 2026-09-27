@@ -37,7 +37,7 @@ func (sourceIngest) IngestFrom(context.Context, string, []byte, map[string]strin
 // one that stopped on its own; a failure (including a server port) is
 // reported once and forgotten when the flow goes; a failed flow list
 // changes nothing; ports-in-use is sorted by flow.
-func TestHTTPSourcesReconcile(t *testing.T) {
+func TestPortSourcesReconcile(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	started := func(id, addr, path string) gateway.Flow {
@@ -98,7 +98,7 @@ func (e *reasonEvents) record(_, _ string, data map[string]string) {
 // TestHTTPSourcesSecuredFailures: a certificate that cannot be loaded, or
 // the server's own key, keeps the port closed with a reason; a new reason
 // for the same definition is reported again.
-func TestHTTPSourcesSecuredFailures(t *testing.T) {
+func TestPortSourcesSecuredFailures(t *testing.T) {
 	ctx := context.Background()
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	dir := t.TempDir()

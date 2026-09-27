@@ -50,8 +50,12 @@ type HL7AckOptions struct {
 // HL7ACK builds the MSH + MSA acknowledgment of the HL7 v2 message in: the
 // sender and receiver swapped, MSH-9 ACK^<original trigger>, and MSA-2 the
 // original control id. A message without an MSH segment gets an ACK with
-// those fields empty, so even unreadable input can be answered (AR).
+// those fields empty, so even unreadable input can be answered (AR). A zero
+// Now is the current time.
 func HL7ACK(in []byte, opts HL7AckOptions) ([]byte, error) {
+	if opts.Now.IsZero() {
+		opts.Now = time.Now()
+	}
 	c := HL7v2()
 	v, err := c.Parse(in)
 	if err != nil {

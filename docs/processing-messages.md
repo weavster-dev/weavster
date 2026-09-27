@@ -428,7 +428,10 @@ MSA|AA|MSG1
 - MSA-3 says why in fixed words, never with message content.
 - Several systems can be connected at once; messages on one connection are handled one after
   another, in order, each answered before the next is read. A connection that sends nothing for
-  5 minutes is closed.
+  5 minutes is closed; once a message starts arriving it has 15 minutes to arrive completely.
+- A message larger than 10 MiB is answered `AR` with its control id (from its MSH segment).
+- The frame must start with the MSH segment (line breaks before it are allowed). Bytes sent
+  outside a frame are ignored.
 - The port opens and closes with the flow, like an [http source](#receive-messages-over-http): one
   flow source per port, never the server's own ports, `source.mllp.failed` events when the port
   cannot be opened, and `flow:<id>` in `weavster flow ports`. Stopping the flow or the server

@@ -88,7 +88,7 @@ func (s *portSources) reconcile(ctx context.Context) {
 	flows, err := s.flows.List(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
-			s.logger.Warn("http sources: listing flows failed", "error", err)
+			s.logger.Warn("port sources: listing flows failed", "error", err)
 		}
 		return
 	}
@@ -140,7 +140,9 @@ func (s *portSources) start(id string, src gateway.FlowSource) {
 	delete(s.failed, id)
 	l := &sourceListener{src: src, port: port}
 	if src.Type == "mllp" {
-		srv := adapters.ServeMLLP(ln, mllpHandler(id, s.ingest), adapters.MLLPOptions{MaxFrame: gateway.MaxMessageBytes, IdleTimeout: mllpIdleTimeout})
+		srv := adapters.ServeMLLP(ln, mllpHandler(id, s.ingest), adapters.MLLPOptions{
+			MaxFrame: gateway.MaxMessageBytes, IdleTimeout: mllpIdleTimeout, FrameTimeout: mllpFrameTimeout,
+		})
 		l.done, l.shut = srv.Done(), func() { _ = srv.Close() }
 	} else {
 		l.done, l.shut = serveHTTPSource(id, src, ln, password, tlsCfg, s.ingest)
@@ -271,7 +273,7 @@ func (s *portSources) closeAll() {
 	closeAll(open)
 }
 
-// Ports lists the open http sources for ports-in-use, by flow id.
+// Ports lists the open http and mllp sources for ports-in-use, by flow id.
 func (s *portSources) Ports() []gateway.PortInUse {
 	s.mu.Lock()
 	defer s.mu.Unlock()

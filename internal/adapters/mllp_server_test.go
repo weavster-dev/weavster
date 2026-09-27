@@ -23,7 +23,8 @@ func TestReadFrame(t *testing.T) {
 		{"FS inside", "\x0ba\x1cb\x1c\r", "a\x1cb", 100, nil},
 		{"FS FS CR", "\x0ba\x1c\x1c\r", "a\x1c", 100, nil},
 		{"empty", "\x0b\x1c\r", "", 100, nil},
-		{"too large", "\x0b" + strings.Repeat("x", 11) + "\x1c\r", "", 10, ErrMLLPFrameTooLarge},
+		{"too large", "\x0b" + strings.Repeat("x", 11) + "\x1c\r", strings.Repeat("x", 11), 10, ErrMLLPFrameTooLarge},
+		{"too large keeps the first segment", "\x0bMSH|a\rPID|" + strings.Repeat("x", 20) + "\x1c\r", "MSH|a", 10, ErrMLLPFrameTooLarge},
 		{"at the limit", "\x0b" + strings.Repeat("x", 10) + "\x1c\r", strings.Repeat("x", 10), 10, nil},
 		{"cut off", "\x0bMSH", "", 100, io.EOF},
 		{"cut off after FS", "\x0bMSH\x1c", "", 100, io.EOF},
@@ -40,8 +41,8 @@ func TestReadFrame(t *testing.T) {
 	if got, err := readFrame(r, 10000); err != nil || string(got) != big {
 		t.Fatalf("big frame: %d bytes, %v", len(got), err)
 	}
-	if _, err := readFrame(bufio.NewReaderSize(strings.NewReader("\x0b"+big+"\x1c\r"), 16), 100); !errors.Is(err, ErrMLLPFrameTooLarge) {
-		t.Errorf("big frame over the limit: %v", err)
+	if head, err := readFrame(bufio.NewReaderSize(strings.NewReader("\x0b"+big+"\x1c\r"), 16), 100); !errors.Is(err, ErrMLLPFrameTooLarge) || len(head) == 0 || len(head) > maxFrameHead || !strings.HasPrefix(big, string(head)) {
+		t.Errorf("big frame over the limit: %d bytes kept, %v", len(head), err)
 	}
 	if got, err := readFrame(r, 10000); err != nil || string(got) != "next" {
 		t.Errorf("frame after a big one: %q, %v", got, err)
@@ -80,7 +81,7 @@ func TestMLLPServer(t *testing.T) {
 		seen = append(seen, string(frame))
 		mu.Unlock()
 		return append([]byte("ack "), frame...)
-	}, MLLPOptions{MaxFrame: 16, IdleTimeout: 300 * time.Millisecond})
+	}, MLLPOptions{MaxFrame: 16, IdleTimeout: 300 * time.Millisecond, FrameTimeout: 5 * time.Second})
 
 	dial := func() (net.Conn, *bufio.Reader) {
 		conn, err := net.Dial("tcp", ln.Addr().String())
@@ -132,5 +133,28 @@ func TestMLLPServer(t *testing.T) {
 	defer mu.Unlock()
 	if !bytes.Equal([]byte(strings.Join(seen, ",")), []byte("one,two,slow")) {
 		t.Errorf("handled %v", seen)
+	}
+}
+
+// TestMLLPServerSlowFrame: a frame that takes longer than the idle timeout
+// to arrive is still answered, within the frame timeout.
+func TestMLLPServerSlowFrame(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := ServeMLLP(ln, func(frame []byte, _ error) []byte { return frame }, MLLPOptions{MaxFrame: 100, IdleTimeout: 200 * time.Millisecond, FrameTimeout: 5 * time.Second})
+	defer func() { _ = srv.Close() }()
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	for _, part := range []string{"\x0bsl", "o", "w\x1c\r"} {
+		_, _ = conn.Write([]byte(part))
+		time.Sleep(150 * time.Millisecond) // 450 ms in all, over the idle timeout
+	}
+	if got := readReply(t, bufio.NewReader(conn)); got != "slow" {
+		t.Errorf("reply = %q", got)
 	}
 }

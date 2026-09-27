@@ -37,7 +37,11 @@ func TestMLLPHandler(t *testing.T) {
 		{"not running", msg, nil, mllpIngest{err: gateway.ErrFlowNotRunning}, "MSA|AE|C1|flow is not accepting messages"},
 		{"removed", msg, nil, mllpIngest{err: gateway.ErrFlowNotFound}, "MSA|AE|C1|flow is not accepting messages"},
 		{"failed", msg, nil, mllpIngest{err: errors.New("disk full")}, "MSA|AE|C1|message could not be processed"},
-		{"too large", nil, adapters.ErrMLLPFrameTooLarge, mllpIngest{}, "MSA|AR||message larger than 10 MiB"},
+		{"too large", []byte("MSH|^~\\&|LAB|HOSP|W|H|1||ORU^R01|BIG|P|2.5"), adapters.ErrMLLPFrameTooLarge, mllpIngest{}, "MSA|AR|BIG|message larger than 10 MiB"},
+		{"too large, nothing kept", nil, adapters.ErrMLLPFrameTooLarge, mllpIngest{}, "MSA|AR||message larger than 10 MiB"},
+		{"space before MSH", []byte(" " + string(msg)), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
+		{"MSHX", []byte("MSHX|1\r"), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
+		{"line break before MSH", append([]byte("\r\n"), msg...), nil, mllpIngest{res: gateway.IngestResult{ID: "m1"}}, "MSA|AA|C1"},
 		{"not HL7", []byte("hello"), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
 	} {
 		ack := string(mllpHandler("f", tt.ingest)(tt.frame, tt.readErr))
@@ -49,10 +53,23 @@ func TestMLLPHandler(t *testing.T) {
 			t.Errorf("%s: ACK control id %q", tt.name, segs[0])
 		}
 	}
+	long := mllpIngestSpy{}
+	mllpHandler("f", &long)([]byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|"+strings.Repeat("9", 500)+"|P|2.5\r"), nil)
+	if len(long.cid) != maxControlIDMetadata {
+		t.Errorf("stored control id is %d characters", len(long.cid))
+	}
 	if got := controlID([]byte("PID|1\r")); got != "" {
 		t.Errorf("control id without MSH = %q", got)
 	}
 	if got := controlID([]byte("MSH|^~\\&|A\r")); got != "" {
 		t.Errorf("control id of a short MSH = %q", got)
 	}
+}
+
+// mllpIngestSpy keeps the control id metadata it was given.
+type mllpIngestSpy struct{ cid string }
+
+func (m *mllpIngestSpy) IngestFrom(_ context.Context, _ string, _ []byte, md map[string]string) (gateway.IngestResult, error) {
+	m.cid = md["source.mllp.controlId"]
+	return gateway.IngestResult{ID: "m"}, nil
 }

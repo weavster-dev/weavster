@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/weavster-dev/weavster/internal/adapters"
@@ -17,25 +18,39 @@ import (
 // this long.
 const mllpIdleTimeout = 5 * time.Minute
 
+// mllpFrameTimeout bounds receiving one message once it started arriving
+// (10 MiB over a slow link takes minutes).
+const mllpFrameTimeout = 15 * time.Minute
+
+// maxControlIDMetadata caps the MSH-10 kept as metadata; HL7 allows at most
+// 199 characters, most versions 20.
+const maxControlIDMetadata = 199
+
 // mllpHandler runs each HL7 v2 message an mllp source receives through flow
 // id and answers it with an ACK (#107 D-60): AA once the message is stored,
 // AR when it is refused (resending it unchanged would be refused again), AE
 // when it could not be stored (the sender may try again). MSA-3 says why in
 // fixed words, never with message content.
 func mllpHandler(id string, ingest gateway.SourceIngester) adapters.MLLPHandler {
+	tooLarge := fmt.Sprintf("message larger than %d MiB", gateway.MaxMessageBytes>>20)
 	return func(frame []byte, readErr error) []byte {
+		msh := firstSegment(frame) // the ACK needs only MSH
 		ack := func(code, text string) []byte {
 			// HL7ACK answers any input (the HL7 parser accepts every byte string).
-			b, _ := codecs.HL7ACK(frame, codecs.HL7AckOptions{Code: code, Text: text, ControlID: newControlID(), Now: time.Now()})
+			b, _ := codecs.HL7ACK(msh, codecs.HL7AckOptions{Code: code, Text: text, ControlID: newControlID(), Now: time.Now()})
 			return b
 		}
 		if errors.Is(readErr, adapters.ErrMLLPFrameTooLarge) {
-			return ack(codecs.AckApplicationReject, "message larger than 10 MiB")
+			return ack(codecs.AckApplicationReject, tooLarge)
 		}
-		if !bytes.HasPrefix(bytes.TrimLeft(frame, "\r\n\t "), []byte("MSH")) {
+		if !isMSH(msh) {
 			return ack(codecs.AckApplicationReject, "not an HL7 v2 message (no MSH segment)")
 		}
-		res, err := ingest.IngestFrom(context.Background(), id, frame, map[string]string{"source.mllp.controlId": controlID(frame)})
+		cid := controlID(msh)
+		if len(cid) > maxControlIDMetadata {
+			cid = cid[:maxControlIDMetadata]
+		}
+		res, err := ingest.IngestFrom(context.Background(), id, frame, map[string]string{"source.mllp.controlId": cid})
 		switch {
 		case err == nil, res.ID != "":
 			// Stored: the flow has it, and a resend would duplicate it.
@@ -50,15 +65,33 @@ func mllpHandler(id string, ingest gateway.SourceIngester) adapters.MLLPHandler 
 	}
 }
 
-// controlID is the message's MSH-10.
-func controlID(frame []byte) string {
-	v, _ := codecs.HL7v2().Parse(frame) // never fails
+// firstSegment is frame up to its first segment terminator, skipping line
+// breaks before it.
+func firstSegment(frame []byte) []byte {
+	frame = bytes.TrimLeft(frame, "\r\n")
+	if i := bytes.IndexAny(frame, "\r\n"); i >= 0 {
+		return frame[:i]
+	}
+	return frame
+}
+
+// isMSH reports whether seg is an MSH segment: "MSH" and its field
+// separator, which is not a letter, digit, or space.
+func isMSH(seg []byte) bool {
+	if len(seg) < 4 || !bytes.HasPrefix(seg, []byte("MSH")) {
+		return false
+	}
+	c := seg[3]
+	alnum := c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
+	return !alnum && c != ' '
+}
+
+// controlID is MSH-10 of the MSH segment msh.
+func controlID(msh []byte) string {
+	v, _ := codecs.HL7v2().Parse(msh) // never fails
 	for _, seg := range v.(*codecs.HL7Message).Segments {
-		if seg.Name == "MSH" {
-			if f := seg.Field(10); len(f) > 0 {
-				return f[0]
-			}
-			return ""
+		if f := seg.Field(10); seg.Name == "MSH" && len(f) > 0 {
+			return f[0]
 		}
 	}
 	return ""

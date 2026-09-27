@@ -2,6 +2,7 @@ package adapters
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"net"
 	"sync"
@@ -9,7 +10,8 @@ import (
 )
 
 // ErrMLLPFrameTooLarge reports a frame over the server's limit; the frame
-// was read to its end and discarded, so the connection can go on.
+// was read to its end and discarded (only its first segment is returned,
+// so the reply can name the message), and the connection can go on.
 var ErrMLLPFrameTooLarge = errors.New("mllp: frame too large")
 
 // MLLPHandler answers one received frame with the reply to send back (an
@@ -19,8 +21,14 @@ type MLLPHandler func(frame []byte, err error) []byte
 // MLLPOptions bound an MLLP server's connections.
 type MLLPOptions struct {
 	MaxFrame    int           // largest frame kept, in bytes
-	IdleTimeout time.Duration // a connection with no frame for this long is closed
+	IdleTimeout time.Duration // a connection that sends nothing for this long is closed
+	// FrameTimeout bounds receiving one frame once its first byte arrived,
+	// so a slow sender of a large message is not cut off by IdleTimeout.
+	FrameTimeout time.Duration
 }
+
+// maxFrameHead is how much of an oversize frame's first segment is kept.
+const maxFrameHead = 4096
 
 // mllpWriteTimeout bounds sending one reply.
 const mllpWriteTimeout = 30 * time.Second
@@ -93,6 +101,12 @@ func (s *MLLPServer) serve(conn net.Conn) {
 		if stop {
 			return
 		}
+		if _, err := r.Peek(1); err != nil { // waits, at most IdleTimeout, for the next frame
+			return
+		}
+		if conn.SetReadDeadline(time.Now().Add(s.opts.FrameTimeout)) != nil {
+			return
+		}
 		frame, err := readFrame(r, s.opts.MaxFrame)
 		if err != nil && !errors.Is(err, ErrMLLPFrameTooLarge) {
 			return // closed, idle, or broken framing
@@ -125,7 +139,8 @@ func (s *MLLPServer) Close() error {
 
 // readFrame reads one MLLP frame (VT … FS CR) from r, skipping bytes before
 // the start byte (such as line breaks between frames). A frame over max is
-// read to its end and reported as ErrMLLPFrameTooLarge.
+// read to its end and reported as ErrMLLPFrameTooLarge, with its first
+// segment (up to maxFrameHead bytes).
 func readFrame(r *bufio.Reader, max int) ([]byte, error) {
 	for {
 		b, err := r.ReadByte()
@@ -140,7 +155,12 @@ func readFrame(r *bufio.Reader, max int) ([]byte, error) {
 	tooLarge := false
 	add := func(p []byte) {
 		if !tooLarge && len(frame)+len(p) > max {
-			tooLarge, frame = true, nil
+			tooLarge = true
+			frame = append(frame, p...)
+			if i := bytes.IndexAny(frame, "\r\n"); i >= 0 {
+				frame = frame[:i]
+			}
+			frame = frame[:min(len(frame), maxFrameHead):min(len(frame), maxFrameHead)]
 		}
 		if !tooLarge {
 			frame = append(frame, p...)
@@ -162,7 +182,7 @@ func readFrame(r *bufio.Reader, max int) ([]byte, error) {
 		}
 		if next == mllpEnd[1] {
 			if tooLarge {
-				return nil, ErrMLLPFrameTooLarge
+				return frame, ErrMLLPFrameTooLarge
 			}
 			if frame == nil {
 				frame = []byte{}
