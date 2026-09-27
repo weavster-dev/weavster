@@ -123,6 +123,13 @@ func ParseValid(data []byte) (*Config, error) {
 // a snippet's library must be in the document, and settings must be JSON.
 func checkArtifacts(c *Config) []string {
 	var errs []string
+	for _, k := range sortedKeys(c.Flows) {
+		if f := c.Flows[k]; f.Source != nil {
+			if err := flowdef.CheckSource(f.Source); err != nil {
+				errs = append(errs, "flows."+k+": "+err.Error())
+			}
+		}
+	}
 	for _, k := range sortedKeys(c.Alerts) {
 		if err := artifact.CheckName(k); err != nil {
 			errs = append(errs, "alerts."+k+": "+err.Error())

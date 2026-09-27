@@ -27,6 +27,7 @@ import (
 	"github.com/weavster-dev/weavster/internal/audit"
 	"github.com/weavster-dev/weavster/internal/auth"
 	"github.com/weavster-dev/weavster/internal/compiler"
+	"github.com/weavster-dev/weavster/internal/flowdef"
 	"github.com/weavster-dev/weavster/internal/flowlife"
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/observability"
@@ -124,8 +125,12 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		ma := messageAdapter{store: store, pipe: pipe, ingest: ia}
 		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
+		sources := newFileSources(flows, ia, logger)
 		retry = func(ctx context.Context) {
+			polled := make(chan struct{})
+			go func() { sources.loop(ctx); close(polled) }() // flows' file sources (#107 D-56)
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
+			<-polled
 		}
 	}
 
@@ -1163,7 +1168,11 @@ func (a flowAdapter) withFlows(ctx context.Context, changed ...gateway.Flow) (ma
 
 // checkDefinition validates a flow's transform and destinations.
 func checkDefinition(f gateway.Flow) error {
-	pf, err := toPipelineFlow(f)
+	err := flowdef.CheckSource(f.Source)
+	var pf pipeline.Flow
+	if err == nil {
+		pf, err = toPipelineFlow(f)
+	}
 	if err == nil {
 		err = pipeline.Validate(pf)
 	}

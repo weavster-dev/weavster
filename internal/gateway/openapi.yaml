@@ -1340,6 +1340,17 @@ components:
       properties:
         name: {type: string}
         value: {description: "A string for config map entries and scripts; any JSON for settings"}
+    FlowSource:
+      example: {"type": "file", "dir": "/var/lib/weavster/in/adt", "pattern": "*.json", "pollIntervalMs": 1000, "moveTo": "/var/lib/weavster/done/adt"}
+      type: object
+      description: Where the flow reads messages on its own (see flow.schema.json)
+      required: [type, dir]
+      properties:
+        type: {type: string, enum: [file]}
+        dir: {type: string, description: Absolute directory to poll}
+        pattern: {type: string, description: "File-name glob (default *)"}
+        pollIntervalMs: {type: integer, minimum: 100, maximum: 3600000, description: Default 1000}
+        moveTo: {type: string, description: "Absolute directory processed files are moved to (default: deleted)"}
     FlowDestination:
       example: {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}
       type: object
@@ -1360,6 +1371,7 @@ components:
         id: {type: string}
         name: {type: string}
         sourceType: {type: string}
+        source: {$ref: "#/components/schemas/FlowSource"}
         status: {type: string, enum: [undeployed, deployed, started, paused, halted, stopped]}
         enabled: {type: boolean}
         initialState: {type: string, enum: [started, paused, stopped]}
