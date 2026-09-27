@@ -131,7 +131,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
 		sources := newFileSources(flows, ia, eventLogRecorder{events}, logger)
-		listening := newHTTPSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), logger)
+		listening := newHTTPSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, logger)
 		sourcePorts = listening
 		retry = func(ctx context.Context) {
 			polled, served := make(chan struct{}), make(chan struct{})
@@ -382,18 +382,28 @@ func listen(cfg serverconfig.Config, handler http.Handler) ([]*http.Server, erro
 		servers = append(servers, &http.Server{Addr: cfg.Listen.Address, Handler: handler, ReadHeaderTimeout: 10 * time.Second})
 	}
 	if cfg.Listen.TLSAddress != "" {
-		tlsCfg, err := gateway.BuildTLSConfig(tlsOptions(cfg))
+		tlsCfg, err := loadTLS(tlsOptions(cfg), cfg.TLS.CertFile, cfg.TLS.KeyFile)
 		if err != nil {
 			return nil, err
 		}
-		cert, err := tls.LoadX509KeyPair(cfg.TLS.CertFile, cfg.TLS.KeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("tls: %w", err)
-		}
-		tlsCfg.Certificates = []tls.Certificate{cert}
 		servers = append(servers, &http.Server{Addr: cfg.Listen.TLSAddress, Handler: handler, TLSConfig: tlsCfg, ReadHeaderTimeout: 10 * time.Second})
 	}
 	return servers, nil
+}
+
+// loadTLS is the TLS configuration of an HTTPS listener (the API's or a
+// flow source's) serving the certificate in certFile and keyFile.
+func loadTLS(opts gateway.TLSOptions, certFile, keyFile string) (*tls.Config, error) {
+	tlsCfg, err := gateway.BuildTLSConfig(opts)
+	if err != nil {
+		return nil, err
+	}
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return nil, fmt.Errorf("tls: %w", err)
+	}
+	tlsCfg.Certificates = []tls.Certificate{cert}
+	return tlsCfg, nil
 }
 
 // tlsOptions are the HTTPS listener's settings: the listener and

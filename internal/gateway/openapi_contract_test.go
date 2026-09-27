@@ -333,10 +333,12 @@ func TestOpenAPIFlowSourceVariants(t *testing.T) {
 		{`{"type":"http","address":":9001","dir":"/in"}`, false},
 		{`{"type":"file","dir":"/in","method":"POST"}`, false},
 		{`{"type":"file","dir":"/in","recursive":true}`, false},
-		{`{"type":"http","address":":9001","username":"lab","passwordEnv":"PW","certFile":"/c","keyFile":"/k"}`, true},
+		{`{"type":"http","address":":9001","username":"lab","passwordEnv":"WEAVSTER_SOURCE_LAB","certFile":"/c","keyFile":"/k"}`, true},
 		{`{"type":"http","address":":9001","username":"lab"}`, false},
 		{`{"type":"http","address":":9001","keyFile":"/k"}`, false},
-		{`{"type":"file","dir":"/in","username":"lab","passwordEnv":"PW"}`, false},
+		{`{"type":"file","dir":"/in","username":"lab","passwordEnv":"WEAVSTER_SOURCE_LAB"}`, false},
+		{`{"type":"http","address":":9001","username":"lab","passwordEnv":"DATABASE_URL"}`, false},
+		{`{"type":"http","address":":9001","username":"a:b","passwordEnv":"WEAVSTER_SOURCE_LAB"}`, false},
 	} {
 		var v any
 		if err := json.Unmarshal([]byte(tt.doc), &v); err != nil {

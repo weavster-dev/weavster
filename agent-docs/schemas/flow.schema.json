@@ -137,8 +137,8 @@
                 "string",
                 "null"
               ],
-              "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
-              "description": "Name of the server environment variable holding the Basic password (with username)"
+              "pattern": "^WEAVSTER_SOURCE_[A-Z0-9_]+$",
+              "description": "Name of the server environment variable holding the Basic password, WEAVSTER_SOURCE_... (with username)"
             },
             "certFile": {
               "type": [

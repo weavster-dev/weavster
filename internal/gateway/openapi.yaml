@@ -1371,8 +1371,8 @@ components:
         address: {type: string, description: "http: host:port the flow listens on while it is started"}
         path: {type: string, description: "http: request path accepted (default /)"}
         method: {type: string, enum: [POST, PUT], description: "http: request method accepted (default POST)"}
-        username: {type: string, description: "http: HTTP Basic user name senders must present (with passwordEnv)"}
-        passwordEnv: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]*$", description: "http: server environment variable holding the Basic password (with username)"}
+        username: {type: string, minLength: 1, pattern: "^[^:]+$", description: "http: HTTP Basic user name senders must present (with passwordEnv)"}
+        passwordEnv: {type: string, pattern: "^WEAVSTER_SOURCE_[A-Z0-9_]+$", description: "http: server environment variable holding the Basic password, WEAVSTER_SOURCE_... (with username)"}
         certFile: {type: string, description: "http: absolute path of the PEM certificate chain; the port serves HTTPS (with keyFile)"}
         keyFile: {type: string, description: "http: absolute path of the PEM private key (with certFile)"}
     FlowDestination:

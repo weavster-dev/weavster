@@ -132,7 +132,7 @@ func TestHTTPSource(t *testing.T) {
 // with a username requires HTTP Basic credentials, the password read from
 // the server's environment; without that variable the port stays closed.
 func TestHTTPSourceSecured(t *testing.T) {
-	t.Setenv("WEAVSTER_TEST_LAB_PW", "s3cret")
+	t.Setenv("WEAVSTER_SOURCE_TEST_LAB", "s3cret")
 	addr, src := freeAddr(t), freeAddr(t)
 	certFile, keyFile, pool := selfSignedCert(t, t.TempDir())
 	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
@@ -140,7 +140,7 @@ func TestHTTPSourceSecured(t *testing.T) {
 	defer stop()
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
-	createFlow(t, c, `{"id":"lab","source":{"type":"http","address":"`+src+`","username":"lab","passwordEnv":"WEAVSTER_TEST_LAB_PW",`+
+	createFlow(t, c, `{"id":"lab","source":{"type":"http","address":"`+src+`","username":"lab","passwordEnv":"WEAVSTER_SOURCE_TEST_LAB",`+
 		`"certFile":"`+certFile+`","keyFile":"`+keyFile+`"}}`)
 	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
 	post := func(scheme, user, password string) (int, string) {
@@ -176,11 +176,11 @@ func TestHTTPSourceSecured(t *testing.T) {
 
 	// A password variable that is not set keeps the port closed.
 	other := freeAddr(t)
-	createFlow(t, c, `{"id":"nopw","source":{"type":"http","address":"`+other+`","username":"lab","passwordEnv":"WEAVSTER_TEST_UNSET_PW"}}`)
+	createFlow(t, c, `{"id":"nopw","source":{"type":"http","address":"`+other+`","username":"lab","passwordEnv":"WEAVSTER_SOURCE_TEST_UNSET"}}`)
 	deadline = time.Now().Add(10 * time.Second)
 	for {
 		_, body, _ := c.do(http.MethodGet, "/api/v1/events?type=source.http.failed", "", admin)
-		if strings.Contains(body, `"flowId":"nopw"`) && strings.Contains(body, "environment variable WEAVSTER_TEST_UNSET_PW is not set") {
+		if strings.Contains(body, `"flowId":"nopw"`) && strings.Contains(body, "environment variable WEAVSTER_SOURCE_TEST_UNSET is not set") {
 			break
 		}
 		if time.Now().After(deadline) {
