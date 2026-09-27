@@ -29,18 +29,21 @@ func TestLookups(t *testing.T) {
 				limit  int
 				want   map[string]string
 			}{
-				{"", 0, map[string]string{"A-1": "x", "A-2": "y", "B%1": "z", "é1": "w"}},
-				{"A-", 0, map[string]string{"A-1": "x", "A-2": "y"}},
+				{"", 10, map[string]string{"A-1": "x", "A-2": "y", "B%1": "z", "é1": "w"}},
+				{"A-", 10, map[string]string{"A-1": "x", "A-2": "y"}},
 				{"A-", 1, map[string]string{"A-1": "x"}},
-				{"B%", 0, map[string]string{"B%1": "z"}}, // no LIKE wildcards
-				{"é", 0, map[string]string{"é1": "w"}},
-				{"C", 0, map[string]string{}},
+				{"B%", 10, map[string]string{"B%1": "z"}}, // no LIKE wildcards
+				{"é", 10, map[string]string{"é1": "w"}},
+				{"C", 10, map[string]string{}},
 			} {
 				if got, err := s.LookupEntries(ctx, "mrn", tt.prefix, tt.limit); err != nil || !reflect.DeepEqual(got, tt.want) {
 					t.Errorf("prefix %q limit %d = %v, %v", tt.prefix, tt.limit, got, err)
 				}
 			}
-			if got, _ := s.LookupGet(ctx, "mrn", []string{"A-1", "nope"}); !reflect.DeepEqual(got, map[string]string{"A-1": "x"}) {
+			if got, _ := s.LookupGet(ctx, "mrn", nil); len(got) != 0 {
+				t.Errorf("get nothing = %v", got)
+			}
+			if got, _ := s.LookupGet(ctx, "mrn", []string{"A-1", "nope", "é1"}); !reflect.DeepEqual(got, map[string]string{"A-1": "x", "é1": "w"}) {
 				t.Errorf("get = %v", got)
 			}
 			if g, _ := s.LookupGroups(ctx); !reflect.DeepEqual(g, map[string]int{"mrn": 4, "other": 1}) {
@@ -49,7 +52,7 @@ func TestLookups(t *testing.T) {
 			if err := s.LookupPut(ctx, "mrn", map[string]string{"A-1": "new"}, true); err != nil {
 				t.Fatal(err)
 			}
-			if got, _ := s.LookupEntries(ctx, "mrn", "", 0); !reflect.DeepEqual(got, map[string]string{"A-1": "new"}) {
+			if got, _ := s.LookupEntries(ctx, "mrn", "", 10); !reflect.DeepEqual(got, map[string]string{"A-1": "new"}) {
 				t.Errorf("after replace = %v", got)
 			}
 			if err := s.LookupDelete(ctx, "mrn", "A-1"); err != nil {

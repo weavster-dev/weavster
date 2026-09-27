@@ -32,6 +32,9 @@ func TestLookups(t *testing.T) {
 		{"put", http.MethodPut, "/api/v1/lookups/facility/LAB-02", `{"value":"North Campus Lab"}`, http.StatusOK, `"North Campus Lab"`},
 		{"delete", http.MethodDelete, "/api/v1/lookups/facility/RAD%2001", ``, http.StatusNoContent, ""},
 		{"unknown", http.MethodGet, "/api/v1/lookups/facility/RAD%2001", ``, http.StatusNotFound, "lookup not found"},
+		{"key with a slash", http.MethodPut, "/api/v1/lookups/codes/ICD%2F10", `{"value":"x"}`, http.StatusOK, `"key":"ICD/10"`},
+		{"get key with a slash", http.MethodGet, "/api/v1/lookups/codes/ICD%2F10", ``, http.StatusOK, `"value":"x"`},
+		{"delete key with a slash", http.MethodDelete, "/api/v1/lookups/codes/ICD%2F10", ``, http.StatusNoContent, ""},
 		{"not text", http.MethodPost, "/api/v1/lookups/facility/import", `{"a":1}`, http.StatusBadRequest, "invalid JSON body"},
 	} {
 		if code, body, _ := c.do(s.method, s.path, s.body, admin); code != s.status || !strings.Contains(body, s.want) {

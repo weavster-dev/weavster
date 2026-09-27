@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"unicode"
@@ -18,7 +19,7 @@ import (
 type LookupStore interface {
 	LookupGroups(ctx context.Context) (map[string]int, error)
 	// LookupEntries returns the entries whose key starts with prefix, the
-	// first limit in key order (0 = all).
+	// first limit in key order.
 	LookupEntries(ctx context.Context, group, prefix string, limit int) (map[string]string, error)
 	LookupGet(ctx context.Context, group string, keys []string) (map[string]string, error)
 	// LookupPut creates or replaces entries, all or nothing; with replace the
@@ -78,12 +79,16 @@ func lookupGroup(w http.ResponseWriter, r *http.Request) (string, bool) {
 	return g, true
 }
 
-// lookupKey reads and validates {group} and {key}.
+// lookupKey reads and validates {group} and {key}. The router matches the
+// escaped path when it has one ("A%2FB"), so the key is unescaped here.
 func lookupKey(w http.ResponseWriter, r *http.Request) (group, key string, ok bool) {
 	if group, ok = lookupGroup(w, r); !ok {
 		return "", "", false
 	}
 	key = r.PathValue("key")
+	if r.URL.RawPath != "" {
+		key, _ = url.PathUnescape(key) // net/http has already refused malformed escapes
+	}
 	if err := checkLookupKey(key); err != nil {
 		writeStatusError(w, http.StatusBadRequest, err.Error())
 		return "", "", false
@@ -221,13 +226,25 @@ func (s *Server) handleLookupBatch(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusBadRequest, fmt.Sprintf("keys must list 1-%d keys", maxLookupBatch))
 		return
 	}
-	found, err := s.cfg.Lookups.LookupGet(r.Context(), group, body.Keys)
+	var keys []string // each key once, in the order given
+	seen := map[string]bool{}
+	for _, k := range body.Keys {
+		if err := checkLookupKey(k); err != nil {
+			writeStatusError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if !seen[k] {
+			seen[k] = true
+			keys = append(keys, k)
+		}
+	}
+	found, err := s.cfg.Lookups.LookupGet(r.Context(), group, keys)
 	if err != nil {
 		writeLookupError(w, err)
 		return
 	}
 	missing := []string{}
-	for _, k := range body.Keys {
+	for _, k := range keys {
 		if _, ok := found[k]; !ok {
 			missing = append(missing, k)
 		}
@@ -235,43 +252,41 @@ func (s *Server) handleLookupBatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"found": found, "missing": missing})
 }
 
-func (s *Server) handleLookupGet(w http.ResponseWriter, r *http.Request) {
+// readLookup reads the {key} of {group}; on failure it has answered and
+// returns ok false.
+func (s *Server) readLookup(w http.ResponseWriter, r *http.Request) (key, value string, found, ok bool) {
 	if !s.lookupsAvailable(w) {
-		return
+		return "", "", false, false
 	}
 	group, key, ok := lookupKey(w, r)
 	if !ok {
-		return
+		return "", "", false, false
 	}
-	found, err := s.cfg.Lookups.LookupGet(r.Context(), group, []string{key})
+	values, err := s.cfg.Lookups.LookupGet(r.Context(), group, []string{key})
 	if err != nil {
 		writeLookupError(w, err)
-		return
+		return "", "", false, false
 	}
-	v, ok := found[key]
-	if !ok {
+	value, found = values[key]
+	return key, value, found, true
+}
+
+func (s *Server) handleLookupGet(w http.ResponseWriter, r *http.Request) {
+	key, value, found, ok := s.readLookup(w, r)
+	switch {
+	case !ok:
+	case !found:
 		writeLookupError(w, ErrLookupNotFound)
-		return
+	default:
+		writeJSON(w, http.StatusOK, map[string]string{"key": key, "value": value})
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"key": key, "value": v})
 }
 
 // handleLookupExists answers {"exists": true|false} (never 404 for a key).
 func (s *Server) handleLookupExists(w http.ResponseWriter, r *http.Request) {
-	if !s.lookupsAvailable(w) {
-		return
+	if _, _, found, ok := s.readLookup(w, r); ok {
+		writeJSON(w, http.StatusOK, map[string]bool{"exists": found})
 	}
-	group, key, ok := lookupKey(w, r)
-	if !ok {
-		return
-	}
-	found, err := s.cfg.Lookups.LookupGet(r.Context(), group, []string{key})
-	if err != nil {
-		writeLookupError(w, err)
-		return
-	}
-	_, exists := found[key]
-	writeJSON(w, http.StatusOK, map[string]bool{"exists": exists})
 }
 
 func (s *Server) handleLookupPut(w http.ResponseWriter, r *http.Request) {

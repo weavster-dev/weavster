@@ -28,8 +28,8 @@ The body is a JSON object of key to text value. Entries are created or replaced,
 other entries stay. Add `?replace=true` to make the body the whole group.
 
 - Group names are 1–128 characters from `A-Z a-z 0-9 . _ -`.
-- Keys are 1–512 characters of any text except control characters. URL-encode them in paths
-  (`RAD%2001`).
+- Keys are 1–512 characters of any text except control characters, `/` included. URL-encode
+  them in paths (`RAD%2001`, `ICD%2F10`).
 - Values are text of at most 64 KiB. A group exists while it has entries.
 
 ## Requests

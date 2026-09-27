@@ -52,16 +52,13 @@ func (s *sqlStore) LookupGroups(ctx context.Context) (map[string]int, error) {
 }
 
 // LookupEntries returns a group's entries whose key starts with prefix,
-// the first limit in key order (0 = all).
+// the first limit in key order. key >= prefix lets the primary key start
+// the scan at the prefix; substr keeps only matching keys.
 func (s *sqlStore) LookupEntries(ctx context.Context, group, prefix string, limit int) (map[string]string, error) {
 	ctx = s.bind(ctx)
-	q := `SELECT key, value FROM lookups WHERE grp = ? AND substr(key, 1, ?) = ? ORDER BY key`
-	args := []any{group, len([]rune(prefix)), prefix}
-	if limit > 0 {
-		q += ` LIMIT ?`
-		args = append(args, limit)
-	}
-	rows, err := s.db.QueryContext(ctx, q, args...)
+	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM lookups
+		WHERE grp = ? AND key >= ? AND substr(key, 1, ?) = ? ORDER BY key LIMIT ?`,
+		group, prefix, len([]rune(prefix)), prefix, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -77,22 +74,31 @@ func (s *sqlStore) LookupEntries(ctx context.Context, group, prefix string, limi
 	return out, rows.Err()
 }
 
-// LookupGet returns the values of the keys that exist.
+// LookupGet returns the values of the keys that exist, in one query (a
+// consistent read).
 func (s *sqlStore) LookupGet(ctx context.Context, group string, keys []string) (map[string]string, error) {
-	ctx = s.bind(ctx)
 	out := map[string]string{}
+	if len(keys) == 0 {
+		return out, nil
+	}
+	args := []any{group}
 	for _, k := range keys {
-		var v string
-		err := s.db.QueryRowContext(ctx, `SELECT value FROM lookups WHERE grp = ? AND key = ?`, group, k).Scan(&v)
-		if errors.Is(err, sql.ErrNoRows) {
-			continue
-		}
-		if err != nil {
+		args = append(args, k)
+	}
+	rows, err := s.db.QueryContext(s.bind(ctx), `SELECT key, value FROM lookups WHERE grp = ? AND key IN (?`+
+		strings.Repeat(", ?", len(keys)-1)+`)`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var k, v string
+		if err := rows.Scan(&k, &v); err != nil {
 			return nil, err
 		}
 		out[k] = v
 	}
-	return out, nil
+	return out, rows.Err()
 }
 
 // LookupPut creates or replaces entries in one transaction; with replace
@@ -159,7 +165,7 @@ func (s *MemStore) LookupGroups(context.Context) (map[string]int, error) {
 }
 
 // LookupEntries returns a group's entries whose key starts with prefix,
-// the first limit in key order (0 = all).
+// the first limit in key order.
 func (s *MemStore) LookupEntries(_ context.Context, group, prefix string, limit int) (map[string]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -170,7 +176,7 @@ func (s *MemStore) LookupEntries(_ context.Context, group, prefix string, limit 
 		}
 	}
 	sort.Strings(keys)
-	if limit > 0 && len(keys) > limit {
+	if len(keys) > limit {
 		keys = keys[:limit]
 	}
 	out := make(map[string]string, len(keys))

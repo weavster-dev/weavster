@@ -37,7 +37,7 @@ func (m *memLookups) LookupEntries(_ context.Context, g, prefix string, limit in
 		}
 	}
 	sort.Strings(keys)
-	if limit > 0 && len(keys) > limit {
+	if len(keys) > limit {
 		keys = keys[:limit]
 	}
 	out := map[string]string{}
@@ -117,6 +117,12 @@ func TestLookupHandlers(t *testing.T) {
 		{"not exists", http.MethodGet, "/api/v1/lookups/mrn/zz/exists", ``, cfg, http.StatusOK, `{"exists":false}`},
 		{"batch", http.MethodPost, "/api/v1/lookups/mrn/batch", `{"keys":["A-1","zz"]}`, cfg, http.StatusOK, `{"found":{"A-1":"x"},"missing":["zz"]}`},
 		{"batch empty", http.MethodPost, "/api/v1/lookups/mrn/batch", `{"keys":[]}`, cfg, http.StatusBadRequest, "1-1000 keys"},
+		{"batch repeats", http.MethodPost, "/api/v1/lookups/mrn/batch", `{"keys":["zz","A-1","zz"]}`, cfg, http.StatusOK, `"missing":["zz"]}`},
+		{"batch bad key", http.MethodPost, "/api/v1/lookups/mrn/batch", `{"keys":["zz",""]}`, cfg, http.StatusBadRequest, "1-512 characters"},
+		{"slash key", http.MethodPut, "/api/v1/lookups/mrn/A%2FB", `{"value":"slash"}`, cfg, http.StatusOK, `"key":"A/B"`},
+		{"get slash key", http.MethodGet, "/api/v1/lookups/mrn/A%2FB", ``, cfg, http.StatusOK, `"value":"slash"`},
+		{"comma and percent key", http.MethodPut, "/api/v1/lookups/mrn/a%2Cb%25c", `{"value":"x"}`, cfg, http.StatusOK, `"key":"a,b%c"`},
+		{"delete slash key", http.MethodDelete, "/api/v1/lookups/mrn/A%2FB", ``, cfg, http.StatusNoContent, ""},
 		{"put", http.MethodPut, "/api/v1/lookups/mrn/A-3", `{"value":"w"}`, cfg, http.StatusOK, `"value":"w"`},
 		{"put no value", http.MethodPut, "/api/v1/lookups/mrn/A-3", `{}`, cfg, http.StatusBadRequest, `{\"value\": \"text\"}`},
 		{"put long key", http.MethodPut, "/api/v1/lookups/mrn/" + strings.Repeat("k", maxLookupKey+1), `{"value":"w"}`, cfg, http.StatusBadRequest, "1-512 characters"},

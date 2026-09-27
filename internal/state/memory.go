@@ -14,8 +14,8 @@ type MemStore struct {
 	m       map[string]Message
 	flows   map[string]FlowDefinition
 	users   map[string]UserDocument
-	items   map[string]map[string]json.RawMessage
-	lookups map[string]map[string]string // kind -> name -> value
+	items   map[string]map[string]json.RawMessage // kind -> name -> value
+	lookups map[string]map[string]string          // group -> key -> value
 }
 
 // NewMemStore returns an empty in-memory store.
