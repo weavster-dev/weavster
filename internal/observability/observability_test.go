@@ -109,16 +109,6 @@ func TestLogRing(t *testing.T) {
 	}
 }
 
-func TestSystemStatus(t *testing.T) {
-	s := SystemStatus("weavster-1", "0.1.0", "2026-08-23")
-	if s.ID != "weavster-1" || s.Version != "0.1.0" || s.BuildDate != "2026-08-23" {
-		t.Errorf("system status = %+v", s)
-	}
-	if len(s.Protocols) == 0 || len(s.Ciphers) == 0 {
-		t.Errorf("protocols/ciphers missing: %+v", s)
-	}
-}
-
 func TestTracerProvider(t *testing.T) {
 	tp, err := NewTracerProvider(context.Background(), TracerOptions{Stdout: true})
 	if err != nil {

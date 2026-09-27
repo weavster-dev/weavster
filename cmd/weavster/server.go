@@ -140,7 +140,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Stats:           statsAdapter{flows: flows, stats: stats},
 		Events:          eventsAdapter{events},
 		Topology:        topologyAdapter{flows: flows, stats: stats},
-		System:          observability.SystemStatus("weavster", version, buildDate),
+		System:          systemAdapter{cfg: cfg, started: time.Now()},
 		Listeners:       listeners(cfg.Listen),
 		RequireCSRF:     cfg.Listen.RequireMarkerHeader,
 	})

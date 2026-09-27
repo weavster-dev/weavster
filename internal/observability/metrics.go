@@ -5,8 +5,6 @@ package observability
 import (
 	"context"
 	"net/http"
-	"runtime"
-	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -61,41 +59,5 @@ func (p *Prometheus) Handler() http.Handler {
 }
 
 func (p *Prometheus) Shutdown(context.Context) error { return nil }
-
-// SystemInfo is the system status payload (spec §2.11.38).
-type SystemInfo struct {
-	ID        string   `json:"id"`
-	Version   string   `json:"version"`
-	BuildDate string   `json:"buildDate"`
-	Timezone  string   `json:"timezone"`
-	Time      string   `json:"time"`
-	Runtime   string   `json:"runtime"`
-	Charsets  []string `json:"charsets"`
-	Protocols []string `json:"protocols"`
-	Ciphers   []string `json:"ciphers"`
-	License   string   `json:"license"`
-}
-
-// SystemStatus returns the current system status (spec §2.11.38).
-func SystemStatus(id, version, buildDate string) SystemInfo {
-	now := time.Now()
-	return SystemInfo{
-		ID:        id,
-		Version:   version,
-		BuildDate: buildDate,
-		Timezone:  time.Local.String(),
-		Time:      now.Format(time.RFC3339),
-		Runtime:   runtime.Version(),
-		Charsets:  []string{"UTF-8", "ISO-8859-1"},
-		Protocols: []string{"TLS 1.2", "TLS 1.3"},
-		Ciphers: []string{
-			"TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
-			"TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
-			"TLS_AES_128_GCM_SHA256",
-			"TLS_AES_256_GCM_SHA384",
-		},
-		License: "MVP (no entitlement gating)",
-	}
-}
 
 var _ MetricsExporter = (*Prometheus)(nil)

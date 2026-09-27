@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/weavster-dev/weavster/internal/flowdef"
-	"github.com/weavster-dev/weavster/internal/observability"
 	"github.com/weavster-dev/weavster/internal/topology"
 )
 
@@ -300,7 +299,7 @@ type Config struct {
 	Stats       StatsProvider
 	Events      EventSearcher
 	Topology    TopologyProvider
-	System      observability.SystemInfo
+	System      SystemReporter
 	// Listeners are the ports the server listens on (ports-in-use).
 	Listeners   []PortInUse
 	RequireCSRF bool

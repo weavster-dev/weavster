@@ -70,12 +70,38 @@ paths:
         "400": {description: New password rejected by the password policy, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/system:
     get:
-      summary: System status
+      summary: "System status, computed per request: version, time, uptime, and TLS as configured (any signed-in user)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200":
-          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
-          description: System information (id, version, build date, runtime, charsets, protocols/ciphers, license).
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/SystemStatus"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: System information unavailable, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/system/about:
+    get:
+      summary: "Product name, version, build, runtime, and license (any signed-in user)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/SystemAbout"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: System information unavailable, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/system/password-requirements:
+    get:
+      summary: "The password policy: counts (0 = none, -1 forbids the class) and the same rules in words (any signed-in user)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/PasswordRequirements"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: System information unavailable, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/system/resources:
+    get:
+      summary: "The server process: CPUs, goroutines, memory, uptime (any signed-in user)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: OK, content: {application/json: {schema: {$ref: "#/components/schemas/SystemResources"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: System information unavailable, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/system/guid:
+    get:
+      summary: "A new random (version 4) UUID (any signed-in user)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{guid}", content: {application/json: {schema: {type: object, properties: {guid: {type: string, format: uuid}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/topology:
     get:
       summary: Flow topology overview graph (read-only)
@@ -1075,6 +1101,56 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    SystemStatus:
+      type: object
+      required: [id, status, version, time, uptimeSeconds, tls]
+      properties:
+        id: {type: string}
+        status: {type: string, enum: [running]}
+        version: {type: string}
+        buildDate: {type: string}
+        time: {type: string, format: date-time}
+        timezone: {type: string}
+        uptimeSeconds: {type: integer}
+        runtime: {type: string}
+        charsets: {type: array, items: {type: string}}
+        tls:
+          type: object
+          required: [enabled, protocols, ciphers]
+          properties:
+            enabled: {type: boolean}
+            address: {type: string}
+            minVersion: {type: string, enum: ["1.2", "1.3"]}
+            protocols: {type: array, items: {type: string}}
+            ciphers: {type: array, items: {type: string}}
+        license: {type: string}
+    SystemAbout:
+      type: object
+      properties:
+        name: {type: string}
+        version: {type: string}
+        buildDate: {type: string}
+        runtime: {type: string}
+        os: {type: string}
+        arch: {type: string}
+        license: {type: string}
+    PasswordRequirements:
+      type: object
+      properties:
+        minLength: {type: integer}
+        minUpper: {type: integer}
+        minLower: {type: integer}
+        minNumeric: {type: integer}
+        minSpecial: {type: integer}
+        rules: {type: array, items: {type: string}}
+    SystemResources:
+      type: object
+      properties:
+        cpus: {type: integer}
+        goroutines: {type: integer}
+        memoryAllocBytes: {type: integer}
+        memorySysBytes: {type: integer}
+        uptimeSeconds: {type: integer}
     Event:
       type: object
       required: [id, at, type]
