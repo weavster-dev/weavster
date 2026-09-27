@@ -130,6 +130,8 @@ func TestGitAdapterDocument(t *testing.T) {
 		{"bad file", "alerts/bad.yaml", "version: \"1\"\nalerts:\n  x: [", "alerts/bad.yaml"},
 		{"unknown field", "settings/bad.yaml", "version: \"1\"\nbogus: 1\n", "settings/bad.yaml"},
 		{"config map refused", "settings/map.yaml", "version: \"1\"\nconfigmap:\n  region: eu\n", "the config map is not read from the repository"},
+		{"schema error names the file", "flows/bad.yaml", "version: \"1\"\nflows:\n  bad:\n    id: bad\n    destinations: [{name: out, type: nope}]\n", "flows/bad.yaml: "},
+		{"broken reference names the file", "snippets/pid.yaml", "version: \"1\"\nsnippets:\n  pid: {name: pid, library: none, code: x}\n", "snippets/pid.yaml: "},
 		{"aliases refused", "scripts/alias.yaml", "version: \"1\"\nscripts:\n  b: &x foo\n  c: *x\n", "scripts/alias.yaml: YAML anchors and aliases are not supported"},
 		{"merge keys refused", "settings/merge.yaml", "version: \"1\"\nsettings:\n  m:\n    <<: {a: 1}\n", "settings/merge.yaml: YAML anchors and aliases"},
 	} {
@@ -160,5 +162,29 @@ func TestGitAdapterDocument(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestGitAdapterDocumentNamesOnlyTheBadFile: a problem with flows.adt
+// names adt's file, not the file of flows.ad.
+func TestGitAdapterDocumentNamesOnlyTheBadFile(t *testing.T) {
+	a, err := newGitAdapter(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for f, content := range map[string]string{
+		"flows/ad.yaml":  "version: \"1\"\nflows:\n  ad: {id: ad}\n",
+		"flows/adt.yaml": "version: \"1\"\nflows:\n  adt:\n    id: adt\n    destinations: [{name: out, type: nope}]\n",
+	} {
+		if err := a.store.WriteFile(f, []byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.store.Commit("two flows", gitstoreAuthor); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = a.GitDocument(context.Background(), "HEAD")
+	if err == nil || !strings.Contains(err.Error(), "flows/adt.yaml: ") || strings.Contains(err.Error(), "flows/ad.yaml") {
+		t.Errorf("err = %v", err)
 	}
 }

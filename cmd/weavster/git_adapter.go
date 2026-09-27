@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -291,7 +293,28 @@ func (a gitAdapter) GitDocument(_ context.Context, rev string) ([]byte, string, 
 		root.Content = append(root.Content, str(section), m)
 	}
 	doc, err := yaml.Marshal(root)
-	return doc, commit, err
+	if err != nil {
+		return nil, "", err
+	}
+	// Validate the whole document here, so a problem names the files of
+	// the artifacts it is about (cross-references may span files).
+	if _, err := config.ParseValid(doc); err != nil {
+		var in []string
+		for key, f := range from {
+			section, name, _ := strings.Cut(key, "/")
+			// "flows.a" must not match inside "flows.adt".
+			named := regexp.MustCompile(`(^|[^\w.-])` + regexp.QuoteMeta(section+"."+name) + `($|[^\w-])`)
+			if named.MatchString(err.Error()) && !slices.Contains(in, f) {
+				in = append(in, f)
+			}
+		}
+		sort.Strings(in)
+		if len(in) == 0 {
+			return nil, "", fmt.Errorf("%w: %w", gateway.ErrInvalidConfig, err)
+		}
+		return nil, "", fmt.Errorf("%w: %s: %w", gateway.ErrInvalidConfig, strings.Join(in, ", "), err)
+	}
+	return doc, commit, nil
 }
 
 // hasAnchors reports whether n uses YAML anchors, aliases, or merge keys.
