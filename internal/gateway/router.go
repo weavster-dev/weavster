@@ -178,6 +178,7 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("messages", "import")).Post("/messages/import", s.handleMessagesImport)
 			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "view")).Get("/messages/{id}", s.handleMessageGet)
 			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "content")).Get("/messages/{id}/content", s.handleMessageContent)
+			r.With(s.require("messages", "delete")).Delete("/messages", s.handleMessagesDelete)
 			r.With(s.require("messages", "delete")).Delete("/messages/{id}", s.handleMessageDelete)
 			r.With(s.require("messages", "send")).Post("/messages/{id}/reprocess", s.handleMessageReprocess)
 		})

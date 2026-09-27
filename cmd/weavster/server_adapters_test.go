@@ -12,6 +12,7 @@ import (
 	"github.com/weavster-dev/weavster/internal/audit"
 	"github.com/weavster-dev/weavster/internal/auth"
 	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/pipeline"
 	"github.com/weavster-dev/weavster/internal/state"
 )
 
@@ -278,5 +279,50 @@ func TestMessageAdapterSearchFilters(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestMessageAdapterDeleteMatching pages through the matches, skips busy
+// messages without losing its place, and leaves other flows alone.
+func TestMessageAdapterDeleteMatching(t *testing.T) {
+	defer func(n int) { deletePage = n }(deletePage)
+	deletePage = 2
+	ctx := context.Background()
+	store := state.NewMemStore()
+	for _, m := range []state.Message{{ID: "a1", FlowID: "a"}, {ID: "a2", FlowID: "a"}, {ID: "a3", FlowID: "a"}, {ID: "a4", FlowID: "a"}, {ID: "a5", FlowID: "a"}, {ID: "b1", FlowID: "b"}} {
+		m.Status = state.StatusSent
+		_ = store.Put(ctx, m)
+	}
+	pipe := pipeline.New(store, newSink, nil, pipeline.Options{})
+	release, _ := pipe.Hold("a2")
+	defer release()
+	ma := messageAdapter{store: store, pipe: pipe}
+	deleted, busy, err := ma.DeleteMatching(ctx, gateway.MessageQuery{FlowID: "a"})
+	if err != nil || deleted != 4 || busy != 1 {
+		t.Fatalf("DeleteMatching = %d, %d, %v; want 4, 1, nil", deleted, busy, err)
+	}
+	left, _ := store.Search(ctx, state.Query{Sort: "id"})
+	if len(left) != 2 || left[0].ID != "a2" || left[1].ID != "b1" {
+		t.Errorf("left = %+v, want a2 and b1", left)
+	}
+	// A message that no longer matches when it is reached is kept.
+	for _, tt := range []struct {
+		name string
+		q    state.Query
+	}{
+		{"other flow", state.Query{FlowID: "a"}},
+		{"other status", state.Query{Status: state.StatusQueued}},
+		{"received earlier", state.Query{From: time.Now().Add(time.Hour)}},
+		{"received later", state.Query{To: time.Unix(0, 0)}},
+	} {
+		if removed, err := ma.removeIfMatching(ctx, "b1", tt.q); removed || err != nil {
+			t.Errorf("%s: removed = %v, %v; want kept", tt.name, removed, err)
+		}
+	}
+	if removed, err := ma.removeIfMatching(ctx, "gone", state.Query{}); removed || err != nil {
+		t.Errorf("missing message: removed = %v, %v", removed, err)
+	}
+	if _, _, err := (messageAdapter{store: erroringStore{}}).DeleteMatching(ctx, gateway.MessageQuery{}); !errors.Is(err, errSearchFailed) {
+		t.Errorf("search error = %v", err)
 	}
 }

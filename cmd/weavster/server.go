@@ -1752,6 +1752,61 @@ func (m messageAdapter) Export(ctx context.Context, q gateway.MessageQuery, key 
 	return state.ExportArchive(ctx, m.store, state.ExportOptions{Query: toStateQuery(q), Key: key})
 }
 
+// deletePage is how many matches DeleteMatching reads at a time (a
+// variable so tests can page through a few messages).
+var deletePage = 500
+
+// DeleteMatching removes every message matching q's filters. It pages by id
+// from an exclusive cursor, so messages skipped as busy do not shift the
+// pages, and stops only at an empty page. Each message is checked against
+// the filters again while the pipeline holds it, so one that changed since
+// the search (a queued message delivered meanwhile) is kept.
+func (m messageAdapter) DeleteMatching(ctx context.Context, q gateway.MessageQuery) (deleted, busy int, err error) {
+	sq := toStateQuery(gateway.MessageQuery{FlowID: q.FlowID, Status: q.Status, From: q.From, To: q.To, Sort: "id"})
+	sq.Limit = deletePage
+	for {
+		page, err := m.store.Search(ctx, sq)
+		if err != nil || len(page) == 0 {
+			return deleted, busy, err
+		}
+		for _, msg := range page {
+			release, ok := m.pipe.Hold(msg.ID)
+			if !ok {
+				busy++
+				continue
+			}
+			removed, err := m.removeIfMatching(ctx, msg.ID, sq)
+			release()
+			if err != nil {
+				return deleted, busy, err
+			}
+			if removed {
+				deleted++
+			}
+		}
+		sq.IDFrom = page[len(page)-1].ID + "\x00"
+	}
+}
+
+// removeIfMatching deletes message id if it still matches sq's filters.
+func (m messageAdapter) removeIfMatching(ctx context.Context, id string, sq state.Query) (bool, error) {
+	msg, err := m.store.Get(ctx, id)
+	if errors.Is(err, state.ErrNotFound) {
+		return false, nil // removed meanwhile
+	}
+	if err != nil {
+		return false, err
+	}
+	if (sq.FlowID != "" && msg.FlowID != sq.FlowID) || (sq.Status != "" && msg.Status != sq.Status) ||
+		(!sq.From.IsZero() && msg.ReceivedAt.Before(sq.From)) || (!sq.To.IsZero() && msg.ReceivedAt.After(sq.To)) {
+		return false, nil
+	}
+	if err := m.store.Delete(ctx, id); err != nil && !errors.Is(err, state.ErrNotFound) {
+		return false, err
+	}
+	return true, nil
+}
+
 // Import restores an archive. Every flow its messages will belong to must
 // exist (checked before anything is written), and each message is written
 // while the pipeline holds its id, so it never replaces one being processed.

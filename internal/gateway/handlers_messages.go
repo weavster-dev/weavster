@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -225,6 +226,93 @@ func (s *Server) handleMessageDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleMessagesDelete removes every message matching the search filters
+// (spec §2.6.22). Without a filter it needs all=true. With restart=true the
+// started flows in scope are stopped first and started again afterwards.
+func (s *Server) handleMessagesDelete(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Messages == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "messages unavailable")
+		return
+	}
+	v := r.URL.Query()
+	for _, p := range []string{"limit", "offset", "sort"} {
+		if v.Has(p) {
+			writeStatusError(w, http.StatusBadRequest, p+" does not apply to removal; every match is removed")
+			return
+		}
+	}
+	q, ok := messageQuery(w, r, maxExportLimit)
+	if !ok {
+		return
+	}
+	all, restart := v.Get("all"), v.Get("restart")
+	for _, p := range [][2]string{{"all", all}, {"restart", restart}} {
+		if p[1] != "" && p[1] != "true" && p[1] != "false" {
+			writeStatusError(w, http.StatusBadRequest, p[0]+" must be true or false")
+			return
+		}
+	}
+	if restart == "true" && (s.cfg.Flows == nil || s.cfg.Lifecycle == nil) {
+		writeStatusError(w, http.StatusServiceUnavailable, "flow lifecycle unavailable")
+		return
+	}
+	filtered := q.FlowID != "" || q.Status != "" || !q.From.IsZero() || !q.To.IsZero()
+	if !filtered && all != "true" {
+		writeStatusError(w, http.StatusBadRequest, "give a filter (flowId, status, from, to), or all=true to remove every message")
+		return
+	}
+	res := MessagesDeleted{Restarted: []string{}}
+	var stopErr, deleteErr error
+	if restart == "true" {
+		res.Restarted, stopErr = s.stopStartedFlows(r, q.FlowID)
+	}
+	if stopErr == nil {
+		res.Deleted, res.Busy, deleteErr = s.cfg.Messages.DeleteMatching(r.Context(), q)
+	}
+	// Start the stopped flows again even if the client has gone away.
+	ctx := context.WithoutCancel(r.Context())
+	var notStarted []string
+	for _, id := range res.Restarted {
+		if _, err := s.cfg.Lifecycle.Transition(ctx, id, "start"); err != nil {
+			notStarted = append(notStarted, id)
+		}
+	}
+	switch {
+	case len(notStarted) > 0:
+		// Say plainly which flows are still stopped, whatever else failed.
+		writeStatusError(w, http.StatusInternalServerError, fmt.Sprintf(
+			"removed %d messages, but these flows are still stopped; start them with POST /api/v1/flows/{id}/start: %s",
+			res.Deleted, strings.Join(notStarted, ", ")))
+	case stopErr != nil:
+		writeFlowError(w, stopErr)
+	case deleteErr != nil:
+		writeStatusError(w, http.StatusInternalServerError, fmt.Sprintf(
+			"removal stopped after %d messages because of an internal error; run it again", res.Deleted))
+	default:
+		writeJSON(w, http.StatusOK, res)
+	}
+}
+
+// stopStartedFlows stops every started flow (only flowID when set) and
+// returns the ones it stopped, also when it fails part-way.
+func (s *Server) stopStartedFlows(r *http.Request, flowID string) ([]string, error) {
+	stopped := []string{}
+	flows, err := s.cfg.Flows.List(r.Context())
+	if err != nil {
+		return stopped, err
+	}
+	for _, f := range flows {
+		if f.Status != "started" || (flowID != "" && f.ID != flowID) {
+			continue
+		}
+		if _, err := s.cfg.Lifecycle.Transition(r.Context(), f.ID, "stop"); err != nil {
+			return stopped, err
+		}
+		stopped = append(stopped, f.ID)
+	}
+	return stopped, nil
 }
 
 func (s *Server) handleMessageReprocess(w http.ResponseWriter, r *http.Request) {

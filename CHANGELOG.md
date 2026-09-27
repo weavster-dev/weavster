@@ -63,6 +63,7 @@ All notable changes to this project are documented here, following
 - User administration (#217): `GET/POST /api/v1/users`, `GET/PUT/DELETE /api/v1/users/{name}`, `POST /api/v1/users/{name}/password` (permission `users:admin`); validated usernames and permissions, password policy, last-admin and self-delete protection, sessions ended on changes. CLI `user list`, `user add`, `user remove`, `user changepw`.
 - Config map, global scripts, and settings (#219): `/api/v1/configmap`, `/api/v1/scripts`, `/api/v1/settings` (list, replace, get/put/delete one; permissions `configmap:edit`, `scripts:edit`, `settings:edit`), stored durably with SQLite (migration 6). CLI `importmap`, `exportmap`, `importscripts`, `exportscripts`. Flows do not use these values yet.
 - Code snippets and snippet libraries (#221): `/api/v1/snippets` and `/api/v1/snippet-libraries` (list with `?summary=true`, create, bulk create-or-replace, get/put/delete one; permission `snippets:edit`), SQLite-durable; a snippet's library must exist and a library in use cannot be deleted. CLI `snippet [library] list|import|export|remove`. Flows do not run snippets yet.
+- Bulk message removal (#223): `DELETE /api/v1/messages` removes every message matching `flowId`, `status`, `from`, `to` (`all=true` required without a filter; `restart=true` stops the started flows in scope and starts them again; busy messages are kept and counted). CLI `clearallmessages` and `dump stats|events "path"`.
 
 ### Changed
 
