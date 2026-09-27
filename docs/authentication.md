@@ -128,6 +128,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all`, `POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all`, `POST /api/v1/flows/{id}/destinations/{name}/{start,stop}`, `POST /api/v1/flows/stats/reset`, `POST /api/v1/flows/{id}/stats/reset` | `flows:deploy` |
 | `GET /api/v1/flows/{id}/stats`, `GET /api/v1/flows/stats` | `flows:view` |
 | `GET /api/v1/events` | `events:view` |
+| `GET/POST /api/v1/users`, `GET/PUT/DELETE /api/v1/users/{name}`, `POST /api/v1/users/{name}/password` | `users:admin` |
 
 The `admin` permission grants everything. A signed-in user without the permission gets:
 
@@ -135,7 +136,45 @@ The `admin` permission grants everything. A signed-in user without the permissio
 {"error":{"code":"FORBIDDEN","message":"missing permission flows:edit"}}
 ```
 
-The API cannot create other users yet; the only account is `admin`.
+The other permissions are `users:admin`, `flows:view`, `flows:edit`, `flows:deploy`,
+`messages:view`, `messages:send`, `messages:content`, `messages:delete`, `messages:import`,
+`events:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `configmap:edit`, and
+`settings:edit`.
+
+## Manage users
+
+An account with `users:admin` (or `admin`) manages the other accounts.
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/users -d '{
+  "username": "ops", "password": "A-Temp-Passw0rd",
+  "permissions": ["flows:view", "flows:deploy", "events:view"],
+  "email": "ops@example.com"
+}'
+```
+
+```json
+{"username":"ops","email":"ops@example.com","permissions":["events:view","flows:deploy","flows:view"],"mustChangePassword":true,"locked":false}
+```
+
+| Request | What it does |
+|---|---|
+| `GET /api/v1/users`, `GET /api/v1/users/{name}` | Lists accounts, or shows one. Password data is never returned. `locked` is true during a lockout. |
+| `POST /api/v1/users` | Creates an account (`201`). `username` is 1–64 characters from `A-Z a-z 0-9 . _ @ -`; `permissions` must be from the list above; the [password policy](server-config.md#auth) applies. The user must choose a new password at the first login unless you send `"mustChangePassword": false`. |
+| `PUT /api/v1/users/{name}` | Replaces `permissions` (required; `[]` for none). `email` and `org` change only when you send them. |
+| `POST /api/v1/users/{name}/password` | Sets a new password (`{"password":"…"}`, `204`). The user must change it at the next login, and a lockout ends. |
+| `DELETE /api/v1/users/{name}` | Deletes the account (`204`). |
+
+- Changing a user's permissions, setting their password, or deleting them ends all their open
+  sessions (bearer tokens); they sign in again.
+- You cannot delete your own account, and the last account with `admin` cannot be deleted or
+  lose `admin` (`409`).
+- An account with `users:admin` but not `admin` can only grant permissions it holds itself, never
+  `admin`, and cannot change, reset, or delete an account that has `admin` (`403`).
+- Editing your own account (`PUT`) keeps your own session; setting your own password ends every
+  session, yours included.
+- Invalid input returns `400` with the reason, an existing username `409`, and an unknown user
+  `404`.
 
 ## CLI
 

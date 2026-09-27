@@ -144,7 +144,7 @@ func TestDispatchStatusFlowUser(t *testing.T) {
 	if code := dispatch(context.Background(), client, "user bogus", &out, &errb, false); code != 2 {
 		t.Errorf("user bogus exit = %d, want 2", code)
 	}
-	if !strings.Contains(errb.String(), "unknown user subcommand") {
+	if !strings.Contains(errb.String(), "usage: user list") {
 		t.Errorf("stderr = %q", errb.String())
 	}
 }
@@ -170,9 +170,6 @@ func TestDispatchClientErrors(t *testing.T) {
 
 type erroringClient struct{}
 
-func (erroringClient) UserList(context.Context) ([]string, error) {
-	return nil, fmt.Errorf("user list unavailable")
-}
 func (erroringClient) Version(context.Context) string { return version }
 func (erroringClient) Call(context.Context, string, string, []byte) ([]byte, error) {
 	return nil, fmt.Errorf("call unavailable")
@@ -211,9 +208,11 @@ func TestBuildServerServesSystem(t *testing.T) {
 
 type fakeClient struct{}
 
-func (fakeClient) UserList(context.Context) ([]string, error) { return []string{"admin"}, nil }
-func (fakeClient) Version(context.Context) string             { return version }
-func (fakeClient) Call(context.Context, string, string, []byte) ([]byte, error) {
+func (fakeClient) Version(context.Context) string { return version }
+func (fakeClient) Call(_ context.Context, _, path string, _ []byte) ([]byte, error) {
+	if path == "/api/v1/users" {
+		return []byte(`[{"username":"admin","permissions":["admin"],"mustChangePassword":false,"locked":false}]`), nil
+	}
 	return []byte(`[{"id":"admit","status":"started","name":"Patient Admit"}]`), nil
 }
 

@@ -13,6 +13,10 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
+// ErrPasswordPolicy wraps a password the policy rejects (on create or
+// administrator set), with the reason.
+var ErrPasswordPolicy = errors.New("password rejected by the policy")
+
 // ErrPasswordReused is returned when a new password matches a prior one.
 var ErrPasswordReused = errors.New("auth: password was recently used")
 

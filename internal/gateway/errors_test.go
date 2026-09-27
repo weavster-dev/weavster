@@ -129,3 +129,24 @@ func TestIsVersion(t *testing.T) {
 		}
 	}
 }
+
+func TestUserHandlersUnavailableAndBadInput(t *testing.T) {
+	tests := []struct {
+		method, path, body string
+		status             int
+	}{
+		{http.MethodGet, "/api/v1/users", ``, http.StatusServiceUnavailable},
+		{http.MethodGet, "/api/v1/users/x", ``, http.StatusServiceUnavailable},
+		{http.MethodPost, "/api/v1/users", `{}`, http.StatusServiceUnavailable},
+		{http.MethodPut, "/api/v1/users/x", `{}`, http.StatusServiceUnavailable},
+		{http.MethodDelete, "/api/v1/users/x", ``, http.StatusServiceUnavailable},
+		{http.MethodPost, "/api/v1/users/x/password", `{}`, http.StatusServiceUnavailable},
+	}
+	for _, tt := range tests {
+		rec := httptest.NewRecorder()
+		New(Config{}).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))
+		if rec.Code != tt.status {
+			t.Errorf("%s %s: %d, want %d", tt.method, tt.path, rec.Code, tt.status)
+		}
+	}
+}

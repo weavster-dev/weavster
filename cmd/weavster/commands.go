@@ -83,18 +83,7 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		}
 		return flowCommand(ctx, client, args, stdout, stderr, debug)
 	case "user":
-		if len(fields) >= 2 && fields[1] == "list" {
-			users, err := client.UserList(ctx)
-			if err != nil {
-				return shellError(stderr, debug, err)
-			}
-			for _, u := range users {
-				_, _ = fmt.Fprintln(stdout, u)
-			}
-			return 0
-		}
-		_, _ = fmt.Fprintln(stderr, "Error: unknown user subcommand")
-		return 2
+		return userCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	default:
 		_, _ = fmt.Fprintf(stderr, "Error: unknown command %q\n", fields[0])
 		return 2
@@ -114,7 +103,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list, quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -305,4 +294,64 @@ func archiveCount(archive []byte) int {
 		return 0
 	}
 	return len(doc.Items)
+}
+
+// userCommand runs a spec §3.2 user administration command.
+func userCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	usage := func() int {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: user list | user add <name> <password> [permission...] | user remove <name> | user changepw <name> <password>")
+		return 2
+	}
+	if len(args) == 0 {
+		return usage()
+	}
+	userPath := func(name string, more ...string) string {
+		p := "/api/v1/users/" + url.PathEscape(name)
+		for _, m := range more {
+			p += "/" + m
+		}
+		return p
+	}
+	var err error
+	switch {
+	case args[0] == "list" && len(args) == 1:
+		var out []byte
+		out, err = client.Call(ctx, http.MethodGet, "/api/v1/users", nil)
+		var users []gateway.UserInfo
+		if err == nil {
+			err = json.Unmarshal(out, &users)
+		}
+		if err == nil {
+			for _, u := range users {
+				line := u.Username + "\t" + strings.Join(u.Permissions, ",")
+				if u.MustChangePassword {
+					line += "\tmust change password"
+				}
+				if u.Locked {
+					line += "\tlocked"
+				}
+				_, _ = fmt.Fprintln(stdout, line)
+			}
+		}
+	case args[0] == "add" && len(args) >= 3:
+		body, _ := json.Marshal(gateway.NewUser{Username: args[1], Password: args[2], Permissions: append([]string{}, args[3:]...)})
+		if _, err = client.Call(ctx, http.MethodPost, "/api/v1/users", body); err == nil {
+			_, _ = fmt.Fprintf(stdout, "added %s (must change the password at first login)\n", args[1])
+		}
+	case args[0] == "remove" && len(args) == 2:
+		if _, err = client.Call(ctx, http.MethodDelete, userPath(args[1]), nil); err == nil {
+			_, _ = fmt.Fprintf(stdout, "removed %s\n", args[1])
+		}
+	case args[0] == "changepw" && len(args) == 3:
+		body, _ := json.Marshal(map[string]string{"password": args[2]})
+		if _, err = client.Call(ctx, http.MethodPost, userPath(args[1], "password"), body); err == nil {
+			_, _ = fmt.Fprintf(stdout, "password set for %s (must change it at next login)\n", args[1])
+		}
+	default:
+		return usage()
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	return 0
 }

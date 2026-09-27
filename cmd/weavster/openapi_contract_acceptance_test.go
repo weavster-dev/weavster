@@ -27,7 +27,7 @@ func TestOpenAPIContract(t *testing.T) {
 	}
 	// Values for path parameters without an enum, naming things that exist
 	// so operations reach their logic.
-	samples := map[string]string{"id": "f", "flowId": "f", "dest": "d"}
+	samples := map[string]string{"id": "f", "flowId": "f", "dest": "d", "name": bootstrapAdmin}
 	var ops []string
 	for path, item := range doc.Paths.Map() {
 		for method := range item.Operations() {

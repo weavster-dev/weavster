@@ -265,6 +265,7 @@ type TopologyProvider interface {
 type Config struct {
 	Auth        AuthProvider // nil disables authentication and authorization
 	Passwords   PasswordChanger
+	Users       UserAdmin
 	Authorizer  Authorizer
 	Audit       AuditSink
 	Flows       FlowStore

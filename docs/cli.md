@@ -122,10 +122,9 @@ import "backups/all flows.json" force
 |---|---|
 | `status` | Lists deployed flows (every status except `undeployed`): id, status, and name per line, or `no deployed flows`. |
 | `version` | Prints the client version. |
-| `user list` | Prints nothing yet. |
+| `user list` | One line per account: username, permissions, and `must change password` / `locked` when they apply (permission `users:admin`). |
+| `user add <name> <password> [permission…]` | Creates an account; the user must change the password at the first login. |
+| `user remove <name>` | Deletes an account. |
+| `user changepw <name> <password>` | Sets an account's password; the user must change it at the next login. |
 | `help` | Lists the commands. |
 | `quit`, `exit` | End the interactive shell; ignored in batch mode. |
-
-## Limits today
-
-- `user list` prints nothing yet.
