@@ -36,8 +36,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080
   -d '{"value":{"days":30}}'
 ```
 
-A value of the wrong type (a number in the config map, for example) or a bad name returns `400` and
-changes nothing. Bodies may be up to 10 MiB.
+A value of the wrong type (a number in the config map, for example), a `null` value, an unknown
+field in the body, or a bad name returns `400` and changes nothing. Bodies may be up to 10 MiB.
 
 ## Command-line client
 

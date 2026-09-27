@@ -94,8 +94,16 @@ func (s *sqlStore) ReplaceItems(ctx context.Context, kind string, items map[stri
 	if _, err := tx.ExecContext(ctx, `DELETE FROM config_items WHERE kind = ?`, kind); err != nil {
 		return err
 	}
+	// Upsert: a concurrent PutItem may add a row between the DELETE and
+	// these inserts under READ COMMITTED.
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO config_items (kind, name, value) VALUES (?, ?, ?)
+		ON CONFLICT (kind, name) DO UPDATE SET value = excluded.value`)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = stmt.Close() }()
 	for name, value := range items {
-		if _, err := tx.ExecContext(ctx, `INSERT INTO config_items (kind, name, value) VALUES (?, ?, ?)`, kind, name, string(value)); err != nil {
+		if _, err := stmt.ExecContext(ctx, kind, name, string(value)); err != nil {
 			return err
 		}
 	}

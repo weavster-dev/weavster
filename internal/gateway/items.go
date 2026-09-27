@@ -49,8 +49,8 @@ func (k itemKind) checkItem(name string, value json.RawMessage) error {
 	if !validItemName.MatchString(name) {
 		return fmt.Errorf("name %q must be 1-128 characters from A-Z a-z 0-9 . _ -", name)
 	}
-	if !json.Valid(value) {
-		return fmt.Errorf("value of %s is not JSON", name)
+	if string(value) == "null" {
+		return fmt.Errorf("value of %s must not be null; delete it instead", name)
 	}
 	if k.strings {
 		var str string
@@ -61,9 +61,11 @@ func (k itemKind) checkItem(name string, value json.RawMessage) error {
 	return nil
 }
 
-// readItemsBody reads a JSON document of at most maxItemsBody into v.
+// readItemsBody reads a JSON document of at most maxItemsBody into v,
+// rejecting unknown fields.
 func readItemsBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxItemsBody))
+	dec.DisallowUnknownFields()
 	err := dec.Decode(v)
 	if err == nil {
 		if _, tokErr := dec.Token(); tokErr != io.EOF {
