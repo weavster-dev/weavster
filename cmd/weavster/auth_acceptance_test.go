@@ -61,6 +61,14 @@ var protectedRoutes = []struct {
 	{http.MethodGet, "/api/v1/configmap", "configmap:edit"},
 	{http.MethodPut, "/api/v1/scripts/s", "scripts:edit"},
 	{http.MethodDelete, "/api/v1/settings/s", "settings:edit"},
+	{http.MethodGet, "/api/v1/snippets", "snippets:edit"},
+	{http.MethodPost, "/api/v1/snippets", "snippets:edit"},
+	{http.MethodPut, "/api/v1/snippets/s", "snippets:edit"},
+	{http.MethodDelete, "/api/v1/snippets/s", "snippets:edit"},
+	{http.MethodGet, "/api/v1/snippet-libraries", "snippets:edit"},
+	{http.MethodPost, "/api/v1/snippet-libraries", "snippets:edit"},
+	{http.MethodPut, "/api/v1/snippet-libraries", "snippets:edit"},
+	{http.MethodDelete, "/api/v1/snippet-libraries/s", "snippets:edit"},
 }
 
 type apiClient struct {

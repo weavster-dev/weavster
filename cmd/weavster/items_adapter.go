@@ -17,6 +17,7 @@ type itemRepository interface {
 	PutItem(ctx context.Context, kind, name string, value json.RawMessage) error
 	DeleteItem(ctx context.Context, kind, name string) error
 	ReplaceItems(ctx context.Context, kind string, items map[string]json.RawMessage) error
+	PutItems(ctx context.Context, kind string, items map[string]json.RawMessage) error
 }
 
 // itemsAdapter serves gateway.ItemStore from the store.

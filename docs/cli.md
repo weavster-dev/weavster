@@ -107,6 +107,7 @@ Commands that change a flow print the server's reply (the flow, or the import/up
 | `importmessages "path" <flow>` | Imports an archive file into the flow (existing message ids are skipped). |
 | `exportmap "path"`, `importmap "path"` | Writes the config map to a JSON file, or replaces it with one. See [Config map, scripts, and settings](config-items.md). |
 | `exportscripts "path"`, `importscripts "path"` | The same for the global scripts. |
+| `snippet list`, `snippet import "path"`, `snippet export "path"`, `snippet remove <name>` | Manages code snippets; `snippet library …` does the same for libraries. See [Code snippets and libraries](snippets.md). |
 | `resetstats [lifetime]` | Clears every flow's current statistics; `lifetime` also clears the lifetime totals. |
 | `deploy [timeout]` | Deploys every flow that is `enabled` and `undeployed` (dependencies first, as `flow deploy` does); disabled flows are skipped, as at server start. Prints `deployed <id>` for each and `deployed N flows`. After `timeout` seconds no further flow is started (a deploy already sent finishes) and the command exits `2`. A flow that fails is reported, the others still deploy, and the command exits `2`. |
 | `import "path" [force]` | Same as `flow import`; `force` replaces existing flows. |

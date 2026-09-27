@@ -12,7 +12,7 @@ var ErrItemNotFound = errors.New("state: item not found")
 
 // Config items are named JSON values grouped by kind (the config map, global
 // scripts, settings). The SQL and in-memory stores implement ListItems,
-// GetItem, PutItem, DeleteItem, and ReplaceItems.
+// GetItem, PutItem, PutItems, DeleteItem, and ReplaceItems.
 
 func itemsMigration() Migration {
 	return Migration{
@@ -96,6 +96,14 @@ func (s *sqlStore) ReplaceItems(ctx context.Context, kind string, items map[stri
 	}
 	// Upsert: a concurrent PutItem may add a row between the DELETE and
 	// these inserts under READ COMMITTED.
+	if err := upsertItems(ctx, tx, kind, items); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+// upsertItems creates or replaces items of kind inside tx.
+func upsertItems(ctx context.Context, tx *sql.Tx, kind string, items map[string]json.RawMessage) error {
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO config_items (kind, name, value) VALUES (?, ?, ?)
 		ON CONFLICT (kind, name) DO UPDATE SET value = excluded.value`)
 	if err != nil {
@@ -106,6 +114,20 @@ func (s *sqlStore) ReplaceItems(ctx context.Context, kind string, items map[stri
 		if _, err := stmt.ExecContext(ctx, kind, name, string(value)); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// PutItems creates or replaces several items of kind, in one transaction.
+func (s *sqlStore) PutItems(ctx context.Context, kind string, items map[string]json.RawMessage) error {
+	ctx = s.bind(ctx)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := upsertItems(ctx, tx, kind, items); err != nil {
+		return err
 	}
 	return tx.Commit()
 }
@@ -163,5 +185,18 @@ func (s *MemStore) ReplaceItems(_ context.Context, kind string, items map[string
 		set[name] = append(json.RawMessage(nil), v...)
 	}
 	s.items[kind] = set
+	return nil
+}
+
+// PutItems creates or replaces several items of kind.
+func (s *MemStore) PutItems(_ context.Context, kind string, items map[string]json.RawMessage) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.items[kind] == nil {
+		s.items[kind] = map[string]json.RawMessage{}
+	}
+	for name, v := range items {
+		s.items[kind][name] = append(json.RawMessage(nil), v...)
+	}
 	return nil
 }

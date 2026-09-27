@@ -14,6 +14,7 @@ func TestConfigItems(t *testing.T) {
 		PutItem(context.Context, string, string, json.RawMessage) error
 		DeleteItem(context.Context, string, string) error
 		ReplaceItems(context.Context, string, map[string]json.RawMessage) error
+		PutItems(context.Context, string, map[string]json.RawMessage) error
 	}
 	for name, backend := range testBackends(t) {
 		t.Run(name, func(t *testing.T) {
@@ -59,6 +60,15 @@ func TestConfigItems(t *testing.T) {
 			}
 			if all, _ := s.ListItems(ctx, "map"); len(all) != 1 {
 				t.Errorf("after delete = %v", all)
+			}
+			if err := s.PutItems(ctx, "map", map[string]json.RawMessage{"b": json.RawMessage(`"3"`), "c": json.RawMessage(`"4"`)}); err != nil {
+				t.Fatal(err)
+			}
+			if all, _ := s.ListItems(ctx, "map"); len(all) != 2 || string(all["b"]) != `"3"` || string(all["c"]) != `"4"` {
+				t.Errorf("after put items = %v", all)
+			}
+			if err := s.PutItems(ctx, "fresh", map[string]json.RawMessage{"x": json.RawMessage(`1`)}); err != nil {
+				t.Fatal(err)
 			}
 		})
 	}

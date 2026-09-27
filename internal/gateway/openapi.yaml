@@ -585,6 +585,122 @@ paths:
         "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/snippets:
+    get:
+      summary: "Every code snippet, sorted by name (requires snippets:edit)"
+      parameters:
+        - {name: summary, in: query, required: false, description: "true omits the code", schema: {type: boolean}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The code snippets", content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Snippet"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    post:
+      summary: "Create one code snippet (requires snippets:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/Snippet"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "201": {description: "Created", content: {application/json: {schema: {$ref: "#/components/schemas/Snippet"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name or an unknown field", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "A code snippet with that name already exists", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "The named library does not exist", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Create or replace several code snippets; others are kept (requires snippets:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Snippet"}}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The saved code snippets", content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Snippet"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad or repeated name, an unknown field, or not a JSON array", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "A named library does not exist", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: "Body larger than 10 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/snippets/{name}:
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    get:
+      summary: "One code snippet (requires snippets:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The code snippet", content: {application/json: {schema: {$ref: "#/components/schemas/Snippet"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown code snippet", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Create or replace one code snippet; name in the body is optional and must match the path (requires snippets:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/SnippetUpdate"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The saved code snippet", content: {application/json: {schema: {$ref: "#/components/schemas/Snippet"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name or an unknown field", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "The named library does not exist", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: "Delete one code snippet (requires snippets:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown code snippet", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/snippet-libraries:
+    get:
+      summary: "Every snippet library, sorted by name (requires snippets:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The snippet libraries", content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/SnippetLibrary"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    post:
+      summary: "Create one snippet library (requires snippets:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/SnippetLibrary"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "201": {description: "Created", content: {application/json: {schema: {$ref: "#/components/schemas/SnippetLibrary"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name or an unknown field", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "A snippet library with that name already exists", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Create or replace several snippet libraries; others are kept (requires snippets:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: array, items: {$ref: "#/components/schemas/SnippetLibrary"}}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The saved snippet libraries", content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/SnippetLibrary"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad or repeated name, an unknown field, or not a JSON array", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: "Body larger than 10 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/snippet-libraries/{name}:
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    get:
+      summary: "One snippet library (requires snippets:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The snippet library", content: {application/json: {schema: {$ref: "#/components/schemas/SnippetLibrary"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown snippet library", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Create or replace one snippet library; name in the body is optional and must match the path (requires snippets:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/SnippetLibraryUpdate"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The saved snippet library", content: {application/json: {schema: {$ref: "#/components/schemas/SnippetLibrary"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name or an unknown field", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: "Delete one snippet library (requires snippets:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad name", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown snippet library", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "Snippets still name this library", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/users:
     get:
       summary: List user accounts (requires users:admin)
@@ -742,6 +858,38 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    SnippetUpdate:
+      type: object
+      additionalProperties: false
+      description: "A snippet for PUT on /api/v1/snippets/{name}: name is optional and must match the path"
+      properties:
+        name: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}
+        library: {type: string, description: "Name of an existing snippet library"}
+        description: {type: string}
+        code: {type: string}
+    SnippetLibraryUpdate:
+      type: object
+      additionalProperties: false
+      description: "A library for PUT on /api/v1/snippet-libraries/{name}: name is optional and must match the path"
+      properties:
+        name: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}
+        description: {type: string}
+    Snippet:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}
+        library: {type: string, description: "Name of an existing snippet library"}
+        description: {type: string}
+        code: {type: string}
+    SnippetLibrary:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}
+        description: {type: string}
     UserInfo:
       type: object
       required: [username, permissions, mustChangePassword, locked]
