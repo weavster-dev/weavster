@@ -77,10 +77,30 @@ below, in order, on the message as a JSON object.
 |---|---|
 | `name` | Unique within the flow; 1–128 characters from `A-Z a-z 0-9 . _ -` (it appears in URLs). Used to report delivery results. |
 | `type` | `http` (POST to `url`) or `file` (write one file per message into `dir`, named by message ID). |
-| `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a `POST` with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough), and it times out after 30 seconds. The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
+| `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a request (`POST` unless `method` says otherwise) with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough). The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`. Created if missing. |
+| `method` | `http` only: `POST` (default), `PUT`, or `PATCH`. |
+| `timeoutMs` | `http` only: time allowed for one delivery request, including reading the response, 1000–300000 ms; default 30000. A request that takes longer is a failed attempt and is retried. |
+| `maxRedirects` | `http` only: how many redirects to follow, 0–10; default 0. See [Redirects](#redirects). |
 | `transform` | Optional. This destination's own transform, with the same steps as the flow `transform`. See [Per-destination transforms and filters](#per-destination-transforms-and-filters). |
 | `responseTransform` | Optional. Transform applied to this destination's reply. See [Return a destination's reply](#return-a-destinations-reply). |
+
+### Redirects
+
+By default an `http` destination does not follow redirects: a `3xx` reply is a failed delivery,
+retried and then dead-lettered like any other failure, so a moved endpoint shows up in the
+message's errors instead of losing messages. To follow them, set `maxRedirects`:
+
+```json
+{"name": "ehr", "type": "http", "url": "https://ehr.example.com/in", "method": "PUT",
+ "timeoutMs": 10000, "maxRedirects": 2}
+```
+
+- Only `307` and `308` redirects are followed; they repeat the same method and body.
+- `301`, `302`, and `303` are never followed, because clients turn them into a `GET` without the
+  message: the delivery fails with that status. Update `url` to the new address instead.
+- A redirect from `https://` to `http://` is never followed.
+- Each redirect counts toward `maxRedirects`; one more is a failed delivery.
 
 ### Per-destination transforms and filters
 
@@ -293,6 +313,7 @@ the configured method and path is a message:
 | `path` | Request path accepted; default `/`. Must start with `/`. |
 | `method` | `POST` (default) or `PUT`. |
 | `username`, `passwordEnv` | Optional, together: senders must use HTTP Basic authentication with this user name (no `:`, which separates user and password in Basic authentication) and the password in the server's environment variable `passwordEnv`. The variable name must start with `WEAVSTER_SOURCE_` followed by capital letters, digits, or `_`, so a flow cannot use the server's other secrets. The password never goes into the flow definition. |
+| `readTimeoutMs` | Time allowed to read one request, headers and body, 1000–600000 ms; default 60000. A sender slower than that gets its connection closed. |
 | `certFile`, `keyFile` | Optional, together: absolute paths of a PEM certificate chain and private key on the server. The port then serves HTTPS only (HTTP/1.1 and HTTP/2), with the server's TLS settings (`tls.minVersion`). The server's own `tls.keyFile` is refused: give each flow its own certificate. |
 
 Once the flow is started, send it a message:

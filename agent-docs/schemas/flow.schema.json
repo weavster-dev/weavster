@@ -155,6 +155,15 @@
               ],
               "minLength": 1,
               "description": "Absolute path of the PEM private key (with certFile)"
+            },
+            "readTimeoutMs": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1000,
+              "maximum": 600000,
+              "description": "Time allowed to read one request (default 60000)"
             }
           },
           "dependentRequired": {
@@ -255,6 +264,61 @@
         },
         "responseTransform": {
           "$ref": "#/$defs/Transform"
+        },
+        "method": {
+          "enum": [
+            "POST",
+            "PUT",
+            "PATCH",
+            null
+          ],
+          "description": "http: request method (default POST)"
+        },
+        "timeoutMs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1000,
+          "maximum": 300000,
+          "description": "http: time allowed for one delivery request, including the response (default 30000)"
+        },
+        "maxRedirects": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 10,
+          "description": "http: 307/308 redirects followed, never https to http (default 0: a redirect fails the delivery)"
+        }
+      },
+      "if": {
+        "properties": {
+          "type": {
+            "const": "file"
+          }
+        }
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "method"
+              ]
+            },
+            {
+              "required": [
+                "timeoutMs"
+              ]
+            },
+            {
+              "required": [
+                "maxRedirects"
+              ]
+            }
+          ]
         }
       }
     },

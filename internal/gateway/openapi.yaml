@@ -1349,7 +1349,7 @@ components:
       oneOf:
         - required: [dir]
           properties: {type: {enum: [file]}}
-          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}]}
+          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}]}
         - required: [address]
           properties: {type: {enum: [http]}}
           not:
@@ -1374,16 +1374,25 @@ components:
         username: {type: string, minLength: 1, pattern: "^[^:]+$", description: "http: HTTP Basic user name senders must present (with passwordEnv)"}
         passwordEnv: {type: string, pattern: "^WEAVSTER_SOURCE_[A-Z0-9_]+$", description: "http: server environment variable holding the Basic password, WEAVSTER_SOURCE_... (with username)"}
         certFile: {type: string, minLength: 1, description: "http: absolute path of the PEM certificate chain; the port serves HTTPS (with keyFile)"}
+        readTimeoutMs: {type: integer, minimum: 1000, maximum: 600000, description: "http: time allowed to read one request (default 60000)"}
         keyFile: {type: string, minLength: 1, description: "http: absolute path of the PEM private key (with certFile)"}
     FlowDestination:
       example: {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}
       type: object
       required: [name, type]
+      description: "method, timeoutMs, and maxRedirects apply to http destinations only."
+      anyOf:
+        - properties: {type: {enum: [http]}}
+        - properties: {type: {enum: [file]}}
+          not: {anyOf: [{required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}]}
       properties:
         name: {type: string}
         type: {type: string, enum: [file, http]}
         url: {type: string}
         dir: {type: string}
+        method: {type: string, enum: [POST, PUT, PATCH], description: "http: request method (default POST)"}
+        timeoutMs: {type: integer, minimum: 1000, maximum: 300000, description: "http: time allowed for one delivery request, including the response (default 30000)"}
+        maxRedirects: {type: integer, minimum: 0, maximum: 10, description: "http: 307/308 redirects followed, never https to http (default 0: a redirect fails the delivery)"}
         transform: {description: A destination transform}
         responseTransform: {description: A response transform}
     Flow:

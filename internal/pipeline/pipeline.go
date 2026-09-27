@@ -38,6 +38,10 @@ type Destination struct {
 	Type    string // "http" or "file"
 	URL     string // http
 	Dir     string // file
+	// Method, Timeout, and MaxRedirects shape http requests (zero: defaults).
+	Method       string
+	Timeout      time.Duration
+	MaxRedirects int
 	// Transform, when set, runs on the flow's output before delivery to
 	// this destination; its filter steps drop the message for it alone.
 	Transform *compiler.Transform

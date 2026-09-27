@@ -337,9 +337,35 @@ func TestOpenAPIFlowSourceVariants(t *testing.T) {
 		{`{"type":"http","address":":9001","username":"lab"}`, false},
 		{`{"type":"http","address":":9001","keyFile":"/k"}`, false},
 		{`{"type":"http","address":":9001","certFile":"","keyFile":""}`, false},
+		{`{"type":"http","address":":9001","readTimeoutMs":5000}`, true},
+		{`{"type":"file","dir":"/in","readTimeoutMs":5000}`, false},
 		{`{"type":"file","dir":"/in","username":"lab","passwordEnv":"WEAVSTER_SOURCE_LAB"}`, false},
 		{`{"type":"http","address":":9001","username":"lab","passwordEnv":"DATABASE_URL"}`, false},
 		{`{"type":"http","address":":9001","username":"a:b","passwordEnv":"WEAVSTER_SOURCE_LAB"}`, false},
+	} {
+		var v any
+		if err := json.Unmarshal([]byte(tt.doc), &v); err != nil {
+			t.Fatal(err)
+		}
+		if err := schema.VisitJSON(v); (err == nil) != tt.ok {
+			t.Errorf("%s: %v", tt.doc, err)
+		}
+	}
+}
+
+// TestOpenAPIFlowDestinationOptions: the request options apply to http
+// destinations only, like flow.schema.json.
+func TestOpenAPIFlowDestinationOptions(t *testing.T) {
+	schema := loadSpec(t).Components.Schemas["FlowDestination"].Value
+	for _, tt := range []struct {
+		doc string
+		ok  bool
+	}{
+		{`{"name":"a","type":"http","url":"https://x","method":"PUT","timeoutMs":5000,"maxRedirects":2}`, true},
+		{`{"name":"a","type":"file","dir":"/out"}`, true},
+		{`{"name":"a","type":"file","dir":"/out","timeoutMs":5000}`, false},
+		{`{"name":"a","type":"http","url":"https://x","method":"GET"}`, false},
+		{`{"name":"a","type":"http","url":"https://x","maxRedirects":11}`, false},
 	} {
 		var v any
 		if err := json.Unmarshal([]byte(tt.doc), &v); err != nil {

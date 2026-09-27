@@ -1427,6 +1427,7 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 		}
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{
 			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir,
+			Method: d.Method, Timeout: time.Duration(d.TimeoutMs) * time.Millisecond, MaxRedirects: d.MaxRedirects,
 			Stopped: stopped[d.Name], Transform: t, ResponseTransform: rt,
 		})
 	}
@@ -1488,7 +1489,7 @@ func (a ingestAdapter) ingest(ctx context.Context, flowID string, body []byte, m
 	}
 	// Processing is durable work: finish it even if the client disconnects,
 	// so the stored message never stops half-way. HTTP deliveries are
-	// bounded by adapters.HTTPSinkTimeout.
+	// bounded by each destination's timeoutMs (default 30 s).
 	res, err := a.pipe.ProcessWithMetadata(context.WithoutCancel(ctx), pf, body, metadata)
 	if errors.Is(err, pipeline.ErrInvalidMessage) {
 		return gateway.IngestResult{}, fmt.Errorf("%w: body must be a JSON object", gateway.ErrInvalidMessage)
@@ -1566,7 +1567,9 @@ func adapterMessage(d pipeline.Delivery) adapters.Message {
 func newSink(d pipeline.Destination) (pipeline.Sink, error) {
 	switch d.Type {
 	case "http":
-		return httpSink{adapters.NewHTTPSink(d.URL)}, nil
+		return httpSink{adapters.NewHTTPSinkWith(d.URL, adapters.HTTPSinkOptions{
+			Method: d.Method, Timeout: d.Timeout, MaxRedirects: d.MaxRedirects,
+		})}, nil
 	case "file":
 		return adapterSink{adapters.NewFileSink(d.Dir)}, nil
 	}

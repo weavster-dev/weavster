@@ -83,3 +83,26 @@ func TestSourceKind(t *testing.T) {
 		}
 	}
 }
+
+// TestDestinationRequestOptionsSchema: method, timeoutMs, and maxRedirects
+// are http-only and bounded.
+func TestDestinationRequestOptionsSchema(t *testing.T) {
+	for _, tt := range []struct {
+		dest string
+		ok   bool
+	}{
+		{`{"name":"a","type":"http","url":"https://x","method":"PATCH","timeoutMs":1000,"maxRedirects":10}`, true},
+		{`{"name":"a","type":"http","url":"https://x","method":"GET"}`, false},
+		{`{"name":"a","type":"http","url":"https://x","timeoutMs":999}`, false},
+		{`{"name":"a","type":"http","url":"https://x","maxRedirects":11}`, false},
+		{`{"name":"a","type":"file","dir":"/out","method":"PUT"}`, false},
+		{`{"name":"a","type":"file","dir":"/out","maxRedirects":1}`, false},
+	} {
+		if err := ValidateJSON([]byte(`{"id":"f","destinations":[` + tt.dest + `]}`)); (err == nil) != tt.ok {
+			t.Errorf("%s: %v", tt.dest, err)
+		}
+	}
+	if err := ValidateJSON([]byte(`{"id":"f","source":{"type":"http","address":":9001","readTimeoutMs":500}}`)); err == nil {
+		t.Error("readTimeoutMs under 1000 accepted")
+	}
+}
