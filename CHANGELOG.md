@@ -65,6 +65,7 @@ All notable changes to this project are documented here, following
 - Code snippets and snippet libraries (#221): `/api/v1/snippets` and `/api/v1/snippet-libraries` (list with `?summary=true`, create, bulk create-or-replace, get/put/delete one; permission `snippets:edit`), SQLite-durable; a snippet's library must exist and a library in use cannot be deleted. CLI `snippet [library] list|import|export|remove`. Flows do not run snippets yet.
 - Bulk message removal (#223): `DELETE /api/v1/messages` removes every message matching `flowId`, `status`, `from`, `to` (`all=true` required without a filter; `restart=true` stops the started flows in scope and starts them again; busy messages are kept and counted). CLI `clearallmessages` and `dump stats|events "path"`.
 - Alert definitions (#227): `/api/v1/alerts` (list, create, get/put/delete, enable/disable, `import` with `force`, `options`; permission `alerts:edit`), validated and SQLite-durable. CLI `importalert "path" [force]` and `exportalert id|"name"|* "path"`. Alerts do not fire yet.
+- Full configuration export and import (#229): `GET /api/v1/config/export[?includeConfigMap=true]` and `POST /api/v1/config/import` (`force`, `nodeploy`, `overwriteConfigMap`; validated and conflict-checked before writing; enabled flows deployed unless `nodeploy`). CLI `exportcfg "path" [overwriteconfigmap]` and `importcfg "path" [nodeploy] [overwriteconfigmap] [force]`.
 
 ### Changed
 

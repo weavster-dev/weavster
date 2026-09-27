@@ -72,7 +72,14 @@ func (k itemKind) checkItem(name string, value json.RawMessage) error {
 // readItemsBody reads a JSON document of at most maxItemsBody into v,
 // rejecting unknown fields.
 func readItemsBody(w http.ResponseWriter, r *http.Request, v any) bool {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxItemsBody))
+	return readStrictJSON(w, r, maxItemsBody, v)
+}
+
+// readStrictJSON reads one JSON document of at most limit bytes into v,
+// rejecting unknown fields and trailing data; it answers 413 or 400 and
+// returns false on failure.
+func readStrictJSON(w http.ResponseWriter, r *http.Request, limit int64, v any) bool {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	dec.DisallowUnknownFields()
 	err := dec.Decode(v)
 	if err == nil {
@@ -83,7 +90,7 @@ func readItemsBody(w http.ResponseWriter, r *http.Request, v any) bool {
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			writeStatusError(w, http.StatusRequestEntityTooLarge, "body larger than 10 MiB")
+			writeStatusError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("body larger than %d MiB", limit>>20))
 			return false
 		}
 		writeStatusError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())

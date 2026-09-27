@@ -88,6 +88,10 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return userCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	case "snippet": // spec §3.2: snippet [library] list|import|export|remove
 		return snippetCommand(ctx, client, fields[1:], stdout, stderr, debug)
+	case "exportcfg": // spec §3.2: exportcfg "path" [overwriteconfigmap]
+		return exportConfig(ctx, client, fields[1:], stdout, stderr, debug)
+	case "importcfg": // spec §3.2: importcfg "path" [nodeploy] [overwriteconfigmap]
+		return importConfig(ctx, client, fields[1:], stdout, stderr, debug)
 	case "importalert": // spec §3.2: importalert "path" [force]
 		return importAlerts(ctx, client, fields[1:], stdout, stderr, debug)
 	case "exportalert": // spec §3.2: exportalert id|"name"|* "path"
@@ -115,7 +119,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -602,5 +606,79 @@ func exportAlerts(ctx context.Context, client Client, args []string, stdout, std
 		return shellError(stderr, debug, err)
 	}
 	_, _ = fmt.Fprintf(stdout, "exported %d alerts to %s\n", len(picked), args[1])
+	return 0
+}
+
+// exportConfig writes the full configuration to a file; with
+// overwriteconfigmap it includes the config map, so importcfg with
+// overwriteconfigmap replaces the target server's.
+func exportConfig(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	if len(args) == 0 || len(args) > 2 || (len(args) == 2 && args[1] != "overwriteconfigmap") {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: exportcfg \"path\" [overwriteconfigmap]")
+		return 2
+	}
+	path := "/api/v1/config/export"
+	if len(args) == 2 {
+		path += "?includeConfigMap=true"
+	}
+	out, err := client.Call(ctx, http.MethodGet, path, nil)
+	var b gateway.ConfigBundle
+	if err == nil {
+		err = json.Unmarshal(out, &b)
+	}
+	if err == nil {
+		err = os.WriteFile(args[0], out, 0o600)
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	_, _ = fmt.Fprintf(stdout, "exported %d flows, %d alerts, %d snippets, %d snippet libraries, %d scripts, %d settings", len(b.Flows), len(b.Alerts), len(b.Snippets), len(b.SnippetLibraries), len(b.Scripts), len(b.Settings))
+	if b.ConfigMap != nil {
+		_, _ = fmt.Fprintf(stdout, ", %d config map entries", len(*b.ConfigMap))
+	}
+	_, _ = fmt.Fprintf(stdout, " to %s\n", args[0])
+	return 0
+}
+
+// importConfig restores a file written by exportcfg. nodeploy leaves the
+// imported flows undeployed; overwriteconfigmap replaces the config map with
+// the file's; force replaces flows, alerts, and snippets that exist.
+func importConfig(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	params := map[string]string{"nodeploy": "nodeploy", "overwriteconfigmap": "overwriteConfigMap", "force": "force"}
+	query := url.Values{}
+	for _, a := range args[min(1, len(args)):] {
+		if params[a] == "" {
+			args = nil
+			break
+		}
+		query.Set(params[a], "true")
+	}
+	if len(args) == 0 {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: importcfg \"path\" [nodeploy] [overwriteconfigmap] [force]")
+		return 2
+	}
+	doc, err := os.ReadFile(args[0])
+	if err == nil {
+		path := "/api/v1/config/import"
+		if len(query) > 0 {
+			path += "?" + query.Encode()
+		}
+		doc, err = client.Call(ctx, http.MethodPost, path, doc)
+	}
+	var res gateway.ConfigImportResult
+	if err == nil {
+		err = json.Unmarshal(doc, &res)
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	_, _ = fmt.Fprintf(stdout, "imported %d flows (%d new, %d replaced), %d alerts, %d snippets, %d snippet libraries, %d scripts, %d settings from %s\n",
+		len(res.Flows.Created)+len(res.Flows.Updated), len(res.Flows.Created), len(res.Flows.Updated), res.Alerts, res.Snippets, res.SnippetLibraries, res.Scripts, res.Settings, args[0])
+	if res.ConfigMap {
+		_, _ = fmt.Fprintln(stdout, "replaced the config map")
+	}
+	if len(res.Deployed) > 0 {
+		_, _ = fmt.Fprintf(stdout, "deployed %s\n", strings.Join(res.Deployed, ", "))
+	}
 	return 0
 }

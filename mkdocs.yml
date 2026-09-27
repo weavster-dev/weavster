@@ -23,6 +23,7 @@ nav:
   - Config Map, Scripts, Settings: config-items.md
   - Code Snippets: snippets.md
   - Alerts: alerts.md
+  - Configuration Export and Import: config-transfer.md
   - Docs Site Guide: documentation.md
   - MVP Project Plan: mvp-project-plan.md
   - Agent Onboarding: agent-onboarding.md

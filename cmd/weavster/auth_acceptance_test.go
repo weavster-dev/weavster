@@ -62,6 +62,10 @@ var protectedRoutes = []struct {
 	{http.MethodPut, "/api/v1/scripts/s", "scripts:edit"},
 	{http.MethodDelete, "/api/v1/settings/s", "settings:edit"},
 	{http.MethodDelete, "/api/v1/messages?all=true", "messages:delete"},
+	{http.MethodGet, "/api/v1/config/export", "flows:view,alerts:edit,snippets:edit,scripts:edit,settings:edit"},
+	{http.MethodGet, "/api/v1/config/export?includeConfigMap=true", "flows:view,alerts:edit,snippets:edit,scripts:edit,settings:edit,configmap:edit"},
+	{http.MethodPost, "/api/v1/config/import", "flows:edit,alerts:edit,snippets:edit,scripts:edit,settings:edit,flows:deploy"},
+	{http.MethodPost, "/api/v1/config/import?nodeploy=true&overwriteConfigMap=true", "flows:edit,alerts:edit,snippets:edit,scripts:edit,settings:edit,configmap:edit"},
 	{http.MethodGet, "/api/v1/alerts", "alerts:edit"},
 	{http.MethodPost, "/api/v1/alerts/import", "alerts:edit"},
 	{http.MethodPost, "/api/v1/alerts/a/enable", "alerts:edit"},
@@ -192,6 +196,13 @@ func TestLoginLogout(t *testing.T) {
 	}
 }
 
+// missingPermission returns the permission a 403 body names.
+func missingPermission(body string) string {
+	_, after, _ := strings.Cut(body, "missing permission ")
+	perm, _, _ := strings.Cut(after, `"`)
+	return perm
+}
+
 // TestPermissionMatrix proves each route enforces its permission, using the
 // composition root's auth adapters with users holding one permission each.
 func TestPermissionMatrix(t *testing.T) {
@@ -226,12 +237,16 @@ func TestPermissionMatrix(t *testing.T) {
 		for name := range users {
 			t.Run(rt.method+" "+rt.path+" as "+name, func(t *testing.T) {
 				status, body, _ := c.do(rt.method, rt.path, `{"id":"x"}`, basic(name, "pw"))
+				// A route needing several permissions (comma-separated) allows
+				// none of these one-permission users, and names the first
+				// one missing.
 				allowed := rt.perm == "" || strings.ReplaceAll(rt.perm, ":", "-") == name
 				if allowed && status == http.StatusForbidden {
 					t.Errorf("got 403 %q, want allowed", body)
 				}
-				if !allowed && (status != http.StatusForbidden || !strings.Contains(body, "missing permission "+rt.perm)) {
-					t.Errorf("got %d %q, want 403 missing %s", status, body, rt.perm)
+				if !allowed && (status != http.StatusForbidden || !strings.Contains(body, "missing permission ") ||
+					!strings.Contains(","+rt.perm+",", ","+missingPermission(body)+",")) {
+					t.Errorf("got %d %q, want 403 missing one of %s", status, body, rt.perm)
 				}
 			})
 		}
