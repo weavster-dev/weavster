@@ -516,7 +516,7 @@ statuses above.</p>
 </tr>
 <tr>
 <td><code>from</code>, <code>to</code></td>
-<td>Received at or after / at or before this time (RFC 3339, for example <code>2026-09-26T12:00:00Z</code>).</td>
+<td>Received at or after / at or before this time (RFC 3339, for example <code>2026-09-26T12:00:00Z</code>); <code>from</code> must not be after <code>to</code>.</td>
 </tr>
 <tr>
 <td><code>limit</code></td>
@@ -683,9 +683,69 @@ totals keep counting. An unknown flow returns <code>404</code>.</p>
 </code></pre>
 <pre><code class="language-json">[{&quot;id&quot;:7,&quot;at&quot;:&quot;2026-09-26T12:00:00Z&quot;,&quot;type&quot;:&quot;message.errored&quot;,&quot;flowId&quot;:&quot;adt&quot;,&quot;data&quot;:{&quot;messageId&quot;:&quot;6f1c…&quot;}}]
 </code></pre>
-<p>Both filters are optional. <code>limit</code> (1–10000, default 1000) returns the newest matches; results
-are oldest first. Events never contain message content or transform error text, because both
-can hold patient data. The error is stored with the message instead.</p>
+<p>Every filter is optional:</p>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code>, <code>flowId</code></td>
+<td>Only events of that type or flow.</td>
+</tr>
+<tr>
+<td><code>from</code>, <code>to</code></td>
+<td>Only events at or after / at or before that time (RFC 3339); <code>from</code> must not be after <code>to</code>.</td>
+</tr>
+<tr>
+<td><code>afterId</code></td>
+<td>Only events with a larger id.</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td>How many matches, 1–10000 (default 1000): the newest ones, or with <code>afterId</code> the oldest ones after it.</td>
+</tr>
+</tbody>
+</table>
+<p>Results are oldest first. Events never contain message content or transform error text, because
+both can hold patient data. The error is stored with the message instead.</p>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>What it returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/v1/events/{id}</code></td>
+<td>One event; <code>404</code> if unknown or no longer kept.</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/events/count</code></td>
+<td><code>{"count": n}</code> for the same filters (no limit).</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/events/max-id</code></td>
+<td><code>{"maxId": n}</code>: the newest event's id, <code>0</code> when there is none.</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/events/export</code></td>
+<td>Every match (no limit) as a JSON file download (<code>events.json</code>).</td>
+</tr>
+</tbody>
+</table>
+<p>To follow new events, remember the last id you saw (or start from <code>max-id</code>) and ask for the ones
+after it. With <code>afterId</code>, the reply holds the oldest events after that id, so when more than
+<code>limit</code> arrived, ask again with the last id of the reply until it comes back short; nothing is
+skipped:</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/events?afterId=41'
+</code></pre>
+<p>The server keeps the newest 10,000 events in memory: older ones are dropped, and the log starts
+empty when the server restarts.</p>
 <p>To save statistics or events to a file from the command-line client, use <code>dump stats "path"</code> or
 <code>dump events "path"</code> (the newest 10,000 events).</p>
 <p>The topology overview (<code>GET /api/v1/topology</code>) shows each flow's <code>received</code>, <code>sent</code>,

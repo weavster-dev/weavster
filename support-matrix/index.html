@@ -332,6 +332,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestConfigApply</code>, <code>TestConfigApplyHandler</code>. Stale plans refused; a failing change rolls back every applied change; each attempt audited with its result. See <a href="../config-as-code/#apply">Apply</a>.</td>
 </tr>
 <tr>
+<td>Events: search by type, flow, time, and <code>afterId</code>; get one, count, max id, export (<code>/api/v1/events…</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestEventsAPI</code>, <code>TestEventHandlers</code>. In memory: the newest 10,000 events, lost on restart. See <a href="../processing-messages/#5-statistics-and-events">Processing messages</a>.</td>
+</tr>
+<tr>
 <td>Exit codes (shell, <code>server</code>, <code>test</code>) and <code>Error:</code> format; deprecated <code>channel</code>/<code>codetemplate</code> command names</td>
 <td>Implemented (wired)</td>
 <td><code>TestExitCodesAndDeprecatedCommands</code>, <code>TestServerConfigErrors</code>. See <a href="../cli/#exit-codes-and-errors">Exit codes and errors</a>.</td>
@@ -474,9 +479,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestStatsEventsTopology</code>. In memory; reset, dump, and time series are not available.</td>
 </tr>
 <tr>
-<td>Event log (<code>GET /api/v1/events</code>, <code>type</code>/<code>flowId</code>/<code>limit</code>) with processing events</td>
+<td>Event log with processing events (<code>GET /api/v1/events</code>)</td>
 <td>Implemented (wired)</td>
-<td><code>TestStatsEventsTopology</code>. In memory, newest 10,000; no count, export, or max-ID operations.</td>
+<td><code>TestStatsEventsTopology</code>. In memory, newest 10,000. Filters, get, count, max id, and export: see the Events row above.</td>
 </tr>
 <tr>
 <td>Topology flow-node <code>activity</code> from real counters, zeros included</td>
