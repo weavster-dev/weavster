@@ -158,6 +158,9 @@ func (s *Server) Router() http.Handler {
 			// Validation reads nothing from the server, but parsing up to
 			// 50 MiB is work: it needs flows:edit like the other large bodies.
 			r.With(s.require("flows", "edit")).Post("/config/validate", s.handleConfigValidate)
+			// A plan reads the whole live configuration: the export permissions.
+			r.With(s.require("flows", "view"), s.require("alerts", "edit"), s.require("snippets", "edit"),
+				s.require("scripts", "edit"), s.require("settings", "edit"), s.require("configmap", "edit")).Post("/config/plan", s.handleConfigPlan)
 			// The config map and deploying need their permissions only when
 			// the request touches them.
 			r.With(s.require("flows", "view"), s.require("alerts", "edit"), s.require("snippets", "edit"),

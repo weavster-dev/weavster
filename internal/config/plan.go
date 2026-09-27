@@ -13,6 +13,10 @@ type Plan struct {
 	Added   []string `json:"added"`
 	Updated []string `json:"updated"`
 	Removed []string `json:"removed"`
+	// Unchanged counts artifacts that already match (LivePlan).
+	Unchanged int `json:"unchanged,omitempty"`
+	// Changes describes each change with its content (LivePlan).
+	Changes []Change `json:"changes,omitempty"`
 }
 
 // Empty reports whether the plan contains no changes.

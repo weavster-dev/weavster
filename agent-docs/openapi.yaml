@@ -613,6 +613,19 @@ paths:
         "200": {description: "Valid: {valid: true, counts}", content: {application/json: {schema: {$ref: "#/components/schemas/ConfigValidation"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "Invalid: the message names every problem", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/config/plan:
+    post:
+      summary: "What applying a config-as-code document (YAML or JSON) would change on the server; nothing is written. Sections the document leaves out are not managed (requires flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit, configmap:edit)"
+      requestBody:
+        required: true
+        content:
+          application/yaml: {schema: {type: string}}
+          application/json: {schema: {type: object}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The plan", content: {application/json: {schema: {$ref: "#/components/schemas/ConfigPlan"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "Invalid document: the message names every problem", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/config/export:
     get:
       summary: "The full configuration: flows, alerts, snippets, snippet libraries, global scripts, settings, and optionally the config map; never users (requires flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit; configmap:edit with includeConfigMap)"
@@ -998,6 +1011,35 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    ConfigPlan:
+      type: object
+      required: [fingerprint, added, updated, removed, unchanged, changes, text]
+      properties:
+        fingerprint: {type: string, description: Identifies the live configuration the plan was made against}
+        added: {type: array, items: {type: string}, description: "Artifact keys such as flow/adt, alert/errors, configmap/region"}
+        updated: {type: array, items: {type: string}}
+        removed: {type: array, items: {type: string}}
+        unchanged: {type: integer}
+        changes:
+          type: array
+          items:
+            type: object
+            required: [key, action]
+            properties:
+              key: {type: string}
+              action: {type: string, enum: [add, update, remove]}
+              before: {description: The live artifact (update and remove)}
+              after: {description: The document's artifact (add and update)}
+              fields:
+                type: array
+                items:
+                  type: object
+                  required: [path]
+                  properties:
+                    path: {type: string, description: "For example destinations[0].url; value for a text or setting"}
+                    before: {}
+                    after: {}
+        text: {type: string, description: "The plan for people: + add, ~ change (with one line per field), - remove"}
     ConfigValidation:
       type: object
       required: [valid, counts]

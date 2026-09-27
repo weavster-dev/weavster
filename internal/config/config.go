@@ -34,6 +34,9 @@ type Config struct {
 	Scripts   map[string]string `json:"scripts" yaml:"scripts"`
 	ConfigMap map[string]string `json:"configmap" yaml:"configmap"`
 	Settings  map[string]any    `json:"settings" yaml:"settings"`
+	// Managed names the sections a parsed document writes; a plan removes
+	// nothing from the others (#107 D-47). Nil means every section.
+	Managed map[string]bool `json:"-" yaml:"-"`
 }
 
 // Parse decodes a config document. YAML is the canonical format; JSON is a
@@ -85,6 +88,11 @@ func parse(data []byte) (*Config, map[string]json.RawMessage, error) {
 		Scripts: doc.Scripts, ConfigMap: doc.ConfigMap, Settings: doc.Settings}
 	if c.Version == "" {
 		c.Version = "1"
+	}
+	c.Managed = map[string]bool{
+		"flows": doc.Flows != nil, "alerts": doc.Alerts != nil, "snippets": doc.Snippets != nil,
+		"snippetLibraries": doc.SnippetLibraries != nil, "scripts": doc.Scripts != nil,
+		"configmap": doc.ConfigMap != nil, "settings": doc.Settings != nil,
 	}
 	normalize(c)
 	for key, a := range c.Alerts {

@@ -131,7 +131,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate "path", exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate|diff|plan "path", exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -695,26 +695,51 @@ func importConfig(ctx context.Context, client Client, args []string, stdout, std
 	return 0
 }
 
-// configCommand runs config-as-code commands: validate checks a YAML or
-// JSON config document on the server without changing anything.
+// configCommand runs config-as-code commands on a YAML or JSON document,
+// none of which change the server: validate checks it, diff shows what
+// applying it would change, and plan prints that as JSON.
 func configCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
-	if len(args) != 2 || args[0] != "validate" {
-		_, _ = fmt.Fprintln(stderr, "Error: usage: config validate \"path\"")
+	paths := map[string]string{"validate": "/api/v1/config/validate", "diff": "/api/v1/config/plan", "plan": "/api/v1/config/plan"}
+	if len(args) != 2 || paths[args[0]] == "" {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: config validate|diff|plan \"path\"")
 		return 2
 	}
 	doc, err := os.ReadFile(args[1])
 	if err == nil {
-		doc, err = client.Call(ctx, http.MethodPost, "/api/v1/config/validate", doc)
+		doc, err = client.Call(ctx, http.MethodPost, paths[args[0]], doc)
 	}
-	var res struct{ Counts gateway.ConfigSummary }
+	var out string
 	if err == nil {
-		err = json.Unmarshal(doc, &res)
+		out, err = configOutput(args[0], args[1], doc)
 	}
 	if err != nil {
 		return shellError(stderr, debug, err)
 	}
-	n := res.Counts
-	_, _ = fmt.Fprintf(stdout, "%s is valid: %d flows, %d alerts, %d snippets, %d snippet libraries, %d scripts, %d config map entries, %d settings\n",
-		args[1], n.Flows, n.Alerts, n.Snippets, n.SnippetLibraries, n.Scripts, n.ConfigMap, n.Settings)
+	_, _ = fmt.Fprint(stdout, out)
 	return 0
+}
+
+// configOutput renders a config command's reply.
+func configOutput(cmd, path string, reply []byte) (string, error) {
+	switch cmd {
+	case "validate":
+		var res struct{ Counts gateway.ConfigSummary }
+		if err := json.Unmarshal(reply, &res); err != nil {
+			return "", err
+		}
+		n := res.Counts
+		return fmt.Sprintf("%s is valid: %d flows, %d alerts, %d snippets, %d snippet libraries, %d scripts, %d config map entries, %d settings\n",
+			path, n.Flows, n.Alerts, n.Snippets, n.SnippetLibraries, n.Scripts, n.ConfigMap, n.Settings), nil
+	case "diff":
+		var plan gateway.ConfigPlan
+		if err := json.Unmarshal(reply, &plan); err != nil {
+			return "", err
+		}
+		return plan.Text, nil
+	}
+	var pretty bytes.Buffer
+	if err := json.Indent(&pretty, reply, "", "  "); err != nil {
+		return "", err
+	}
+	return pretty.String(), nil
 }

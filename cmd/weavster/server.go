@@ -120,6 +120,8 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		}
 	}
 
+	// The planner reads through the same adapters (and locks) the API uses.
+	alertsMu, snippetsMu := &sync.Mutex{}, &sync.Mutex{}
 	srv := gateway.New(gateway.Config{
 		Auth:            authAdapter{provider},
 		Passwords:       passwordAdapter{provider},
@@ -128,6 +130,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Snippets:        snippetsAdapter{repo: items, mu: &sync.Mutex{}},
 		Alerts:          alertsAdapter{repo: items, mu: &sync.Mutex{}},
 		ConfigValidator: configValidator{},
+		ConfigPlanner:   configPlanner{transfer: flows, alerts: alertsAdapter{repo: items, mu: alertsMu}, snippets: snippetsAdapter{repo: items, mu: snippetsMu}, items: itemsAdapter{repo: items}},
 		Authorizer:      authorizerAdapter{},
 		Audit:           auditAdapter{sink},
 		Flows:           flows,
