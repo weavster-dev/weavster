@@ -42,6 +42,9 @@ type Flow = flowdef.Flow
 // FlowDestination is one delivery target of a flow (flowdef.Destination).
 type FlowDestination = flowdef.Destination
 
+// FlowSource is where a flow reads messages on its own.
+type FlowSource = flowdef.Source
+
 // FlowUpdater changes a stored flow's definition; the runtime status is
 // never changed by these calls.
 type FlowUpdater interface {

@@ -248,20 +248,28 @@ the flow as a message, and then deletes it (or moves it into `moveTo`):
 
 - The directory is read only while the flow is `started`. Stopping, pausing, or deleting the flow
   stops reading; starting it again picks up what arrived meanwhile.
-- Only regular files directly in `dir` are read: subdirectories and symbolic links are skipped.
+- Only regular files directly in `dir` are read: subdirectories, symbolic links, and hidden files
+  (names starting with `.`, such as `rsync` temporary files and `.DS_Store`) are skipped. A
+  pattern starting with `.` reads hidden files.
+- A directory can be read by one flow only; a second flow with the same `dir` is refused.
+- Each poll reads at most 100 files, so one busy directory does not hold up other flows; the
+  rest are read at the next poll.
 - A file is read once it has not changed for a second, so a file still being written is not taken
   half-way. Writing to a temporary name and renaming it into `dir` is safest.
 - Files are read in name order. Each message has the metadata `source.file` with the file name.
 - A file becomes a message exactly like one sent with the API (the same checks, transform, and
   delivery). After the message is stored, the file is deleted or moved. If the server stops
   between the two, the file is read again when it starts: delivery is at least once, so
-  destinations should tolerate a repeat.
+  destinations should tolerate a repeat. If the file cannot be deleted or moved (for example
+  the server may read but not write the directory), it is logged and not read again until it
+  changes.
 - A file the flow refuses (larger than 10 MiB, or not a JSON object when the flow has a transform)
   is moved into `moveTo/rejected`, or, without `moveTo`, left where it is and skipped until it
   changes. Either way a `source.file.rejected` [event](#5-statistics-and-events) records the file
   and the reason.
 - A directory that cannot be read is logged (once per distinct error) and read again at the next
-  interval.
+  interval. A file that cannot be read is logged once and skipped until it changes.
+- `dir` must not be `moveTo/rejected`, where refused files go.
 - The server reads and moves files with its own permissions; only give `flows:edit` to users you
   trust with the directories it can reach.
 

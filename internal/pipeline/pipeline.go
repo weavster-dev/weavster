@@ -248,7 +248,11 @@ func (p *Pipeline) ProcessWithMetadata(ctx context.Context, f Flow, body []byte,
 			}
 		}()
 	}
-	return p.resume(ctx, f, id, false)
+	res, err := p.resume(ctx, f, id, false)
+	if err != nil {
+		res.ID = id // stored: the caller must not send the same content again
+	}
+	return res, err
 }
 
 // needsObject reports whether messages of f must be JSON objects: the flow

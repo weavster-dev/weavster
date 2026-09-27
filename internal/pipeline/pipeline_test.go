@@ -306,3 +306,24 @@ func TestHold(t *testing.T) {
 		release2()
 	}
 }
+
+// TestProcessReturnsIDOnceStored: a failure after the message was stored
+// still returns its id, so a caller never sends the same content again.
+func TestProcessReturnsIDOnceStored(t *testing.T) {
+	ctx := context.Background()
+	f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	for _, tt := range []struct {
+		failPut int
+		stored  bool
+	}{
+		{1, false}, // the first write (receive) fails: nothing stored
+		{2, true},  // a later write fails: the message exists
+	} {
+		store := &flakyStore{MemStore: state.NewMemStore(), failPut: tt.failPut}
+		p := New(store, func(Destination) (Sink, error) { return &toggleSink{}, nil }, nil, Options{})
+		res, err := p.Process(ctx, f, []byte("x"))
+		if !errors.Is(err, errStore) || (res.ID != "") != tt.stored {
+			t.Errorf("failPut %d: id %q, err %v", tt.failPut, res.ID, err)
+		}
+	}
+}

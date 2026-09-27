@@ -80,6 +80,8 @@ func CheckSource(s *Source) error {
 		return fmt.Errorf("source.moveTo must be an absolute path, got %q", s.MoveTo)
 	case s.MoveTo != "" && filepath.Clean(s.MoveTo) == filepath.Clean(s.Dir):
 		return errors.New("source.moveTo must differ from source.dir")
+	case s.MoveTo != "" && filepath.Join(s.MoveTo, "rejected") == filepath.Clean(s.Dir):
+		return errors.New("source.dir must not be moveTo/rejected, where refused files are moved")
 	case strings.ContainsAny(s.Pattern, `/\`):
 		return fmt.Errorf("source.pattern is a file-name glob without path separators, got %q", s.Pattern)
 	}

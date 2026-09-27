@@ -140,6 +140,11 @@ func TestFileSource(t *testing.T) {
 		t.Errorf("rejected events per flow = %v (a left file must not be retried)", perFlow)
 	}
 
+	// One directory, one file source.
+	if code, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"twin","source":{"type":"file","dir":"`+in+`/"}}`, admin); code != http.StatusBadRequest || !strings.Contains(body, "a directory can have one file source") {
+		t.Errorf("second flow on the same directory: %d %s", code, body)
+	}
+
 	// Relative directories are refused.
 	if code, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"rel","source":{"type":"file","dir":"in"}}`, admin); code != http.StatusBadRequest || !strings.Contains(body, "source.dir must be an absolute path") {
 		t.Errorf("relative dir: %d %s", code, body)

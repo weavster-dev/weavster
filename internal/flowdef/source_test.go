@@ -17,6 +17,7 @@ func TestCheckSource(t *testing.T) {
 		{"relative dir", &Source{Type: "file", Dir: "in"}, "source.dir must be an absolute path"},
 		{"relative moveTo", &Source{Type: "file", Dir: "/in", MoveTo: "done"}, "source.moveTo must be an absolute path"},
 		{"moveTo is dir", &Source{Type: "file", Dir: "/in", MoveTo: "/in/"}, "must differ from source.dir"},
+		{"dir is moveTo/rejected", &Source{Type: "file", Dir: "/data/rejected", MoveTo: "/data"}, "must not be moveTo/rejected"},
 		{"pattern with a path", &Source{Type: "file", Dir: "/in", Pattern: "../*"}, "without path separators"},
 		{"bad pattern", &Source{Type: "file", Dir: "/in", Pattern: "[a"}, "syntax error in pattern"},
 	} {

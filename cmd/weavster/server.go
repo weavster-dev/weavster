@@ -125,7 +125,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		ma := messageAdapter{store: store, pipe: pipe, ingest: ia}
 		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
-		sources := newFileSources(flows, ia, logger)
+		sources := newFileSources(flows, ia, eventLogRecorder{events}, logger)
 		retry = func(ctx context.Context) {
 			polled := make(chan struct{})
 			go func() { sources.loop(ctx); close(polled) }() // flows' file sources (#107 D-56)
@@ -932,6 +932,15 @@ func (a flowAdapter) UpdateMany(ctx context.Context, changes []gateway.FlowChang
 		}
 		order = dependencyOrder(all, ids)
 	}
+	if hasSource(flows) {
+		all, err := a.withFlows(ctx, flows...)
+		if err != nil {
+			return updated, err
+		}
+		if err := checkSourceDirs(all); err != nil {
+			return updated, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+		}
+	}
 	keep := make(map[string]bool, len(changes))
 	for _, c := range changes {
 		keep[c.Flow.ID] = c.KeepEnabled
@@ -1079,6 +1088,39 @@ func (a flowAdapter) RedeployAll(ctx context.Context) ([]gateway.Flow, error) {
 // everything they depend on: every dependency exists, no flow depends on
 // itself, and there are no cycles. Flows outside that closure are ignored, so
 // an unrelated bad edge never blocks a change.
+// hasSource reports whether any of flows reads a source.
+func hasSource(flows []gateway.Flow) bool {
+	for _, f := range flows {
+		if f.Source != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// checkSourceDirs refuses two flows reading the same directory: both would
+// take the same files (#107 D-56).
+func checkSourceDirs(all map[string]gateway.Flow) error {
+	ids := make([]string, 0, len(all))
+	for id := range all {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	readBy := map[string]string{}
+	for _, id := range ids {
+		src := all[id].Source
+		if src == nil {
+			continue
+		}
+		dir := filepath.Clean(src.Dir)
+		if other, taken := readBy[dir]; taken {
+			return fmt.Errorf("flows %s and %s both read %s; a directory can have one file source", other, id, dir)
+		}
+		readBy[dir] = id
+	}
+	return nil
+}
+
 func checkDependencies(all map[string]gateway.Flow, roots []string) error {
 	const (
 		unvisited = iota
@@ -1189,7 +1231,7 @@ func (a flowAdapter) validateDefinition(ctx context.Context, f gateway.Flow) err
 	if err := checkDefinition(f); err != nil {
 		return err
 	}
-	if len(f.DependsOn) == 0 {
+	if len(f.DependsOn) == 0 && f.Source == nil {
 		return nil
 	}
 	all, err := a.withFlows(ctx, f)
@@ -1197,6 +1239,9 @@ func (a flowAdapter) validateDefinition(ctx context.Context, f gateway.Flow) err
 		return err
 	}
 	if err := checkDependencies(all, []string{f.ID}); err != nil {
+		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+	}
+	if err := checkSourceDirs(all); err != nil {
 		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
 	return nil
@@ -1276,6 +1321,9 @@ func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite
 	}
 	// Document errors (400) take precedence over conflicts (409).
 	if err := checkDependencies(all, ids); err != nil {
+		return res, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
+	}
+	if err := checkSourceDirs(all); err != nil {
 		return res, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
 	if len(conflicts) > 0 && !overwrite {
@@ -1406,8 +1454,8 @@ func (a ingestAdapter) ingest(ctx context.Context, flowID string, body []byte, m
 	if errors.Is(err, pipeline.ErrInvalidMessage) {
 		return gateway.IngestResult{}, fmt.Errorf("%w: body must be a JSON object", gateway.ErrInvalidMessage)
 	}
-	if err != nil {
-		return gateway.IngestResult{}, err
+	if err != nil { // ID is set when the message was stored before the error
+		return gateway.IngestResult{ID: res.ID}, err
 	}
 	return gateway.IngestResult{ID: res.ID, Status: string(res.Status), Response: res.Response}, nil
 }
@@ -1703,6 +1751,13 @@ func (a statsAdapter) ResetStats(ctx context.Context, flowID string, lifetime bo
 	}
 	a.stats.Clear(flowID, lifetime)
 	return nil
+}
+
+// eventLogRecorder records file-source events in the event log.
+type eventLogRecorder struct{ log *observability.EventLog }
+
+func (r eventLogRecorder) record(typ, flowID string, data map[string]string) {
+	r.log.Add(typ, "", flowID, data)
 }
 
 // maxStatsPoints bounds the statistics samples kept for all flows together;
