@@ -50,6 +50,9 @@
                                 <a href="../cli/" class="nav-link">Command-line client</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../api-errors/" class="nav-link">API errors</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../audit-log/" class="nav-link">Audit Log</a>
                             </li>
                             <li class="nav-item">
@@ -303,7 +306,7 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <pre><code class="language-bash">weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
 </code></pre>
 <p>Without them, <code>flow list</code> fails with exit code <code>2</code> and prints the server's reply:</p>
-<pre><code class="language-text">Error: server returned 401 Unauthorized: {&quot;error&quot;:{&quot;code&quot;:&quot;UNAUTHORIZED&quot;,&quot;message&quot;:&quot;authentication required&quot;}}
+<pre><code class="language-text">Error: server returned 401 Unauthorized: authentication required
 </code></pre></div>
             </div>
         </div>

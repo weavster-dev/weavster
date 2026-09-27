@@ -50,6 +50,9 @@
                                 <a href="../cli/" class="nav-link">Command-line client</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../api-errors/" class="nav-link">API errors</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../audit-log/" class="nav-link">Audit Log</a>
                             </li>
                             <li class="nav-item">
@@ -164,7 +167,7 @@
 </tbody>
 </table>
 <p>You cannot delete a flow that another flow depends on:</p>
-<pre><code class="language-text">409 flow is a dependency of other flows: adt depended on by adt-archive
+<pre><code class="language-text">409 {&quot;error&quot;:{&quot;code&quot;:&quot;CONFLICT&quot;,&quot;message&quot;:&quot;flow is a dependency of other flows: adt depended on by adt-archive&quot;}}
 </code></pre>
 <p>To prove nothing depends on it, the server must be able to read every other flow. If one is
 unreadable, the delete returns <code>500</code> naming that flow; delete the unreadable flow first (a flow

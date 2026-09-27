@@ -50,6 +50,9 @@
                                 <a href="../cli/" class="nav-link">Command-line client</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../api-errors/" class="nav-link">API errors</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../audit-log/" class="nav-link">Audit Log</a>
                             </li>
                             <li class="nav-item">
@@ -170,13 +173,13 @@ one or more destinations. You send messages to the flow over the API.</p>
 }'
 </code></pre>
 <p>The server checks the transform and destinations when you create the flow. A problem is
-reported as <code>400</code> with the reason, for example:</p>
-<pre><code class="language-text">invalid flow: dsl: normalize: step 1: build: dsl: step not supported yet
+reported as <code>400</code> with the reason in the <a href="../api-errors/">error envelope</a>, for example:</p>
+<pre><code class="language-json">{&quot;error&quot;:{&quot;code&quot;:&quot;BAD_REQUEST&quot;,&quot;message&quot;:&quot;invalid flow: dsl: normalize: step 1: build: dsl: step not supported yet&quot;}}
 </code></pre>
 <p>Every flow definition you send (create, update, import) is checked against
 <a href="https://github.com/weavster-dev/weavster/blob/main/agent-docs/schemas/flow.schema.json"><code>flow.schema.json</code></a>.
 Unknown fields and wrong types are rejected rather than ignored:</p>
-<pre><code class="language-text">400 flow does not match flow.schema.json: /destinations/0/type: value must be one of &quot;http&quot;, &quot;file&quot;
+<pre><code class="language-text">400 {&quot;error&quot;:{&quot;code&quot;:&quot;BAD_REQUEST&quot;,&quot;message&quot;:&quot;flow does not match flow.schema.json: /destinations/0/type: value must be one of \&quot;http\&quot;, \&quot;file\&quot;&quot;}}
 </code></pre>
 <h3 id="transform"><code>transform</code></h3>
 <p><code>transform</code> is optional. Without it (or with <code>null</code> or no <code>steps</code>), messages pass through
