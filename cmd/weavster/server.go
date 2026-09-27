@@ -1491,9 +1491,9 @@ func (a ingestAdapter) ingest(ctx context.Context, flowID string, body []byte, m
 	// so the stored message never stops half-way. HTTP deliveries are
 	// bounded by each destination's timeoutMs (default 30 s).
 	res, err := a.pipe.ProcessWithMetadata(context.WithoutCancel(ctx), pf, body, metadata)
-	if errors.Is(err, pipeline.ErrInvalidMessage) { // the pipeline's reason, e.g. "body must be a JSON object"
-		reason := strings.TrimPrefix(err.Error(), pipeline.ErrInvalidMessage.Error()+": ")
-		return gateway.IngestResult{}, fmt.Errorf("%w: %s", gateway.ErrInvalidMessage, reason)
+	var invalid *pipeline.InvalidMessageError
+	if errors.As(err, &invalid) {
+		return gateway.IngestResult{}, fmt.Errorf("%w: %s", gateway.ErrInvalidMessage, invalid.Reason)
 	}
 	if err != nil { // ID is set when the message was stored before the error
 		return gateway.IngestResult{ID: res.ID}, err

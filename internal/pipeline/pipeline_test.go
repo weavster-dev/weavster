@@ -351,7 +351,21 @@ func TestProcessHL7Input(t *testing.T) {
 			t.Errorf("%s: delivered %s as %s", f.ID, sink.bodies[i], sink.types[i])
 		}
 	}
-	if _, err := p.Process(ctx, flowT, []byte(`{"PID":{}}`)); !errors.Is(err, ErrInvalidMessage) || !strings.Contains(err.Error(), "HL7 v2 message") {
-		t.Errorf("JSON into an hl7v2 flow: %v", err)
+	pass := Flow{ID: "h", InputFormat: "hl7v2", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	for _, f := range []Flow{flowT, pass} {
+		_, err := p.Process(ctx, f, []byte(`{"PID":{}}`))
+		var invalid *InvalidMessageError
+		if !errors.As(err, &invalid) || invalid.Reason != "body must be an HL7 v2 message (MSH segment first)" || !errors.Is(err, ErrInvalidMessage) {
+			t.Errorf("%s: JSON into an hl7v2 flow: %v", f.ID, err)
+		}
+	}
+
+	// A message stored as received (no flow transform then) is read as HL7
+	// by destination transforms even after a flow transform is added.
+	later := destT
+	later.Transform = transform(t, "name: t\nsteps:\n  - set: { field: x, expr: y }")
+	outs := destinationOutputs(later, state.Message{ContentType: "raw", Transformed: msg})
+	if r := outs["a"]; r.err != nil || !strings.Contains(string(r.body), `"first":"JOHN"`) {
+		t.Errorf("stored HL7 after the definition changed: %s, %v", r.body, r.err)
 	}
 }

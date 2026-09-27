@@ -27,8 +27,20 @@ import (
 )
 
 // ErrInvalidMessage is returned when a message cannot be processed by the
-// flow's transform (for example, the body is not a JSON object).
+// flow's transform (for example, the body is not a JSON object). The
+// returned error is an *InvalidMessageError carrying the reason.
 var ErrInvalidMessage = errors.New("pipeline: invalid message")
+
+// InvalidMessageError is a refused message and why, in words meant for
+// the sender ("body must be a JSON object"); it matches ErrInvalidMessage.
+type InvalidMessageError struct{ Reason string }
+
+func (e *InvalidMessageError) Error() string { return ErrInvalidMessage.Error() + ": " + e.Reason }
+
+// Is makes errors.Is(err, ErrInvalidMessage) hold.
+func (e *InvalidMessageError) Is(target error) bool { return target == ErrInvalidMessage }
+
+func invalid(reason string) error { return &InvalidMessageError{Reason: reason} }
 
 // Destination is one delivery target of a flow.
 type Destination struct {
@@ -226,7 +238,7 @@ func (p *Pipeline) ProcessWithMetadata(ctx context.Context, f Flow, body []byte,
 			return Result{}, err
 		}
 	}
-	if needsObject(f) {
+	if needsObject(f) || f.InputFormat == "hl7v2" { // an hl7v2 flow takes only HL7
 		if _, err := decodeInput(f.InputFormat, body); err != nil {
 			return Result{}, err
 		}
@@ -372,7 +384,7 @@ func decodeInput(format string, body []byte) (map[string]any, error) {
 	}
 	doc, err := codecs.HL7JSON(body)
 	if err != nil {
-		return nil, fmt.Errorf("%w: body must be an HL7 v2 message (MSH segment first)", ErrInvalidMessage)
+		return nil, invalid("body must be an HL7 v2 message (MSH segment first)")
 	}
 	return doc, nil
 }
@@ -384,10 +396,10 @@ func decodeObject(body []byte) (map[string]any, error) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
 	if err := dec.Decode(&doc); err != nil || doc == nil {
-		return nil, fmt.Errorf("%w: body must be a JSON object", ErrInvalidMessage)
+		return nil, invalid("body must be a JSON object")
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return nil, fmt.Errorf("%w: body must be a single JSON object", ErrInvalidMessage)
+		return nil, invalid("body must be a single JSON object")
 	}
 	return doc, nil
 }
@@ -518,8 +530,11 @@ type destinationResult struct {
 // transforms are deterministic, so every retry gets the same result.
 func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 	outs := map[string]destinationResult{}
-	format := f.InputFormat // the flow's output is its input, unless it transforms to JSON
-	if f.Transform != nil {
+	// The flow's output is JSON when a flow transform made it, else the
+	// message as received. Judge by what was stored, not the current
+	// definition, which may have changed since.
+	format := f.InputFormat
+	if m.ContentType == "json" {
 		format = "json"
 	}
 	for _, d := range f.Destinations {

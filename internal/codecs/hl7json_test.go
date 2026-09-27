@@ -43,7 +43,29 @@ func TestHL7JSON(t *testing.T) {
 			t.Errorf("%s = %v, want absent", missing, v)
 		}
 	}
-	for _, bad := range []string{"", "PID|1\r", "hello", "MS"} {
+	// Empty repetitions keep their place; escapes use the message's own
+	// delimiters.
+	doc, err = HL7JSON([]byte("MSH#^~!&#A####1##ADT^A01#C1\rPID#1##~456^^^SSN~~789#a !F! b !T! c\r"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ = json.Marshal(doc)
+	back = nil
+	_ = json.Unmarshal(got, &back)
+	for path, want := range map[string]any{
+		`PID.3.1`:               nil,
+		`PID.3.repetitions.1.1`: "456",
+		`PID.3.repetitions.3.1`: "789",
+		`PID.4.1`:               "a # b & c",
+	} {
+		if v := lookup(back, path); v != want {
+			t.Errorf("%s = %v, want %v", path, v, want)
+		}
+	}
+	if reps, _ := lookup(back, "PID.3.repetitions").([]any); len(reps) != 4 {
+		t.Errorf("PID.3.repetitions = %v, want 4 in place", reps)
+	}
+	for _, bad := range []string{"", "PID|1\r", "hello", "MS", "MSH"} {
 		if _, err := HL7JSON([]byte(bad)); !errors.Is(err, ErrNotHL7) {
 			t.Errorf("%q: %v", bad, err)
 		}
