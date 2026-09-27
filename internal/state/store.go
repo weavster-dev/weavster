@@ -58,6 +58,7 @@ type Message struct {
 type Query struct {
 	IDFrom      string
 	IDTo        string
+	FlowID      string
 	From        time.Time
 	To          time.Time
 	Status      Status
@@ -245,6 +246,9 @@ func (s *sqlStore) Search(ctx context.Context, q Query) ([]Message, error) {
 	out := make([]Message, 0, len(ids))
 	for _, id := range ids {
 		m, err := s.Get(ctx, id)
+		if errors.Is(err, ErrNotFound) {
+			continue // deleted since the id query
+		}
 		if err != nil {
 			return nil, err
 		}

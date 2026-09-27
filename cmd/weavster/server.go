@@ -51,10 +51,9 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		return nil, nil, nil, err
 	}
 	closeStore := func() error { return nil }
-	var messages gateway.MessageSearcher
+	var messages gateway.MessageStore
 	if store != nil {
 		closeStore = store.Close
-		messages = &messageAdapter{store: store}
 	}
 
 	pp := cfg.Auth.PasswordPolicy
@@ -112,6 +111,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		})
 		ia := ingestAdapter{flows: flows, pipe: pipe}
 		ingest = ia
+		messages = messageAdapter{store: store, pipe: pipe, ingest: ia}
 		workers = func(ctx context.Context) {
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
 		}
@@ -1328,6 +1328,11 @@ type ingestAdapter struct {
 }
 
 func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (gateway.IngestResult, error) {
+	return a.ingest(ctx, flowID, body, nil)
+}
+
+// ingest runs body through flowID, storing metadata with the new message.
+func (a ingestAdapter) ingest(ctx context.Context, flowID string, body []byte, metadata map[string]string) (gateway.IngestResult, error) {
 	if a.flows.locks != nil {
 		defer a.flows.locks.ProcessFlow(flowID)()
 	}
@@ -1345,7 +1350,7 @@ func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (
 	// Processing is durable work: finish it even if the client disconnects,
 	// so the stored message never stops half-way. HTTP deliveries are
 	// bounded by adapters.HTTPSinkTimeout.
-	res, err := a.pipe.Process(context.WithoutCancel(ctx), pf, body)
+	res, err := a.pipe.ProcessWithMetadata(context.WithoutCancel(ctx), pf, body, metadata)
 	if errors.Is(err, pipeline.ErrInvalidMessage) {
 		return gateway.IngestResult{}, fmt.Errorf("%w: body must be a JSON object", gateway.ErrInvalidMessage)
 	}
@@ -1713,25 +1718,115 @@ func (t topologyAdapter) FlowInternal(ctx context.Context, id string) (topology.
 	return topology.FlowInternal(detail), nil
 }
 
-type messageAdapter struct{ store state.Store }
+// messageAdapter serves the message API from the store; deletes and
+// reprocessing go through the pipeline, which knows what is in flight.
+type messageAdapter struct {
+	store  state.Store
+	pipe   *pipeline.Pipeline
+	ingest ingestAdapter
+}
 
 func (m messageAdapter) Search(ctx context.Context, q gateway.MessageQuery) ([]gateway.Message, error) {
-	sq := state.Query{Limit: q.Limit}
-	if q.Status != "" {
-		sq.Status = state.Status(q.Status)
+	sort := "-received_at"
+	switch q.Sort {
+	case "receivedAt":
+		sort = "received_at"
+	case "id", "-id":
+		sort = q.Sort
 	}
-	msgs, err := m.store.Search(ctx, sq)
+	msgs, err := m.store.Search(ctx, state.Query{
+		FlowID: q.FlowID, Status: state.Status(q.Status), From: q.From, To: q.To,
+		Limit: q.Limit, Offset: q.Offset, Sort: sort,
+	})
 	if err != nil {
 		return nil, err
 	}
 	out := make([]gateway.Message, 0, len(msgs))
 	for _, msg := range msgs {
-		if q.FlowID != "" && msg.FlowID != q.FlowID {
-			continue
-		}
-		out = append(out, gateway.Message{
-			ID: msg.ID, FlowID: msg.FlowID, Status: string(msg.Status), ContentType: msg.ContentType,
-		})
+		out = append(out, toGatewayMessage(msg))
 	}
 	return out, nil
+}
+
+func (m messageAdapter) Get(ctx context.Context, id string) (gateway.Message, error) {
+	msg, err := m.store.Get(ctx, id)
+	if err != nil {
+		return gateway.Message{}, messageErr(err)
+	}
+	return toGatewayMessage(msg), nil
+}
+
+func (m messageAdapter) Content(ctx context.Context, id, part string) (gateway.MessageContent, error) {
+	msg, err := m.store.Get(ctx, id)
+	if err != nil {
+		return gateway.MessageContent{}, messageErr(err)
+	}
+	if part == "transformed" {
+		if msg.Transformed == nil {
+			return gateway.MessageContent{}, fmt.Errorf("%w: message %s has no transformed content (status %s)", gateway.ErrNoContent, id, msg.Status)
+		}
+		ct := "application/octet-stream"
+		if msg.ContentType == "json" {
+			ct = "application/json"
+		}
+		return gateway.MessageContent{Body: msg.Transformed, ContentType: ct}, nil
+	}
+	return gateway.MessageContent{Body: msg.Raw, ContentType: "application/octet-stream"}, nil
+}
+
+func (m messageAdapter) Delete(ctx context.Context, id string) error {
+	err := m.pipe.Remove(ctx, id)
+	if errors.Is(err, pipeline.ErrInFlight) {
+		return gateway.ErrMessageBusy
+	}
+	return messageErr(err)
+}
+
+// Reprocess runs the message's original content through its flow again as
+// a new message that keeps the original's metadata (except its processing
+// error) and records where it came from.
+func (m messageAdapter) Reprocess(ctx context.Context, id string) (gateway.IngestResult, error) {
+	msg, err := m.store.Get(ctx, id)
+	if err != nil {
+		return gateway.IngestResult{}, messageErr(err)
+	}
+	body := msg.Original
+	if body == nil {
+		body = msg.Raw
+	}
+	md := make(map[string]string, len(msg.Metadata)+1)
+	for k, v := range msg.Metadata {
+		if k != "error" { // the new run records its own outcome
+			md[k] = v
+		}
+	}
+	md["reprocessedFrom"] = id
+	return m.ingest.ingest(ctx, msg.FlowID, body, md)
+}
+
+// messageErr translates the store's not-found error.
+func messageErr(err error) error {
+	if errors.Is(err, state.ErrNotFound) {
+		return gateway.ErrMessageNotFound
+	}
+	return err
+}
+
+func toGatewayMessage(msg state.Message) gateway.Message {
+	out := gateway.Message{
+		ID: msg.ID, FlowID: msg.FlowID, Status: string(msg.Status), ContentType: msg.ContentType,
+		ReceivedAt: msg.ReceivedAt.UTC(), UpdatedAt: msg.UpdatedAt.UTC(), Metadata: msg.Metadata,
+	}
+	if len(msg.Attempts) > 0 {
+		out.Attempts = make(map[string]gateway.MessageAttempt, len(msg.Attempts))
+		for dest, a := range msg.Attempts {
+			ga := gateway.MessageAttempt{Attempts: a.Attempts, LastError: a.LastError}
+			if !a.NextAttemptAt.IsZero() {
+				t := a.NextAttemptAt.UTC()
+				ga.NextAttemptAt = &t
+			}
+			out.Attempts[dest] = ga
+		}
+	}
+	return out
 }

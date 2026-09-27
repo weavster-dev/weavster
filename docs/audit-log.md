@@ -19,7 +19,7 @@ time=2026-09-26T12:00:00Z level=INFO msg=audit id=3 actor=admin action="POST /ap
 | Event | `action` |
 |---|---|
 | Any `POST`, `PUT`, `PATCH`, or `DELETE` under `/api/v1` by a signed-in user, **including rejected ones** (for example `403 FORBIDDEN` or `403 PASSWORD_CHANGE_REQUIRED`) | method and route, e.g. `DELETE /api/v1/flows/{id}` |
-| `GET /api/v1/messages` (message content can hold protected health information), including rejected reads | `phi.access` |
+| `GET /api/v1/messages`, `GET /api/v1/messages/{id}`, and `GET /api/v1/messages/{id}/content` (message content can hold protected health information), including rejected reads | `phi.access` |
 | Every `POST /api/v1/auth/login`, with the outcome in `status`: `200`, `400` (malformed body), `401`, `500`, or `503` | `auth.login` |
 | Any other request rejected with `401`: missing credentials, wrong Basic password, or an unknown, expired, or revoked token | `auth.failure` |
 | A non-GET request (including login) rejected with `400` for a missing `X-Weavster-CSRF` marker | method and literal path, e.g. `POST /api/v1/auth/login` |

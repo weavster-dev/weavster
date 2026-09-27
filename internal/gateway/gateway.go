@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/weavster-dev/weavster/internal/flowdef"
 	"github.com/weavster-dev/weavster/internal/observability"
@@ -157,6 +158,13 @@ var (
 	ErrTransitionIncomplete = errors.New("all-flows action stopped part-way")
 	// ErrUpdateIncomplete: a bulk update stopped part-way.
 	ErrUpdateIncomplete = errors.New("update stopped part-way")
+	// ErrMessageNotFound: no stored message has the id.
+	ErrMessageNotFound = errors.New("message not found")
+	// ErrNoContent: the message has no content of the requested part (for
+	// example no transformed content yet); wrapped with the detail.
+	ErrNoContent = errors.New("no such content")
+	// ErrMessageBusy: the message is being processed or retried.
+	ErrMessageBusy = errors.New("message is being processed; try again")
 )
 
 // FlowStore is the flow CRUD backend.
@@ -169,24 +177,54 @@ type FlowStore interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// Message is a minimal stored message exposed over REST.
+// Message is a stored message without its content.
 type Message struct {
-	ID          string `json:"id"`
-	FlowID      string `json:"flowId"`
-	Status      string `json:"status"`
-	ContentType string `json:"contentType"`
+	ID          string                    `json:"id"`
+	FlowID      string                    `json:"flowId"`
+	Status      string                    `json:"status"`
+	ContentType string                    `json:"contentType"`
+	ReceivedAt  time.Time                 `json:"receivedAt"`
+	UpdatedAt   time.Time                 `json:"updatedAt"`
+	Attempts    map[string]MessageAttempt `json:"attempts,omitempty"`
+	Metadata    map[string]string         `json:"metadata,omitempty"`
 }
 
-// MessageQuery narrows a message search.
+// MessageAttempt is one destination's delivery state for a message.
+type MessageAttempt struct {
+	Attempts      int        `json:"attempts"`
+	LastError     string     `json:"lastError,omitempty"`
+	NextAttemptAt *time.Time `json:"nextAttemptAt,omitempty"`
+}
+
+// MessageQuery narrows a message search; the store applies every filter
+// before Limit and Offset.
 type MessageQuery struct {
-	Status string
-	FlowID string
-	Limit  int
+	Status   string
+	FlowID   string
+	From, To time.Time // receive time, inclusive; zero = open
+	Limit    int
+	Offset   int
+	Sort     string // receivedAt or id, "-" prefix for descending
 }
 
-// MessageSearcher is the message search backend.
-type MessageSearcher interface {
+// MessageContent is one stored part of a message.
+type MessageContent struct {
+	Body        []byte
+	ContentType string // MIME type
+}
+
+// MessageStore reads and manages stored messages.
+type MessageStore interface {
 	Search(ctx context.Context, q MessageQuery) ([]Message, error)
+	// Get returns one message (ErrMessageNotFound).
+	Get(ctx context.Context, id string) (Message, error)
+	// Content returns a part of a message: "raw" or "transformed".
+	Content(ctx context.Context, id, part string) (MessageContent, error)
+	// Delete removes a message (ErrMessageBusy while it is processed).
+	Delete(ctx context.Context, id string) error
+	// Reprocess runs the message's original content through its flow again
+	// as a new message.
+	Reprocess(ctx context.Context, id string) (IngestResult, error)
 }
 
 // TopologyProvider serves the read-only topology graphs (contract §3).
@@ -202,7 +240,7 @@ type Config struct {
 	Authorizer  Authorizer
 	Audit       AuditSink
 	Flows       FlowStore
-	Messages    MessageSearcher
+	Messages    MessageStore
 	Ingest      MessageIngester
 	Lifecycle   FlowLifecycle
 	FlowUpdates FlowUpdater

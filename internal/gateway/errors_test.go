@@ -21,7 +21,7 @@ func (notImplementedFlows) List(context.Context) ([]Flow, error) {
 
 // notImplementedSearch answers message and event searches with the D-17
 // sentinel.
-type notImplementedSearch struct{}
+type notImplementedSearch struct{ messageOps }
 
 func (notImplementedSearch) Search(context.Context, MessageQuery) ([]Message, error) {
 	return nil, fmt.Errorf("%w: message archive", enterprise.ErrNotImplemented)

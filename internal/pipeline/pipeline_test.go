@@ -264,3 +264,28 @@ func TestProcessKeepsNumbersAndContentTypes(t *testing.T) {
 		t.Errorf("passthrough content type = %s", sink.types[1])
 	}
 }
+
+func TestProcessWithMetadataAndRemove(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	p := New(store, func(Destination) (Sink, error) { return &recordingSink{}, nil }, nil, Options{})
+	f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "x"}}}
+	res, err := p.ProcessWithMetadata(ctx, f, []byte("x"), map[string]string{"reprocessedFrom": "m0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m, _ := store.Get(ctx, res.ID); m.Metadata["reprocessedFrom"] != "m0" {
+		t.Errorf("metadata = %v", m.Metadata)
+	}
+	p.inflight.Store(res.ID, struct{}{})
+	if err := p.Remove(ctx, res.ID); !errors.Is(err, ErrInFlight) {
+		t.Errorf("Remove of an in-flight message = %v, want ErrInFlight", err)
+	}
+	p.inflight.Delete(res.ID)
+	if err := p.Remove(ctx, res.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Remove(ctx, res.ID); !errors.Is(err, state.ErrNotFound) {
+		t.Errorf("Remove of a missing message = %v, want state.ErrNotFound", err)
+	}
+}

@@ -15,6 +15,10 @@ func buildWhere(q Query) (string, []any) {
 		conds = append(conds, "id <= ?")
 		args = append(args, q.IDTo)
 	}
+	if q.FlowID != "" {
+		conds = append(conds, "flow_id = ?")
+		args = append(args, q.FlowID)
+	}
 	if !q.From.IsZero() {
 		conds = append(conds, "received_at >= ?")
 		args = append(args, q.From.UnixMilli())
@@ -61,14 +65,17 @@ func buildWhere(q Query) (string, []any) {
 func buildOrderSort(sortBy string) string {
 	asc := !strings.HasPrefix(sortBy, "-")
 	field := strings.TrimPrefix(sortBy, "-")
-	if field == "" {
-		field = "id"
+	if field != "received_at" {
+		field = "id" // only known columns reach the SQL
 	}
 	dir := "ASC"
 	if !asc {
 		dir = "DESC"
 	}
-	return "ORDER BY " + field + " " + dir
+	if field == "id" {
+		return "ORDER BY id " + dir
+	}
+	return "ORDER BY " + field + " " + dir + ", id " + dir // stable pages
 }
 
 // matches applies a Query predicate to a single message (in-memory search).
@@ -77,6 +84,9 @@ func matches(m Message, q Query) bool {
 		return false
 	}
 	if q.IDTo != "" && m.ID > q.IDTo {
+		return false
+	}
+	if q.FlowID != "" && m.FlowID != q.FlowID {
 		return false
 	}
 	if !q.From.IsZero() && m.ReceivedAt.Before(q.From) {

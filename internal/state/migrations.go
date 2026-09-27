@@ -65,6 +65,21 @@ func Migrations() []Migration {
 				return err
 			},
 		},
+		{
+			Version: 5,
+			Name:    "messages-by-flow-index",
+			Apply: func(ctx context.Context, tx *sql.Tx) error {
+				for _, stmt := range []string{
+					`CREATE INDEX IF NOT EXISTS messages_flow_received ON messages (flow_id, received_at, id)`,
+					`CREATE INDEX IF NOT EXISTS messages_received ON messages (received_at, id)`,
+				} {
+					if _, err := tx.ExecContext(ctx, stmt); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
 	}
 }
 
@@ -114,19 +129,15 @@ func sortMessages(ms []Message, sortBy string) {
 	if field == "" {
 		field = "id"
 	}
+	// A strict order with the id as tie-breaker, as the SQL store sorts.
 	sort.Slice(ms, func(i, j int) bool {
-		var less bool
-		switch field {
-		case "received_at":
-			less = ms[i].ReceivedAt.Before(ms[j].ReceivedAt)
-		case "id":
-			less = ms[i].ID < ms[j].ID
-		default:
-			less = ms[i].ID < ms[j].ID
-		}
+		a, b := ms[i], ms[j]
 		if !asc {
-			return !less
+			a, b = b, a
 		}
-		return less
+		if field == "received_at" && !a.ReceivedAt.Equal(b.ReceivedAt) {
+			return a.ReceivedAt.Before(b.ReceivedAt)
+		}
+		return a.ID < b.ID
 	})
 }

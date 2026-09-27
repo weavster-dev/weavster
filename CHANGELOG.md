@@ -58,6 +58,7 @@ All notable changes to this project are documented here, following
 - CLI spec §3.2 flow commands (#200): `deploy [timeout]`, `flow stats [id|name]`, `import "path" [force]`, `export id|"name"|* "path"`; flow commands accept a flow id or name; arguments can be double-quoted (`\"` and `\\` escapes).
 - Unversioned API paths (#206): every `/api/v1/...` endpoint is also served at `/api/...`, resolving to the latest version (spec §5); replies carry `Weavster-API-Version: v1`. See `docs/api.md`.
 - All-flows lifecycle and statistics (#208): `POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all` (dependency order; skipped flows with reasons; `deploy-all` skips disabled flows), `GET /api/v1/flows/stats`, and statistics reset for one or all flows (`?lifetime=true` also clears lifetime totals). CLI: `resetstats [lifetime]`, `flow reset-stats <id> [lifetime]`, `flow <action>-all`; `flow stats` without an id uses the new one-call endpoint. `stats` and `<action>-all` are reserved flow ids.
+- Messages API (#212): search filters `from`/`to`, `limit` (1–1000), `offset`, `sort` (newest first by default) and replies with receive/update times, attempts, and metadata; `GET /api/v1/messages/{id}`, `GET /api/v1/messages/{id}/content?part=raw|transformed` (new permission `messages:content`, audited), `DELETE /api/v1/messages/{id}` (new permission `messages:delete`), and `POST /api/v1/messages/{id}/reprocess` (new message with `reprocessedFrom`).
 
 ### Changed
 
@@ -84,6 +85,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- `GET /api/v1/messages?flowId=…` filters in the store before the page limit (#212); before, it filtered the first page afterwards and could miss that flow's messages. With `store.dialect: memory`, messages now get their receive and update times.
 - With `store.dialect: sqlite`, a restart could fail writes with `database is locked (SQLITE_BUSY)` when the previous run had stopped during a store query. SQLite statements now run to completion instead of being cancelled.
 - Flow API status codes (#151):
   - `DELETE /api/v1/flows/{id}` for an unknown flow returns `404`, not `204`.

@@ -40,7 +40,7 @@ func (f *fakeFlows) Create(_ context.Context, fl Flow) (Flow, error) {
 }
 func (f *fakeFlows) Delete(_ context.Context, id string) error { return nil }
 
-type fakeMessages struct{}
+type fakeMessages struct{ messageOps }
 
 func (fakeMessages) Search(context.Context, MessageQuery) ([]Message, error) {
 	return []Message{{ID: "1", Status: "sent"}}, nil
@@ -248,7 +248,7 @@ func (e *errFlows) Delete(_ context.Context, _ string) error {
 }
 
 // errMessages is a MessageStore that always errors.
-type errMessages struct{}
+type errMessages struct{ messageOps }
 
 func (errMessages) Search(_ context.Context, _ MessageQuery) ([]Message, error) {
 	return nil, errors.New("search unavailable")

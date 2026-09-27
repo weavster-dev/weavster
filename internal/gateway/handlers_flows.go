@@ -18,6 +18,12 @@ func writeFlowError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrFlowNotFound):
 		writeStatusError(w, http.StatusNotFound, "flow not found")
+	case errors.Is(err, ErrMessageNotFound):
+		writeStatusError(w, http.StatusNotFound, "message not found")
+	case errors.Is(err, ErrNoContent):
+		writeStatusError(w, http.StatusNotFound, err.Error())
+	case errors.Is(err, ErrMessageBusy):
+		writeStatusError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrUnknownAction), errors.Is(err, ErrDestinationNotFound):
 		writeStatusError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, ErrFlowExists):

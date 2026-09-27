@@ -120,8 +120,10 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `GET /api/v1/system`, `/api/v1/auth/me`, `POST /api/v1/auth/password`, `POST /api/v1/auth/logout` | any signed-in user |
 | `GET /api/v1/flows`, `GET /api/v1/flows/{id}`, `GET /api/v1/flows/export`, `GET /api/v1/flows/connector-names`, `GET /api/v1/flows/ports-in-use`, `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | `flows:view` |
 | `POST /api/v1/flows`, `PUT /api/v1/flows`, `PUT /api/v1/flows/{id}`, `DELETE /api/v1/flows/{id}`, `POST /api/v1/flows/{id}/{enable,disable}`, `POST /api/v1/flows/import` | `flows:edit` |
-| `GET /api/v1/messages` | `messages:view` |
-| `POST /api/v1/flows/{id}/messages` | `messages:send` |
+| `GET /api/v1/messages`, `GET /api/v1/messages/{id}` | `messages:view` |
+| `GET /api/v1/messages/{id}/content` | `messages:content` |
+| `DELETE /api/v1/messages/{id}` | `messages:delete` |
+| `POST /api/v1/flows/{id}/messages`, `POST /api/v1/messages/{id}/reprocess` | `messages:send` |
 | `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all`, `POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all`, `POST /api/v1/flows/{id}/destinations/{name}/{start,stop}`, `POST /api/v1/flows/stats/reset`, `POST /api/v1/flows/{id}/stats/reset` | `flows:deploy` |
 | `GET /api/v1/flows/{id}/stats`, `GET /api/v1/flows/stats` | `flows:view` |
 | `GET /api/v1/events` | `events:view` |
