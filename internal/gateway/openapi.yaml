@@ -1373,8 +1373,8 @@ components:
         method: {type: string, enum: [POST, PUT], description: "http: request method accepted (default POST)"}
         username: {type: string, minLength: 1, pattern: "^[^:]+$", description: "http: HTTP Basic user name senders must present (with passwordEnv)"}
         passwordEnv: {type: string, pattern: "^WEAVSTER_SOURCE_[A-Z0-9_]+$", description: "http: server environment variable holding the Basic password, WEAVSTER_SOURCE_... (with username)"}
-        certFile: {type: string, description: "http: absolute path of the PEM certificate chain; the port serves HTTPS (with keyFile)"}
-        keyFile: {type: string, description: "http: absolute path of the PEM private key (with certFile)"}
+        certFile: {type: string, minLength: 1, description: "http: absolute path of the PEM certificate chain; the port serves HTTPS (with keyFile)"}
+        keyFile: {type: string, minLength: 1, description: "http: absolute path of the PEM private key (with certFile)"}
     FlowDestination:
       example: {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}
       type: object

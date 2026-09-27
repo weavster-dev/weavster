@@ -145,6 +145,7 @@
                 "string",
                 "null"
               ],
+              "minLength": 1,
               "description": "Absolute path of the PEM certificate chain; the port serves HTTPS (with keyFile)"
             },
             "keyFile": {
@@ -152,6 +153,7 @@
                 "string",
                 "null"
               ],
+              "minLength": 1,
               "description": "Absolute path of the PEM private key (with certFile)"
             }
           },

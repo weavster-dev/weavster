@@ -61,6 +61,7 @@ func TestCheckSource(t *testing.T) {
 		{`{"id":"a","source":{"type":"http","address":":9001","username":"lab","passwordEnv":"WEAVSTER_SOURCE_LAB-PW"}}`, false},
 		{`{"id":"a","source":{"type":"http","address":":9001","username":"lab","passwordEnv":"AWS_SECRET_ACCESS_KEY"}}`, false},
 		{`{"id":"a","source":{"type":"http","address":":9001","password":"secret"}}`, false},
+		{`{"id":"a","source":{"type":"http","address":":9001","certFile":"","keyFile":""}}`, false},
 	} {
 		if err := ValidateJSON([]byte(tt.doc)); (err == nil) != tt.ok {
 			t.Errorf("%s: %v", tt.doc, err)
