@@ -91,6 +91,9 @@ func (s *Server) audited(next http.Handler) http.Handler {
 			route := requestedPath(r)
 			if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" && !strings.HasSuffix(rc.RoutePattern(), "*") {
 				route = rc.RoutePattern()
+				if requestedPath(r) != r.URL.Path { // an unversioned call: keep its form
+					route = strings.Replace(route, "/api/"+APIVersion+"/", "/api/", 1)
+				}
 			}
 			action = r.Method + " " + route
 		}

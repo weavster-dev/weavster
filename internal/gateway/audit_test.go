@@ -101,3 +101,14 @@ func TestAuditRecordsRequestedPath(t *testing.T) {
 		t.Errorf("events = %+v; want the unversioned path recorded", sink.events)
 	}
 }
+
+func TestAuditUnversionedRouteAction(t *testing.T) {
+	sink := &captureSink{}
+	s := newAuthServer(fakePasswords{})
+	s.cfg.Audit = sink
+	s = New(s.cfg)
+	serve(s, http.MethodDelete, "/api/flows/a", "", func(r *http.Request) { r.SetBasicAuth("viewer", "pw") })
+	if len(sink.events) != 1 || sink.events[0].Action != "DELETE /api/flows/{id}" || sink.events[0].Resource != "/api/flows/a" {
+		t.Errorf("events = %+v; want the unversioned route recorded", sink.events)
+	}
+}

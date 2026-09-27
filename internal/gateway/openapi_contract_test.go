@@ -79,3 +79,20 @@ func TestOpenAPIMatchesRoutes(t *testing.T) {
 		t.Errorf("routes not in openapi.yaml: %v\ndocumented but not routed: %v", missing, extra)
 	}
 }
+
+// TestOpenAPIVersionHeader: every response of a versioned operation declares
+// the Weavster-API-Version header the server sends.
+func TestOpenAPIVersionHeader(t *testing.T) {
+	for path, item := range loadSpec(t).Paths.Map() {
+		if path == "/api/openapi.yaml" {
+			continue
+		}
+		for method, op := range item.Operations() {
+			for status, resp := range op.Responses.Map() {
+				if resp.Value == nil || resp.Value.Headers["Weavster-API-Version"] == nil {
+					t.Errorf("%s %s %s: no Weavster-API-Version header", method, path, status)
+				}
+			}
+		}
+	}
+}

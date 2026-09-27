@@ -1,8 +1,9 @@
 # REST API
 
 The server's REST API lives under `/api`. Every request needs credentials (see
-[Authentication](authentication.md)) except `POST /api/v1/auth/login` and `GET /api/openapi.yaml`,
-and every request under `/api/v1` needs the header `X-Weavster-CSRF: 1` unless
+[Authentication](authentication.md)) except login (`POST /api/v1/auth/login`, or its unversioned
+form `POST /api/auth/login`) and `GET /api/openapi.yaml`. Every request except
+`GET /api/openapi.yaml`, versioned or unversioned, needs the header `X-Weavster-CSRF: 1` unless
 `listen.requireMarkerHeader` is off.
 
 ## Versions
