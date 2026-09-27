@@ -26,7 +26,6 @@ nav:
   - Dynamic Lookups: lookups.md
   - Configuration Export and Import: config-transfer.md
   - Config-as-Code Documents: config-as-code.md
-  - Git Repository: git.md
   - CI/CD: ci-cd.md
   - System Information: system-info.md
   - JSON and XML: api-formats.md

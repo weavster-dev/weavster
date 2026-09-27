@@ -89,10 +89,9 @@ func (s *Store) ReadFile(path string) ([]byte, error) {
 	return io.ReadAll(f)
 }
 
-// Commit stages and commits all working-tree changes (additions,
-// modifications, and deletions), returning the commit hash.
+// Commit stages and commits all working-tree changes, returning the commit hash.
 func (s *Store) Commit(message string, author Author) (string, error) {
-	if err := s.wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
+	if _, err := s.wt.Add("."); err != nil {
 		return "", err
 	}
 	h, err := s.wt.Commit(message, &git.CommitOptions{Author: author.signature()})

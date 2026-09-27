@@ -17,8 +17,6 @@ func (fakePlanner) PlanConfig(doc []byte, live ConfigBundle) (ConfigPlan, error)
 	switch string(doc) {
 	case "ok":
 		return ConfigPlan{Fingerprint: "f", Added: []string{"flow/a"}, Unchanged: len(live.Flows), Text: "+ flow/a\n"}, nil
-	case "changed":
-		return ConfigPlan{Fingerprint: "c", Changes: []ConfigChange{{Key: "flow/a", Action: "add"}}}, nil
 	case "bad":
 		return ConfigPlan{}, fmt.Errorf("%w: config: flows.a: bad", ErrInvalidConfig)
 	}

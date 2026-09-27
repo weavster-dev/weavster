@@ -118,25 +118,3 @@ func TestFingerprintCoversManagedSections(t *testing.T) {
 		t.Error("the fingerprint must tell a left-out section from an empty one")
 	}
 }
-
-func TestSectionOf(t *testing.T) {
-	for kind, want := range map[string]string{"flow": "flows", "library": "snippetLibraries", "configmap": "configmap", "settings": "settings", "nope": ""} {
-		if got, ok := SectionOf(kind); got != want || ok != (want != "") {
-			t.Errorf("%s = %q %v, want %q", kind, got, ok, want)
-		}
-	}
-	for section, want := range map[string]string{"flows": "flow", "snippetLibraries": "library", "nope": ""} {
-		if got, ok := KindOf(section); got != want || ok != (want != "") {
-			t.Errorf("KindOf(%s) = %q %v, want %q", section, got, ok, want)
-		}
-	}
-	// Every kind Artifacts produces has a section.
-	c := &Config{Flows: map[string]flowdef.Flow{"f": {}}, Alerts: map[string]artifact.Alert{"a": {}}, Snippets: map[string]artifact.Snippet{"s": {}},
-		SnippetLibraries: map[string]artifact.SnippetLibrary{"l": {}}, Scripts: map[string]string{"x": ""}, ConfigMap: map[string]string{"m": ""}, Settings: map[string]any{"k": 1}}
-	for key := range c.Artifacts() {
-		kind, _, _ := strings.Cut(key, "/")
-		if _, ok := SectionOf(kind); !ok {
-			t.Errorf("no section for %s", key)
-		}
-	}
-}

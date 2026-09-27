@@ -111,11 +111,8 @@ func runScript(script []byte, client Client, stdout, stderr io.Writer, debug boo
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		switch dispatch(context.Background(), client, line, stdout, stderr, debug) {
-		case 2:
+		if code := dispatch(context.Background(), client, line, stdout, stderr, debug); code == 2 {
 			rc = 2
-		case 1: // config drift found drift; a failed command still wins
-			rc = max(rc, 1)
 		}
 	}
 	if err := sc.Err(); err != nil { // a line over the limit ends the script

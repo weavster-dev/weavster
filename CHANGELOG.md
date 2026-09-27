@@ -107,6 +107,7 @@ All notable changes to this project are documented here, following
 
 ### Removed
 
+- The in-server Git integration added in #263–#269 (server config `git.*`, `/api/v1/git/*`, `gitRev` on config plan/apply, CLI `config drift`, permissions `git:view`/`git:commit`): the MVP is driven by the CLI and config files, with Git as automation around them (D-55, #274). `internal/gitstore` is back to the library it was before #263.
 - The synthetic `admit` flow that the server seeded at startup; a new server starts with no flows (#151).
 - The hard-coded `admin`/`admin123!` seed user in the composition root. It never passed the default password policy, and a relaxed `auth.passwordPolicy` would have created it (#147).
 
