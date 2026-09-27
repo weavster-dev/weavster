@@ -111,7 +111,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	statsPort := statsAdapter{flows: flows, stats: stats, series: series}
 	var gitRepo gateway.GitRepository // nil: Git not configured
 	if cfg.Git.Path != "" {
-		g, err := newGitAdapter(cfg.Git.Path)
+		g, err := newGitAdapter(cfg.Git)
 		if err != nil {
 			_ = closeStore()
 			return nil, nil, nil, err

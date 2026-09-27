@@ -6,31 +6,130 @@ import (
 	"fmt"
 	"io/fs"
 	"net/url"
+	"os"
 	"regexp"
 	"slices"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
 	"github.com/weavster-dev/weavster/internal/config"
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/gitstore"
+	"github.com/weavster-dev/weavster/internal/serverconfig"
 )
 
 // gitAdapter serves gateway.GitRepository from one on-disk repository.
 type gitAdapter struct {
-	mu    *sync.Mutex // go-git repositories are not safe for concurrent use
-	store *gitstore.Store
+	mu     *sync.Mutex // go-git repositories are not safe for concurrent use
+	store  *gitstore.Store
+	remote serverconfig.GitRemote
 }
 
-func newGitAdapter(path string) (gitAdapter, error) {
-	s, err := gitstore.OpenOrInit(path)
+func newGitAdapter(cfg serverconfig.Git) (gitAdapter, error) {
+	s, err := gitstore.OpenOrInit(cfg.Path)
 	if err != nil {
-		return gitAdapter{}, fmt.Errorf("git: %s: %w", path, err)
+		return gitAdapter{}, fmt.Errorf("git: %s: %w", cfg.Path, err)
 	}
-	return gitAdapter{mu: &sync.Mutex{}, store: s}, nil
+	return gitAdapter{mu: &sync.Mutex{}, store: s, remote: cfg.Remote}, nil
+}
+
+// remoteOf returns the configured remote with its password read from the
+// environment now, so a rotated token is picked up without a restart.
+func (a gitAdapter) remoteOf() (gitstore.Remote, error) {
+	if a.remote.URL == "" {
+		return gitstore.Remote{}, fmt.Errorf("%w: no remote configured (server config git.remote.url)", gateway.ErrGitConflict)
+	}
+	r := gitstore.Remote{URL: a.remote.URL, Username: a.remote.Username}
+	if a.remote.PasswordEnv != "" {
+		r.Password = os.Getenv(a.remote.PasswordEnv)
+	}
+	return r, nil
+}
+
+// remoteTimeout bounds each conversation with the remote.
+const remoteTimeout = time.Minute
+
+// remoteError maps a remote operation's error to the gateway's, never
+// showing the password; local repository errors stay as they are (500).
+func remoteError(r gitstore.Remote, branch string, err error) error {
+	switch {
+	case errors.Is(err, gitstore.ErrRejected):
+		return fmt.Errorf("%w: %w; pull first", gateway.ErrGitConflict, err)
+	case errors.Is(err, gitstore.ErrNothingToPush), errors.Is(err, gitstore.ErrDetached), errors.Is(err, gitstore.ErrUncommitted):
+		return fmt.Errorf("%w: %w", gateway.ErrGitConflict, err)
+	case errors.Is(err, gitstore.ErrNotFound):
+		return fmt.Errorf("%w: the remote has no branch %s; push first", gateway.ErrGitConflict, branch)
+	case !errors.Is(err, gitstore.ErrRemote):
+		return err
+	}
+	msg := strings.TrimPrefix(err.Error(), gitstore.ErrRemote.Error()+": ")
+	if r.Password != "" {
+		msg = strings.ReplaceAll(msg, r.Password, "***")
+	}
+	return fmt.Errorf("%w: %s: %s", gateway.ErrGitRemote, r.URL, msg)
+}
+
+func remoteStatus(r gitstore.Remote, st gitstore.RemoteState) gateway.GitRemoteStatus {
+	return gateway.GitRemoteStatus{URL: r.URL, Branch: st.Branch, Head: st.Head, RemoteHead: st.RemoteHead, Ahead: len(st.Ahead), Behind: st.Behind}
+}
+
+func (a gitAdapter) GitRemote(ctx context.Context) (gateway.GitRemoteStatus, error) {
+	r, err := a.remoteOf()
+	if err != nil {
+		return gateway.GitRemoteStatus{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
+	defer cancel()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	st, err := a.store.Status(ctx, r)
+	if err != nil {
+		return gateway.GitRemoteStatus{}, remoteError(r, st.Branch, err)
+	}
+	return remoteStatus(r, st), nil
+}
+
+// GitPush pushes and reports the state it left, without fetching again: a
+// push the remote accepted is never reported as failed.
+func (a gitAdapter) GitPush(ctx context.Context) (gateway.GitRemoteStatus, error) {
+	r, err := a.remoteOf()
+	if err != nil {
+		return gateway.GitRemoteStatus{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
+	defer cancel()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := a.store.PushTo(ctx, r); err != nil {
+		return gateway.GitRemoteStatus{}, remoteError(r, "", err)
+	}
+	st, err := a.store.State()
+	if err != nil {
+		return gateway.GitRemoteStatus{}, err
+	}
+	return remoteStatus(r, st), nil
+}
+
+func (a gitAdapter) GitPull(ctx context.Context) (gateway.GitPullResult, error) {
+	r, err := a.remoteOf()
+	if err != nil {
+		return gateway.GitPullResult{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, remoteTimeout)
+	defer cancel()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	dropped, err := a.store.PullRemoteWins(ctx, r)
+	if err != nil {
+		_, branch, _ := a.store.Head()
+		return gateway.GitPullResult{}, remoteError(r, branch, err)
+	}
+	head, _, err := a.store.Head()
+	return gateway.GitPullResult{Head: head, Dropped: dropped}, err
 }
 
 func (a gitAdapter) GitInfo(context.Context) (gateway.GitInfo, error) {

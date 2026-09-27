@@ -490,6 +490,65 @@ paths:
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
         "400": {description: "A repository file is invalid or uses YAML anchors/aliases, or an artifact is defined twice", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown revision, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/git/remote:
+    get:
+      summary: "Fetch from the remote and compare the branch with it (requires git:view)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: The comparison (credentials are never shown)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: {type: string}
+                  branch: {type: string}
+                  head: {type: string}
+                  remoteHead: {type: string, description: "Empty when the remote has no such branch"}
+                  ahead: {type: integer, description: Local commits the remote lacks}
+                  behind: {type: integer, description: Remote commits missing locally}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "409": {description: No remote configured (server config git.remote.url), headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "502": {description: "The remote could not be reached or refused the request", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/git/push:
+    post:
+      summary: "Push the branch to the remote (requires git:commit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: The comparison after the push
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url: {type: string}
+                  branch: {type: string}
+                  head: {type: string}
+                  remoteHead: {type: string, description: "Empty when the remote has no such branch"}
+                  ahead: {type: integer, description: Local commits the remote lacks}
+                  behind: {type: integer, description: Remote commits missing locally}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "409": {description: "No remote configured, nothing to push, or the remote has commits this repository lacks (pull first)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "502": {description: "The remote could not be reached or refused the request", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/git/pull:
+    post:
+      summary: "Make the branch and working tree match the remote (the remote wins); the live configuration does not change (requires git:commit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: The new head and the local commits that were not on the remote and are now gone
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  head: {type: string}
+                  dropped: {type: array, items: {type: string}}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "409": {description: "No remote configured, or the remote has no such branch", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "502": {description: "The remote could not be reached or refused the request", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/stats/series:
     get:
       summary: "Sampled lifetime statistics of every flow (or one), oldest first (requires flows:view)"

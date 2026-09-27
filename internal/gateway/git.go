@@ -47,10 +47,41 @@ type GitRepository interface {
 	// (ErrGitNotFound for an unknown revision, ErrInvalidConfig naming a
 	// bad file).
 	GitDocument(ctx context.Context, rev string) (doc []byte, commit string, err error)
+	// GitRemote fetches and compares the branch with the remote.
+	GitRemote(ctx context.Context) (GitRemoteStatus, error)
+	// GitPush pushes the branch (ErrGitConflict when the remote moved on).
+	GitPush(ctx context.Context) (GitRemoteStatus, error)
+	// GitPull makes the branch and working tree match the remote's: the
+	// remote wins.
+	GitPull(ctx context.Context) (GitPullResult, error)
+}
+
+// GitRemoteStatus compares the repository's branch with the remote's.
+type GitRemoteStatus struct {
+	URL        string `json:"url"`
+	Branch     string `json:"branch"`
+	Head       string `json:"head"`
+	RemoteHead string `json:"remoteHead"` // "" when the remote has no such branch
+	Ahead      int    `json:"ahead"`      // local commits the remote lacks
+	Behind     int    `json:"behind"`     // remote commits missing locally
+}
+
+// GitPullResult reports a pull.
+type GitPullResult struct {
+	Head    string   `json:"head"`
+	Dropped []string `json:"dropped"` // local commits not on the remote, now gone
 }
 
 // ErrGitNotFound: the revision or file is not in the repository.
 var ErrGitNotFound = errors.New("revision or file not found in the repository")
+
+// ErrGitConflict: the remote operation cannot be done as asked (no remote,
+// the remote moved on, nothing to push); the message says why.
+var ErrGitConflict = errors.New("git")
+
+// ErrGitRemote: the remote could not be reached or refused the request;
+// the message says why (never the credentials).
+var ErrGitRemote = errors.New("git remote")
 
 // ErrGitNameClash: two artifacts would share a repository file on a
 // case-insensitive filesystem.
@@ -75,8 +106,11 @@ func writeGitError(w http.ResponseWriter, err error) {
 	case errors.Is(err, ErrGitNotFound):
 		writeStatusError(w, http.StatusNotFound, err.Error())
 		return
-	case errors.Is(err, ErrGitNameClash):
+	case errors.Is(err, ErrGitNameClash), errors.Is(err, ErrGitConflict):
 		writeStatusError(w, http.StatusConflict, err.Error())
+		return
+	case errors.Is(err, ErrGitRemote):
+		writeStatusError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	writeBackendError(w, err)
@@ -127,11 +161,7 @@ func (s *Server) handleGitCommit(w http.ResponseWriter, r *http.Request) {
 		writeGitError(w, err)
 		return
 	}
-	info := auditInfoFrom(r.Context())
-	if info.detail == nil {
-		info.detail = map[string]string{}
-	}
-	info.detail["git.head"], info.detail["git.changed"] = res.Head, strconv.Itoa(len(res.Changed))
+	s.auditGit(r, "git.head", res.Head, "git.changed", strconv.Itoa(len(res.Changed)))
 	writeJSON(w, http.StatusOK, res)
 }
 
@@ -196,11 +226,7 @@ func (s *Server) configDocument(w http.ResponseWriter, r *http.Request) ([]byte,
 	}
 	doc, rev, commit, ok := s.gitDocument(w, r, q.Get("gitRev"))
 	if ok { // the audit record names what was planned or applied
-		info := auditInfoFrom(r.Context())
-		if info.detail == nil {
-			info.detail = map[string]string{}
-		}
-		info.detail["git.rev"], info.detail["git.commit"] = rev, commit
+		s.auditGit(r, "git.rev", rev, "git.commit", commit)
 	}
 	return doc, ok
 }
@@ -264,4 +290,57 @@ func (s *Server) handleGitDrift(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, GitDrift{Rev: rev, Commit: commit, Drifted: len(plan.Changes) > 0, Plan: plan})
+}
+
+func (s *Server) handleGitRemote(w http.ResponseWriter, r *http.Request) {
+	if !s.gitAvailable(w) {
+		return
+	}
+	st, err := s.cfg.Git.GitRemote(r.Context())
+	if err != nil {
+		writeGitError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) handleGitPush(w http.ResponseWriter, r *http.Request) {
+	if !s.gitAvailable(w) {
+		return
+	}
+	st, err := s.cfg.Git.GitPush(r.Context())
+	if err != nil {
+		writeGitError(w, err)
+		return
+	}
+	s.auditGit(r, "git.head", st.Head)
+	writeJSON(w, http.StatusOK, st)
+}
+
+// handleGitPull resets the repository to the remote (remote wins); the
+// live configuration does not change.
+func (s *Server) handleGitPull(w http.ResponseWriter, r *http.Request) {
+	if !s.gitAvailable(w) {
+		return
+	}
+	s.gitMu.Lock() // not while a commit is writing the working tree
+	defer s.gitMu.Unlock()
+	res, err := s.cfg.Git.GitPull(r.Context())
+	if err != nil {
+		writeGitError(w, err)
+		return
+	}
+	s.auditGit(r, "git.head", res.Head, "git.dropped", strings.Join(res.Dropped, ","))
+	writeJSON(w, http.StatusOK, res)
+}
+
+// auditGit adds key/value pairs to the request's audit record.
+func (s *Server) auditGit(r *http.Request, kv ...string) {
+	info := auditInfoFrom(r.Context())
+	if info.detail == nil {
+		info.detail = map[string]string{}
+	}
+	for i := 0; i+1 < len(kv); i += 2 {
+		info.detail[kv[i]] = kv[i+1]
+	}
 }

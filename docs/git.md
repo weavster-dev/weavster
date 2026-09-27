@@ -182,11 +182,76 @@ How the repository becomes one document:
 - The audit record of a plan or apply from the repository names the revision and the commit it
   resolved to (`git.rev`, `git.commit`).
 
+## Share through a remote
+
+Set [`git.remote`](server-config.md#git) to push the repository to a remote (GitHub, GitLab, a
+bare repository on disk) and pull changes others pushed:
+
+```yaml
+git:
+  path: /var/lib/weavster/config-repo
+  remote:
+    url: https://github.com/example/weavster-config.git
+    username: x-access-token
+    passwordEnv: WEAVSTER_GIT_TOKEN   # the token itself is in this environment variable
+```
+
+The server uses the remote's branch of the same name as its own (`main`).
+
+Compare with the remote (it is fetched first; permission `git:view`):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/git/remote
+```
+
+```json
+{"url":"https://github.com/example/weavster-config.git","branch":"main","head":"5f0c1e9a8d...","remoteHead":"77b2d0c41e...","ahead":1,"behind":0}
+```
+
+`ahead` counts your commits the remote does not have; `behind` the remote's commits you do not
+have. `remoteHead` is empty until the branch exists on the remote.
+
+Push (permission `git:commit`):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/git/push
+```
+
+It replies with the comparison after the push. When the remote has commits you do not have, the
+push is refused with `409` (`… pull first`).
+
+Pull (permission `git:commit`): the **remote wins**. The branch and the repository's files
+become exactly the remote's; your commits that are not on the remote are dropped and listed:
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/git/pull
+```
+
+```json
+{"head":"77b2d0c41e...","dropped":["5f0c1e9a8d..."]}
+```
+
+- Push before you pull if you want to keep your commits; a dropped commit cannot be pulled back.
+- A pull changes only the repository, never the live configuration. Check
+  [drift](#check-for-drift), then [apply](#plan-and-apply-from-the-repository) to take the
+  pulled configuration, or commit to record the live one on top.
+- Without `git.remote.url` these endpoints answer `409` (`no remote configured`), as they do when
+  the repository's HEAD is not on a branch. A remote that cannot be reached, refuses the
+  credentials, or does not answer within a minute gives `502` with the reason; the password or
+  token is never shown.
+- A branch deleted on the remote stops being reported at the next status, push, or pull.
+- A pull is refused with `409` while the repository has uncommitted files (they would be
+  overwritten); commit or remove them first. If a pull fails part way, the branch and files are
+  put back as they were committed.
+- Checking the status fetches from the remote with the server's credentials; like `git fetch`,
+  it updates only the repository's record of the remote.
+
 ## Permissions
 
 | Operation | Permissions |
 |---|---|
-| `GET /api/v1/git`, `GET /api/v1/git/log` | `git:view` |
+| `GET /api/v1/git`, `GET /api/v1/git/log`, `GET /api/v1/git/remote` | `git:view` |
+| `POST /api/v1/git/push`, `POST /api/v1/git/pull` | `git:commit` |
 | `GET /api/v1/git/drift` | `git:view` and the [config plan](config-as-code.md#see-what-would-change) permissions |
 | `POST /api/v1/config/plan?gitRev=`, `POST /api/v1/config/apply?gitRev=` | `git:view` and that endpoint's own permissions |
 | `GET /api/v1/git/content` | `git:view`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |

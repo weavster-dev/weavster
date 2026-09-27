@@ -191,6 +191,9 @@ func (s *Server) Router() http.Handler {
 				s.require("snippets", "edit"), s.require("scripts", "edit"), s.require("settings", "edit")}
 			r.With(s.require("git", "view")).Get("/git", s.handleGitInfo)
 			r.With(s.require("git", "view")).Get("/git/log", s.handleGitLog)
+			r.With(s.require("git", "view")).Get("/git/remote", s.handleGitRemote)
+			r.With(s.require("git", "commit")).Post("/git/push", s.handleGitPush)
+			r.With(s.require("git", "commit")).Post("/git/pull", s.handleGitPull)
 			r.With(s.require("git", "view"), s.require("flows", "view"), s.require("alerts", "edit"), s.require("snippets", "edit"),
 				s.require("scripts", "edit"), s.require("settings", "edit"), s.require("configmap", "edit")).Get("/git/drift", s.handleGitDrift)
 			r.With(append([]func(http.Handler) http.Handler{s.require("git", "view")}, exportPerms...)...).Get("/git/content", s.handleGitContent)
