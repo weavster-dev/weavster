@@ -107,12 +107,17 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
 	series := observability.NewTimeSeries(time.Duration(cfg.Stats.RetentionHours)*time.Hour, maxStatsPoints)
-	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events}
+	serverPorts := map[int]string{}
+	for _, l := range listeners(cfg.Listen) {
+		serverPorts[l.Port] = l.UsedBy
+	}
+	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events, serverPorts: serverPorts}
 	if cfg.Flows.DeployOnStartup && store != nil {
 		flows.DeployEnabled(ctx, logger)
 	}
 	statsPort := statsAdapter{flows: flows, stats: stats, series: series}
 	var ingest gateway.MessageIngester
+	var sourcePorts gateway.SourcePorts
 	retry := func(context.Context) {}
 	if store != nil {
 		pipe := pipeline.New(store, newSink, processingObserver{stats, events}, pipeline.Options{
@@ -126,11 +131,15 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
 		sources := newFileSources(flows, ia, eventLogRecorder{events}, logger)
+		listening := newHTTPSources(flows, ia, eventLogRecorder{events}, serverPorts, logger)
+		sourcePorts = listening
 		retry = func(ctx context.Context) {
-			polled := make(chan struct{})
-			go func() { sources.loop(ctx); close(polled) }() // flows' file sources (#107 D-56)
+			polled, served := make(chan struct{}), make(chan struct{})
+			go func() { sources.loop(ctx); close(polled) }()   // flows' file sources (#107 D-56)
+			go func() { listening.loop(ctx); close(served) }() // flows' http sources (#107 D-57)
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
 			<-polled
+			<-served
 		}
 	}
 
@@ -170,6 +179,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Topology:        topologyAdapter{flows: flows, stats: stats},
 		System:          newSystemAdapter(cfg, policy),
 		Listeners:       listeners(cfg.Listen),
+		Sources:         sourcePorts,
 		RequireCSRF:     cfg.Listen.RequireMarkerHeader,
 	})
 	return srv.Router(), closeStore, workers, nil
@@ -590,6 +600,9 @@ type flowAdapter struct {
 	// events, when set, receives a flow.<status> event for every status
 	// change and flow.deleted on removal.
 	events *observability.EventLog
+	// serverPorts are the server's own ports (port -> listener name), which
+	// no flow source may use.
+	serverPorts map[int]string
 }
 
 // definitions locks definition changes; it returns the unlock func.
@@ -937,7 +950,7 @@ func (a flowAdapter) UpdateMany(ctx context.Context, changes []gateway.FlowChang
 		if err != nil {
 			return updated, err
 		}
-		if err := checkSourceDirs(all); err != nil {
+		if err := checkSources(all, a.serverPorts); err != nil {
 			return updated, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 		}
 	}
@@ -1084,10 +1097,6 @@ func (a flowAdapter) RedeployAll(ctx context.Context) ([]gateway.Flow, error) {
 	return out, nil
 }
 
-// checkDependencies validates dependsOn for the given root flows and
-// everything they depend on: every dependency exists, no flow depends on
-// itself, and there are no cycles. Flows outside that closure are ignored, so
-// an unrelated bad edge never blocks a change.
 // hasSource reports whether any of flows reads a source.
 func hasSource(flows []gateway.Flow) bool {
 	for _, f := range flows {
@@ -1098,29 +1107,44 @@ func hasSource(flows []gateway.Flow) bool {
 	return false
 }
 
-// checkSourceDirs refuses two flows reading the same directory: both would
-// take the same files (#107 D-56).
-func checkSourceDirs(all map[string]gateway.Flow) error {
+// checkSources refuses two flows reading the same directory, which would
+// take the same files (#107 D-56), or listening on the same port or on one
+// of the server's own ports (D-57).
+func checkSources(all map[string]gateway.Flow, serverPorts map[int]string) error {
 	ids := make([]string, 0, len(all))
 	for id := range all {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	readBy := map[string]string{}
+	readBy, listenedBy := map[string]string{}, map[int]string{}
 	for _, id := range ids {
 		src := all[id].Source
-		if src == nil {
-			continue
+		switch {
+		case src == nil:
+		case src.Type == "http":
+			port, _ := flowdef.SourcePort(src) // checked with each definition
+			if name := serverPorts[port]; name != "" {
+				return fmt.Errorf("flow %s listens on port %d, the server's %s port", id, port, name)
+			}
+			if other, taken := listenedBy[port]; taken {
+				return fmt.Errorf("flows %s and %s both listen on port %d; a port can have one flow source", other, id, port)
+			}
+			listenedBy[port] = id
+		default:
+			dir := filepath.Clean(src.Dir)
+			if other, taken := readBy[dir]; taken {
+				return fmt.Errorf("flows %s and %s both read %s; a directory can have one file source", other, id, dir)
+			}
+			readBy[dir] = id
 		}
-		dir := filepath.Clean(src.Dir)
-		if other, taken := readBy[dir]; taken {
-			return fmt.Errorf("flows %s and %s both read %s; a directory can have one file source", other, id, dir)
-		}
-		readBy[dir] = id
 	}
 	return nil
 }
 
+// checkDependencies validates dependsOn for the given root flows and
+// everything they depend on: every dependency exists, no flow depends on
+// itself, and there are no cycles. Flows outside that closure are ignored, so
+// an unrelated bad edge never blocks a change.
 func checkDependencies(all map[string]gateway.Flow, roots []string) error {
 	const (
 		unvisited = iota
@@ -1241,7 +1265,7 @@ func (a flowAdapter) validateDefinition(ctx context.Context, f gateway.Flow) err
 	if err := checkDependencies(all, []string{f.ID}); err != nil {
 		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
-	if err := checkSourceDirs(all); err != nil {
+	if err := checkSources(all, a.serverPorts); err != nil {
 		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
 	return nil
@@ -1323,7 +1347,7 @@ func (a flowAdapter) Import(ctx context.Context, flows []gateway.Flow, overwrite
 	if err := checkDependencies(all, ids); err != nil {
 		return res, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
-	if err := checkSourceDirs(all); err != nil {
+	if err := checkSources(all, a.serverPorts); err != nil {
 		return res, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 	}
 	if len(conflicts) > 0 && !overwrite {
@@ -1429,6 +1453,11 @@ type ingestAdapter struct {
 
 func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (gateway.IngestResult, error) {
 	return a.ingest(ctx, flowID, body, nil)
+}
+
+// IngestFrom runs a message a flow's own source received (gateway.SourceIngester).
+func (a ingestAdapter) IngestFrom(ctx context.Context, flowID string, body []byte, metadata map[string]string) (gateway.IngestResult, error) {
+	return a.ingest(ctx, flowID, body, metadata)
 }
 
 // ingest runs body through flowID, storing metadata with the new message.
@@ -1911,8 +1940,8 @@ func (t topologyAdapter) FlowInternal(ctx context.Context, id string) (topology.
 		return topology.Graph{}, err
 	}
 	detail := topology.FlowDetail{ID: f.ID, Name: f.Name, Status: f.Status}
-	if f.SourceType != "" {
-		detail.Sources = []topology.Connector{{ID: f.ID + "-source", Label: f.SourceType + "://incoming", Type: f.SourceType, Status: f.Status}}
+	if typ := f.SourceKind(); typ != "" {
+		detail.Sources = []topology.Connector{{ID: f.ID + "-source", Label: typ + "://incoming", Type: typ, Status: f.Status}}
 	}
 	return topology.FlowInternal(detail), nil
 }

@@ -186,19 +186,29 @@ func (s *Server) handleFlowsDelete(w http.ResponseWriter, r *http.Request) {
 // reads.
 const MaxMessageBytes = 10 << 20
 
-func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
-	if s.cfg.Ingest == nil {
-		writeStatusError(w, http.StatusServiceUnavailable, "message processing unavailable")
-		return
-	}
+// readMessage reads a message body up to MaxMessageBytes; on failure it
+// has written the error reply.
+func readMessage(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxMessageBytes))
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
 			writeStatusError(w, http.StatusRequestEntityTooLarge, "message body larger than 10 MiB")
-			return
+		} else {
+			writeStatusError(w, http.StatusBadRequest, "could not read message body")
 		}
-		writeStatusError(w, http.StatusBadRequest, "could not read message body")
+		return nil, false
+	}
+	return body, true
+}
+
+func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Ingest == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "message processing unavailable")
+		return
+	}
+	body, ok := readMessage(w, r)
+	if !ok {
 		return
 	}
 	res, err := s.cfg.Ingest.Ingest(r.Context(), r.PathValue("id"), body)
@@ -472,7 +482,7 @@ func (s *Server) handleConnectorNames(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]ConnectorNames, 0, len(flows))
 	for _, f := range flows {
-		c := ConnectorNames{ID: f.ID, Name: f.Name, SourceType: f.SourceType, Destinations: make([]string, 0, len(f.Destinations))}
+		c := ConnectorNames{ID: f.ID, Name: f.Name, SourceType: f.SourceKind(), Destinations: make([]string, 0, len(f.Destinations))}
 		for _, d := range f.Destinations {
 			c.Destinations = append(c.Destinations, d.Name)
 		}
@@ -482,9 +492,9 @@ func (s *Server) handleConnectorNames(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePortsInUse(w http.ResponseWriter, _ *http.Request) {
-	ports := s.cfg.Listeners
-	if ports == nil {
-		ports = []PortInUse{}
+	ports := append([]PortInUse{}, s.cfg.Listeners...)
+	if s.cfg.Sources != nil {
+		ports = append(ports, s.cfg.Sources.Ports()...)
 	}
 	writeJSON(w, http.StatusOK, ports)
 }

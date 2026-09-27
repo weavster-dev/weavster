@@ -43,51 +43,89 @@
       ]
     },
     "source": {
-      "description": "Where the flow reads messages on its own; without it only the API sends it messages.",
-      "type": [
-        "object",
-        "null"
-      ],
-      "additionalProperties": false,
-      "required": [
-        "type",
-        "dir"
-      ],
-      "properties": {
-        "type": {
-          "enum": [
-            "file"
-          ]
+      "description": "Where the flow receives messages on its own; without it only the API sends it messages.",
+      "oneOf": [
+        {
+          "type": "null"
         },
-        "dir": {
-          "type": "string",
-          "minLength": 1,
-          "description": "Absolute directory to poll"
-        },
-        "pattern": {
-          "type": [
-            "string",
-            "null"
+        {
+          "title": "File source",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "dir"
           ],
-          "description": "File-name glob (default *); no path separators"
+          "properties": {
+            "type": {
+              "const": "file"
+            },
+            "dir": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Absolute directory to poll"
+            },
+            "pattern": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "File-name glob (default *); no path separators"
+            },
+            "pollIntervalMs": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 100,
+              "maximum": 3600000,
+              "description": "Default 1000"
+            },
+            "moveTo": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Absolute directory processed files are moved to (default: deleted)"
+            }
+          }
         },
-        "pollIntervalMs": {
-          "type": [
-            "integer",
-            "null"
+        {
+          "title": "HTTP source",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "address"
           ],
-          "minimum": 100,
-          "maximum": 3600000,
-          "description": "Default 1000"
-        },
-        "moveTo": {
-          "type": [
-            "string",
-            "null"
-          ],
-          "description": "Absolute directory processed files are moved to (default: deleted)"
+          "properties": {
+            "type": {
+              "const": "http"
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1,
+              "description": "host:port the flow listens on while it is started, e.g. 127.0.0.1:9001 or :9001"
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^/",
+              "description": "Request path accepted (default /)"
+            },
+            "method": {
+              "enum": [
+                "POST",
+                "PUT",
+                null
+              ],
+              "description": "Request method accepted (default POST)"
+            }
+          }
         }
-      }
+      ]
     },
     "enabled": {
       "type": [

@@ -87,8 +87,8 @@ flow list
 | `flow deploy-all`, and likewise `undeploy-all`, `start-all`, `stop-all`, `pause-all`, `halt-all`, `resume-all` | Runs the action on every flow it applies to and prints `changed` and `skipped` (see [Flow lifecycle](flow-lifecycle.md#act-on-all-flows-at-once)). | `POST /api/v1/flows/{action}-all` |
 | `flow redeploy-all` | Undeploys and redeploys every flow that is not `undeployed`; each ends `deployed`. | `POST /api/v1/flows/redeploy-all` |
 | `flow stop-destination <id> <destination>`, `flow start-destination <id> <destination>` | Holds or releases one destination's deliveries. | `POST /api/v1/flows/{id}/destinations/{name}/{stop,start}` |
-| `flow connectors` | Every flow's source type and destination names. | `GET /api/v1/flows/connector-names` |
-| `flow ports` | The ports the server listens on. | `GET /api/v1/flows/ports-in-use` |
+| `flow connectors` | Every flow's source type (its `source.type` when it has a source, otherwise `sourceType`) and destination names. | `GET /api/v1/flows/connector-names` |
+| `flow ports` | The ports the server listens on: the API, and the http sources of started flows (`flow:<id>`). | `GET /api/v1/flows/ports-in-use` |
 | `flow reset-stats <id> [lifetime]` | Clears the flow's current statistics; `lifetime` also clears its lifetime totals. | `POST /api/v1/flows/{id}/stats/reset` |
 | `flow stats [<id>]` | Statistics of one flow, or of every flow: `id  received=… filtered=… transformed=… sent=… errored=… queued=…`. | `GET /api/v1/flows/{id}/stats` |
 | `flow help` | Lists the flow commands. | — |
