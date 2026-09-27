@@ -8,19 +8,54 @@ import (
 	"time"
 )
 
-// HTTPSink POSTs messages to a URL.
+// HTTPSink sends messages to a URL (POST unless configured otherwise).
 type HTTPSink struct {
 	url    string
+	method string
 	client *http.Client
 }
 
 // HTTPSinkTimeout bounds one delivery request, including reading the
-// response.
+// response, unless HTTPSinkOptions.Timeout sets another bound.
 const HTTPSinkTimeout = 30 * time.Second
 
-// NewHTTPSink returns an HTTP sink posting to url.
+// HTTPSinkOptions shape an HTTP sink's requests; zero values are the
+// defaults: POST, HTTPSinkTimeout, and no redirects followed.
+type HTTPSinkOptions struct {
+	Method  string
+	Timeout time.Duration
+	// MaxRedirects is how many 307/308 redirects are followed (they keep
+	// the method and body). Other redirects, and https to http, are never
+	// followed: the 3xx reply fails the delivery.
+	MaxRedirects int
+}
+
+// NewHTTPSink returns an HTTP sink posting to url with the default options.
 func NewHTTPSink(url string) *HTTPSink {
-	return &HTTPSink{url: url, client: &http.Client{Timeout: HTTPSinkTimeout}}
+	return NewHTTPSinkWith(url, HTTPSinkOptions{})
+}
+
+// NewHTTPSinkWith returns an HTTP sink sending to url with opts.
+func NewHTTPSinkWith(url string, opts HTTPSinkOptions) *HTTPSink {
+	method, timeout := opts.Method, opts.Timeout
+	if method == "" {
+		method = http.MethodPost
+	}
+	if timeout <= 0 { // never unbounded
+		timeout = HTTPSinkTimeout
+	}
+	return &HTTPSink{url: url, method: method, client: &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			code := req.Response.StatusCode
+			keeps := code == http.StatusTemporaryRedirect || code == http.StatusPermanentRedirect
+			downgrade := via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme != "https" // on any hop
+			if !keeps || downgrade || len(via) > opts.MaxRedirects {
+				return http.ErrUseLastResponse
+			}
+			return nil
+		},
+	}}
 }
 
 func (s *HTTPSink) Name() string { return "http" }
@@ -47,7 +82,7 @@ func (s *HTTPSink) WriteResponse(ctx context.Context, m Message) (*Reply, error)
 }
 
 func (s *HTTPSink) send(ctx context.Context, m Message, wantReply bool) (*Reply, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url, bytes.NewReader(m.Body))
+	req, err := http.NewRequestWithContext(ctx, s.method, s.url, bytes.NewReader(m.Body))
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +102,7 @@ func (s *HTTPSink) send(ctx context.Context, m Message, wantReply bool) (*Reply,
 	if resp.StatusCode >= 300 || !wantReply {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		if resp.StatusCode >= 300 {
-			return nil, &httpStatusError{code: resp.StatusCode}
+			return nil, &httpStatusError{code: resp.StatusCode, location: resp.Header.Get("Location")}
 		}
 		return nil, nil
 	}
@@ -79,9 +114,17 @@ func (s *HTTPSink) send(ctx context.Context, m Message, wantReply bool) (*Reply,
 	return &Reply{Body: body, ContentType: resp.Header.Get("Content-Type")}, nil
 }
 
-type httpStatusError struct{ code int }
+type httpStatusError struct {
+	code     int
+	location string // a redirect's target, not followed
+}
 
-func (e *httpStatusError) Error() string { return http.StatusText(e.code) }
+func (e *httpStatusError) Error() string {
+	if e.code < 400 && e.location != "" {
+		return http.StatusText(e.code) + ": redirect to " + e.location + " not followed"
+	}
+	return http.StatusText(e.code)
+}
 
 func (s *HTTPSink) Close() error { return nil }
 

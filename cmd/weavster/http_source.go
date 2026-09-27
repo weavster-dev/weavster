@@ -147,8 +147,8 @@ func (s *httpSources) start(id string, src gateway.FlowSource) {
 			handler.ServeHTTP(w, r)
 		}),
 		TLSConfig:         tlsCfg,
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       time.Minute,
+		ReadHeaderTimeout: min(10*time.Second, readTimeout(src)),
+		ReadTimeout:       readTimeout(src),
 		IdleTimeout:       2 * time.Minute,
 	}
 	go func() {
@@ -202,6 +202,14 @@ func (s *httpSources) isServerKey(keyFile string) bool {
 	a, errA := os.Stat(keyFile)
 	b, errB := os.Stat(s.serverKey)
 	return errA == nil && errB == nil && os.SameFile(a, b)
+}
+
+// readTimeout is the time allowed to read one request on src.
+func readTimeout(src gateway.FlowSource) time.Duration {
+	if src.ReadTimeoutMs > 0 {
+		return time.Duration(src.ReadTimeoutMs) * time.Millisecond
+	}
+	return time.Minute
 }
 
 // stopped reports whether Serve has returned.

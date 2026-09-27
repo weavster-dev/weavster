@@ -77,6 +77,9 @@ type Source struct {
 	// CertFile and KeyFile make an http source serve HTTPS.
 	CertFile string `json:"certFile,omitempty"`
 	KeyFile  string `json:"keyFile,omitempty"`
+	// ReadTimeoutMs bounds reading one request on an http source
+	// (default 60000).
+	ReadTimeoutMs int `json:"readTimeoutMs,omitempty"`
 }
 
 // Destination is one delivery target of a flow.
@@ -85,6 +88,11 @@ type Destination struct {
 	Type string `json:"type"`
 	URL  string `json:"url,omitempty"`
 	Dir  string `json:"dir,omitempty"`
+	// Method, TimeoutMs, and MaxRedirects shape an http destination's
+	// request: POST, 30 s, and no redirects followed by default (#107 D-59).
+	Method       string `json:"method,omitempty"`
+	TimeoutMs    int    `json:"timeoutMs,omitempty"`
+	MaxRedirects int    `json:"maxRedirects,omitempty"`
 	// Transform is this destination's own DSL transform (filter steps
 	// included), applied to the flow's output; kept unparsed.
 	Transform json.RawMessage `json:"transform,omitempty"`

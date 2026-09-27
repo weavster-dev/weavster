@@ -111,3 +111,24 @@ func TestSourceHandlerBasicAuth(t *testing.T) {
 		}
 	}
 }
+
+// ctxIngest reports whether the context it was given was already done.
+type ctxIngest struct{ done bool }
+
+func (c *ctxIngest) IngestFrom(ctx context.Context, _ string, _ []byte, _ map[string]string) (IngestResult, error) {
+	c.done = ctx.Err() != nil
+	return IngestResult{ID: "m"}, nil
+}
+
+// TestSourceHandlerKeepsProcessing: once the body is read, the request
+// ending (a read deadline, a client gone) does not cancel processing.
+func TestSourceHandlerKeepsProcessing(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	ingest := &ctxIngest{}
+	rec := httptest.NewRecorder()
+	SourceHandler("f", FlowSource{Type: "http"}, "", ingest).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", strings.NewReader("{}")).WithContext(ctx))
+	if rec.Code != http.StatusAccepted || ingest.done {
+		t.Errorf("got %d, processing context done = %v", rec.Code, ingest.done)
+	}
+}
