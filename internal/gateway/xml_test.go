@@ -55,6 +55,7 @@ func TestPrefersXML(t *testing.T) {
 		{"application/xml;q=abc", false},
 		{"application/xml;q=2", false},
 		{"application/xml;q=-1", false},
+		{"application/xml, text/html;q=NaN", true},
 		{"bad;;;, application/xml", true},
 	} {
 		if got := prefersXML(tt.accept); got != tt.want {

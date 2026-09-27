@@ -66,7 +66,8 @@ func prefersXML(accept string) bool {
 		}
 		q := 1.0
 		if v, ok := params["q"]; ok {
-			if q, err = strconv.ParseFloat(v, 64); err != nil || q < 0 || q > 1 {
+			// !(0 <= q <= 1) also rejects NaN, which ParseFloat accepts.
+			if q, err = strconv.ParseFloat(v, 64); err != nil || !(q >= 0 && q <= 1) {
 				continue
 			}
 		}
