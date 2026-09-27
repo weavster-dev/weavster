@@ -147,6 +147,14 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("flows", "view")).Get("/flows/{id}/stats", s.handleFlowStats)
 			r.With(s.require("events", "view")).Get("/events", s.handleEvents)
 			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "view")).Get("/messages", s.handleMessagesSearch)
+			for _, k := range itemKinds {
+				edit := s.require(k.resource, "edit")
+				r.With(edit).Get("/"+k.kind, s.handleItemsList(k))
+				r.With(edit).Put("/"+k.kind, s.handleItemsReplace(k))
+				r.With(edit).Get("/"+k.kind+"/{name}", s.handleItemGet(k))
+				r.With(edit).Put("/"+k.kind+"/{name}", s.handleItemPut(k))
+				r.With(edit).Delete("/"+k.kind+"/{name}", s.handleItemDelete(k))
+			}
 			r.With(s.require("users", "admin")).Get("/users", s.handleUsersList)
 			r.With(s.require("users", "admin")).Post("/users", s.handleUserCreate)
 			r.With(s.require("users", "admin")).Get("/users/{name}", s.handleUserGet)

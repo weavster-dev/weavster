@@ -90,11 +90,14 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	sink := audit.NewLocalSink(logger)
 	// Flow definitions live in the configured store; with the store
 	// disabled they are kept in memory.
-	// Every state backend implements flowRepository
+	// Every state backend implements flowRepository and itemRepository
 	// (TestStoresImplementFlowRepository).
-	var repo flowRepository = state.NewMemStore()
+	mem := state.NewMemStore()
+	var repo flowRepository = mem
+	var items itemRepository = mem
 	if store != nil {
 		repo = store.(flowRepository)
+		items = store.(itemRepository)
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
 	flows := flowAdapter{store: repo, stats: stats, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events}
@@ -121,6 +124,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Auth:        authAdapter{provider},
 		Passwords:   passwordAdapter{provider},
 		Users:       userAdminAdapter{p: provider, mu: &sync.Mutex{}},
+		Items:       itemsAdapter{repo: items},
 		Authorizer:  authorizerAdapter{},
 		Audit:       auditAdapter{sink},
 		Flows:       flows,

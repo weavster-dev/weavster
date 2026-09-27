@@ -2,6 +2,7 @@ package state
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -13,11 +14,13 @@ type MemStore struct {
 	m     map[string]Message
 	flows map[string]FlowDefinition
 	users map[string]UserDocument
+	items map[string]map[string]json.RawMessage // kind -> name -> value
 }
 
 // NewMemStore returns an empty in-memory store.
 func NewMemStore() *MemStore {
-	return &MemStore{m: make(map[string]Message), flows: make(map[string]FlowDefinition), users: make(map[string]UserDocument)}
+	return &MemStore{m: make(map[string]Message), flows: make(map[string]FlowDefinition), users: make(map[string]UserDocument),
+		items: make(map[string]map[string]json.RawMessage)}
 }
 
 func (s *MemStore) Put(_ context.Context, m Message) error {

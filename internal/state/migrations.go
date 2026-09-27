@@ -80,6 +80,7 @@ func Migrations() []Migration {
 				return nil
 			},
 		},
+		itemsMigration(),
 	}
 }
 
