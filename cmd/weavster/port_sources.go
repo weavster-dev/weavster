@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/weavster-dev/weavster/internal/adapters"
 	"github.com/weavster-dev/weavster/internal/flowdef"
 	"github.com/weavster-dev/weavster/internal/flowlife"
 	"github.com/weavster-dev/weavster/internal/gateway"
@@ -22,22 +23,21 @@ import (
 // connections before closing them; requests being processed still finish.
 const sourceShutdown = 5 * time.Second
 
-// sourceListener is one flow's open http source.
+// sourceListener is one flow's open http or mllp source.
 type sourceListener struct {
 	src  gateway.FlowSource
 	port int
-	srv  *http.Server
-	done chan struct{} // closed when Serve returns
-	// handlers counts requests in progress, so closing waits until no
-	// message is being processed (the store may close next).
-	handlers sync.WaitGroup
+	done <-chan struct{} // closed when the listener stops accepting
+	// shut stops the listener and returns once the port is released and
+	// no message is being processed (the store may close next).
+	shut func()
 }
 
-// httpSources opens the listener of every started flow that has an http
-// source and closes it when the flow stops, changes, or goes away (#107
-// D-57). Flows are read once per flowRefresh, so a flow's port opens or
+// portSources opens the listener of every started flow that has an http
+// or mllp source and closes it when the flow stops, changes, or goes away
+// (#107 D-57, D-60). Flows are read once per flowRefresh, so a flow's port opens or
 // closes within about a second of the change.
-type httpSources struct {
+type portSources struct {
 	flows  flowLister
 	ingest gateway.SourceIngester
 	events eventRecorder
@@ -62,14 +62,14 @@ type sourceFailure struct {
 	reason string
 }
 
-func newHTTPSources(flows flowLister, ingest gateway.SourceIngester, events eventRecorder, reserved map[int]string, tlsOpts gateway.TLSOptions, serverKey string, logger *slog.Logger) *httpSources {
-	return &httpSources{flows: flows, ingest: ingest, events: events, reserved: reserved, tlsOpts: tlsOpts, serverKey: serverKey, logger: logger,
+func newPortSources(flows flowLister, ingest gateway.SourceIngester, events eventRecorder, reserved map[int]string, tlsOpts gateway.TLSOptions, serverKey string, logger *slog.Logger) *portSources {
+	return &portSources{flows: flows, ingest: ingest, events: events, reserved: reserved, tlsOpts: tlsOpts, serverKey: serverKey, logger: logger,
 		open: map[string]*sourceListener{}, failed: map[string]sourceFailure{}}
 }
 
 // loop keeps the listeners in step with the flows until ctx is cancelled,
 // then closes them all.
-func (s *httpSources) loop(ctx context.Context) {
+func (s *portSources) loop(ctx context.Context) {
 	ticker := time.NewTicker(flowRefresh)
 	defer ticker.Stop()
 	for {
@@ -84,7 +84,7 @@ func (s *httpSources) loop(ctx context.Context) {
 }
 
 // reconcile closes listeners no longer wanted and opens missing ones.
-func (s *httpSources) reconcile(ctx context.Context) {
+func (s *portSources) reconcile(ctx context.Context) {
 	flows, err := s.flows.List(ctx)
 	if err != nil {
 		if ctx.Err() == nil {
@@ -94,7 +94,7 @@ func (s *httpSources) reconcile(ctx context.Context) {
 	}
 	want := map[string]gateway.FlowSource{}
 	for _, f := range flows {
-		if f.Source != nil && f.Source.Type == "http" && flowlife.Normalize(f.Status) == flowlife.Started {
+		if f.Source.Listens() && flowlife.Normalize(f.Status) == flowlife.Started {
 			want[f.ID] = *f.Source
 		}
 	}
@@ -126,24 +126,41 @@ func (s *httpSources) reconcile(ctx context.Context) {
 
 // start opens id's listener; a failure is logged and recorded once per
 // source definition and reason, and retried on the next reconcile.
-func (s *httpSources) start(id string, src gateway.FlowSource) {
+func (s *portSources) start(id string, src gateway.FlowSource) {
 	port, _ := flowdef.SourcePort(&src) // validated with the definition
 	ln, password, tlsCfg, err := s.listen(src, port)
 	if err != nil {
 		if f := (sourceFailure{src, err.Error()}); s.failed[id] != f {
 			s.failed[id] = f
-			s.logger.Warn("http source: cannot listen", "flow", id, "address", src.Address, "error", err)
-			s.events.record("source.http.failed", id, map[string]string{"address": src.Address, "reason": err.Error()})
+			s.logger.Warn(src.Type+" source: cannot listen", "flow", id, "address", src.Address, "error", err)
+			s.events.record("source."+src.Type+".failed", id, map[string]string{"address": src.Address, "reason": err.Error()})
 		}
 		return
 	}
 	delete(s.failed, id)
-	l := &sourceListener{src: src, port: port, done: make(chan struct{})}
-	handler := gateway.SourceHandler(id, src, password, s.ingest)
-	l.srv = &http.Server{
+	l := &sourceListener{src: src, port: port}
+	if src.Type == "mllp" {
+		srv := adapters.ServeMLLP(ln, mllpHandler(id, s.ingest), adapters.MLLPOptions{MaxFrame: gateway.MaxMessageBytes, IdleTimeout: mllpIdleTimeout})
+		l.done, l.shut = srv.Done(), func() { _ = srv.Close() }
+	} else {
+		l.done, l.shut = serveHTTPSource(id, src, ln, password, tlsCfg, s.ingest)
+	}
+	s.mu.Lock()
+	s.open[id] = l
+	s.mu.Unlock()
+	s.logger.Info(src.Type+" source listening", "flow", id, "address", ln.Addr().String())
+}
+
+// serveHTTPSource serves an http source on ln. Its shut func stops
+// accepting, closes connections still open after sourceShutdown, and waits
+// until no request is being processed.
+func serveHTTPSource(id string, src gateway.FlowSource, ln net.Listener, password string, tlsCfg *tls.Config, ingest gateway.SourceIngester) (<-chan struct{}, func()) {
+	var handlers sync.WaitGroup // requests in progress
+	handler := gateway.SourceHandler(id, src, password, ingest)
+	srv := &http.Server{
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			l.handlers.Add(1)
-			defer l.handlers.Done()
+			handlers.Add(1)
+			defer handlers.Done()
 			handler.ServeHTTP(w, r)
 		}),
 		TLSConfig:         tlsCfg,
@@ -151,24 +168,30 @@ func (s *httpSources) start(id string, src gateway.FlowSource) {
 		ReadTimeout:       readTimeout(src),
 		IdleTimeout:       2 * time.Minute,
 	}
+	done := make(chan struct{})
 	go func() {
 		if tlsCfg != nil {
-			_ = l.srv.ServeTLS(ln, "", "") // the certificate is in TLSConfig; also offers HTTP/2
+			_ = srv.ServeTLS(ln, "", "") // the certificate is in TLSConfig; also offers HTTP/2
 		} else {
-			_ = l.srv.Serve(ln)
+			_ = srv.Serve(ln)
 		}
-		close(l.done)
+		close(done)
 	}()
-	s.mu.Lock()
-	s.open[id] = l
-	s.mu.Unlock()
-	s.logger.Info("http source listening", "flow", id, "address", ln.Addr().String())
+	return done, func() {
+		ctx, cancel := context.WithTimeout(context.Background(), sourceShutdown)
+		defer cancel()
+		if srv.Shutdown(ctx) != nil {
+			_ = srv.Close()
+		}
+		<-done
+		handlers.Wait()
+	}
 }
 
 // listen opens src's port, reads its Basic password from the environment,
 // and loads its certificate (#107 D-58). A secured source whose password
 // or certificate is missing stays closed rather than open without.
-func (s *httpSources) listen(src gateway.FlowSource, port int) (net.Listener, string, *tls.Config, error) {
+func (s *portSources) listen(src gateway.FlowSource, port int) (net.Listener, string, *tls.Config, error) {
 	if name := s.reserved[port]; name != "" {
 		return nil, "", nil, fmt.Errorf("port %d is the server's %s port", port, name)
 	}
@@ -195,7 +218,7 @@ func (s *httpSources) listen(src gateway.FlowSource, port int) (net.Listener, st
 
 // isServerKey reports whether keyFile is the API's private key (also via
 // another path or link).
-func (s *httpSources) isServerKey(keyFile string) bool {
+func (s *portSources) isServerKey(keyFile string) bool {
 	if s.serverKey == "" {
 		return false
 	}
@@ -212,7 +235,7 @@ func readTimeout(src gateway.FlowSource) time.Duration {
 	return time.Minute
 }
 
-// stopped reports whether Serve has returned.
+// stopped reports whether the listener stopped accepting.
 func (l *sourceListener) stopped() bool {
 	select {
 	case <-l.done:
@@ -222,18 +245,8 @@ func (l *sourceListener) stopped() bool {
 	}
 }
 
-// close stops accepting, closes connections still open after
-// sourceShutdown, and waits until the port is released and no request is
-// being processed.
-func (l *sourceListener) close() {
-	ctx, cancel := context.WithTimeout(context.Background(), sourceShutdown)
-	defer cancel()
-	if l.srv.Shutdown(ctx) != nil {
-		_ = l.srv.Close()
-	}
-	<-l.done
-	l.handlers.Wait()
-}
+// close stops the listener; see sourceListener.shut.
+func (l *sourceListener) close() { l.shut() }
 
 // closeAll closes listeners in parallel, so one slow request does not hold
 // up the others.
@@ -247,7 +260,7 @@ func closeAll(ls []*sourceListener) {
 }
 
 // closeAll closes every open listener (server shutdown).
-func (s *httpSources) closeAll() {
+func (s *portSources) closeAll() {
 	s.mu.Lock()
 	open := make([]*sourceListener, 0, len(s.open))
 	for _, l := range s.open {
@@ -259,7 +272,7 @@ func (s *httpSources) closeAll() {
 }
 
 // Ports lists the open http sources for ports-in-use, by flow id.
-func (s *httpSources) Ports() []gateway.PortInUse {
+func (s *portSources) Ports() []gateway.PortInUse {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := make([]gateway.PortInUse, 0, len(s.open))

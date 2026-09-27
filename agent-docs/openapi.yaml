@@ -1343,13 +1343,16 @@ components:
     FlowSource:
       example: {"type": "file", "dir": "/var/lib/weavster/in/adt", "pattern": "*.json", "pollIntervalMs": 1000, "moveTo": "/var/lib/weavster/done/adt"}
       type: object
-      description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs, and moveTo; an http source takes address, path, method, username with passwordEnv, and certFile with keyFile."
+      description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs, and moveTo; an http source takes address, path, method, username with passwordEnv, certFile with keyFile, and readTimeoutMs; an mllp source takes address."
       required: [type]
       additionalProperties: false
       oneOf:
         - required: [dir]
           properties: {type: {enum: [file]}}
           not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}]}
+        - required: [address]
+          properties: {type: {enum: [mllp]}}
+          not: {anyOf: [{required: [dir]}, {required: [pattern]}, {required: [pollIntervalMs]}, {required: [moveTo]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}]}
         - required: [address]
           properties: {type: {enum: [http]}}
           not:
@@ -1363,12 +1366,12 @@ components:
               - {required: [certFile], not: {required: [keyFile]}}
               - {required: [keyFile], not: {required: [certFile]}}
       properties:
-        type: {type: string, enum: [file, http]}
+        type: {type: string, enum: [file, http, mllp]}
         dir: {type: string, description: "file: absolute directory to poll"}
         pattern: {type: string, description: "file: file-name glob (default *)"}
         pollIntervalMs: {type: integer, minimum: 100, maximum: 3600000, description: "file: default 1000"}
         moveTo: {type: string, description: "file: absolute directory processed files are moved to (default: deleted)"}
-        address: {type: string, description: "http: host:port the flow listens on while it is started"}
+        address: {type: string, description: "http, mllp: host:port the flow listens on while it is started"}
         path: {type: string, description: "http: request path accepted (default /)"}
         method: {type: string, enum: [POST, PUT], description: "http: request method accepted (default POST)"}
         username: {type: string, minLength: 1, pattern: "^[^:]+$", description: "http: HTTP Basic user name senders must present (with passwordEnv)"}

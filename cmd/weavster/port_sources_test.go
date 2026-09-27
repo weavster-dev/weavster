@@ -52,7 +52,7 @@ func TestHTTPSourcesReconcile(t *testing.T) {
 	flows := &fakeFlowList{flows: []gateway.Flow{started("b", b, "/"), started("a", a, "/"),
 		started("busy", held.Addr().String(), "/"), started("api", "127.0.0.1:8080", "/")}}
 	events := &fakeEvents{}
-	s := newHTTPSources(flows, sourceIngest{}, events, map[int]string{8080: "api"}, gateway.DefaultTLSOptions(), "", logger)
+	s := newPortSources(flows, sourceIngest{}, events, map[int]string{8080: "api"}, gateway.DefaultTLSOptions(), "", logger)
 	defer s.closeAll()
 
 	s.reconcile(ctx)
@@ -75,8 +75,7 @@ func TestHTTPSourcesReconcile(t *testing.T) {
 	}
 
 	dead := s.open["b"]
-	_ = dead.srv.Close()
-	<-dead.done
+	dead.shut()
 	s.reconcile(ctx)
 	if s.open["b"] == dead || s.open["b"].stopped() {
 		t.Error("a listener that stopped on its own was not reopened")
@@ -114,7 +113,7 @@ func TestHTTPSourcesSecuredFailures(t *testing.T) {
 	missing := filepath.Join(dir, "missing.pem")
 	flows := &fakeFlowList{flows: []gateway.Flow{src("bad", freeAddr(t), missing, missing), src("server", freeAddr(t), certFile, link)}}
 	events := &reasonEvents{}
-	s := newHTTPSources(flows, sourceIngest{}, events, nil, gateway.DefaultTLSOptions(), keyFile, logger)
+	s := newPortSources(flows, sourceIngest{}, events, nil, gateway.DefaultTLSOptions(), keyFile, logger)
 	defer s.closeAll()
 	s.reconcile(ctx)
 	s.reconcile(ctx)

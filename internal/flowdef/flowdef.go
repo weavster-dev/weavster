@@ -53,7 +53,7 @@ func (f Flow) SourceKind() string {
 
 // Source is a flow's own message source (#107 D-56).
 type Source struct {
-	Type string `json:"type"` // file or http
+	Type string `json:"type"` // file, http, or mllp
 	// Dir is the absolute directory a file source polls.
 	Dir string `json:"dir,omitempty"`
 	// Pattern is a file-name glob (default "*").
@@ -63,7 +63,8 @@ type Source struct {
 	// MoveTo is an absolute directory processed files are moved to
 	// (default: they are deleted).
 	MoveTo string `json:"moveTo,omitempty"`
-	// Address is the host:port an http source listens on (#107 D-57).
+	// Address is the host:port an http or mllp source listens on (#107
+	// D-57, D-60).
 	Address string `json:"address,omitempty"`
 	// Path is the request path an http source accepts (default "/").
 	Path string `json:"path,omitempty"`
@@ -107,6 +108,10 @@ func CheckSource(s *Source) error {
 	if s == nil {
 		return nil
 	}
+	if s.Type == "mllp" {
+		_, err := SourcePort(s)
+		return err
+	}
 	if s.Type == "http" {
 		switch {
 		case (s.Username == "") != (s.PasswordEnv == ""):
@@ -137,7 +142,12 @@ func CheckSource(s *Source) error {
 	return nil
 }
 
-// SourcePort is the port an http source listens on.
+// Listens reports whether s is a source with its own port (http or mllp).
+func (s *Source) Listens() bool {
+	return s != nil && (s.Type == "http" || s.Type == "mllp")
+}
+
+// SourcePort is the port an http or mllp source listens on.
 func SourcePort(s *Source) (int, error) {
 	_, p, err := net.SplitHostPort(s.Address)
 	if err != nil {

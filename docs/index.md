@@ -15,7 +15,7 @@ The server serves an authenticated REST API (HTTP, plus HTTPS when configured). 
 define flows, send messages into them, transform messages with the YAML DSL, and deliver them
 to HTTP and file destinations with automatic retries; every message is stored with its status. See
 [Processing messages](processing-messages.md). A flow can also read files from a directory, or
-listen for HTTP requests on its own port. TCP/MLLP listeners and database sources exist only as
+listen on its own port for HTTP requests or HL7 v2 over MLLP. Database sources exist only as
 libraries in the source tree so far.
 
 See the [support matrix](support-matrix.md) for exactly what is wired, library-only,

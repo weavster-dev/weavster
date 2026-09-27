@@ -131,12 +131,12 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
 		sources := newFileSources(flows, ia, eventLogRecorder{events}, logger)
-		listening := newHTTPSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, logger)
+		listening := newPortSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, logger)
 		sourcePorts = listening
 		retry = func(ctx context.Context) {
 			polled, served := make(chan struct{}), make(chan struct{})
 			go func() { sources.loop(ctx); close(polled) }()   // flows' file sources (#107 D-56)
-			go func() { listening.loop(ctx); close(served) }() // flows' http sources (#107 D-57)
+			go func() { listening.loop(ctx); close(served) }() // flows' http and mllp sources (#107 D-57, D-60)
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
 			<-polled
 			<-served
@@ -1131,7 +1131,7 @@ func checkSources(all map[string]gateway.Flow, serverPorts map[int]string) error
 		src := all[id].Source
 		switch {
 		case src == nil:
-		case src.Type == "http":
+		case src.Listens():
 			port, _ := flowdef.SourcePort(src) // checked with each definition
 			if name := serverPorts[port]; name != "" {
 				return fmt.Errorf("flow %s listens on port %d, the server's %s port", id, port, name)

@@ -82,7 +82,8 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | `http` and `file` destinations | Implemented (wired) | `TestPipelineEndToEnd`, `TestHTTPDestinationOptions`. `http` takes `method` (POST/PUT/PATCH), `timeoutMs`, and `maxRedirects` (default 0; only 307/308, never https to http). |
 | File source: a flow polls a directory (`source: {type: file, dir, pattern, pollIntervalMs, moveTo}`); files deleted or moved after the message is stored; rejected files moved aside or skipped | Implemented (wired) | `TestFileSource`, `TestCheckSource`. At-least-once; only while the flow is started; regular files directly in `dir`, not symlinks or subdirectories. See [Read files from a directory](processing-messages.md#read-files-from-a-directory). |
 | HTTP source: a flow listens on its own address (`source: {type: http, address, path, method}`) while it is started | Implemented (wired) | `TestHTTPSource`, `TestHTTPSourceSecured`, `TestSourceHandler`, `TestSourceHandlerBasicAuth`, `TestCheckSource`. Optional HTTP Basic (`username`, `passwordEnv`), HTTPS (`certFile`, `keyFile`), and `readTimeoutMs` (`TestHTTPSourceReadTimeout`); one flow source per port; listed by `GET /api/v1/flows/ports-in-use`. See [Receive messages over HTTP](processing-messages.md#receive-messages-over-http). |
-| Other sources and destinations (TCP-MLLP listener, database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Only file and http sources are wired. |
+| MLLP source: a flow accepts HL7 v2 over TCP (`source: {type: mllp, address}`) while it is started and answers each message with an HL7 ACK (AA stored, AR refused, AE not stored) | Implemented (wired) | `TestMLLPSource`, `TestMLLPHandler`, `TestMLLPServer`, `TestHL7ACKOptions`. No TLS or sender authentication yet; messages pass through unchanged (transforms need JSON). See [Receive HL7 v2 over MLLP](processing-messages.md#receive-hl7-v2-over-mllp). |
+| Other sources and destinations (MLLP destination, database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Only file, http, and mllp sources are wired. |
 | Per-flow and per-destination statistics (`GET /api/v1/flows/{id}/stats`) | Implemented (wired) | `TestStatsEventsTopology`. In memory; reset, dump, and time series are not available. |
 | Event log with processing events (`GET /api/v1/events`) | Implemented (wired) | `TestStatsEventsTopology`. In memory, newest 10,000. Filters, get, count, max id, and export: see the Events row above. |
 | Topology flow-node `activity` from real counters, zeros included | Implemented (wired) | `TestStatsEventsTopology`. Edge activity is not reported. |
@@ -149,8 +150,10 @@ Those are Enterprise items with no code in the source tree.
 
 ## Codecs
 
-Codecs are library-only: the server never parses a message. You can exercise them with
-`weavster test`, which covers HL7 v2, JSON, XML, and raw.
+Codecs are library-only: the server does not convert messages between formats. The one
+exception is HL7 v2 acknowledgment: an [mllp source](processing-messages.md#receive-hl7-v2-over-mllp)
+reads a message's MSH segment to build its ACK. You can exercise the codecs with `weavster test`,
+which covers HL7 v2, JSON, XML, and raw.
 
 <!-- codec-table: every cell is checked against codecs.CoverageMatrix() by TestSupportMatrixCodecs -->
 | Codec | Tier | Versions / segments | Acknowledgment | Notes |
@@ -177,7 +180,7 @@ not yet true.
 |---|---|---|---|---|
 | File | wired | wired | at-least-once (a retry rewrites the same file name; a source file is read again if the server stops between storing the message and removing the file) | no |
 | HTTP | library | wired | at-least-once; effectively once when the receiver honors `Idempotency-Key` | yes: `Idempotency-Key` header, the same for every attempt |
-| TCP/MLLP | library | library | not wired | no (the protocol has no field for one) |
+| TCP/MLLP | wired | library | at-least-once: `AA` is sent once the message is stored; if the ACK is lost, the sender resends and the message is stored again | no (the protocol has no field for one) |
 | Database | library | library | not wired | no |
 | SMTP | — | library | not wired | no |
 | Web service (SOAP/REST) | — | library | not wired | no |

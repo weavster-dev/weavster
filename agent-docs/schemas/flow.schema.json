@@ -180,6 +180,25 @@
               "certFile"
             ]
           }
+        },
+        {
+          "title": "MLLP source",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "address"
+          ],
+          "properties": {
+            "type": {
+              "const": "mllp"
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1,
+              "description": "host:port the flow accepts HL7 v2 over MLLP on while it is started, e.g. 127.0.0.1:2575 or :2575"
+            }
+          }
         }
       ]
     },
