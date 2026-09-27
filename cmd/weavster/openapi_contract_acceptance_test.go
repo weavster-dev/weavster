@@ -36,7 +36,7 @@ func TestOpenAPIContract(t *testing.T) {
 	var ops []string
 	for path, item := range doc.Paths.Map() {
 		for method := range item.Operations() {
-			ops = append(ops, method+" "+path)
+			ops = append(ops, strings.ToUpper(method)+" "+path) // HTTP methods are uppercase
 		}
 	}
 	// Deletes run last, so the other operations find the flow.
