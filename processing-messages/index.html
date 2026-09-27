@@ -285,7 +285,7 @@ below, in order, on the message as a JSON object.</p>
 </tr>
 <tr>
 <td><code>source</code></td>
-<td>Where the flow receives messages on its own; see <a href="#read-files-from-a-directory">Read files from a directory</a> and <a href="#receive-messages-over-http">Receive messages over HTTP</a>. Without it, messages arrive only through the API.</td>
+<td>Where the flow receives messages on its own; see <a href="#read-files-from-a-directory">Read files from a directory</a>, <a href="#receive-messages-over-http">Receive messages over HTTP</a>, and <a href="#receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</a>. Without it, messages arrive only through the API.</td>
 </tr>
 </tbody>
 </table>
@@ -632,6 +632,69 @@ weavster server --config weavster.yaml
   new reason is recorded again), and opening is tried again every second.</li>
 <li>The server reads the certificate and key files with its own permissions; only give
   <code>flows:edit</code> to users you trust with the files it can read.</li>
+</ul>
+<h3 id="receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</h3>
+<p>A flow with an mllp <code>source</code> accepts HL7 v2 messages over TCP, framed with the minimal lower
+layer protocol (MLLP), while it is started, and answers every message with an HL7 ACK:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;adt&quot;,
+  &quot;source&quot;: {&quot;type&quot;: &quot;mllp&quot;, &quot;address&quot;: &quot;0.0.0.0:2575&quot;},
+  &quot;destinations&quot;: [{&quot;name&quot;: &quot;archive&quot;, &quot;type&quot;: &quot;file&quot;, &quot;dir&quot;: &quot;/var/lib/weavster/out/adt&quot;}]
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>mllp</code>.</td>
+</tr>
+<tr>
+<td><code>address</code></td>
+<td>Required. <code>host:port</code> to listen on, for example <code>127.0.0.1:2575</code>, or <code>:2575</code> for every interface.</td>
+</tr>
+</tbody>
+</table>
+<p>Point the sending system (an interface engine, a lab or ADT feed) at the address. Each message
+is a frame: the byte <code>0x0B</code>, the HL7 message, then <code>0x1C 0x0D</code>. For example, with a small test
+script:</p>
+<pre><code class="language-bash">printf '\x0bMSH|^~\\&amp;|LAB|HOSP|WEAVSTER|HOSP|20260927120000||ADT^A01|MSG1|P|2.5\rPID|1||12345||DOE^JOHN\r\x1c\r' \
+  | nc -w 2 127.0.0.1 2575 | tr '\r' '\n'
+</code></pre>
+<pre><code class="language-text">MSH|^~\&amp;|WEAVSTER|HOSP|LAB|HOSP|20260927120001||ACK^A01|3f9c…|P|2.5
+MSA|AA|MSG1
+</code></pre>
+<ul>
+<li>The ACK swaps the sending and receiving application and facility, carries the time it was made
+  (MSH-7), <code>ACK^&lt;trigger&gt;</code> (MSH-9), its own control id (MSH-10), and the message's processing id
+  and version; MSA-2 is the message's control id (MSH-10).</li>
+<li><code>AA</code>: the message is stored and processed like one sent with the API (same checks, transform,
+  delivery, and 10 MiB limit), with the metadata <code>source.mllp.controlId</code>. Delivery problems after
+  that are retried and do not change the ACK.</li>
+<li><code>AR</code> (reject; sending the same message again will be rejected again): the frame is not an HL7 v2
+  message (no MSH segment), is larger than 10 MiB, or the flow refuses it. Today a flow with a
+  <code>transform</code> refuses HL7 messages, because transforms need JSON; use flows without <code>transform</code>
+  (the message is passed through unchanged) until HL7 parsing is added.</li>
+<li><code>AE</code> (error; try again later): the message was not stored, because the flow was stopping or
+  processing failed.</li>
+<li>MSA-3 says why in fixed words, never with message content.</li>
+<li>Several systems can be connected at once; messages on one connection are handled one after
+  another, in order, each answered before the next is read. A connection that sends nothing for
+  5 minutes is closed; once a message starts arriving it has 15 minutes to arrive completely.</li>
+<li>A message larger than 10 MiB is answered <code>AR</code> with its control id (from its MSH segment).</li>
+<li>The frame must start with the MSH segment (line breaks before it are allowed). Bytes sent
+  outside a frame are ignored.</li>
+<li>The port opens and closes with the flow, like an <a href="#receive-messages-over-http">http source</a>: one
+  flow source per port, never the server's own ports, <code>source.mllp.failed</code> events when the port
+  cannot be opened, and <code>flow:&lt;id&gt;</code> in <code>weavster flow ports</code>. Stopping the flow or the server
+  answers the message being handled, then closes the connections.</li>
+<li>Messages cross the network unencrypted and senders are not authenticated. Listen on
+  <code>127.0.0.1</code> or a private network, or use a VPN or TLS tunnel, until TLS for MLLP is added.</li>
 </ul>
 <h2 id="2-deploy-and-start-the-flow">2. Deploy and start the flow</h2>
 <p>A new flow is <code>undeployed</code> and rejects messages until you deploy and start it (permission
@@ -1116,8 +1179,8 @@ again as a new message instead, use <code>reprocess</code>.</p>
 <li>The first delivery attempt runs while your request waits; retries run in the background.</li>
 <li>Only <code>http</code> and <code>file</code> destinations are available.</li>
 <li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a> and
-  <a href="#receive-messages-over-http">http sources</a>; TCP/MLLP and database sources are not available
-  yet.</li>
+  <a href="#receive-messages-over-http">http sources</a>, and <a href="#receive-hl7-v2-over-mllp">mllp sources</a>;
+  database sources are not available yet.</li>
 <li>A <code>file</code> destination writes wherever <code>dir</code> points, with the server's permissions, and an
   <code>http</code> destination can target any address the server can reach, including internal ones.
   Only give <code>flows:edit</code> to trusted users.</li>
