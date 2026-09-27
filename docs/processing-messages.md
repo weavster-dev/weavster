@@ -314,7 +314,7 @@ the configured method and path is a message:
 | `path` | Request path accepted; default `/`. Must start with `/`. |
 | `method` | `POST` (default) or `PUT`. |
 | `username`, `passwordEnv` | Optional, together: senders must use HTTP Basic authentication with this user name (no `:`, which separates user and password in Basic authentication) and the password in the server's environment variable `passwordEnv`. The variable name must start with `WEAVSTER_SOURCE_` followed by capital letters, digits, or `_`, so a flow cannot use the server's other secrets. The password never goes into the flow definition. |
-| `readTimeoutMs` | Time allowed to read one request, headers and body, 1000–600000 ms; default 60000. A sender slower than that gets its connection closed. |
+| `readTimeoutMs` | Time allowed to read one request, headers and body, 1000–600000 ms; default 60000. The headers must also arrive within 10 seconds (or `readTimeoutMs`, if shorter). A sender slower than that gets its connection closed. |
 | `certFile`, `keyFile` | Optional, together: absolute paths of a PEM certificate chain and private key on the server. The port then serves HTTPS only (HTTP/1.1 and HTTP/2), with the server's TLS settings (`tls.minVersion`). The server's own `tls.keyFile` is refused: give each flow its own certificate. |
 
 Once the flow is started, send it a message:

@@ -147,7 +147,7 @@ func (s *httpSources) start(id string, src gateway.FlowSource) {
 			handler.ServeHTTP(w, r)
 		}),
 		TLSConfig:         tlsCfg,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: min(10*time.Second, readTimeout(src)),
 		ReadTimeout:       readTimeout(src),
 		IdleTimeout:       2 * time.Minute,
 	}
