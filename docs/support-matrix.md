@@ -80,7 +80,8 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | Message intake: `POST /api/v1/flows/{id}/messages` | Implemented (wired) | `TestPipelineEndToEnd`. See [Processing messages](processing-messages.md). |
 | Receive → persist → filter → transform → deliver to each destination, with per-destination results and aggregate status | Implemented (wired) | `TestPipelineEndToEnd`. Synchronous, one attempt; response processing through `responseSelector`/`responseTransform` (below). |
 | `http` and `file` destinations | Implemented (wired) | `TestPipelineEndToEnd` |
-| Other sources and destinations (file/HTTP/TCP-MLLP listeners, database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Flows do not listen on their own ports or poll anything. |
+| File source: a flow polls a directory (`source: {type: file, dir, pattern, pollIntervalMs, moveTo}`); files deleted or moved after the message is stored; rejected files moved aside or skipped | Implemented (wired) | `TestFileSource`, `TestCheckSource`. At-least-once; only while the flow is started; regular files directly in `dir`, not symlinks or subdirectories. See [Read files from a directory](processing-messages.md#read-files-from-a-directory). |
+| Other sources and destinations (HTTP and TCP-MLLP listeners, database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Flows do not listen on their own ports yet; only file sources poll. |
 | Per-flow and per-destination statistics (`GET /api/v1/flows/{id}/stats`) | Implemented (wired) | `TestStatsEventsTopology`. In memory; reset, dump, and time series are not available. |
 | Event log with processing events (`GET /api/v1/events`) | Implemented (wired) | `TestStatsEventsTopology`. In memory, newest 10,000. Filters, get, count, max id, and export: see the Events row above. |
 | Topology flow-node `activity` from real counters, zeros included | Implemented (wired) | `TestStatsEventsTopology`. Edge activity is not reported. |
@@ -173,7 +174,7 @@ not yet true.
 
 | Adapter | Source | Sink | Guarantee | Sends idempotency key |
 |---|---|---|---|---|
-| File | library | wired | at-least-once (a retry rewrites the same file name) | no |
+| File | wired | wired | at-least-once (a retry rewrites the same file name; a source file is read again if the server stops between storing the message and removing the file) | no |
 | HTTP | library | wired | at-least-once; effectively once when the receiver honors `Idempotency-Key` | yes: `Idempotency-Key` header, the same for every attempt |
 | TCP/MLLP | library | library | not wired | no (the protocol has no field for one) |
 | Database | library | library | not wired | no |

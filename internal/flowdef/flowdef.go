@@ -3,7 +3,13 @@
 // document, with its JSON Schema (flow.schema.json) and validation.
 package flowdef
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"path/filepath"
+	"strings"
+)
 
 // Flow is a flow definition. Status and StoppedDestinations are runtime
 // state: the API reports them, but definitions (create, update, import,
@@ -12,8 +18,11 @@ type Flow struct {
 	ID         string `json:"id"`
 	Name       string `json:"name"`
 	SourceType string `json:"sourceType"`
-	Status     string `json:"status,omitempty"`
-	Enabled    bool   `json:"enabled"`
+	// Source is where the flow reads messages on its own (nil: only the
+	// API sends it messages).
+	Source  *Source `json:"source,omitempty"`
+	Status  string  `json:"status,omitempty"`
+	Enabled bool    `json:"enabled"`
 	// InitialState is the status automatic deployment at server start
 	// gives the flow: started (when empty), paused, or stopped.
 	InitialState string `json:"initialState,omitempty"`
@@ -31,6 +40,20 @@ type Flow struct {
 	ResponseSelector string `json:"responseSelector,omitempty"`
 }
 
+// Source is a flow's own message source (#107 D-56).
+type Source struct {
+	Type string `json:"type"` // file
+	// Dir is the absolute directory a file source polls.
+	Dir string `json:"dir"`
+	// Pattern is a file-name glob (default "*").
+	Pattern string `json:"pattern,omitempty"`
+	// PollIntervalMs is how often the directory is read (default 1000).
+	PollIntervalMs int `json:"pollIntervalMs,omitempty"`
+	// MoveTo is an absolute directory processed files are moved to
+	// (default: they are deleted).
+	MoveTo string `json:"moveTo,omitempty"`
+}
+
 // Destination is one delivery target of a flow.
 type Destination struct {
 	Name string `json:"name"`
@@ -42,4 +65,28 @@ type Destination struct {
 	Transform json.RawMessage `json:"transform,omitempty"`
 	// ResponseTransform is applied to this destination's reply.
 	ResponseTransform json.RawMessage `json:"responseTransform,omitempty"`
+}
+
+// CheckSource checks what the schema cannot: a file source's directories
+// are absolute and distinct, and its pattern is a valid file-name glob.
+func CheckSource(s *Source) error {
+	if s == nil {
+		return nil
+	}
+	switch {
+	case !filepath.IsAbs(s.Dir):
+		return fmt.Errorf("source.dir must be an absolute path, got %q", s.Dir)
+	case s.MoveTo != "" && !filepath.IsAbs(s.MoveTo):
+		return fmt.Errorf("source.moveTo must be an absolute path, got %q", s.MoveTo)
+	case s.MoveTo != "" && filepath.Clean(s.MoveTo) == filepath.Clean(s.Dir):
+		return errors.New("source.moveTo must differ from source.dir")
+	case s.MoveTo != "" && filepath.Join(s.MoveTo, "rejected") == filepath.Clean(s.Dir):
+		return errors.New("source.dir must not be moveTo/rejected, where refused files are moved")
+	case strings.ContainsAny(s.Pattern, `/\`):
+		return fmt.Errorf("source.pattern is a file-name glob without path separators, got %q", s.Pattern)
+	}
+	if _, err := filepath.Match(s.Pattern, "x"); err != nil {
+		return fmt.Errorf("source.pattern %q: %w", s.Pattern, err)
+	}
+	return nil
 }

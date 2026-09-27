@@ -182,15 +182,16 @@ func (s *Server) handleFlowsDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// maxMessageBytes caps a received message body.
-const maxMessageBytes = 10 << 20
+// MaxMessageBytes caps a received message body, and a file a file source
+// reads.
+const MaxMessageBytes = 10 << 20
 
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Ingest == nil {
 		writeStatusError(w, http.StatusServiceUnavailable, "message processing unavailable")
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxMessageBytes))
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxMessageBytes))
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {

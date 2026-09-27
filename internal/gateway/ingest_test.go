@@ -32,7 +32,7 @@ func TestIngestHandler(t *testing.T) {
 		{"unknown flow", fakeIngest{err: ErrFlowNotFound}, `{}`, http.StatusNotFound, "flow not found"},
 		{"invalid message", fakeIngest{err: fmt.Errorf("%w: body must be a JSON object", ErrInvalidMessage)}, `x`, http.StatusBadRequest, "body must be a JSON object"},
 		{"internal", fakeIngest{err: errors.New("disk full")}, `{}`, http.StatusInternalServerError, "internal error"},
-		{"too large", fakeIngest{}, strings.Repeat("x", maxMessageBytes+1), http.StatusRequestEntityTooLarge, "larger than 10 MiB"},
+		{"too large", fakeIngest{}, strings.Repeat("x", MaxMessageBytes+1), http.StatusRequestEntityTooLarge, "larger than 10 MiB"},
 		{"flow not running", fakeIngest{err: fmt.Errorf("%w: flow f is stopped", ErrFlowNotRunning)}, `{}`, http.StatusConflict, "flow f is stopped"},
 	}
 	for _, tt := range tests {

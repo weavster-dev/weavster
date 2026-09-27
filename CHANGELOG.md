@@ -79,6 +79,7 @@ All notable changes to this project are documented here, following
 - Statistics over time (#255): the server samples every flow's lifetime statistics (`stats.sampleIntervalMs`, default one minute; kept for `stats.retentionHours`, default 24) and `GET /api/v1/stats/series[?flowId=&from=&to=&limit=]` returns the newest matching samples (default 1000), oldest first.
 - CI/CD samples (#270): GitHub Actions and GitLab CI workflows that plan a config-as-code document on pull/merge requests and apply it on merge to `main` (`docs/examples/ci/`, docs page "CI/CD").
 - Dead-letter requeue (#279): `POST /api/v1/messages/{id}/requeue` and `POST /api/v1/messages/requeue[?flowId=]` give dead-lettered messages another round of attempts (delivered destinations are not sent again; previous attempts kept in the audit log and a `message.requeued` event); CLI `deadletter list|show|requeue|remove`.
+- File source (#288): a flow with `source: {type: file, dir, pattern, pollIntervalMs, moveTo}` reads the files that appear in a directory while it is started, sends each through the flow with `source.file` metadata, and deletes or moves it afterwards (at-least-once); rejected files are moved to `moveTo/rejected` or skipped, with a `source.file.rejected` event.
 
 ### Changed
 

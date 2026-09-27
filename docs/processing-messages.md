@@ -69,6 +69,7 @@ below, in order, on the message as a JSON object.
 | `enabled`, `initialState` | Automatic deployment at startup; see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
 | `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). |
 | `responseSelector` | The destination whose reply is returned to the sender; see [Return a destination's reply](#return-a-destinations-reply). |
+| `source` | Where the flow reads messages on its own; see [Read files from a directory](#read-files-from-a-directory). Without it, messages arrive only through the API. |
 
 ### `destinations`
 
@@ -222,6 +223,55 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1
 
 `usedBy` is `api` for `listen.address` and `api-tls` for `listen.tlsAddress`. Flows do not
 listen on their own ports yet, so no flow appears in this list.
+
+### Read files from a directory
+
+A flow with a file `source` picks up the files that appear in a directory, sends each one through
+the flow as a message, and then deletes it (or moves it into `moveTo`):
+
+```json
+{
+  "id": "adt",
+  "source": {"type": "file", "dir": "/var/lib/weavster/in/adt", "pattern": "*.json",
+             "pollIntervalMs": 1000, "moveTo": "/var/lib/weavster/done/adt"},
+  "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `type` | `file`. |
+| `dir` | Required. Absolute directory to read. It does not have to exist yet. |
+| `pattern` | File-name glob (`*.json`, `ADT_*.hl7`); default `*`. No path separators. |
+| `pollIntervalMs` | How often the directory is read: 100–3600000, default 1000. |
+| `moveTo` | Absolute directory processed files are moved into (created if missing; a name that is already there gets the message id appended). Without it, processed files are deleted. |
+
+- The directory is read only while the flow is `started`. Stopping, pausing, or deleting the flow
+  stops reading; starting it again picks up what arrived meanwhile.
+- Only regular files directly in `dir` are read: subdirectories, symbolic links, and hidden files
+  (names starting with `.`, such as `rsync` temporary files and `.DS_Store`) are skipped. A
+  pattern starting with `.` reads hidden files.
+- A directory can be read by one flow only; a second flow with the same `dir` is refused.
+- Each poll reads at most 100 files, so one busy directory does not hold up other flows; the
+  rest are read at the next poll.
+- A file is read once it has not changed for a second, so a file still being written is not taken
+  half-way. Writing to a temporary name and renaming it into `dir` is safest.
+- Files are read in name order. Each message has the metadata `source.file` with the file name.
+- A file becomes a message exactly like one sent with the API (the same checks, transform, and
+  delivery). After the message is stored, the file is deleted or moved. If the server stops
+  between the two, the file is read again when it starts: delivery is at least once, so
+  destinations should tolerate a repeat. If the file cannot be deleted or moved (for example
+  the server may read but not write the directory), it is logged and not read again until it
+  changes.
+- A file the flow refuses (larger than 10 MiB, or not a JSON object when the flow has a transform)
+  is moved into `moveTo/rejected`, or, without `moveTo`, left where it is and skipped until it
+  changes. Either way a `source.file.rejected` [event](#5-statistics-and-events) records the file
+  and the reason.
+- A directory that cannot be read is logged (once per distinct error) and read again at the next
+  interval. A file that cannot be read is logged once and skipped until it changes.
+- `dir` must not be `moveTo/rejected`, where refused files go.
+- The server reads and moves files with its own permissions; only give `flows:edit` to users you
+  trust with the directories it can reach.
 
 ## 2. Deploy and start the flow
 
@@ -643,7 +693,8 @@ again as a new message instead, use `reprocess`.
   and only the newest 10,000 events are kept.
 - The first delivery attempt runs while your request waits; retries run in the background.
 - Only `http` and `file` destinations are available.
-- Messages enter only through this API; flows do not listen on their own ports or read files yet.
+- Besides this API, messages enter only through [file sources](#read-files-from-a-directory); flows do
+  not listen on their own ports yet.
 - A `file` destination writes wherever `dir` points, with the server's permissions, and an
   `http` destination can target any address the server can reach, including internal ones.
   Only give `flows:edit` to trusted users.
