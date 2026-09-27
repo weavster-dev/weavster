@@ -78,6 +78,8 @@ type Store interface {
 	Get(ctx context.Context, id string) (Message, error)
 	Delete(ctx context.Context, id string) error
 	Search(ctx context.Context, q Query) ([]Message, error)
+	// MessageTrends counts messages per time bucket and status.
+	MessageTrends(ctx context.Context, q TrendQuery) (TrendCounts, error)
 	Close() error
 }
 

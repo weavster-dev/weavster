@@ -284,6 +284,8 @@ type Config struct {
 	ConfigPlanner ConfigPlanner
 	// ConfigValidator checks config-as-code documents.
 	ConfigValidator ConfigValidator
+	// Trends counts messages over time.
+	Trends MessageTrendReader
 	// Lookups keeps dynamic lookup groups.
 	Lookups LookupStore
 	// Alerts keeps alert definitions.

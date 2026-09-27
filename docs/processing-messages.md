@@ -298,6 +298,32 @@ The filters are applied before `limit` and `offset`, so every page holds only ma
 and messages received in the same instant are ordered by id, so pages neither repeat nor skip
 messages while no new ones arrive.
 
+### Message trends
+
+`GET /api/v1/messages/trends` (permission `messages:view`) counts the messages received in each
+hour or day of a range, by their current status. It returns counts only, never content.
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/messages/trends?from=2026-09-27T10:00:00Z&to=2026-09-27T12:00:00Z&flowId=adt'
+```
+
+```json
+[{"start":"2026-09-27T10:00:00Z","total":0,"statuses":{"dead-lettered":0,"errored":0,"filtered":0,"queued":0,"received":0,"sent":0,"transformed":0}},
+ {"start":"2026-09-27T11:00:00Z","total":3,"statuses":{"dead-lettered":0,"errored":1,"filtered":0,"queued":0,"received":0,"sent":2,"transformed":0}}]
+```
+
+| Parameter | What it does |
+|---|---|
+| `from`, `to` | Required (RFC 3339). Buckets start at `from`; `to` is not included, so the last bucket may be shorter. |
+| `interval` | `hour` (default) or `day`: the bucket length. |
+| `flowId` | Only that flow's messages. |
+
+Every bucket and every status is listed, zeros included, so you can chart the result as it is.
+A range of more than 1000 buckets is refused with `400`; use `interval=day` or a shorter range.
+The counts come from the stored messages, so removed messages no longer count and each message
+counts once, in its current status.
+
 ### Work with one message
 
 | Request | Permission | What it does |
