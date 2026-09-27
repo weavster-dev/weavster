@@ -11,7 +11,6 @@ import (
 
 // GitInfo describes the server's Git repository.
 type GitInfo struct {
-	Path   string `json:"path"`
 	Branch string `json:"branch"`
 	Head   string `json:"head"` // "" before the first commit
 }
@@ -48,6 +47,10 @@ type GitRepository interface {
 // ErrGitNotFound: the revision or file is not in the repository.
 var ErrGitNotFound = errors.New("revision or file not found in the repository")
 
+// ErrGitNameClash: two artifacts would share a repository file on a
+// case-insensitive filesystem.
+var ErrGitNameClash = errors.New("artifact names differ only in case; rename one to commit")
+
 // Git log limits.
 const (
 	DefaultGitLogLimit = 100
@@ -63,8 +66,12 @@ func (s *Server) gitAvailable(w http.ResponseWriter) bool {
 }
 
 func writeGitError(w http.ResponseWriter, err error) {
-	if errors.Is(err, ErrGitNotFound) {
+	switch {
+	case errors.Is(err, ErrGitNotFound):
 		writeStatusError(w, http.StatusNotFound, err.Error())
+		return
+	case errors.Is(err, ErrGitNameClash):
+		writeStatusError(w, http.StatusConflict, err.Error())
 		return
 	}
 	writeBackendError(w, err)
@@ -83,7 +90,8 @@ func (s *Server) handleGitInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleGitCommit commits the live configuration (without the config map)
-// as the authenticated user.
+// as the authenticated user. Commits run one at a time, each reading the
+// configuration it commits, so an older snapshot never lands on a newer.
 func (s *Server) handleGitCommit(w http.ResponseWriter, r *http.Request) {
 	if !s.gitAvailable(w) || !s.configPorts(w, false, false) {
 		return
@@ -98,6 +106,8 @@ func (s *Server) handleGitCommit(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusBadRequest, "message is required")
 		return
 	}
+	s.gitMu.Lock()
+	defer s.gitMu.Unlock()
 	live, err := s.liveConfig(r.Context(), false)
 	if err != nil {
 		writeBackendError(w, err)
@@ -142,7 +152,8 @@ func (s *Server) handleGitLog(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, revs)
 }
 
-// handleGitContent sends a file as it is stored (YAML), never converted.
+// handleGitContent sends a file as it is stored, never converted:
+// configuration files as YAML, anything else by its content.
 func (s *Server) handleGitContent(w http.ResponseWriter, r *http.Request) {
 	if !s.gitAvailable(w) {
 		return
@@ -161,6 +172,10 @@ func (s *Server) handleGitContent(w http.ResponseWriter, r *http.Request) {
 		writeGitError(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/yaml")
+	ctype := http.DetectContentType(content)
+	if strings.HasSuffix(path, ".yaml") || strings.HasSuffix(path, ".yml") {
+		ctype = "application/yaml"
+	}
+	w.Header().Set("Content-Type", ctype)
 	_, _ = w.Write(content)
 }

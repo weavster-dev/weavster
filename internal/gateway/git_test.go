@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,7 +19,7 @@ type fakeGit struct {
 }
 
 func (f fakeGit) GitInfo(context.Context) (GitInfo, error) {
-	return GitInfo{Path: "/repo", Branch: "main", Head: "abc"}, f.err
+	return GitInfo{Branch: "main", Head: "abc"}, f.err
 }
 
 func (f fakeGit) GitCommit(_ context.Context, live ConfigBundle, _ string, author string) (GitCommitResult, error) {
@@ -31,8 +32,11 @@ func (f fakeGit) GitLog(_ context.Context, path string, limit int) ([]GitRevisio
 }
 
 func (f fakeGit) GitContent(_ context.Context, path, rev string) ([]byte, error) {
-	if path == "missing.yaml" {
+	switch path {
+	case "missing.yaml":
 		return nil, ErrGitNotFound
+	case "README.md":
+		return []byte("ops notes"), nil
 	}
 	return []byte(path + "@" + rev), f.err
 }
@@ -53,12 +57,13 @@ func TestGitHandlers(t *testing.T) {
 		status                   int
 		want                     string
 	}{
-		{"info", http.MethodGet, "/api/v1/git", "", ports(nil), http.StatusOK, `{"path":"/repo","branch":"main","head":"abc"}`},
+		{"info", http.MethodGet, "/api/v1/git", "", ports(nil), http.StatusOK, `{"branch":"main","head":"abc"}`},
 		{"commit", http.MethodPost, "/api/v1/git/commit", `{"message":"nightly"}`, ports(nil), http.StatusOK, `"committed":true,"head":"def","changed":["flows/a.yaml"]`},
 		{"commit without message", http.MethodPost, "/api/v1/git/commit", `{"message":"  "}`, ports(nil), http.StatusBadRequest, "message is required"},
 		{"commit unknown field", http.MethodPost, "/api/v1/git/commit", `{"msg":"x"}`, ports(nil), http.StatusBadRequest, "invalid JSON body"},
 		{"commit without config ports", http.MethodPost, "/api/v1/git/commit", `{"message":"x"}`, Config{Git: fakeGit{}}, http.StatusServiceUnavailable, "configuration export and import unavailable"},
 		{"commit fails", http.MethodPost, "/api/v1/git/commit", `{"message":"x"}`, ports(errDisk), http.StatusInternalServerError, "internal error"},
+		{"commit name clash", http.MethodPost, "/api/v1/git/commit", `{"message":"x"}`, ports(fmt.Errorf("%w: flow/A and flow/a", ErrGitNameClash)), http.StatusConflict, "differ only in case"},
 		{"log", http.MethodGet, "/api/v1/git/log", "", ports(nil), http.StatusOK, `"message":" 0"`},
 		{"file history", http.MethodGet, "/api/v1/git/log?path=flows/a.yaml&limit=7", "", ports(nil), http.StatusOK, `"message":"flows/a.yaml 7"`},
 		{"bad limit", http.MethodGet, "/api/v1/git/log?limit=1001", "", ports(nil), http.StatusBadRequest, "limit must be between 1 and 1000"},
@@ -80,6 +85,11 @@ func TestGitHandlers(t *testing.T) {
 				t.Errorf("got %d %.300s; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.want)
 			}
 		})
+	}
+	rec := httptest.NewRecorder()
+	New(ports(nil)).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/git/content?path=README.md", nil))
+	if ct := rec.Header().Get("Content-Type"); ct != "text/plain; charset=utf-8" {
+		t.Errorf("README content type = %q", ct)
 	}
 	// The commit gets the live configuration without the config map, and
 	// "weavster" as author when no one is signed in.

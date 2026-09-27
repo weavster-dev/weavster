@@ -73,15 +73,32 @@ func (s *Store) Head() (hash, branch string, err error) {
 }
 
 // resolve turns any revision Git understands (hash, short hash, HEAD~1,
-// branch) into a commit.
+// branch) into a commit; ErrNotFound when there is no such commit, other
+// errors (storage) as they are.
 func (s *Store) resolve(rev string) (*object.Commit, error) {
 	h, err := s.repo.ResolveRevision(plumbing.Revision(rev))
-	if err != nil {
+	if err == nil {
+		var c *object.Commit
+		if c, err = s.repo.CommitObject(*h); err == nil {
+			return c, nil
+		}
+	}
+	if errors.Is(err, plumbing.ErrReferenceNotFound) || errors.Is(err, plumbing.ErrObjectNotFound) {
 		return nil, ErrNotFound
 	}
-	c, err := s.repo.CommitObject(*h)
-	if err != nil {
-		return nil, ErrNotFound
+	return nil, err
+}
+
+// Unstage resets the index to HEAD (to empty before the first commit),
+// leaving the working tree as it is.
+func (s *Store) Unstage() error {
+	if _, err := s.repo.Head(); errors.Is(err, plumbing.ErrReferenceNotFound) {
+		idx, err := s.repo.Storer.Index()
+		if err != nil {
+			return err
+		}
+		idx.Entries = nil
+		return s.repo.Storer.SetIndex(idx)
 	}
-	return c, nil
+	return s.wt.Reset(&git.ResetOptions{Mode: git.MixedReset})
 }

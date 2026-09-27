@@ -18,8 +18,10 @@ existing repository is used as it is. Without `git.path`, the endpoints below an
 
 ## Commit the live configuration
 
-`POST /api/v1/git/commit` (permission `git:commit`) writes the live configuration into the
-repository and commits it, with you as the author:
+`POST /api/v1/git/commit` writes the live configuration into the repository and commits it,
+with you as the author. It needs `git:commit` and the permissions of a
+[configuration export](config-transfer.md) (`flows:view`, `alerts:edit`, `snippets:edit`,
+`scripts:edit`, `settings:edit`):
 
 ```bash
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Content-Type: application/json' \
@@ -34,8 +36,11 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Content-Type: applicatio
   live configuration nothing is committed: `committed` is `false`, `changed` is empty, and `head`
   is the current commit.
 - `message` is required.
-- Other files in the repository (a `README.md`, for example) are kept, and committed along with
-  the configuration when they changed.
+- Commits run one at a time; each commits the configuration as it is when that commit starts.
+- Only `.yaml` files directly in the directories below are managed. Other files (a `README.md`,
+  `flows/examples/demo.yaml`) are kept, and committed along with the configuration when they
+  changed.
+- If a commit fails, the files it touched are put back and nothing is staged.
 
 ### Repository layout
 
@@ -59,6 +64,8 @@ scripts:
 ```
 
 - Names are URL-path-escaped in file names: a snippet `a/b` is `snippets/a%2Fb.yaml`.
+- Two artifacts of a kind whose names differ only in case (`ADT` and `adt`) would share a file on
+  macOS and Windows, so the commit is refused with `409` naming both; rename one.
 - A deleted artifact's file is removed by the next commit.
 - The config map is never committed: it holds environment-specific values.
 - A file can refer to an artifact in another file (a snippet names its library), so validate the
@@ -66,14 +73,14 @@ scripts:
 
 ## Read the history
 
-Repository information (permission `git:view` for this and the rest of this section):
+Repository information and the log need `git:view`:
 
 ```bash
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/git
 ```
 
 ```json
-{"path":"/var/lib/weavster/config-repo","branch":"main","head":"5f0c1e9a8d..."}
+{"branch":"main","head":"5f0c1e9a8d..."}
 ```
 
 `head` is empty before the first commit.
@@ -90,8 +97,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 [{"hash":"5f0c1e9a8d...","message":"Add the ADT feed","author":"admin","at":"2026-09-27T10:00:00Z"}]
 ```
 
-A file as it was at a revision. `rev` is anything Git understands: a full or short hash,
-`HEAD~1`, a branch; it defaults to `HEAD`. The file comes back as stored (`application/yaml`):
+A file as it was at a revision (`git:view` plus the export permissions above). `rev` is anything
+Git understands: a full or short hash, `HEAD~1`, a branch; it defaults to `HEAD`. The file comes
+back as stored: `application/yaml` for `.yaml` files, otherwise the type of its content:
 
 ```bash
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
@@ -102,6 +110,11 @@ An unknown revision, or a file that did not exist at it, returns `404`.
 
 ## Permissions
 
-- `git:view` reads the repository, which includes every committed definition. Give it only to
-  users who may see the whole configuration.
-- `git:commit` commits the live configuration.
+| Operation | Permissions |
+|---|---|
+| `GET /api/v1/git`, `GET /api/v1/git/log` | `git:view` |
+| `GET /api/v1/git/content` | `git:view`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
+| `POST /api/v1/git/commit` | `git:commit`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
+
+File contents show the whole configuration, so reading them needs the same permissions as a
+configuration export.

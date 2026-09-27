@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 
@@ -15,18 +16,10 @@ import (
 	"github.com/weavster-dev/weavster/internal/gitstore"
 )
 
-// gitSections maps an artifact kind to its repository directory and
-// document section (#107 D-51). The config map is never committed.
-var gitSections = map[string]string{
-	"flow": "flows", "alert": "alerts", "snippet": "snippets", "library": "snippetLibraries",
-	"script": "scripts", "settings": "settings",
-}
-
 // gitAdapter serves gateway.GitRepository from one on-disk repository.
 type gitAdapter struct {
 	mu    *sync.Mutex // go-git repositories are not safe for concurrent use
 	store *gitstore.Store
-	path  string
 }
 
 func newGitAdapter(path string) (gitAdapter, error) {
@@ -34,20 +27,21 @@ func newGitAdapter(path string) (gitAdapter, error) {
 	if err != nil {
 		return gitAdapter{}, fmt.Errorf("git: %s: %w", path, err)
 	}
-	return gitAdapter{mu: &sync.Mutex{}, store: s, path: path}, nil
+	return gitAdapter{mu: &sync.Mutex{}, store: s}, nil
 }
 
 func (a gitAdapter) GitInfo(context.Context) (gateway.GitInfo, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	head, branch, err := a.store.Head()
-	return gateway.GitInfo{Path: a.path, Branch: branch, Head: head}, err
+	return gateway.GitInfo{Branch: branch, Head: head}, err
 }
 
 // GitCommit makes the repository's configuration files match live and
-// commits them when anything changed. Files outside the configuration
-// directories are left alone.
-func (a gitAdapter) GitCommit(_ context.Context, live gateway.ConfigBundle, message, author string) (gateway.GitCommitResult, error) {
+// commits them when anything changed. Only files directly in a section
+// directory (flows/x.yaml) are managed; other files are left alone. On
+// failure the files it touched are put back and the index is reset.
+func (a gitAdapter) GitCommit(_ context.Context, live gateway.ConfigBundle, message, author string) (res gateway.GitCommitResult, err error) {
 	cfg, err := liveConfigOf(live)
 	if err != nil {
 		return gateway.GitCommitResult{}, err
@@ -62,16 +56,32 @@ func (a gitAdapter) GitCommit(_ context.Context, live gateway.ConfigBundle, mess
 	if err != nil {
 		return gateway.GitCommitResult{}, err
 	}
+	backup := map[string][]byte{} // file -> content before (nil: did not exist)
+	defer func() {
+		if err != nil {
+			a.rollback(backup)
+		}
+	}()
+	save := func(f string) {
+		if _, ok := backup[f]; !ok {
+			b, readErr := a.store.ReadFile(f)
+			if readErr != nil {
+				b = nil
+			}
+			backup[f] = b
+		}
+	}
 	for _, f := range existing {
-		dir, _, _ := strings.Cut(f, "/")
-		if _, keep := files[f]; !keep && isConfigDir(dir) && strings.HasSuffix(f, ".yaml") {
-			if err := a.store.RemoveFile(f); err != nil {
+		if _, keep := files[f]; !keep && managedFile(f) {
+			save(f)
+			if err = a.store.RemoveFile(f); err != nil {
 				return gateway.GitCommitResult{}, err
 			}
 		}
 	}
 	for f, content := range files {
-		if err := a.store.WriteFile(f, content); err != nil {
+		save(f)
+		if err = a.store.WriteFile(f, content); err != nil {
 			return gateway.GitCommitResult{}, err
 		}
 	}
@@ -79,7 +89,7 @@ func (a gitAdapter) GitCommit(_ context.Context, live gateway.ConfigBundle, mess
 	if err != nil {
 		return gateway.GitCommitResult{}, err
 	}
-	res := gateway.GitCommitResult{Changed: changed}
+	res = gateway.GitCommitResult{Changed: changed}
 	if len(changed) == 0 {
 		res.Head, _, err = a.store.Head()
 		return res, err
@@ -89,30 +99,39 @@ func (a gitAdapter) GitCommit(_ context.Context, live gateway.ConfigBundle, mess
 	return res, err
 }
 
-func isConfigDir(dir string) bool {
-	for _, d := range gitSections {
-		if d == dir {
-			return true
+// rollback puts back the files a failed commit touched and resets the
+// index; a failure here leaves the next commit to reconcile the files.
+func (a gitAdapter) rollback(backup map[string][]byte) {
+	for f, b := range backup {
+		if b == nil {
+			_ = a.store.RemoveFile(f)
+		} else {
+			_ = a.store.WriteFile(f, b)
 		}
 	}
-	return false
+	_ = a.store.Unstage()
+}
+
+// managedFile reports whether f is a configuration file commit manages: a
+// .yaml file directly in a section directory.
+func managedFile(f string) bool {
+	dir, name, ok := strings.Cut(f, "/")
+	if !ok || strings.Contains(name, "/") || !strings.HasSuffix(name, ".yaml") || dir == "configmap" {
+		return false
+	}
+	_, isSection := config.KindOf(dir)
+	return isSection
 }
 
 func (a gitAdapter) GitLog(_ context.Context, path string, limit int) ([]gateway.GitRevision, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	var revs []gitstore.Revision
-	var err error
-	if path == "" {
-		revs, err = a.store.Log()
-	} else {
-		revs, err = a.store.History(path)
-	}
+	revs, err := a.store.Revisions(path, limit)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]gateway.GitRevision, 0, min(len(revs), limit))
-	for _, r := range revs[:min(len(revs), limit)] {
+	out := make([]gateway.GitRevision, 0, len(revs))
+	for _, r := range revs {
 		out = append(out, gateway.GitRevision{Hash: r.Hash, Message: strings.TrimRight(r.Message, "\n"), Author: r.Author, At: r.When.UTC()})
 	}
 	return out, nil
@@ -129,15 +148,30 @@ func (a gitAdapter) GitContent(_ context.Context, path, rev string) ([]byte, err
 }
 
 // configFiles lays cfg out as repository files: one complete config
-// document per artifact at <section>/<escaped name>.yaml (#107 D-51).
+// document per artifact at <section>/<escaped name>.yaml (#107 D-51). The
+// config map is left out. Two names differing only in case are refused:
+// they would share a file on case-insensitive filesystems.
 func configFiles(cfg *config.Config) (map[string][]byte, error) {
 	out := map[string][]byte{}
-	for key, content := range cfg.Artifacts() {
+	folded := map[string]string{} // lower-case file -> artifact key
+	artifacts := cfg.Artifacts()
+	keys := make([]string, 0, len(artifacts))
+	for k := range artifacts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys) // a clash names the same two artifacts every time
+	for _, key := range keys {
+		content := artifacts[key]
 		kind, name, _ := strings.Cut(key, "/")
-		section, ok := gitSections[kind]
-		if !ok {
-			continue // the config map
+		section, ok := config.SectionOf(kind)
+		if !ok || kind == "configmap" {
+			continue
 		}
+		file := section + "/" + url.PathEscape(name) + ".yaml"
+		if other, clash := folded[strings.ToLower(file)]; clash {
+			return nil, fmt.Errorf("%w: %s and %s", gateway.ErrGitNameClash, other, key)
+		}
+		folded[strings.ToLower(file)] = key
 		value := &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: string(content)}
 		if kind != "script" {
 			// JSON is YAML: decoding into a node keeps numbers exact and
@@ -158,7 +192,7 @@ func configFiles(cfg *config.Config) (map[string][]byte, error) {
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", key, err)
 		}
-		out[section+"/"+url.PathEscape(name)+".yaml"] = b
+		out[file] = b
 	}
 	return out, nil
 }

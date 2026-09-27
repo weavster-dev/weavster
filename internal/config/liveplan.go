@@ -16,6 +16,24 @@ var sections = map[string]string{
 	"scripts": "script/", "configmap": "configmap/", "settings": "settings/",
 }
 
+// KindOf returns the artifact key kind of a document section ("flows" holds
+// "flow").
+func KindOf(section string) (string, bool) {
+	prefix, ok := sections[section]
+	return strings.TrimSuffix(prefix, "/"), ok
+}
+
+// SectionOf returns the document section of an artifact key's kind (the
+// part before "/", as in Artifacts: "flow" is in "flows").
+func SectionOf(kind string) (string, bool) {
+	for section, prefix := range sections {
+		if prefix == kind+"/" {
+			return section, true
+		}
+	}
+	return "", false
+}
+
 // Change is one planned change to an artifact.
 type Change struct {
 	Key    string          `json:"key"`

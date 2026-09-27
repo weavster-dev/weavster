@@ -58,7 +58,7 @@ func TestGitRepository(t *testing.T) {
 		return c.do(http.MethodGet, "/api/v1/git/content?path="+path+"&rev="+rev, "", admin)
 	}
 
-	if _, body, _ := c.do(http.MethodGet, "/api/v1/git", "", admin); body != `{"path":"`+cfg.Git.Path+`","branch":"main","head":""}`+"\n" {
+	if _, body, _ := c.do(http.MethodGet, "/api/v1/git", "", admin); body != `{"branch":"main","head":""}`+"\n" {
 		t.Errorf("empty repository info = %s", body)
 	}
 	first := commit("initial")
@@ -149,7 +149,8 @@ func TestGitRepository(t *testing.T) {
 		}
 	}
 
-	// A git:view user reads but cannot commit.
+	// A git:view user reads the log, but files and commits also need the
+	// export permissions.
 	c.do(http.MethodPost, "/api/v1/users", `{"username":"auditor","password":"Audit-Passw0rd-1","permissions":["git:view"],"mustChangePassword":false}`, admin)
 	auditor := basic("auditor", "Audit-Passw0rd-1")
 	if code, _, _ := c.do(http.MethodGet, "/api/v1/git/log", "", auditor); code != http.StatusOK {
@@ -157,6 +158,16 @@ func TestGitRepository(t *testing.T) {
 	}
 	if code, body, _ := c.do(http.MethodPost, "/api/v1/git/commit", `{"message":"x"}`, auditor); code != http.StatusForbidden || !strings.Contains(body, "git:commit") {
 		t.Errorf("auditor commit: %d %s", code, body)
+	}
+	if code, body, _ := c.do(http.MethodGet, "/api/v1/git/content?path=scripts/deploy.yaml", "", auditor); code != http.StatusForbidden || !strings.Contains(body, "flows:view") {
+		t.Errorf("auditor content: %d %s", code, body)
+	}
+
+	// Names that would share a file on a case-insensitive filesystem are
+	// refused.
+	c.do(http.MethodPut, "/api/v1/scripts/Deploy", `{"value":"x"}`, admin)
+	if code, body, _ := c.do(http.MethodPost, "/api/v1/git/commit", `{"message":"clash"}`, admin); code != http.StatusConflict || !strings.Contains(body, "script/Deploy and script/deploy") {
+		t.Errorf("case clash: %d %s", code, body)
 	}
 
 	// A restarted server opens the same repository.

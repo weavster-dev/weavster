@@ -319,6 +319,7 @@ type Server struct {
 	cfg      Config
 	sessions *sessions
 	applyMu  sync.Mutex // one configuration apply at a time
+	gitMu    sync.Mutex // one Git commit at a time
 }
 
 // New returns a gateway server.

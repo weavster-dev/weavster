@@ -389,7 +389,7 @@ paths:
         "400": {description: lifetime is not true or false, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/git:
     get:
-      summary: "The server's Git repository of configuration: path, branch, head commit (requires git:view)"
+      summary: "The server's Git repository of configuration: branch and head commit (requires git:view)"
       description: Answers 503 unless the server configuration sets git.path.
       responses:
         default: {$ref: "#/components/responses/Error"}
@@ -400,13 +400,12 @@ paths:
               schema:
                 type: object
                 properties:
-                  path: {type: string}
                   branch: {type: string}
                   head: {type: string, description: "Commit hash; empty before the first commit"}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
   /api/v1/git/commit:
     post:
-      summary: "Commit the live configuration (not the config map) to the repository as the signed-in user (requires git:commit)"
+      summary: "Commit the live configuration (not the config map) to the repository as the signed-in user (requires git:commit, flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit)"
       description: >
         Writes one config-as-code document per artifact at <section>/<name>.yaml (flows, alerts,
         snippets, snippetLibraries, scripts, settings), removes the files of artifacts that no
@@ -434,6 +433,7 @@ paths:
                   head: {type: string}
                   changed: {type: array, items: {type: string}, description: "Files added, updated, or removed"}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "409": {description: Two artifacts of a kind have names differing only in case, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: Missing message or a bad body, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/git/log:
     get:
@@ -460,13 +460,13 @@ paths:
         "400": {description: A limit outside 1-1000, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/git/content:
     get:
-      summary: "A repository file as it was at a revision (requires git:view)"
+      summary: "A repository file as it was at a revision (requires git:view, flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit)"
       parameters:
         - {name: path, in: query, required: true, schema: {type: string}}
         - {name: rev, in: query, schema: {type: string, default: HEAD}, description: "Any revision Git understands: a hash, a short hash, HEAD~1, a branch"}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: The file, content: {application/yaml: {schema: {type: string}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "The file as stored: application/yaml for .yaml files, otherwise the type of its content", content: {application/yaml: {schema: {type: string}}, application/octet-stream: {schema: {type: string, format: binary}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: Missing path, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: "Unknown revision, or no such file at it", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/stats/series:

@@ -137,8 +137,9 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `/api/v1/alerts` and every route under it | `alerts:edit` |
 | `GET /api/v1/lookups…`, `POST /api/v1/lookups/{group}/batch` | `lookups:view` |
 | `PUT`/`DELETE /api/v1/lookups/{group}/{key}`, `DELETE /api/v1/lookups/{group}`, `POST /api/v1/lookups/{group}/import` | `lookups:edit` |
-| `GET /api/v1/git`, `GET /api/v1/git/log`, `GET /api/v1/git/content` | `git:view` |
-| `POST /api/v1/git/commit` | `git:commit` |
+| `GET /api/v1/git`, `GET /api/v1/git/log` | `git:view` |
+| `GET /api/v1/git/content` | `git:view`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
+| `POST /api/v1/git/commit` | `git:commit`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
 | `POST /api/v1/config/apply` | `flows:view`, `flows:edit`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit` |
 | `POST /api/v1/config/plan` | `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit` |
 | `GET /api/v1/config/export` | `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, and `settings:edit`; also `configmap:edit` with `includeConfigMap=true` |

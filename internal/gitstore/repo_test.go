@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	git "github.com/go-git/go-git/v5"
 )
 
 func TestOpenOrInitFilesHeadRevisions(t *testing.T) {
@@ -78,5 +80,81 @@ func TestOpenOrInitErrors(t *testing.T) {
 		if _, err := OpenOrInit(path); err == nil {
 			t.Errorf("%s: no error", path)
 		}
+	}
+}
+
+func TestRevisionsLimitAndUnstage(t *testing.T) {
+	s, err := OpenOrInit(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	staged := func() []string {
+		t.Helper()
+		st, err := s.wt.Status()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []string
+		for f, fs := range st {
+			if fs.Staging != git.Unmodified && fs.Staging != git.Untracked {
+				out = append(out, f)
+			}
+		}
+		return out
+	}
+	// Before the first commit Unstage empties the index.
+	if err := s.WriteFile("a.yaml", []byte("0")); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Unstage(); err != nil || len(staged()) != 0 {
+		t.Errorf("staged after unstage: %v %v", staged(), err)
+	}
+	for i := 1; i <= 3; i++ {
+		if err := s.WriteFile("a.yaml", []byte{byte('0' + i)}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := s.Commit("c"+string(rune('0'+i)), Author{Name: "t"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tt := range []struct {
+		path  string
+		limit int
+		want  string
+	}{
+		{"", 0, "c3,c2,c1"},
+		{"", 2, "c3,c2"},
+		{"a.yaml", 1, "c3"},
+		{"other.yaml", 5, ""},
+	} {
+		revs, err := s.Revisions(tt.path, tt.limit)
+		var got []string
+		for _, r := range revs {
+			got = append(got, r.Message)
+		}
+		if err != nil || strings.Join(got, ",") != tt.want {
+			t.Errorf("%q/%d = %v %v, want %s", tt.path, tt.limit, got, err, tt.want)
+		}
+	}
+	// After a commit Unstage resets the index; files keep their content.
+	for f, v := range map[string]string{"a.yaml": "changed", "new.yaml": "new"} {
+		if err := s.WriteFile(f, []byte(v)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.wt.AddWithOptions(&git.AddOptions{All: true}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Unstage(); err != nil || len(staged()) != 0 {
+		t.Errorf("staged after unstage: %v %v", staged(), err)
+	}
+	if a, _ := s.ReadFile("a.yaml"); string(a) != "changed" {
+		t.Errorf("a.yaml = %q", a)
+	}
+	if n, _ := s.ReadFile("new.yaml"); string(n) != "new" {
+		t.Errorf("new.yaml = %q", n)
 	}
 }
