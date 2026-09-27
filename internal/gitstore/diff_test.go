@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	git "github.com/go-git/go-git/v5"
 )
@@ -275,5 +276,62 @@ func TestDiffRestoreCancelled(t *testing.T) {
 	}
 	if head, _, _ := s.Head(); head != revs[1] {
 		t.Errorf("head moved to %s", head)
+	}
+}
+
+// TestRestoreSkipsAndRefuses: a no-op single-file restore writes nothing,
+// and a whole restore refuses to overwrite an ignored local file.
+func TestRestoreSkipsAndRefuses(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	s, err := OpenOrInit(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	commit := func(write map[string]string, remove ...string) string {
+		t.Helper()
+		for f, c := range write {
+			if err := s.WriteFile(f, []byte(c)); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, f := range remove {
+			if err := s.RemoveFile(f); err != nil {
+				t.Fatal(err)
+			}
+		}
+		h, err := s.Commit("c", Author{Name: "t"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return h
+	}
+	first := commit(map[string]string{"a.yaml": "a", "local.env": "committed"})
+	commit(map[string]string{".gitignore": "local.env\n"}, "local.env")
+
+	// No-op: the file is not rewritten (its mtime stays).
+	a := filepath.Join(dir, "a.yaml")
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(a, old, old); err != nil {
+		t.Fatal(err)
+	}
+	if head, changed, err := s.RestoreTo(ctx, first, "a.yaml", "noop", Author{Name: "t"}); err != nil || head != "" || len(changed) != 0 {
+		t.Errorf("no-op restore = %s %v %v", head, changed, err)
+	}
+	if st, _ := os.Stat(a); !st.ModTime().Equal(old) {
+		t.Errorf("a.yaml rewritten at %v", st.ModTime())
+	}
+
+	// local.env is now ignored and exists locally: restoring first would
+	// overwrite it.
+	env := filepath.Join(dir, "local.env")
+	if err := os.WriteFile(env, []byte("mine"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.RestoreTo(ctx, first, "", "back", Author{Name: "t"}); !errors.Is(err, ErrWouldOverwrite) || !strings.Contains(err.Error(), "local.env") {
+		t.Errorf("restore over an ignored file = %v", err)
+	}
+	if b, _ := os.ReadFile(env); string(b) != "mine" {
+		t.Errorf("local.env = %q", b)
 	}
 }

@@ -463,7 +463,7 @@ func (a gitAdapter) GitRestore(ctx context.Context, rev, path, message, author s
 	switch {
 	case errors.Is(err, gitstore.ErrNotFound):
 		return gateway.GitCommitResult{}, gateway.ErrGitNotFound
-	case errors.Is(err, gitstore.ErrUncommitted):
+	case errors.Is(err, gitstore.ErrUncommitted), errors.Is(err, gitstore.ErrWouldOverwrite):
 		return gateway.GitCommitResult{}, fmt.Errorf("%w: %w", gateway.ErrGitConflict, err)
 	case err != nil:
 		return gateway.GitCommitResult{}, err

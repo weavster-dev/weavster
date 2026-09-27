@@ -1,6 +1,7 @@
 package gitstore
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -16,6 +17,10 @@ type FileChange struct {
 	Path   string
 	Status string // added, modified, or deleted
 }
+
+// ErrWouldOverwrite: a restore would overwrite a local file the
+// repository does not track (an ignored file).
+var ErrWouldOverwrite = errors.New("the restore would overwrite files the repository ignores; move them away first")
 
 // MaxPatchBytes bounds the patch Diff returns.
 const MaxPatchBytes = 5 << 20
@@ -152,10 +157,17 @@ func (s *Store) RestoreTo(ctx context.Context, rev, path, message string, author
 		return "", nil, err
 	}
 	want := map[string][]byte{} // nil: delete
+	var collide []string
 	for _, c := range diff {
 		if c.Status == "deleted" {
 			want[c.Path] = nil
 			continue
+		}
+		if c.Status == "added" { // not in HEAD; on disk it can only be an ignored file
+			if _, err := s.fs.Stat(c.Path); err == nil {
+				collide = append(collide, c.Path)
+				continue
+			}
 		}
 		f, err := targetTree.File(c.Path)
 		if err != nil {
@@ -166,6 +178,9 @@ func (s *Store) RestoreTo(ctx context.Context, rev, path, message string, author
 			return "", nil, err
 		}
 		want[c.Path] = []byte(content)
+	}
+	if len(collide) > 0 {
+		return "", nil, fmt.Errorf("%w: %s", ErrWouldOverwrite, strings.Join(collide, ", "))
 	}
 	return s.writeAndCommit(want, message, author)
 }
@@ -193,6 +208,9 @@ func (s *Store) writeAndCommit(want map[string][]byte, message string, author Au
 		old, readErr := s.ReadFile(f)
 		if readErr != nil && !errors.Is(readErr, fs.ErrNotExist) {
 			return "", nil, readErr
+		}
+		if bytes.Equal(old, content) && (content != nil) == (readErr == nil) {
+			continue // already as wanted: not written
 		}
 		backup[f] = old
 		if content == nil {

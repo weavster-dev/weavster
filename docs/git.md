@@ -158,7 +158,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Content-Type: applicatio
   repository directory block a restore with `409`; commit or remove them first.
 - A restore writes only the files that differ. Restoring the whole repository removes committed
   files the revision did not have (including ones outside the configuration directories); files
-  that were never committed, and ignored files, are not touched.
+  that were never committed, and ignored files, are not touched. If the revision has a file where
+  an ignored local file now sits, the restore is refused with `409` naming it; move it away first.
 
 ## Check for drift
 
