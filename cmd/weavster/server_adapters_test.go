@@ -228,6 +228,16 @@ func (erroringStore) Search(context.Context, state.Query) ([]state.Message, erro
 
 var errSearchFailed = errors.New("search failed")
 
+func (erroringStore) MessageTrends(context.Context, state.TrendQuery) (state.TrendCounts, error) {
+	return nil, errSearchFailed
+}
+
+func TestMessageAdapterTrendsError(t *testing.T) {
+	if _, err := (messageAdapter{store: erroringStore{}}).MessageTrends(context.Background(), gateway.MessageTrendQuery{Interval: time.Hour}); !errors.Is(err, errSearchFailed) {
+		t.Errorf("trends error = %v", err)
+	}
+}
+
 func TestMessageAdapterSearchError(t *testing.T) {
 	ma := messageAdapter{store: erroringStore{}}
 	if _, err := ma.Search(context.Background(), gateway.MessageQuery{Limit: 10}); !errors.Is(err, errSearchFailed) {

@@ -539,6 +539,31 @@ paths:
         "400": {description: "No filter without all=true, a bad filter, or limit/offset/sort given", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "500": {description: "Removal stopped part-way (the message says how many were removed), or flows it stopped did not start again (the message names them)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: "A flow could not be stopped (restart=true); nothing was removed", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/messages/trends:
+    get:
+      summary: "Messages received per time bucket, by current status; empty buckets included (requires messages:view)"
+      parameters:
+        - {name: from, in: query, required: true, schema: {type: string, format: date-time}, description: Start of the first bucket (RFC 3339)}
+        - {name: to, in: query, required: true, schema: {type: string, format: date-time}, description: "End of the range, not included; the last bucket may be shorter"}
+        - {name: interval, in: query, schema: {type: string, enum: [hour, day], default: hour}}
+        - {name: flowId, in: query, schema: {type: string}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: One bucket per interval from from to to (at most 1000)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    start: {type: string, format: date-time}
+                    total: {type: integer}
+                    statuses: {type: object, additionalProperties: {type: integer}, description: "Every status (received, transformed, queued, sent, filtered, errored, dead-lettered) with its count"}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "404": {description: flowId names no flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "Missing or bad from/to, a bad interval, or more than 1000 buckets", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/configmap:
     get:
       summary: "Every config map entry, as a JSON object of name: value (requires configmap:edit)"

@@ -52,6 +52,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	}
 	closeStore := func() error { return nil }
 	var messages gateway.MessageStore
+	var trends gateway.MessageTrendReader
 	if store != nil {
 		closeStore = store.Close
 	}
@@ -117,6 +118,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		ia := ingestAdapter{flows: flows, pipe: pipe}
 		ingest = ia
 		messages = messageAdapter{store: store, pipe: pipe, ingest: ia}
+		trends = messageAdapter{store: store}
 		workers = func(ctx context.Context) {
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
 		}
@@ -136,6 +138,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Audit:           auditAdapter{sink},
 		Flows:           flows,
 		Messages:        messages,
+		Trends:          trends,
 		Ingest:          ingest,
 		Lifecycle:       flows,
 		FlowUpdates:     flows,
@@ -1787,6 +1790,12 @@ func toStateQuery(q gateway.MessageQuery) state.Query {
 // Export writes an archive of the messages matching q.
 func (m messageAdapter) Export(ctx context.Context, q gateway.MessageQuery, key []byte) ([]byte, int, error) {
 	return state.ExportArchive(ctx, m.store, state.ExportOptions{Query: toStateQuery(q), Key: key})
+}
+
+// MessageTrends counts the store's messages per bucket and status.
+func (m messageAdapter) MessageTrends(ctx context.Context, q gateway.MessageTrendQuery) (map[int]map[string]int, error) {
+	counts, err := m.store.MessageTrends(ctx, state.TrendQuery{FlowID: q.FlowID, From: q.From, To: q.To, Bucket: q.Interval})
+	return counts, err
 }
 
 // deletePage is how many matches DeleteMatching reads at a time (a
