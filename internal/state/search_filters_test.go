@@ -139,3 +139,19 @@ func TestMemStoreCopies(t *testing.T) {
 		t.Errorf("stored message changed through a copy: %+v", again)
 	}
 }
+
+// TestPutKeepsReceiveTime: updating a message without a receive time keeps
+// the stored one, on every backend.
+func TestPutKeepsReceiveTime(t *testing.T) {
+	for name, s := range testBackends(t) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			at := time.UnixMilli(1_700_000_000_000)
+			_ = s.Put(ctx, Message{ID: "m", FlowID: "f", Status: StatusReceived, ReceivedAt: at})
+			_ = s.Put(ctx, Message{ID: "m", FlowID: "f", Status: StatusSent})
+			if got, _ := s.Get(ctx, "m"); !got.ReceivedAt.Equal(at) {
+				t.Errorf("ReceivedAt = %v, want %v", got.ReceivedAt, at)
+			}
+		})
+	}
+}

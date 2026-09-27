@@ -27,6 +27,9 @@ func (s *MemStore) Put(_ context.Context, m Message) error {
 	now := time.Now()
 	if m.ReceivedAt.IsZero() {
 		m.ReceivedAt = now
+		if old, ok := s.m[m.ID]; ok { // an update keeps the receive time, as the SQL upsert does
+			m.ReceivedAt = old.ReceivedAt
+		}
 	}
 	m.UpdatedAt = now
 	s.m[m.ID] = cloneMessage(m)
