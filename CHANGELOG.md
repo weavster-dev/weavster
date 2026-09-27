@@ -75,6 +75,7 @@ All notable changes to this project are documented here, following
 
 ### Changed
 
+- `GET /api/v1/messages` (and export) refuses `from` later than `to` with `400` instead of returning nothing (#243).
 - Config-as-code document: the config map section is `configmap` (was `map`), and alerts use the API shape (`name`, `trigger.events`, `actions`) instead of `trigger`/`recipients`/`scope` (#237).
 - `weavster server` exits `2` (not `1`) on a usage error: an unknown flag or extra arguments (#231).
 - OpenAPI (#204): `agent-docs/openapi.yaml` is now exactly the contract the server serves at `GET /api/openapi.yaml` (one embedded source, `internal/gateway/openapi.yaml`, published with `go generate`). The contract documents `GET /api/openapi.yaml` itself, names the destination path parameter `{dest}` as the router does, and quotes descriptions that previously parsed as extra YAML keys. It is validated with kin-openapi (which applies OpenAPI 3.0 rules, so the document keeps to constructs valid in both 3.0 and 3.1), and every documented operation is contract-tested against the running server: it must reach its handler and answer a status it documents.

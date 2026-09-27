@@ -289,7 +289,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 | Parameter | Meaning |
 |---|---|
 | `flowId`, `status` | Only messages of this flow / with this status. |
-| `from`, `to` | Received at or after / at or before this time (RFC 3339, for example `2026-09-26T12:00:00Z`). |
+| `from`, `to` | Received at or after / at or before this time (RFC 3339, for example `2026-09-26T12:00:00Z`); `from` must not be after `to`. |
 | `limit` | Messages per page, 1–1000 (default 100). |
 | `offset` | Messages to skip, for the next pages. |
 | `sort` | `-receivedAt` (newest first, default), `receivedAt`, `id`, or `-id`. |
@@ -450,9 +450,9 @@ Every filter is optional:
 | Parameter | What it does |
 |---|---|
 | `type`, `flowId` | Only events of that type or flow. |
-| `from`, `to` | Only events at or after / at or before that time (RFC 3339). |
+| `from`, `to` | Only events at or after / at or before that time (RFC 3339); `from` must not be after `to`. |
 | `afterId` | Only events with a larger id. |
-| `limit` | The newest matches, 1–10000 (default 1000). |
+| `limit` | How many matches, 1–10000 (default 1000): the newest ones, or with `afterId` the oldest ones after it. |
 
 Results are oldest first. Events never contain message content or transform error text, because
 both can hold patient data. The error is stored with the message instead.
@@ -465,7 +465,9 @@ both can hold patient data. The error is stored with the message instead.
 | `GET /api/v1/events/export` | Every match (no limit) as a JSON file download (`events.json`). |
 
 To follow new events, remember the last id you saw (or start from `max-id`) and ask for the ones
-after it:
+after it. With `afterId`, the reply holds the oldest events after that id, so when more than
+`limit` arrived, ask again with the last id of the reply until it comes back short; nothing is
+skipped:
 
 ```bash
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/events?afterId=41'

@@ -1705,7 +1705,6 @@ func (a eventsAdapter) GetEvent(_ context.Context, id int64) (gateway.Event, err
 }
 
 func (a eventsAdapter) CountEvents(_ context.Context, q gateway.EventQuery) (int, error) {
-	q.Limit = 0
 	return a.log.Count(eventFilter(q)), nil
 }
 

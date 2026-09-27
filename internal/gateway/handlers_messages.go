@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -44,18 +45,8 @@ func messageQuery(w http.ResponseWriter, r *http.Request, maxLimit int) (Message
 		writeStatusError(w, http.StatusBadRequest, msg)
 		return q, false
 	}
-	for _, p := range []struct {
-		name string
-		t    *time.Time
-	}{{"from", &q.From}, {"to", &q.To}} {
-		if raw := v.Get(p.name); raw != "" {
-			// An unencoded "+" in an offset arrives as a space.
-			parsed, err := time.Parse(time.RFC3339, strings.ReplaceAll(raw, " ", "+"))
-			if err != nil {
-				return bad(p.name + " must be an RFC 3339 time, for example 2026-09-26T12:00:00Z")
-			}
-			*p.t = parsed
-		}
+	if msg := timeRange(v, &q.From, &q.To); msg != "" {
+		return bad(msg)
 	}
 	if raw := v.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -80,6 +71,28 @@ func messageQuery(w http.ResponseWriter, r *http.Request, maxLimit int) (Message
 		}
 	}
 	return q, true
+}
+
+// timeRange reads the optional from and to query parameters (RFC 3339)
+// into from and to; it returns what is wrong with them, or "".
+func timeRange(v url.Values, from, to *time.Time) string {
+	for _, p := range []struct {
+		name string
+		t    *time.Time
+	}{{"from", from}, {"to", to}} {
+		if raw := v.Get(p.name); raw != "" {
+			// An unencoded "+" in an offset arrives as a space.
+			parsed, err := time.Parse(time.RFC3339, strings.ReplaceAll(raw, " ", "+"))
+			if err != nil {
+				return p.name + " must be an RFC 3339 time, for example 2026-09-26T12:00:00Z"
+			}
+			*p.t = parsed
+		}
+	}
+	if !from.IsZero() && !to.IsZero() && from.After(*to) {
+		return "from must not be after to"
+	}
+	return ""
 }
 
 // Archive limits and header.

@@ -30,11 +30,15 @@ func (notImplementedSearch) Search(context.Context, MessageQuery) ([]Message, er
 func (notImplementedSearch) SearchEvents(context.Context, EventQuery) ([]Event, error) {
 	return nil, fmt.Errorf("%w: event archive", enterprise.ErrNotImplemented)
 }
-func (notImplementedSearch) GetEvent(context.Context, int64) (Event, error) { return Event{}, nil }
-func (notImplementedSearch) CountEvents(context.Context, EventQuery) (int, error) {
-	return 0, nil
+func (notImplementedSearch) GetEvent(context.Context, int64) (Event, error) {
+	return Event{}, fmt.Errorf("%w: event archive", enterprise.ErrNotImplemented)
 }
-func (notImplementedSearch) MaxEventID(context.Context) (int64, error) { return 0, nil }
+func (notImplementedSearch) CountEvents(context.Context, EventQuery) (int, error) {
+	return 0, fmt.Errorf("%w: event archive", enterprise.ErrNotImplemented)
+}
+func (notImplementedSearch) MaxEventID(context.Context) (int64, error) {
+	return 0, fmt.Errorf("%w: event archive", enterprise.ErrNotImplemented)
+}
 
 // TestErrorEnvelope: every error reply is the JSON envelope with the
 // status's code, and internal errors do not leak detail.
@@ -58,6 +62,9 @@ func TestErrorEnvelope(t *testing.T) {
 		{"not implemented", http.MethodGet, "/api/v1/flows", ``, Config{Flows: &notImplementedFlows{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "not implemented in this edition: flow federation"},
 		{"not implemented messages", http.MethodGet, "/api/v1/messages", ``, Config{Messages: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "message archive"},
 		{"not implemented events", http.MethodGet, "/api/v1/events", ``, Config{Events: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "event archive"},
+		{"not implemented event", http.MethodGet, "/api/v1/events/1", ``, Config{Events: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "event archive"},
+		{"not implemented event count", http.MethodGet, "/api/v1/events/count", ``, Config{Events: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "event archive"},
+		{"not implemented max id", http.MethodGet, "/api/v1/events/max-id", ``, Config{Events: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "event archive"},
 		{"specific code kept", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"a"}]}`, Config{Transfer: fakeTransfer{err: ErrImportIncomplete}}, http.StatusInternalServerError, "IMPORT_INCOMPLETE", "stopped part-way"},
 	}
 	for _, tt := range tests {

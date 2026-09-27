@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -160,22 +159,13 @@ func eventQuery(w http.ResponseWriter, r *http.Request, withLimit bool) (EventQu
 		writeStatusError(w, http.StatusBadRequest, msg)
 		return q, false
 	}
-	for _, p := range []struct {
-		name string
-		t    *time.Time
-	}{{"from", &q.From}, {"to", &q.To}} {
-		if raw := v.Get(p.name); raw != "" {
-			parsed, err := time.Parse(time.RFC3339, strings.ReplaceAll(raw, " ", "+")) // an unencoded "+" arrives as a space
-			if err != nil {
-				return bad(p.name + " must be an RFC 3339 time, for example 2026-09-26T12:00:00Z")
-			}
-			*p.t = parsed
-		}
+	if msg := timeRange(v, &q.From, &q.To); msg != "" {
+		return bad(msg)
 	}
 	if raw := v.Get("afterId"); raw != "" {
 		n, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || n < 0 {
-			return bad("afterId must be 0 or more")
+			return bad("afterId must be a whole number from 0 to 9223372036854775807")
 		}
 		q.AfterID = n
 	}

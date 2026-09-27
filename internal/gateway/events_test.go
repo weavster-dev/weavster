@@ -18,6 +18,8 @@ func TestEventHandlers(t *testing.T) {
 		{"search with filters", "/api/v1/events?from=2026-09-26T00:00:00Z&to=2026-09-27T00:00:00+02:00&afterId=3", ok, http.StatusOK, `"id":1`},
 		{"bad from", "/api/v1/events?from=today", ok, http.StatusBadRequest, "RFC 3339"},
 		{"bad afterId", "/api/v1/events?afterId=-1", ok, http.StatusBadRequest, "afterId must be"},
+		{"afterId too large", "/api/v1/events?afterId=99999999999999999999", ok, http.StatusBadRequest, "whole number from 0 to 9223372036854775807"},
+		{"from after to", "/api/v1/events?from=2026-09-27T00:00:00Z&to=2026-09-26T00:00:00Z", ok, http.StatusBadRequest, "from must not be after to"},
 		{"bad limit", "/api/v1/events?limit=0", ok, http.StatusBadRequest, "limit must be"},
 		{"get", "/api/v1/events/1", ok, http.StatusOK, `"type":"message.sent"`},
 		{"get unknown", "/api/v1/events/9", ok, http.StatusNotFound, "event not found"},

@@ -23,7 +23,9 @@ type EventFilter struct {
 	Since   time.Time // at or after; zero = open
 	Until   time.Time // at or before; zero = open
 	AfterID int64     // only ids above this (polling for new events)
-	Limit   int       // newest N matches; 0 = all
+	// Limit keeps N matches, 0 = all: the newest N, or with AfterID the
+	// oldest N after it, so polling from a cursor never skips events.
+	Limit int
 }
 
 func (f EventFilter) matches(e Event) bool {
@@ -79,18 +81,24 @@ func (l *EventLog) Search(f EventFilter) []Event {
 		}
 	}
 	if f.Limit > 0 && len(out) > f.Limit {
+		if f.AfterID > 0 {
+			return out[:f.Limit] // the oldest Limit after the cursor
+		}
 		out = out[len(out)-f.Limit:] // the newest Limit, oldest first
 	}
 	return out
 }
 
-// Get returns the event with id, if it is still kept.
+// Get returns the event with id, if it is still kept. Ids are consecutive,
+// so the event's place in the ring follows from the oldest id kept.
 func (l *EventLog) Get(id int64) (Event, bool) {
-	// Ids ascend: the first event above id-1 is id, or id is no longer kept.
-	if found := l.Search(EventFilter{AfterID: id - 1}); len(found) > 0 && found[0].ID == id {
-		return found[0], true
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	oldest := l.seq - int64(len(l.events)) + 1
+	if len(l.events) == 0 || id < oldest || id > l.seq {
+		return Event{}, false
 	}
-	return Event{}, false
+	return l.events[(int64(l.next)+id-oldest)%int64(len(l.events))], true
 }
 
 // MaxID returns the id of the newest event (0 when none was recorded).
@@ -100,8 +108,19 @@ func (l *EventLog) MaxID() int64 {
 	return l.seq
 }
 
-// Count returns the number of events matching the filter.
-func (l *EventLog) Count(f EventFilter) int { return len(l.Search(f)) }
+// Count returns the number of events matching the filter (Limit is
+// ignored).
+func (l *EventLog) Count(f EventFilter) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := 0
+	for _, e := range l.events {
+		if f.matches(e) {
+			n++
+		}
+	}
+	return n
+}
 
 // Export returns events matching the filter (same as Search; the export path
 // serializes to a file at the API layer).

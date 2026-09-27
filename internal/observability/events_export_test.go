@@ -63,3 +63,31 @@ func TestEventLogFiltersGetAndMaxID(t *testing.T) {
 		t.Errorf("max id = %d", l.MaxID())
 	}
 }
+
+// TestEventLogCursorAndRing: with a cursor, a limit keeps the oldest
+// matches after it (polling never skips); Get finds events after the ring
+// has wrapped and not the ones it dropped.
+func TestEventLogCursorAndRing(t *testing.T) {
+	l := NewEventLog()
+	for i := 0; i < MaxEvents+5; i++ {
+		l.Add("e", "", "", nil)
+	}
+	got := l.Search(EventFilter{AfterID: 100, Limit: 3})
+	if len(got) != 3 || got[0].ID != 101 || got[2].ID != 103 {
+		t.Errorf("cursor page = %v", got)
+	}
+	if newest := l.Search(EventFilter{Limit: 2}); newest[1].ID != int64(MaxEvents+5) {
+		t.Errorf("newest = %v", newest)
+	}
+	if _, ok := l.Get(5); ok {
+		t.Error("a dropped event was found")
+	}
+	for _, id := range []int64{6, 7000, int64(MaxEvents + 5)} {
+		if e, ok := l.Get(id); !ok || e.ID != id {
+			t.Errorf("get %d = %v %v", id, e.ID, ok)
+		}
+	}
+	if l.Count(EventFilter{AfterID: int64(MaxEvents)}) != 5 {
+		t.Error("count after cursor")
+	}
+}
