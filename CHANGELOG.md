@@ -82,7 +82,7 @@ All notable changes to this project are documented here, following
 
 ### Changed
 
-- OpenAPI: every success response now has a schema (shared `Flow`, `Message`, `FlowStats`, `TopologyGraph`, and other component schemas), and the contract test checks every reply of the running server against them (#283). Topology graphs with no nodes or edges now return `[]` instead of `null`.
+- OpenAPI: every success response now has a schema (shared `Flow`, `Message`, `FlowStats`, `TopologyGraph`, and other component schemas), and the running server's replies are checked against them — a successful call to every operation, plus every 2xx the generic contract test reaches (#283). Replies changed to match: topology graphs with no nodes or edges return `[]` instead of `null`; flow statistics leave `lastMessageAt` out until the first message instead of sending `null`; a destination reply that is JSON `null` is no `response` in the ingest reply.
 - `config validate` checks the document on the client machine instead of calling the server, and the new `weavster config validate FILE...` checks files with no server and no database (exit 0 valid, 1 invalid, 2 unreadable) (#276, D-55).
 - `GET /api/v1/system` is computed per request (`time`, new `uptimeSeconds`, `status`) and reports TLS as configured under `tls` (`enabled`, `address`, `minVersion`, `protocols`, `ciphers`) instead of fixed top-level `protocols`/`ciphers` (#245).
 - `GET /api/v1/messages` (and export) refuses `from` later than `to` with `400` instead of returning nothing (#243).

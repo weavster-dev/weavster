@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -138,5 +139,30 @@ func TestOpenAPIResponsesHaveSchemas(t *testing.T) {
 	sort.Strings(missing)
 	for _, m := range missing {
 		t.Errorf("%s: success response without a schema", m)
+	}
+}
+
+// TestOpenAPIFlowSchemaMatchesFlowdef: the Flow and FlowDestination
+// schemas list exactly the JSON fields of flowdef.Flow and
+// flowdef.Destination, so a new field cannot be left out of the contract.
+func TestOpenAPIFlowSchemaMatchesFlowdef(t *testing.T) {
+	doc := loadSpec(t)
+	for name, v := range map[string]any{"Flow": flowdef.Flow{}, "FlowDestination": flowdef.Destination{}} {
+		var fields []string
+		rt := reflect.TypeOf(v)
+		for i := 0; i < rt.NumField(); i++ {
+			if tag, _, _ := strings.Cut(rt.Field(i).Tag.Get("json"), ","); tag != "" && tag != "-" {
+				fields = append(fields, tag)
+			}
+		}
+		var props []string
+		for p := range doc.Components.Schemas[name].Value.Properties {
+			props = append(props, p)
+		}
+		sort.Strings(fields)
+		sort.Strings(props)
+		if strings.Join(fields, ",") != strings.Join(props, ",") {
+			t.Errorf("%s schema properties %v, Go JSON fields %v", name, props, fields)
+		}
 	}
 }

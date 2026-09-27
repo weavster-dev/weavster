@@ -442,7 +442,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1
 
 - `transformed` counts messages that got past the transform (sent plus queued).
 - `destinations` counts successful and failed deliveries per destination.
-- `lastMessageAt` is the arrival time of the newest message, `null` until the first one.
+- `lastMessageAt` is the arrival time of the newest message; it is left out until the first one.
 - Deleting a flow clears its counters, so a new flow with the same `id` starts at zero.
 - Add `?lifetime=true` for lifetime totals, which are kept when you reset the current counters.
 - `GET /api/v1/flows/stats` returns every flow's statistics at once, keyed by flow id (also with

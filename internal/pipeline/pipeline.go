@@ -441,6 +441,9 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 // (declared application/json or +json) as is and any other reply as a JSON
 // string. An empty reply, or one the transform cannot use (not a JSON
 // object, a failing step) or filters, returns nil.
+// isJSONNull reports whether b is the JSON literal null.
+func isJSONNull(b []byte) bool { return bytes.Equal(bytes.TrimSpace(b), []byte("null")) }
+
 func responseOutput(f Flow, r *Reply) json.RawMessage {
 	var t *compiler.Transform
 	for _, d := range f.Destinations {
@@ -450,7 +453,7 @@ func responseOutput(f Flow, r *Reply) json.RawMessage {
 	}
 	if t != nil {
 		out, _, err := destinationOutput(*t, r.Body)
-		if err != nil {
+		if err != nil || isJSONNull(out) {
 			return nil
 		}
 		return out
@@ -459,6 +462,9 @@ func responseOutput(f Flow, r *Reply) json.RawMessage {
 	case len(r.Body) == 0:
 		return nil
 	case isJSONType(r.ContentType) && json.Valid(r.Body):
+		if isJSONNull(r.Body) { // a null reply is no response
+			return nil
+		}
 		return r.Body
 	}
 	s, _ := json.Marshal(string(r.Body)) // a string always encodes

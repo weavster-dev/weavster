@@ -77,7 +77,7 @@ func TestOpenAPIContract(t *testing.T) {
 				if method == http.MethodPost || method == http.MethodPut {
 					body = "{}"
 				}
-				status, reply, _ := c.do(method, url, body, admin)
+				status, reply, hdr := c.do(method, url, body, admin)
 				var env struct {
 					Error struct{ Code, Message string } `json:"error"`
 				}
@@ -93,6 +93,10 @@ func TestOpenAPIContract(t *testing.T) {
 					// The reply matches the documented schema.
 					mt := op.Responses.Status(status).Value.Content.Get("application/json")
 					if mt == nil || mt.Schema == nil || mt.Schema.Value == nil {
+						// Only a non-JSON reply (an archive, YAML) may lack a JSON schema.
+						if strings.HasPrefix(hdr.Get("Content-Type"), "application/json") {
+							t.Errorf("%s %s: %d JSON reply without a documented application/json schema", method, url, status)
+						}
 						break
 					}
 					var v any
