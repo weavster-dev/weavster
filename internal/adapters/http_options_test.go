@@ -48,6 +48,7 @@ func TestHTTPSinkOptions(t *testing.T) {
 		{"too many", "/twice", HTTPSinkOptions{Method: http.MethodPatch, MaxRedirects: 1}, false, "PATCH /twice x|PATCH /temporary x"},
 		{"enough", "/twice", HTTPSinkOptions{Method: http.MethodPatch, MaxRedirects: 2}, true, "PATCH /twice x|PATCH /temporary x|PATCH /final x"},
 		{"timeout", "/slow", HTTPSinkOptions{Timeout: 50 * time.Millisecond}, false, "POST /slow x"},
+		{"negative timeout is the default", "/final", HTTPSinkOptions{Timeout: -time.Second}, true, "POST /final x"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			mu.Lock()
@@ -83,5 +84,24 @@ func TestHTTPSinkNeverDowngrades(t *testing.T) {
 		if err := check(req, []*http.Request{{URL: from}}); err != tt.want {
 			t.Errorf("%s: %v, want %v", tt.to, err, tt.want)
 		}
+	}
+	// A later hop: http -> https -> http is refused at the second hop.
+	start, _ := url.Parse("http://a.example.com/in")
+	down, _ := url.Parse("http://c.example.com/in")
+	req := &http.Request{URL: down, Response: &http.Response{StatusCode: http.StatusTemporaryRedirect}}
+	if err := check(req, []*http.Request{{URL: start}, {URL: from}}); err != http.ErrUseLastResponse {
+		t.Errorf("https to http on a later hop: %v", err)
+	}
+}
+
+// TestHTTPSinkRedirectError: a redirect that is not followed names its target.
+func TestHTTPSinkRedirectError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "https://new.example.com/in", http.StatusFound)
+	}))
+	defer srv.Close()
+	err := NewHTTPSink(srv.URL).Write(context.Background(), Message{Body: []byte("x")})
+	if err == nil || err.Error() != "Found: redirect to https://new.example.com/in not followed" {
+		t.Errorf("err = %v", err)
 	}
 }

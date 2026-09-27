@@ -57,7 +57,9 @@ func SourceHandler(flowID string, src FlowSource, password string, ingest Source
 		if !ok {
 			return
 		}
-		res, err := ingest.IngestFrom(r.Context(), flowID, body, map[string]string{"source.http.path": r.URL.Path})
+		// The request is fully read: a read deadline passing while the flow
+		// processes it must not cancel the work.
+		res, err := ingest.IngestFrom(context.WithoutCancel(r.Context()), flowID, body, map[string]string{"source.http.path": r.URL.Path})
 		switch {
 		case err == nil, res.ID != "":
 			// A message stored before a later failure is accepted: the

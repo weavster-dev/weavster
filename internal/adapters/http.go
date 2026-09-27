@@ -41,7 +41,7 @@ func NewHTTPSinkWith(url string, opts HTTPSinkOptions) *HTTPSink {
 	if method == "" {
 		method = http.MethodPost
 	}
-	if timeout == 0 {
+	if timeout <= 0 { // never unbounded
 		timeout = HTTPSinkTimeout
 	}
 	return &HTTPSink{url: url, method: method, client: &http.Client{
@@ -49,7 +49,7 @@ func NewHTTPSinkWith(url string, opts HTTPSinkOptions) *HTTPSink {
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			code := req.Response.StatusCode
 			keeps := code == http.StatusTemporaryRedirect || code == http.StatusPermanentRedirect
-			downgrade := via[0].URL.Scheme == "https" && req.URL.Scheme != "https"
+			downgrade := via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme != "https" // on any hop
 			if !keeps || downgrade || len(via) > opts.MaxRedirects {
 				return http.ErrUseLastResponse
 			}
@@ -102,7 +102,7 @@ func (s *HTTPSink) send(ctx context.Context, m Message, wantReply bool) (*Reply,
 	if resp.StatusCode >= 300 || !wantReply {
 		_, _ = io.Copy(io.Discard, resp.Body)
 		if resp.StatusCode >= 300 {
-			return nil, &httpStatusError{code: resp.StatusCode}
+			return nil, &httpStatusError{code: resp.StatusCode, location: resp.Header.Get("Location")}
 		}
 		return nil, nil
 	}
@@ -114,9 +114,17 @@ func (s *HTTPSink) send(ctx context.Context, m Message, wantReply bool) (*Reply,
 	return &Reply{Body: body, ContentType: resp.Header.Get("Content-Type")}, nil
 }
 
-type httpStatusError struct{ code int }
+type httpStatusError struct {
+	code     int
+	location string // a redirect's target, not followed
+}
 
-func (e *httpStatusError) Error() string { return http.StatusText(e.code) }
+func (e *httpStatusError) Error() string {
+	if e.code < 400 && e.location != "" {
+		return http.StatusText(e.code) + ": redirect to " + e.location + " not followed"
+	}
+	return http.StatusText(e.code)
+}
 
 func (s *HTTPSink) Close() error { return nil }
 

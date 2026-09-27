@@ -76,11 +76,11 @@ below, in order, on the message as a JSON object.
 | Field | Meaning |
 |---|---|
 | `name` | Unique within the flow; 1–128 characters from `A-Z a-z 0-9 . _ -` (it appears in URLs). Used to report delivery results. |
-| `type` | `http` (POST to `url`) or `file` (write one file per message into `dir`, named by message ID). |
+| `type` | `http` (send to `url`) or `file` (write one file per message into `dir`, named by message ID). |
 | `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a request (`POST` unless `method` says otherwise) with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough). The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`. Created if missing. |
 | `method` | `http` only: `POST` (default), `PUT`, or `PATCH`. |
-| `timeoutMs` | `http` only: time allowed for one delivery request, including reading the response, 1000–300000 ms; default 30000. A request that takes longer is a failed attempt and is retried. |
+| `timeoutMs` | `http` only: time allowed for one delivery request, including reading the response, 1000–120000 ms; default 30000. A request that takes longer is a failed attempt and is retried. Stopping or pausing the flow, and stopping the server, wait for deliveries in progress, so keep it as short as the receiver allows. |
 | `maxRedirects` | `http` only: how many redirects to follow, 0–10; default 0. See [Redirects](#redirects). |
 | `transform` | Optional. This destination's own transform, with the same steps as the flow `transform`. See [Per-destination transforms and filters](#per-destination-transforms-and-filters). |
 | `responseTransform` | Optional. Transform applied to this destination's reply. See [Return a destination's reply](#return-a-destinations-reply). |
@@ -89,7 +89,8 @@ below, in order, on the message as a JSON object.
 
 By default an `http` destination does not follow redirects: a `3xx` reply is a failed delivery,
 retried and then dead-lettered like any other failure, so a moved endpoint shows up in the
-message's errors instead of losing messages. To follow them, set `maxRedirects`:
+message's errors (for example `Found: redirect to https://new.example.com/in not followed`)
+instead of losing messages. To follow them, set `maxRedirects`:
 
 ```json
 {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in", "method": "PUT",

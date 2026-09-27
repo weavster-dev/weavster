@@ -280,7 +280,7 @@
             "null"
           ],
           "minimum": 1000,
-          "maximum": 300000,
+          "maximum": 120000,
           "description": "http: time allowed for one delivery request, including the response (default 30000)"
         },
         "maxRedirects": {
@@ -301,24 +301,16 @@
         }
       },
       "then": {
-        "not": {
-          "anyOf": [
-            {
-              "required": [
-                "method"
-              ]
-            },
-            {
-              "required": [
-                "timeoutMs"
-              ]
-            },
-            {
-              "required": [
-                "maxRedirects"
-              ]
-            }
-          ]
+        "properties": {
+          "method": {
+            "type": "null"
+          },
+          "timeoutMs": {
+            "type": "null"
+          },
+          "maxRedirects": {
+            "type": "null"
+          }
         }
       }
     },

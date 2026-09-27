@@ -1391,7 +1391,7 @@ components:
         url: {type: string}
         dir: {type: string}
         method: {type: string, enum: [POST, PUT, PATCH], description: "http: request method (default POST)"}
-        timeoutMs: {type: integer, minimum: 1000, maximum: 300000, description: "http: time allowed for one delivery request, including the response (default 30000)"}
+        timeoutMs: {type: integer, minimum: 1000, maximum: 120000, description: "http: time allowed for one delivery request, including the response (default 30000)"}
         maxRedirects: {type: integer, minimum: 0, maximum: 10, description: "http: 307/308 redirects followed, never https to http (default 0: a redirect fails the delivery)"}
         transform: {description: A destination transform}
         responseTransform: {description: A response transform}
