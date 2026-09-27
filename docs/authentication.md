@@ -123,7 +123,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `GET /api/v1/messages`, `GET /api/v1/messages/{id}` | `messages:view` |
 | `GET /api/v1/messages/{id}/content`, `GET /api/v1/messages/export` | `messages:content` |
 | `POST /api/v1/messages/import` | `messages:import` |
-| `DELETE /api/v1/messages/{id}` | `messages:delete` |
+| `DELETE /api/v1/messages/{id}`, `DELETE /api/v1/messages` | `messages:delete` |
 | `POST /api/v1/flows/{id}/messages`, `POST /api/v1/messages/{id}/reprocess` | `messages:send` |
 | `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all`, `POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all`, `POST /api/v1/flows/{id}/destinations/{name}/{start,stop}`, `POST /api/v1/flows/stats/reset`, `POST /api/v1/flows/{id}/stats/reset` | `flows:deploy` |
 | `GET /api/v1/flows/{id}/stats`, `GET /api/v1/flows/stats` | `flows:view` |

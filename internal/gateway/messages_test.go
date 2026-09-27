@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -60,6 +61,14 @@ func (messageOps) Import(_ context.Context, archive []byte, opts MessageImport) 
 		return MessageImportResult{Imported: 4}, ErrMessageImportIncomplete
 	}
 	return MessageImportResult{Imported: 1}, nil
+}
+
+// DeleteMatching removes 3 messages and finds 1 busy; status "fail" fails.
+func (messageOps) DeleteMatching(_ context.Context, q MessageQuery) (int, int, error) {
+	if q.Status == "fail" {
+		return 0, 0, errors.New("disk")
+	}
+	return 3, 1, nil
 }
 
 // queryRecorder keeps the last search query.
@@ -157,5 +166,67 @@ func TestMessageArchiveHandlers(t *testing.T) {
 				t.Errorf("got %d %q; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.want)
 			}
 		})
+	}
+}
+
+// recordingLifecycle logs transitions; failOn makes one action fail.
+type recordingLifecycle struct {
+	fakeLifecycle
+	log    *[]string
+	failOn string
+}
+
+func (l recordingLifecycle) Transition(_ context.Context, id, action string) (Flow, error) {
+	*l.log = append(*l.log, action+" "+id)
+	if id+" "+action == l.failOn {
+		return Flow{}, fmt.Errorf("%w: cannot %s", ErrInvalidTransition, action)
+	}
+	return Flow{ID: id}, nil
+}
+
+func TestMessagesBulkDelete(t *testing.T) {
+	flows := &fakeFlows{flows: []Flow{{ID: "a", Status: "started"}, {ID: "b", Status: "stopped"}, {ID: "c", Status: "started"}}}
+	tests := []struct {
+		name, path, failOn string
+		flows              FlowStore
+		status             int
+		body               string
+		log                string
+	}{
+		{"by flow", "/api/v1/messages?flowId=a", "", flows, http.StatusOK, `{"deleted":3,"busy":1,"restarted":[]}`, ""},
+		{"by status", "/api/v1/messages?status=errored", "", flows, http.StatusOK, `"deleted":3`, ""},
+		{"no filter", "/api/v1/messages", "", flows, http.StatusBadRequest, "all=true", ""},
+		{"all", "/api/v1/messages?all=true", "", flows, http.StatusOK, `"deleted":3`, ""},
+		{"all false is no filter", "/api/v1/messages?all=false", "", flows, http.StatusBadRequest, "all=true", ""},
+		{"bad all", "/api/v1/messages?all=yes", "", flows, http.StatusBadRequest, "all must be true or false", ""},
+		{"limit refused", "/api/v1/messages?all=true&limit=5", "", flows, http.StatusBadRequest, "limit does not apply", ""},
+		{"bad from", "/api/v1/messages?from=today", "", flows, http.StatusBadRequest, "RFC 3339", ""},
+		{"restart all", "/api/v1/messages?all=true&restart=true", "", flows, http.StatusOK, `"restarted":["a","c"]`, "stop a,stop c,start a,start c"},
+		{"restart one flow", "/api/v1/messages?flowId=c&restart=true", "", flows, http.StatusOK, `"restarted":["c"]`, "stop c,start c"},
+		{"stop fails", "/api/v1/messages?all=true&restart=true", "c stop", flows, http.StatusConflict, "cannot stop", "stop a,stop c,start a"},
+		{"start fails", "/api/v1/messages?all=true&restart=true", "a start", flows, http.StatusConflict, "flow a did not start again", "stop a,stop c,start a,start c"},
+		{"delete fails", "/api/v1/messages?status=fail&restart=true", "", flows, http.StatusInternalServerError, "internal error", "stop a,stop c,start a,start c"},
+		{"list fails", "/api/v1/messages?all=true&restart=true", "", &errFlows{}, http.StatusInternalServerError, "internal error", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var log []string
+			cfg := Config{Messages: queryRecorder{got: &MessageQuery{}}, Flows: tt.flows, Lifecycle: recordingLifecycle{log: &log, failOn: tt.failOn}}
+			rec := httptest.NewRecorder()
+			New(cfg).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, tt.path, nil))
+			if rec.Code != tt.status || !strings.Contains(rec.Body.String(), tt.body) {
+				t.Errorf("got %d %q; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.body)
+			}
+			if got := strings.Join(log, ","); got != tt.log {
+				t.Errorf("transitions = %q, want %q", got, tt.log)
+			}
+		})
+	}
+	for _, cfg := range []Config{{}, {Messages: queryRecorder{got: &MessageQuery{}}}} {
+		rec := httptest.NewRecorder()
+		New(cfg).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/api/v1/messages?all=true&restart=true", nil))
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Errorf("unavailable: %d %s", rec.Code, rec.Body.String())
+		}
 	}
 }

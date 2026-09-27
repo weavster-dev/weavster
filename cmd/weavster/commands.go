@@ -88,6 +88,10 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return userCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	case "snippet": // spec §3.2: snippet [library] list|import|export|remove
 		return snippetCommand(ctx, client, fields[1:], stdout, stderr, debug)
+	case "clearallmessages": // spec §3.2: removes every message, restarting running flows
+		return clearAllMessages(ctx, client, fields[1:], stdout, stderr, debug)
+	case "dump": // spec §3.2: dump stats|events "path"
+		return dumpCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	default:
 		_, _ = fmt.Fprintf(stderr, "Error: unknown command %q\n", fields[0])
 		return 2
@@ -107,7 +111,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, importmap|exportmap|importscripts|exportscripts "path", quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -481,4 +485,48 @@ func jsonArrayLen(doc []byte) int {
 	var list []json.RawMessage
 	_ = json.Unmarshal(doc, &list)
 	return len(list)
+}
+
+// clearAllMessages removes every message; running flows are stopped for it
+// and started again.
+func clearAllMessages(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	if len(args) != 0 {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: clearallmessages")
+		return 2
+	}
+	out, err := client.Call(ctx, http.MethodDelete, "/api/v1/messages?all=true&restart=true", nil)
+	var res gateway.MessagesDeleted
+	if err == nil {
+		err = json.Unmarshal(out, &res)
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	line := fmt.Sprintf("removed %d messages", res.Deleted)
+	if len(res.Restarted) > 0 {
+		line += "; restarted " + strings.Join(res.Restarted, ", ")
+	}
+	if res.Busy > 0 {
+		line += fmt.Sprintf("; %d being processed were kept", res.Busy)
+	}
+	_, _ = fmt.Fprintln(stdout, line)
+	return 0
+}
+
+// dumpCommand writes flow statistics or the event log to a JSON file.
+func dumpCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	paths := map[string]string{"stats": "/api/v1/flows/stats", "events": "/api/v1/events?limit=10000"}
+	if len(args) != 2 || paths[args[0]] == "" {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: dump stats|events \"path\"")
+		return 2
+	}
+	out, err := client.Call(ctx, http.MethodGet, paths[args[0]], nil)
+	if err == nil {
+		err = os.WriteFile(args[1], out, 0o600)
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	_, _ = fmt.Fprintf(stdout, "wrote %s to %s\n", args[0], args[1])
+	return 0
 }

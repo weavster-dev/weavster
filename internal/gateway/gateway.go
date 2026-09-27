@@ -238,6 +238,19 @@ type MessageStore interface {
 	// ErrMessageImportIncomplete when a write fails part-way (the result
 	// counts what was written).
 	Import(ctx context.Context, archive []byte, opts MessageImport) (MessageImportResult, error)
+	// DeleteMatching removes every message matching q's filters (its limit,
+	// offset, and sort are ignored); messages being processed are skipped
+	// and counted as busy.
+	DeleteMatching(ctx context.Context, q MessageQuery) (deleted, busy int, err error)
+}
+
+// MessagesDeleted reports a bulk removal.
+type MessagesDeleted struct {
+	Deleted int `json:"deleted"`
+	// Busy counts matches left alone because they were being processed.
+	Busy int `json:"busy"`
+	// Restarted lists the flows stopped for the removal and started again.
+	Restarted []string `json:"restarted"`
 }
 
 // MessageImport controls an import: FlowID assigns every message to that

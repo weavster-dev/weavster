@@ -1752,6 +1752,41 @@ func (m messageAdapter) Export(ctx context.Context, q gateway.MessageQuery, key 
 	return state.ExportArchive(ctx, m.store, state.ExportOptions{Query: toStateQuery(q), Key: key})
 }
 
+// deletePage is how many matches DeleteMatching reads at a time (a
+// variable so tests can page through a few messages).
+var deletePage = 500
+
+// DeleteMatching removes every message matching q's filters. It pages by id
+// from a cursor, so messages skipped as busy (in processing) do not shift
+// the pages.
+func (m messageAdapter) DeleteMatching(ctx context.Context, q gateway.MessageQuery) (deleted, busy int, err error) {
+	sq := toStateQuery(gateway.MessageQuery{FlowID: q.FlowID, Status: q.Status, From: q.From, To: q.To, Sort: "id"})
+	sq.Limit = deletePage
+	for {
+		page, err := m.store.Search(ctx, sq)
+		if err != nil {
+			return deleted, busy, err
+		}
+		for _, msg := range page {
+			if msg.ID == sq.IDFrom {
+				continue // the cursor itself, already handled
+			}
+			switch err := m.pipe.Remove(ctx, msg.ID); {
+			case err == nil:
+				deleted++
+			case errors.Is(err, pipeline.ErrInFlight):
+				busy++
+			case !errors.Is(err, state.ErrNotFound): // removed meanwhile
+				return deleted, busy, err
+			}
+		}
+		if len(page) < deletePage {
+			return deleted, busy, nil
+		}
+		sq.IDFrom = page[len(page)-1].ID
+	}
+}
+
 // Import restores an archive. Every flow its messages will belong to must
 // exist (checked before anything is written), and each message is written
 // while the pipeline holds its id, so it never replaces one being processed.

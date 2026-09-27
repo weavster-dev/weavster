@@ -315,6 +315,36 @@ recorded in the [audit log](audit-log.md) as `phi.access`.
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/messages/6f1c…/content?part=raw'
 ```
 
+### Remove many messages
+
+`DELETE /api/v1/messages` (permission `messages:delete`) removes every message that matches the
+search filters `flowId`, `status`, `from`, and `to`. There is no limit: every match is removed.
+
+```bash
+# Every errored message of one flow
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X DELETE \
+  'http://127.0.0.1:8080/api/v1/messages?flowId=adt&status=errored'
+```
+
+```json
+{"deleted":12,"busy":0,"restarted":[]}
+```
+
+| Parameter | What it does |
+|---|---|
+| `all=true` | Required when you give no filter: removes every message. Without it, a request with no filter returns `400`, so a missing parameter never clears the store by accident. |
+| `restart=true` | Stops the started flows first (only the `flowId` flow, when given), removes the messages, then starts those flows again. `restarted` lists them. Use it to clear everything while nothing is being processed. |
+
+- A message being processed or retried at that moment is kept and counted in `busy`. Run the
+  request again, or use `restart=true`.
+- `limit`, `offset`, and `sort` are refused (`400`), because they would suggest that only part
+  of the matches is removed.
+- If a flow cannot be stopped, nothing is removed and the flows already stopped are started
+  again (`409`). If a flow does not start again afterwards, the reply is `409` and names it; start
+  it yourself with `POST /api/v1/flows/{id}/start`.
+
+To clear everything from the command-line client, use `clearallmessages`.
+
 ### Export and import messages
 
 Export writes the messages that match the search parameters into one gzipped archive (permission
@@ -413,6 +443,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 Both filters are optional. `limit` (1–10000, default 1000) returns the newest matches; results
 are oldest first. Events never contain message content or transform error text, because both
 can hold patient data. The error is stored with the message instead.
+
+To save statistics or events to a file from the command-line client, use `dump stats "path"` or
+`dump events "path"` (the newest 10,000 events).
 
 The topology overview (`GET /api/v1/topology`) shows each flow's `received`, `sent`,
 `errored`, and `queued` counts under `activity`. Zero counts are included.

@@ -453,6 +453,20 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "[{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: A filter or paging parameter is invalid, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: "Remove every message matching the filters; all=true is required when no filter is given (requires messages:delete)"
+      parameters:
+        - {name: flowId, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}, description: Received at or after (RFC 3339)}
+        - {name: to, in: query, schema: {type: string, format: date-time}, description: Received at or before (RFC 3339)}
+        - {name: all, in: query, schema: {type: boolean}, description: Remove every message (needed when no filter is given)}
+        - {name: restart, in: query, schema: {type: boolean}, description: "Stop the started flows in scope first, and start them again afterwards"}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "Removed", content: {application/json: {schema: {$ref: "#/components/schemas/MessagesDeleted"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "No filter without all=true, a bad filter, or limit/offset/sort given", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "A flow could not be stopped or started again (restart=true)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/configmap:
     get:
       summary: "Every config map entry, as a JSON object of name: value (requires configmap:edit)"
@@ -858,6 +872,13 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    MessagesDeleted:
+      type: object
+      required: [deleted, busy, restarted]
+      properties:
+        deleted: {type: integer}
+        busy: {type: integer, description: Matches left alone because they were being processed}
+        restarted: {type: array, items: {type: string}, description: Flows stopped for the removal and started again}
     SnippetUpdate:
       type: object
       additionalProperties: false
