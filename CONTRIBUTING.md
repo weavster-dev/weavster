@@ -80,7 +80,7 @@ GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build ./cmd/weavster
    handler and answers only statuses it documents.
    CLI output is pinned by golden files in `cmd/weavster/testdata/golden/`: `TestCLIGolden` runs
    each case in `cmd/weavster/golden_test.go` against one server and compares stdout, stderr, and
-   the exit code. A new CLI command needs a case there (the test fails when a command listed by
+   the exit code. A new CLI command needs a case there (the test fails when a command or subcommand listed by
    `help` or a `flow` subcommand has none). After an intended output change, rewrite the files and
    review the diff:
 

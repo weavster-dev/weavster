@@ -26,6 +26,15 @@ type goldenCase struct {
 	name        string
 	lines       string
 	interactive bool
+	// before prepares server state the case needs (it runs first).
+	before func(t *testing.T, c apiClient)
+}
+
+// sendOneMessage gives the message commands a message of flow adt to move.
+func sendOneMessage(t *testing.T, c apiClient) {
+	if code, body, _ := c.do(http.MethodPost, "/api/v1/flows/adt/messages", `{"k":"v"}`, basic(bootstrapAdmin, testAdminPassword)); code != http.StatusAccepted {
+		t.Fatalf("send: %d %s", code, body)
+	}
 }
 
 // goldenCases run in order against one server, so later cases see what
@@ -48,7 +57,7 @@ var goldenCases = []goldenCase{
 	{name: "flow-connectors-ports", lines: "flow connectors\nflow ports\n"},
 	{name: "flow-stats", lines: "flow stats\nflow stats adt\nflow reset-stats adt\nflow reset-stats adt lifetime\nresetstats\nresetstats lifetime\nresetstats now\n"},
 	{name: "flow-export-import", lines: "flow export $DIR/flows.json adt\nflow import $DIR/flows.json\nflow import $DIR/flows.json --overwrite\nexport adt \"$DIR/one.json\"\nexport * \"$DIR/all-flows.json\"\nimport \"$DIR/one.json\"\nimport \"$DIR/one.json\" force\nimport \"$DIR/none.json\"\n"},
-	{name: "messages", lines: "exportmessages \"$DIR/msgs.gz\" adt\nexportmessages \"$DIR/all.gz\" *\nimportmessages \"$DIR/msgs.gz\" adt\nexportmessages \"$DIR/x.gz\"\nimportmessages \"$DIR/none.gz\" adt\n"},
+	{name: "messages", before: sendOneMessage, lines: "exportmessages \"$DIR/msgs.gz\" adt\nexportmessages \"$DIR/all.gz\" *\nimportmessages \"$DIR/msgs.gz\" adt\nexportmessages \"$DIR/x.gz\"\nimportmessages \"$DIR/none.gz\" adt\n"},
 	{name: "users", lines: "user add ops Ops-Passw0rd flows:view\nuser list\nuser changepw ops New-Passw0rd-1\nuser add ops Ops-Passw0rd\nuser remove ops\nuser remove ops\nuser\n"},
 	{name: "config-items", lines: "importmap \"$DIR/map.json\"\nexportmap \"$DIR/map-out.json\"\nimportscripts \"$DIR/scripts.json\"\nexportscripts \"$DIR/scripts-out.json\"\nimportmap \"$DIR/none.json\"\nimportmap\n"},
 	{name: "snippets", lines: "snippet library import \"$DIR/libs.json\"\nsnippet import \"$DIR/snippets.json\"\nsnippet list\nsnippet library list\nsnippet export \"$DIR/snippets-out.json\"\nsnippet library export \"$DIR/libs-out.json\"\nsnippet library remove hl7\nsnippet remove pid\nsnippet library remove hl7\nsnippet remove pid\nsnippet list extra\n"},
@@ -75,27 +84,18 @@ func goldenFiles(dir string) map[string]string {
 	}
 }
 
-var (
-	goldenTime  = regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})`)
-	goldenUUID  = regexp.MustCompile(`[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}`)
-	goldenBytes = regexp.MustCompile(`\d+ bytes`)
-)
-
-// normalize replaces what changes between runs: the temporary directory, the
-// server address, times, message ids, and archive sizes.
+// normalize replaces what changes between runs: the temporary directory
+// and the server address.
 func normalize(s, dir, base string) string {
-	s = strings.ReplaceAll(s, dir, "$DIR")
-	s = strings.ReplaceAll(s, base, "$SERVER")
-	s = goldenTime.ReplaceAllString(s, "$$TIME")
-	s = goldenUUID.ReplaceAllString(s, "$$UUID")
-	return goldenBytes.ReplaceAllString(s, "N bytes")
+	return strings.ReplaceAll(strings.ReplaceAll(s, dir, "$DIR"), base, "$SERVER")
 }
 
-// withNewline ends non-empty output with a newline, so the section markers
-// start on their own line (the shell's last prompt has none).
+// withNewline ends non-empty output with a newline so the section markers
+// start on their own line, and says so when the output itself had none
+// (the shell's last prompt), so a dropped newline still shows as a diff.
 func withNewline(s string) string {
 	if s != "" && !strings.HasSuffix(s, "\n") {
-		return s + "\n"
+		return s + "\n(no newline at end)\n"
 	}
 	return s
 }
@@ -110,17 +110,23 @@ func TestCLIGolden(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	// One message so the message commands have something to move.
-	sendAfter := func() {
-		if code, body, _ := c.do(http.MethodPost, "/api/v1/flows/adt/messages", `{"k":"v"}`, basic(bootstrapAdmin, testAdminPassword)); code != http.StatusAccepted {
-			t.Fatalf("send: %d %s", code, body)
-		}
-	}
 	script := filepath.Join(dir, "script.txt")
+	// The cases share one server and run in order: each builds on the state
+	// the earlier ones left (a flow created first is deployed later), so a
+	// failure early on can show up in later cases too.
 	for _, gc := range goldenCases {
-		if gc.name == "messages" {
-			sendAfter()
-		}
+		t.Run(gc.name, func(t *testing.T) { runGoldenCase(t, gc, c, dir, script) })
+	}
+	checkGoldenCoverage(t)
+}
+
+// runGoldenCase runs one case and compares (or, with -update, writes) its
+// golden file.
+func runGoldenCase(t *testing.T, gc goldenCase, c apiClient, dir, script string) {
+	if gc.before != nil {
+		gc.before(t, c)
+	}
+	{
 		lines := strings.ReplaceAll(gc.lines, "$DIR", dir)
 		args := []string{"-a", c.base, "-u", bootstrapAdmin, "-p", testAdminPassword}
 		var stdin io.Reader = strings.NewReader(lines)
@@ -142,46 +148,71 @@ func TestCLIGolden(t *testing.T) {
 			if err := os.WriteFile(path, []byte(got), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			continue
+			return
 		}
 		want, err := os.ReadFile(path)
 		if err != nil {
-			t.Fatalf("%s: %v (run with -update to create it)", gc.name, err)
+			t.Fatalf("%v (run with -update to create it)", err)
 		}
 		if got != string(want) {
-			t.Errorf("%s: output differs from %s (run with -update to accept)\n--- got\n%s--- want\n%s", gc.name, path, got, want)
+			t.Errorf("output differs from %s (run with -update to accept)\n--- got\n%s--- want\n%s", path, got, want)
 		}
 	}
-	checkGoldenCoverage(t)
 }
 
-// checkGoldenCoverage fails when a command listed by help or a flow
-// subcommand has no golden case.
+// goldenSubcommands matches a help token listing subcommands (list|add).
+var goldenSubcommands = regexp.MustCompile(`^[a-z-]+(\|[a-z-]+)+$`)
+
+// checkGoldenCoverage fails when a command or subcommand listed by help, or
+// a flow subcommand, has no golden case line that runs.
 func checkGoldenCoverage(t *testing.T) {
 	t.Helper()
 	used := map[string]bool{}
 	for _, gc := range goldenCases {
 		for _, line := range strings.Split(gc.lines, "\n") {
 			words := strings.Fields(line)
-			if len(words) == 0 {
-				continue
+			if gc.interactive && len(words) > 0 && (words[0] == "quit" || words[0] == "exit") {
+				used[words[0]] = true
+				break // the shell stops here; later lines never run
 			}
-			used[words[0]] = true
-			if len(words) > 1 {
-				used[words[0]+" "+words[1]] = true
+			for n := 1; n <= len(words) && n <= 3; n++ {
+				used[strings.Join(words[:n], " ")] = true
 			}
-			if len(words) > 2 {
-				used[words[0]+" "+words[1]+" "+words[2]] = true
-			}
+		}
+	}
+	require := func(cmd string) {
+		if !used[cmd] {
+			t.Errorf("%q has no golden case", cmd)
 		}
 	}
 	var help bytes.Buffer
 	printShellHelp(&help)
 	commands := strings.TrimPrefix(strings.TrimSpace(help.String()), "commands: ")
 	for _, entry := range strings.Split(commands, ", ") {
-		for _, cmd := range strings.Split(strings.Fields(entry)[0], "|") {
-			if !used[cmd] {
-				t.Errorf("command %q has no golden case", cmd)
+		words := strings.Fields(entry)
+		if len(words) == 0 {
+			continue
+		}
+		// An optional word before the subcommands ("snippet [library] list|…")
+		// names a second form of the command.
+		prefixes := []string{""}
+		rest := words[1:]
+		if len(rest) > 0 && strings.HasPrefix(rest[0], "[") && strings.HasSuffix(rest[0], "]") && len(rest) > 1 && goldenSubcommands.MatchString(rest[1]) {
+			prefixes = append(prefixes, " "+strings.Trim(rest[0], "[]"))
+			rest = rest[1:]
+		}
+		for _, cmd := range strings.Split(words[0], "|") {
+			require(cmd)
+			if len(rest) == 0 || !goldenSubcommands.MatchString(rest[0]) {
+				continue
+			}
+			// "list|import "path"|export "path"|remove <name>": each
+			// alternative's first word is a subcommand.
+			for _, alt := range strings.Split(strings.Join(rest, " "), "|") {
+				sub := strings.Fields(alt)[0]
+				for _, p := range prefixes {
+					require(cmd + p + " " + sub)
+				}
 			}
 		}
 	}
@@ -191,14 +222,7 @@ func checkGoldenCoverage(t *testing.T) {
 			continue
 		}
 		for _, sub := range strings.Split(words[1], "|") {
-			if !used["flow "+sub] {
-				t.Errorf("flow subcommand %q has no golden case", sub)
-			}
-		}
-	}
-	for _, sub := range []string{"list", "import", "export", "remove"} {
-		if !used["snippet library "+sub] {
-			t.Errorf("snippet library %s has no golden case", sub)
+			require("flow " + sub)
 		}
 	}
 }

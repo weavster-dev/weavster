@@ -8,6 +8,7 @@ status
 --- stdout
 weavster> no deployed flows
 weavster> weavster> weavster> weavster> 
+(no newline at end)
 --- stderr
 Error: unknown command "bogus"
 Error: no flow with id or name "nope"
