@@ -343,12 +343,12 @@ flow list
 </tr>
 <tr>
 <td><code>flow connectors</code></td>
-<td>Every flow's source type and destination names.</td>
+<td>Every flow's source type (its <code>source.type</code> when it has a source, otherwise <code>sourceType</code>) and destination names.</td>
 <td><code>GET /api/v1/flows/connector-names</code></td>
 </tr>
 <tr>
 <td><code>flow ports</code></td>
-<td>The ports the server listens on.</td>
+<td>The ports the server listens on: the API, and the http sources of started flows (<code>flow:&lt;id&gt;</code>).</td>
 <td><code>GET /api/v1/flows/ports-in-use</code></td>
 </tr>
 <tr>

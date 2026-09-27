@@ -285,7 +285,7 @@ below, in order, on the message as a JSON object.</p>
 </tr>
 <tr>
 <td><code>source</code></td>
-<td>Where the flow reads messages on its own; see <a href="#read-files-from-a-directory">Read files from a directory</a>. Without it, messages arrive only through the API.</td>
+<td>Where the flow receives messages on its own; see <a href="#read-files-from-a-directory">Read files from a directory</a> and <a href="#receive-messages-over-http">Receive messages over HTTP</a>. Without it, messages arrive only through the API.</td>
 </tr>
 </tbody>
 </table>
@@ -435,8 +435,8 @@ response to <a href="#3-send-a-message"><code>POST /api/v1/flows/{id}/messages</
 </code></pre>
 <pre><code class="language-json">[{&quot;address&quot;:&quot;127.0.0.1:8080&quot;,&quot;port&quot;:8080,&quot;usedBy&quot;:&quot;api&quot;},{&quot;address&quot;:&quot;:8443&quot;,&quot;port&quot;:8443,&quot;usedBy&quot;:&quot;api-tls&quot;}]
 </code></pre>
-<p><code>usedBy</code> is <code>api</code> for <code>listen.address</code> and <code>api-tls</code> for <code>listen.tlsAddress</code>. Flows do not
-listen on their own ports yet, so no flow appears in this list.</p>
+<p><code>usedBy</code> is <code>api</code> for <code>listen.address</code>, <code>api-tls</code> for <code>listen.tlsAddress</code>, and <code>flow:&lt;id&gt;</code> for
+the open port of a started flow's <a href="#receive-messages-over-http">http source</a>.</p>
 <h3 id="read-files-from-a-directory">Read files from a directory</h3>
 <p>A flow with a file <code>source</code> picks up the files that appear in a directory, sends each one through
 the flow as a message, and then deletes it (or moves it into <code>moveTo</code>):</p>
@@ -504,6 +504,71 @@ the flow as a message, and then deletes it (or moves it into <code>moveTo</code>
 <li><code>dir</code> must not be <code>moveTo/rejected</code>, where refused files go.</li>
 <li>The server reads and moves files with its own permissions; only give <code>flows:edit</code> to users you
   trust with the directories it can reach.</li>
+</ul>
+<h3 id="receive-messages-over-http">Receive messages over HTTP</h3>
+<p>A flow with an http <code>source</code> listens on its own address while it is started. Each request with
+the configured method and path is a message:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;adt&quot;,
+  &quot;source&quot;: {&quot;type&quot;: &quot;http&quot;, &quot;address&quot;: &quot;127.0.0.1:9001&quot;, &quot;path&quot;: &quot;/adt&quot;, &quot;method&quot;: &quot;POST&quot;},
+  &quot;destinations&quot;: [{&quot;name&quot;: &quot;ehr&quot;, &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://ehr.example.com/in&quot;}]
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>http</code>.</td>
+</tr>
+<tr>
+<td><code>address</code></td>
+<td>Required. <code>host:port</code> to listen on, for example <code>127.0.0.1:9001</code>, or <code>:9001</code> for every interface. The port must be a number from 1 to 65535.</td>
+</tr>
+<tr>
+<td><code>path</code></td>
+<td>Request path accepted; default <code>/</code>. Must start with <code>/</code>.</td>
+</tr>
+<tr>
+<td><code>method</code></td>
+<td><code>POST</code> (default) or <code>PUT</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Once the flow is started, send it a message:</p>
+<pre><code class="language-bash">curl -s -X POST http://127.0.0.1:9001/adt -d '{&quot;PID&quot;:{&quot;5&quot;:{&quot;1&quot;:&quot;Doe&quot;}}}'
+</code></pre>
+<pre><code class="language-json">{&quot;id&quot;:&quot;6f1c…&quot;,&quot;status&quot;:&quot;sent&quot;}
+</code></pre>
+<ul>
+<li>The request body goes through the same checks, transform, and delivery as a message sent with
+  <a href="#3-send-a-message"><code>POST /api/v1/flows/{id}/messages</code></a>, with the same 10 MiB limit and the same
+  success reply (<code>202</code> with the message id and status, plus <code>response</code> with a
+  <code>responseSelector</code>). Only the error codes below differ, because they are meant for a sending
+  system. Each message has the metadata <code>source.http.path</code>.</li>
+<li>Other paths get <code>404</code>, other methods <code>405</code> with an <code>Allow</code> header, a body over 10 MiB <code>413</code>, and
+  a message the flow refuses (for example not a JSON object when the flow has a transform) <code>400</code>.
+  While the flow is stopping, or after it was removed, requests get <code>503</code>.</li>
+<li>A message stored before a later failure is still answered <code>202</code> (the API answers <code>500</code>): the
+  flow has it, and resending it would store it twice. A flow that is not running answers <code>503</code>
+  (the API answers <code>409</code>), so the sender tries again later.</li>
+<li>The port is open only while the flow is <code>started</code>. Starting, stopping, pausing, changing, or
+  deleting the flow opens or closes it within about a second; stopping the server closes it.</li>
+<li>A port can have one flow source; a second flow with the same port, or one using the port of
+  <code>listen.address</code> or <code>listen.tlsAddress</code>, is refused. A port that
+  cannot be opened (for example another program or the API uses it) is logged and recorded as a
+  <code>source.http.failed</code> <a href="#5-statistics-and-events">event</a> with the address, and tried again every
+  second.</li>
+<li><code>weavster flow ports</code> (<code>GET /api/v1/flows/ports-in-use</code>) lists the open flow ports as
+  <code>flow:&lt;id&gt;</code>.</li>
+<li><strong>The listener has no authentication or TLS yet.</strong> Anyone who can reach the address can send
+  the flow messages. Listen on <code>127.0.0.1</code> or a private network, or put a reverse proxy with TLS
+  and authentication in front of it.</li>
 </ul>
 <h2 id="2-deploy-and-start-the-flow">2. Deploy and start the flow</h2>
 <p>A new flow is <code>undeployed</code> and rejects messages until you deploy and start it (permission
@@ -987,8 +1052,9 @@ again as a new message instead, use <code>reprocess</code>.</p>
   and only the newest 10,000 events are kept.</li>
 <li>The first delivery attempt runs while your request waits; retries run in the background.</li>
 <li>Only <code>http</code> and <code>file</code> destinations are available.</li>
-<li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a>; flows do
-  not listen on their own ports yet.</li>
+<li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a> and
+  <a href="#receive-messages-over-http">http sources</a>; TCP/MLLP and database sources are not available
+  yet, and http sources have no authentication or TLS.</li>
 <li>A <code>file</code> destination writes wherever <code>dir</code> points, with the server's permissions, and an
   <code>http</code> destination can target any address the server can reach, including internal ones.
   Only give <code>flows:edit</code> to trusted users.</li>
