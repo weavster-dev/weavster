@@ -71,6 +71,9 @@
                                 <a href="../config-items/" class="nav-link">Config Map, Scripts, Settings</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../snippets/" class="nav-link">Code Snippets</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -283,6 +286,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Config map, global scripts, settings (<code>/api/v1/configmap</code>, <code>/scripts</code>, <code>/settings</code>; CLI <code>importmap</code>, <code>exportmap</code>, <code>importscripts</code>, <code>exportscripts</code>)</td>
 <td>Implemented (wired)</td>
 <td><code>TestConfigItems</code>. Stored and managed only: flows do not use the config map and scripts are not run yet. See <a href="../config-items/">Config map, scripts, and settings</a>.</td>
+</tr>
+<tr>
+<td>Code snippets and snippet libraries (<code>/api/v1/snippets</code>, <code>/api/v1/snippet-libraries</code>; CLI <code>snippet [library]</code> with <code>list</code>, <code>import</code>, <code>export</code>, <code>remove</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestSnippets</code>. Stored and managed only: flows do not run snippets yet. See <a href="../snippets/">Code snippets and libraries</a>.</td>
 </tr>
 <tr>
 <td>Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction</td>

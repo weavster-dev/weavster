@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/documentation/">
+        <link rel="canonical" href="https://docs.weavster.dev/snippets/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Docs Site Guide - Weavster</title>
+        <title>Code Snippets - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -71,10 +71,10 @@
                                 <a href="../config-items/" class="nav-link">Config Map, Scripts, Settings</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../snippets/" class="nav-link">Code Snippets</a>
+                                <a href="./" class="nav-link active" aria-current="page">Code Snippets</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Docs Site Guide</a>
+                                <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../mvp-project-plan/" class="nav-link">MVP Project Plan</a>
@@ -91,17 +91,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../snippets/" class="nav-link">
+                                <a rel="prev" href="../config-items/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../mvp-project-plan/" class="nav-link">
+                                <a rel="next" href="../documentation/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/documentation.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/snippets.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -122,29 +122,17 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#documentation-site" class="nav-link">Documentation Site</a>
+            <li class="nav-item" data-bs-level="1"><a href="#code-snippets-and-libraries" class="nav-link">Code snippets and libraries</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#stack" class="nav-link">Stack</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#local-development" class="nav-link">Local development</a>
+            <li class="nav-item" data-bs-level="2"><a href="#shapes" class="nav-link">Shapes</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#navigation" class="nav-link">Navigation</a>
+            <li class="nav-item" data-bs-level="2"><a href="#api" class="nav-link">API</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#deploy" class="nav-link">Deploy</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#versioning" class="nav-link">Versioning</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#excluded-files" class="nav-link">Excluded files</a>
+            <li class="nav-item" data-bs-level="2"><a href="#command-line-client" class="nav-link">Command-line client</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -155,77 +143,130 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="documentation-site">Documentation Site</h1>
-<p>This page describes <strong>how</strong> the documentation site is built, served, and deployed.
-For <strong>what</strong> goes into it (user-facing examples, CLI docs, API refs), see
-<a href="../AGENTS.md#documentation">AGENTS.md §Documentation</a>.</p>
-<h2 id="stack">Stack</h2>
+<h1 id="code-snippets-and-libraries">Code snippets and libraries</h1>
+<p><strong>Code snippets</strong> are named pieces of code you keep on the server to reuse. You can group them
+into <strong>snippet libraries</strong>. Both are stored with the flows (durable with <code>store.dialect: sqlite</code>)
+and managed over the API and the command-line client. Every request needs the <code>snippets:edit</code>
+permission.</p>
+<p>!!! note "Stored, not used yet"
+    Flows do not run snippets yet. Today these endpoints store and return them, so you can keep
+    them next to your flows and move them between servers.</p>
+<h2 id="shapes">Shapes</h2>
+<pre><code class="language-json">{&quot;name&quot;: &quot;pid&quot;, &quot;library&quot;: &quot;hl7&quot;, &quot;description&quot;: &quot;Patient id&quot;, &quot;code&quot;: &quot;get('PID.3')&quot;}
+</code></pre>
+<pre><code class="language-json">{&quot;name&quot;: &quot;hl7&quot;, &quot;description&quot;: &quot;HL7 helpers&quot;}
+</code></pre>
+<ul>
+<li><code>name</code> is required: 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>.</li>
+<li>A snippet's <code>library</code> is optional. When set, that library must already exist.</li>
+<li>Unknown fields are rejected with <code>400</code>.</li>
+</ul>
+<h2 id="api">API</h2>
 <table>
 <thead>
 <tr>
-<th>Layer</th>
-<th>Choice</th>
+<th>Request</th>
+<th>What it does</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Generator</td>
-<td><a href="https://www.mkdocs.org/">MkDocs</a> <code>1.6.1</code></td>
+<td><code>GET /api/v1/snippets</code></td>
+<td>Every snippet, sorted by name. Add <code>?summary=true</code> to leave out <code>code</code>.</td>
 </tr>
 <tr>
-<td>Theme</td>
-<td>mkdocs default (readthedocs)</td>
+<td><code>POST /api/v1/snippets</code></td>
+<td>Creates one snippet (<code>201</code>; <code>409</code> if the name is taken).</td>
 </tr>
 <tr>
-<td>Hosting</td>
-<td>GitHub Pages (<code>gh-pages</code> branch)</td>
+<td><code>PUT /api/v1/snippets</code></td>
+<td>Creates or replaces every snippet in the body (a JSON array). Snippets not in the body are kept. All or nothing: one bad entry changes nothing.</td>
 </tr>
 <tr>
-<td>Deploy trigger</td>
-<td>Push to <code>main</code> (GitHub Actions)</td>
+<td><code>GET /api/v1/snippets/{name}</code></td>
+<td>One snippet (<code>404</code> if unknown).</td>
 </tr>
 <tr>
-<td>Python</td>
-<td><code>3.12</code> (CI), any <code>&gt;=3.10</code> locally</td>
+<td><code>PUT /api/v1/snippets/{name}</code></td>
+<td>Creates or replaces one snippet. <code>name</code> in the body is optional and must match the path.</td>
+</tr>
+<tr>
+<td><code>DELETE /api/v1/snippets/{name}</code></td>
+<td>Deletes one snippet (<code>204</code>).</td>
 </tr>
 </tbody>
 </table>
-<h2 id="local-development">Local development</h2>
-<pre><code class="language-bash"># Install (one-time, or after pulling a requirements.txt change)
-pip install -r requirements.txt
-
-# Preview with live reload
-mkdocs serve
-
-# Open http://localhost:8000
+<p><code>/api/v1/snippet-libraries</code> has the same operations for libraries (without <code>?summary</code>).</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/snippet-libraries \
+  -d '{&quot;name&quot;:&quot;hl7&quot;,&quot;description&quot;:&quot;HL7 helpers&quot;}'
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/snippets \
+  -d '{&quot;name&quot;:&quot;pid&quot;,&quot;library&quot;:&quot;hl7&quot;,&quot;code&quot;:&quot;get(\&quot;PID.3\&quot;)&quot;}'
 </code></pre>
-<p>Changes to <code>docs/</code> files appear immediately in the browser. The MkDocs
-config is at <a href="../mkdocs.yml"><code>mkdocs.yml</code></a> (repo root).</p>
-<h2 id="navigation">Navigation</h2>
-<p>The site nav is defined in <code>mkdocs.yml</code> under the <code>nav:</code> key. Each entry
-maps a display title to a file under <code>docs/</code>. Current pages:</p>
-<ul>
-<li><strong>Home</strong> — <code>docs/index.md</code></li>
-<li><strong>User Guide</strong> — <code>docs/guide/</code> (CLI, config, API, adapters, etc.)</li>
-<li><em>(expand as features ship)</em></li>
-</ul>
-<p>To add a page, create the <code>.md</code> file and add a <code>nav:</code> entry.</p>
-<h2 id="deploy">Deploy</h2>
-<p>The docs deploy automatically on every push to <code>main</code> via
-<a href="../.github/workflows/docs.yml"><code>.github/workflows/docs.yml</code></a>:</p>
-<pre><code class="language-bash"># Manual trigger (equivalent to what CI does):
-mkdocs gh-deploy --force
+<table>
+<thead>
+<tr>
+<th>Error</th>
+<th>Cause</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>400</code></td>
+<td>A bad or repeated name, an unknown field, or a body of the wrong shape.</td>
+</tr>
+<tr>
+<td><code>404 snippet library not found</code></td>
+<td>A snippet names a library that does not exist. Create the library first.</td>
+</tr>
+<tr>
+<td><code>409</code></td>
+<td><code>POST</code> with a name that already exists, or deleting a library that snippets still name. Move or delete those snippets first.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="command-line-client">Command-line client</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>snippet list</code></td>
+<td>Lists snippets: name, library, description.</td>
+</tr>
+<tr>
+<td><code>snippet export "path"</code></td>
+<td>Writes every snippet to a JSON file.</td>
+</tr>
+<tr>
+<td><code>snippet import "path"</code></td>
+<td>Creates or replaces the file's snippets; others are kept.</td>
+</tr>
+<tr>
+<td><code>snippet remove &lt;name&gt;</code></td>
+<td>Deletes one snippet.</td>
+</tr>
+<tr>
+<td><code>snippet library list</code>, <code>export</code>, <code>import</code>, <code>remove</code></td>
+<td>The same for libraries.</td>
+</tr>
+</tbody>
+</table>
+<p>To copy snippets to another server, import the libraries before the snippets:</p>
+<pre><code class="language-text">weavster&gt; snippet library export &quot;libs.json&quot;
+exported 1 snippet libraries to libs.json
+weavster&gt; snippet export &quot;snippets.json&quot;
+exported 2 snippets to snippets.json
 </code></pre>
-<p>This builds the site into <code>site/</code> and pushes it to the <code>gh-pages</code> branch.
-GitHub Pages serves it at <code>https://weavster-dev.github.io/weavster/</code>.</p>
-<h2 id="versioning">Versioning</h2>
-<p>Not yet versioned. The <code>gh-pages</code> branch always reflects <code>main</code>. When
-versioned docs are added, the plan is to use
-<a href="https://github.com/jimporter/mike">mike</a> with a <code>versions.json</code> file.</p>
-<h2 id="excluded-files">Excluded files</h2>
-<p>Files under <code>docs/</code> that are <strong>not</strong> part of the public site are listed
-in <code>mkdocs.yml</code> under <code>exclude_docs:</code> — currently <code>prompt-3-kickoff.md</code>.
-These are still tracked in the repo but omitted from the built site.</p></div>
+<p>and on the other server:</p>
+<pre><code class="language-text">weavster&gt; snippet library import &quot;libs.json&quot;
+imported 1 snippet libraries from libs.json
+weavster&gt; snippet import &quot;snippets.json&quot;
+imported 2 snippets from snippets.json
+</code></pre></div>
             </div>
         </div>
 
