@@ -21,6 +21,18 @@ const (
 	PermSettingsEdit    = "settings:edit"
 )
 
+// PermUsersAdmin allows user administration.
+const PermUsersAdmin = "users:admin"
+
+// KnownPermissions lists every permission a user can be given.
+func KnownPermissions() []string {
+	return []string{
+		PermAdmin, PermUsersAdmin, PermFlowsView, PermFlowsEdit, PermFlowsDeploy,
+		PermMessagesView, PermMessagesSend, PermMessagesContent, PermMessagesDelete, PermMessagesImport,
+		PermEventsView, PermAlertsEdit, PermSnippetsEdit, PermScriptsEdit, PermConfigMapEdit, PermSettingsEdit,
+	}
+}
+
 // Authorizer is the port for authorization (arch §3.1).
 type Authorizer interface {
 	Authorize(ctx context.Context, user *User, resource, action string) bool

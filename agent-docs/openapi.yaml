@@ -453,6 +453,65 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "[{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: A filter or paging parameter is invalid, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/users:
+    get:
+      summary: List user accounts (requires users:admin)
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "[{username, email, org, permissions, mustChangePassword, locked}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    post:
+      summary: Create a user account; by default the user must change the password at first login (requires users:admin)
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, description: "{username, password, permissions, email?, org?, mustChangePassword?}"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "201": {description: The new account, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "Invalid username, unknown permission, or a password the policy rejects", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: The username is taken, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/users/{name}:
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string}}
+    get:
+      summary: One user account (requires users:admin)
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{username, email, org, permissions, mustChangePassword, locked}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: Replace a user's permissions, email, and org; ends the user's sessions (requires users:admin)
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, description: "{permissions, email?, org?}"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: The updated account, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: Unknown permission or invalid JSON, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: It would remove admin from the last account that has it, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: Delete a user account and end its sessions (requires users:admin)
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "Your own account, or the last account with admin", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/users/{name}/password:
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string}}
+    post:
+      summary: Set a user's password; the user must change it at next login, a lockout is cleared, and the user's sessions end (requires users:admin)
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, description: "{password}"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: Set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: The password policy rejects the password, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/messages/export:
     get:
       summary: An archive of the complete messages matching the search filters (requires messages:content; audited)

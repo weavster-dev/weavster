@@ -114,23 +114,9 @@ func TestFlowListUnreadableReply(t *testing.T) {
 // replyClient answers every Call with the same body.
 type replyClient string
 
-func (replyClient) UserList(context.Context) ([]string, error) { return nil, nil }
-func (replyClient) Version(context.Context) string             { return version }
+func (replyClient) Version(context.Context) string { return version }
 func (r replyClient) Call(context.Context, string, string, []byte) ([]byte, error) {
 	return []byte(r), nil
-}
-
-// TestHTTPClientUserList documents the MVP behaviour: user listing is not
-// yet exposed over REST, so the client always returns an empty result.
-func TestHTTPClientUserList(t *testing.T) {
-	c := newHTTPClient("http://example.invalid", "", "")
-	names, err := c.UserList(context.Background())
-	if err != nil {
-		t.Fatalf("UserList() error = %v", err)
-	}
-	if names != nil {
-		t.Errorf("UserList() = %v, want nil", names)
-	}
 }
 
 func TestHTTPClientVersion(t *testing.T) {
@@ -178,8 +164,7 @@ func TestSplitArgs(t *testing.T) {
 // answer each deploy.
 type slowDeployClient struct{ delay time.Duration }
 
-func (slowDeployClient) UserList(context.Context) ([]string, error) { return nil, nil }
-func (slowDeployClient) Version(context.Context) string             { return version }
+func (slowDeployClient) Version(context.Context) string { return version }
 func (c slowDeployClient) Call(_ context.Context, method, path string, _ []byte) ([]byte, error) {
 	switch {
 	case path == "/api/v1/flows":
@@ -230,8 +215,7 @@ type flowsListClient struct {
 	flows  string
 }
 
-func (flowsListClient) UserList(context.Context) ([]string, error) { return nil, nil }
-func (flowsListClient) Version(context.Context) string             { return version }
+func (flowsListClient) Version(context.Context) string { return version }
 func (c flowsListClient) Call(_ context.Context, _, path string, _ []byte) ([]byte, error) {
 	if strings.HasPrefix(path, "/api/v1/messages/export") {
 		var buf bytes.Buffer

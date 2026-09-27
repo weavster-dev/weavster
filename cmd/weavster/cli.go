@@ -14,7 +14,6 @@ import (
 
 // Client is the network-API surface used by the scriptable shell (spec §3).
 type Client interface {
-	UserList(ctx context.Context) ([]string, error)
 	Version(ctx context.Context) string
 	// Call sends one REST request and returns the response body. A reply
 	// that is not 2xx is an error carrying the status and the body.
@@ -93,11 +92,6 @@ func (e *serverError) Error() string {
 		msg += " " + string(extra)
 	}
 	return "server returned " + e.Status + ": " + msg
-}
-
-func (c *httpClient) UserList(ctx context.Context) ([]string, error) {
-	// MVP: user listing is not exposed over REST yet; return empty.
-	return nil, nil
 }
 
 func (c *httpClient) Version(context.Context) string { return version }

@@ -73,7 +73,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
 - **CLI**: `weavster server`, `weavster test` (four built-in codec round-trip fixtures,
   JUnit/JSON output), and the command-line client: a bare `weavster` opens the interactive
   shell, and `-s` runs batch scripts, with `help`, `status`, `version`, `flow` commands for every
-  flow API operation, `user list`, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
+  flow API operation, user administration, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
   a connection file, and `-v` prints the server's version.
 - **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
   scheduler, adapters, outbox, codecs, WASM compiler/executor/registry, PostgreSQL

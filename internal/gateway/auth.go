@@ -39,17 +39,26 @@ func IdentityFrom(ctx context.Context) (Identity, bool) {
 type session struct {
 	id      Identity
 	expires time.Time
+	// authAt is when the credentials were checked; a revocation of the
+	// user after it invalidates the session.
+	authAt time.Time
 }
 
 // sessions is the in-memory login token table.
 type sessions struct {
 	mu     sync.Mutex
 	tokens map[string]session
+	// revokedAt is when each user's sessions were last revoked, so a login
+	// that checked credentials before it cannot create a session after it.
+	revokedAt map[string]time.Time
 }
 
-func newSessions() *sessions { return &sessions{tokens: map[string]session{}} }
+func newSessions() *sessions {
+	return &sessions{tokens: map[string]session{}, revokedAt: map[string]time.Time{}}
+}
 
-func (s *sessions) create(id Identity) (string, error) {
+// create opens a session for id, whose credentials were checked at authAt.
+func (s *sessions) create(id Identity, authAt time.Time) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -63,7 +72,7 @@ func (s *sessions) create(id Identity) (string, error) {
 			delete(s.tokens, t)
 		}
 	}
-	s.tokens[token] = session{id: id, expires: now.Add(SessionTTL)}
+	s.tokens[token] = session{id: id, expires: now.Add(SessionTTL), authAt: authAt}
 	return token, nil
 }
 
@@ -71,7 +80,7 @@ func (s *sessions) lookup(token string) (Identity, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sess, ok := s.tokens[token]
-	if !ok || time.Now().After(sess.expires) {
+	if !ok || time.Now().After(sess.expires) || !sess.authAt.After(s.revokedAt[sess.id.Username]) {
 		delete(s.tokens, token)
 		return Identity{}, false
 	}
@@ -87,12 +96,19 @@ func (s *sessions) update(token string, id Identity) {
 	}
 }
 
-// revokeUser revokes every session of username except keep.
+// revokeUser revokes every session of username except keep, including
+// one a login in progress creates afterwards.
 func (s *sessions) revokeUser(username, keep string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := time.Now()
+	s.revokedAt[username] = now
 	for t, sess := range s.tokens {
-		if t != keep && sess.id.Username == username {
+		switch {
+		case t == keep:
+			sess.authAt = now.Add(time.Nanosecond) // stays valid
+			s.tokens[t] = sess
+		case sess.id.Username == username:
 			delete(s.tokens, t)
 		}
 	}
@@ -202,12 +218,13 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	auditInfoFrom(r.Context()).attempted = req.Username
+	authAt := time.Now()
 	id, err := s.cfg.Auth.Authenticate(r.Context(), req.Username, req.Password, req.MFACode)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid username or password")
 		return
 	}
-	token, err := s.sessions.create(id)
+	token, err := s.sessions.create(id, authAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "could not create session")
 		return
