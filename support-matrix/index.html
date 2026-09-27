@@ -322,6 +322,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestConfigValidate</code>, <code>TestSchemasPublished</code>. Documents are checked only; they are not applied to a server yet. See <a href="../config-as-code/">Config-as-code documents</a>.</td>
 </tr>
 <tr>
+<td>Config-as-code plan and diff against the live server (<code>POST /api/v1/config/plan</code>; CLI <code>config diff</code>, <code>config plan</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestConfigPlan</code>, <code>TestLivePlan</code>. Side-effect free; sections left out of the document are not managed. Applying a plan is not available yet. See <a href="../config-as-code/#see-what-would-change">Config-as-code documents</a>.</td>
+</tr>
+<tr>
 <td>Exit codes (shell, <code>server</code>, <code>test</code>) and <code>Error:</code> format; deprecated <code>channel</code>/<code>codetemplate</code> command names</td>
 <td>Implemented (wired)</td>
 <td><code>TestExitCodesAndDeprecatedCommands</code>, <code>TestServerConfigErrors</code>. See <a href="../cli/#exit-codes-and-errors">Exit codes and errors</a>.</td>

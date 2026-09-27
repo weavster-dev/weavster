@@ -145,6 +145,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#see-what-would-change" class="nav-link">See what would change</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#editor-support" class="nav-link">Editor support</a>
               <ul class="nav flex-column">
               </ul>
@@ -160,10 +164,10 @@
 <p>A config-as-code document describes a server's configuration in one YAML (or JSON) file that
 you keep in version control: flows, alerts, code snippets and libraries, global scripts, the
 config map, and settings. Every artifact has the same shape it has in the API.</p>
-<p>!!! note "Checked, not applied yet"
-    Today you can check a document with <code>config validate</code>. Applying it to a server is not
-    available yet; to copy configuration between servers use
-    <a href="../config-transfer/">export and import</a>.</p>
+<p>!!! note "Checked and planned, not applied yet"
+    Today you can check a document (<code>config validate</code>) and see what applying it would change
+    (<code>config diff</code>, <code>config plan</code>). Applying it is not available yet; to copy configuration
+    between servers use <a href="../config-transfer/">export and import</a>.</p>
 <h2 id="example">Example</h2>
 <pre><code class="language-yaml">version: &quot;1&quot;
 flows:
@@ -261,6 +265,44 @@ weavster.yaml is valid: 1 flows, 1 alerts, 1 snippets, 1 snippet libraries, 1 sc
 document, for example:</p>
 <pre><code class="language-text">Error: server returned 400 Bad Request: config: alerts.adt-errors: alert adt-errors: unknown trigger event &quot;message.sent&quot;; use [message.errored message.queued message.dead-lettered]
 </code></pre>
+<h2 id="see-what-would-change">See what would change</h2>
+<p><code>config diff</code> compares the document with the server's live configuration and shows what
+applying it would change. Nothing on the server changes.</p>
+<pre><code class="language-text">weavster&gt; config diff &quot;weavster.yaml&quot;
+~ configmap/region
+    value: &quot;us&quot; → &quot;eu&quot;
+~ flow/adt
+    destinations[0].url: &quot;https://old.example.com/in&quot; → &quot;https://ehr.example.com/in&quot;
+    name: &quot;ADT&quot; → &quot;ADT Inbound&quot;
++ flow/lab
+- flow/legacy
+1 to add, 2 to change, 1 to remove, 4 unchanged
+</code></pre>
+<ul>
+<li><code>+</code> adds, <code>~</code> changes (one line per changed value), <code>-</code> removes. Adds and changes come first,
+  sorted by key, then removals; changed values are sorted by path.</li>
+<li><strong>A section you leave out is not managed.</strong> Nothing in it is changed or removed. A section you
+  include is managed completely: an artifact the server has but the section lacks is removed.
+  Write <code>settings: {}</code> (or <code>settings:</code> with nothing under it) to remove every setting; leave
+  <code>settings</code> out to keep them.</li>
+<li>Flows are compared without their runtime state, so a deployed flow is not "changed" because
+  it is deployed. Formatting and key order never count as changes.</li>
+</ul>
+<p><code>config plan</code> prints the same plan as JSON for scripts and CI:</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @weavster.yaml \
+  http://127.0.0.1:8080/api/v1/config/plan
+</code></pre>
+<pre><code class="language-json">{&quot;fingerprint&quot;:&quot;78ff2b…&quot;,&quot;added&quot;:[&quot;flow/lab&quot;],&quot;updated&quot;:[&quot;configmap/region&quot;,&quot;flow/adt&quot;],
+ &quot;removed&quot;:[&quot;flow/legacy&quot;],&quot;unchanged&quot;:4,
+ &quot;changes&quot;:[{&quot;key&quot;:&quot;configmap/region&quot;,&quot;action&quot;:&quot;update&quot;,&quot;before&quot;:&quot;us&quot;,&quot;after&quot;:&quot;eu&quot;,
+             &quot;fields&quot;:[{&quot;path&quot;:&quot;value&quot;,&quot;before&quot;:&quot;us&quot;,&quot;after&quot;:&quot;eu&quot;}]}, …],
+ &quot;text&quot;:&quot;~ configmap/region\n    value: \&quot;us\&quot; → \&quot;eu\&quot;\n…&quot;}
+</code></pre>
+<p>Artifact keys are <code>flow/…</code>, <code>alert/…</code>, <code>snippet/…</code>, <code>library/…</code>, <code>script/…</code>, <code>configmap/…</code>,
+and <code>settings/…</code>. <code>fingerprint</code> identifies the live configuration the plan was made against: it
+changes whenever anything in it changes. Planning needs the permissions an
+<a href="../config-transfer/#permissions">export</a> with the config map needs: <code>flows:view</code>,
+<code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>settings:edit</code>, and <code>configmap:edit</code>.</p>
 <h2 id="editor-support">Editor support</h2>
 <p>JSON Schemas for the document and each artifact kind are published in the repository under
 <code>agent-docs/schemas/</code>: <code>config.schema.json</code>, <code>flow.schema.json</code>, <code>alert.schema.json</code>,

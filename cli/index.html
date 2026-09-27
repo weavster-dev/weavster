@@ -394,6 +394,10 @@ name, or a name several flows share, is an error that lists their ids.</p>
 <td>Checks a config-as-code document (YAML or JSON) on the server without changing anything. See <a href="../config-as-code/">Config-as-code documents</a>.</td>
 </tr>
 <tr>
+<td><code>config diff "path"</code>, <code>config plan "path"</code></td>
+<td>Shows what applying the document would change: <code>diff</code> as text (<code>+</code>, <code>~</code> with changed values, <code>-</code>), <code>plan</code> as JSON. Nothing changes.</td>
+</tr>
+<tr>
 <td><code>exportcfg "path" [overwriteconfigmap]</code>, <code>importcfg "path" [nodeploy] [overwriteconfigmap] [force]</code></td>
 <td>Exports or imports the whole configuration (flows, alerts, snippets, scripts, settings, and optionally the config map). See <a href="../config-transfer/">Export and import the whole configuration</a>.</td>
 </tr>
