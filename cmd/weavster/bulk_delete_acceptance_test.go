@@ -27,6 +27,11 @@ func TestBulkMessageRemoval(t *testing.T) {
 	for _, flow := range []string{"a", "a", "b", "b", "b"} {
 		sendMessage(t, c, flow, "msg")
 	}
+	// Flow e's transform fails on this message, so it is errored.
+	createFlow(t, c, `{"id":"e","transform":{"name":"t","steps":[{"map":{"from":"name","to":"n","type":"number"}}]}}`)
+	if _, status := sendMessage(t, c, "e", `{"name":"John Smith"}`); status != "errored" {
+		t.Fatalf("errored fixture: status %s", status)
+	}
 	count := func(query string) int {
 		t.Helper()
 		_, body, _ := c.do(http.MethodGet, "/api/v1/messages"+query, "", admin)
@@ -40,10 +45,11 @@ func TestBulkMessageRemoval(t *testing.T) {
 		want       string
 		left       int
 	}{
-		{"no filter", "/api/v1/messages", http.StatusBadRequest, "all=true", 5},
+		{"no filter", "/api/v1/messages", http.StatusBadRequest, "all=true", 6},
+		{"by status: only the errored message", "/api/v1/messages?status=errored", http.StatusOK, `{"deleted":1,"busy":0,"restarted":[]}`, 5},
 		{"by status matching nothing", "/api/v1/messages?status=errored", http.StatusOK, `{"deleted":0,"busy":0,"restarted":[]}`, 5},
 		{"by flow", "/api/v1/messages?flowId=a", http.StatusOK, `"deleted":2`, 3},
-		{"clear all, restarting", "/api/v1/messages?all=true&restart=true", http.StatusOK, `"restarted":["a","b"]`, 0},
+		{"clear all, restarting", "/api/v1/messages?all=true&restart=true", http.StatusOK, `"restarted":["a","b","e"]`, 0},
 	}
 	for _, s := range steps {
 		code, body, _ := c.do(http.MethodDelete, s.path, "", admin)
@@ -71,7 +77,7 @@ func TestBulkMessageRemoval(t *testing.T) {
 		line, want string
 		code       int
 	}{
-		{"clearallmessages", "removed 1 messages; restarted a, b", 0},
+		{"clearallmessages", "removed 1 messages; restarted a, b, e", 0},
 		{`dump stats "` + stats + `"`, "wrote stats to " + stats, 0},
 		{`dump events "` + events + `"`, "wrote events to " + events, 0},
 		{"clearallmessages now", "", 2},
