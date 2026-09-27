@@ -204,8 +204,10 @@ func TestMessagesBulkDelete(t *testing.T) {
 		{"restart all", "/api/v1/messages?all=true&restart=true", "", flows, http.StatusOK, `"restarted":["a","c"]`, "stop a,stop c,start a,start c"},
 		{"restart one flow", "/api/v1/messages?flowId=c&restart=true", "", flows, http.StatusOK, `"restarted":["c"]`, "stop c,start c"},
 		{"stop fails", "/api/v1/messages?all=true&restart=true", "c stop", flows, http.StatusConflict, "cannot stop", "stop a,stop c,start a"},
-		{"start fails", "/api/v1/messages?all=true&restart=true", "a start", flows, http.StatusConflict, "flow a did not start again", "stop a,stop c,start a,start c"},
-		{"delete fails", "/api/v1/messages?status=fail&restart=true", "", flows, http.StatusInternalServerError, "internal error", "stop a,stop c,start a,start c"},
+		{"start fails", "/api/v1/messages?all=true&restart=true", "a start", flows, http.StatusInternalServerError, "still stopped; start them with POST /api/v1/flows/{id}/start: a", "stop a,stop c,start a,start c"},
+		{"delete fails", "/api/v1/messages?status=fail&restart=true", "", flows, http.StatusInternalServerError, "removal stopped after 0 messages", "stop a,stop c,start a,start c"},
+		{"delete and start fail", "/api/v1/messages?status=fail&restart=true", "c start", flows, http.StatusInternalServerError, "still stopped; start them with POST /api/v1/flows/{id}/start: c", "stop a,stop c,start a,start c"},
+		{"both flags bad", "/api/v1/messages?all=yes&restart=maybe", "", flows, http.StatusBadRequest, "all must be true or false", ""},
 		{"list fails", "/api/v1/messages?all=true&restart=true", "", &errFlows{}, http.StatusInternalServerError, "internal error", ""},
 	}
 	for _, tt := range tests {

@@ -305,6 +305,23 @@ func TestMessageAdapterDeleteMatching(t *testing.T) {
 	if len(left) != 2 || left[0].ID != "a2" || left[1].ID != "b1" {
 		t.Errorf("left = %+v, want a2 and b1", left)
 	}
+	// A message that no longer matches when it is reached is kept.
+	for _, tt := range []struct {
+		name string
+		q    state.Query
+	}{
+		{"other flow", state.Query{FlowID: "a"}},
+		{"other status", state.Query{Status: state.StatusQueued}},
+		{"received earlier", state.Query{From: time.Now().Add(time.Hour)}},
+		{"received later", state.Query{To: time.Unix(0, 0)}},
+	} {
+		if removed, err := ma.removeIfMatching(ctx, "b1", tt.q); removed || err != nil {
+			t.Errorf("%s: removed = %v, %v; want kept", tt.name, removed, err)
+		}
+	}
+	if removed, err := ma.removeIfMatching(ctx, "gone", state.Query{}); removed || err != nil {
+		t.Errorf("missing message: removed = %v, %v", removed, err)
+	}
 	if _, _, err := (messageAdapter{store: erroringStore{}}).DeleteMatching(ctx, gateway.MessageQuery{}); !errors.Is(err, errSearchFailed) {
 		t.Errorf("search error = %v", err)
 	}

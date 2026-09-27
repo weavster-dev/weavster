@@ -515,7 +515,7 @@ func clearAllMessages(ctx context.Context, client Client, args []string, stdout,
 
 // dumpCommand writes flow statistics or the event log to a JSON file.
 func dumpCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
-	paths := map[string]string{"stats": "/api/v1/flows/stats", "events": "/api/v1/events?limit=10000"}
+	paths := map[string]string{"stats": "/api/v1/flows/stats", "events": "/api/v1/events?limit=" + strconv.Itoa(gateway.MaxEventLimit)}
 	if len(args) != 2 || paths[args[0]] == "" {
 		_, _ = fmt.Fprintln(stderr, "Error: usage: dump stats|events \"path\"")
 		return 2

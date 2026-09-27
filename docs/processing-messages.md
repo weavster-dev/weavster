@@ -333,15 +333,20 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X DELETE \
 | Parameter | What it does |
 |---|---|
 | `all=true` | Required when you give no filter: removes every message. Without it, a request with no filter returns `400`, so a missing parameter never clears the store by accident. |
-| `restart=true` | Stops the started flows first (only the `flowId` flow, when given), removes the messages, then starts those flows again. `restarted` lists them. Use it to clear everything while nothing is being processed. |
+| `restart=true` | Stops the started flows first (only the `flowId` flow, when given), removes the messages, then starts those flows again. `restarted` lists them. Stopping waits for the messages those flows are processing, so they are removed too. Paused and halted flows are left as they are. |
 
 - A message being processed or retried at that moment is kept and counted in `busy`. Run the
   request again, or use `restart=true`.
+- Each message is checked against the filters again just before it is removed, so one that
+  changed meanwhile (for example a `queued` message that was delivered) is kept.
 - `limit`, `offset`, and `sort` are refused (`400`), because they would suggest that only part
   of the matches is removed.
 - If a flow cannot be stopped, nothing is removed and the flows already stopped are started
-  again (`409`). If a flow does not start again afterwards, the reply is `409` and names it; start
-  it yourself with `POST /api/v1/flows/{id}/start`.
+  again (`409`).
+- If a flow does not start again afterwards, the reply is `500` and names every such flow; start
+  them yourself with `POST /api/v1/flows/{id}/start`.
+- If removal fails part-way, the reply is `500` and says how many messages were removed; run
+  the request again to remove the rest.
 
 To clear everything from the command-line client, use `clearallmessages`.
 

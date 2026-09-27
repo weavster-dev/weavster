@@ -248,9 +248,9 @@ func (s *Server) handleMessagesDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	all, restart := v.Get("all"), v.Get("restart")
-	for name, val := range map[string]string{"all": all, "restart": restart} {
-		if val != "" && val != "true" && val != "false" {
-			writeStatusError(w, http.StatusBadRequest, name+" must be true or false")
+	for _, p := range [][2]string{{"all", all}, {"restart", restart}} {
+		if p[1] != "" && p[1] != "true" && p[1] != "false" {
+			writeStatusError(w, http.StatusBadRequest, p[0]+" must be true or false")
 			return
 		}
 	}
@@ -264,25 +264,35 @@ func (s *Server) handleMessagesDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res := MessagesDeleted{Restarted: []string{}}
-	var err error
+	var stopErr, deleteErr error
 	if restart == "true" {
-		res.Restarted, err = s.stopStartedFlows(r, q.FlowID)
+		res.Restarted, stopErr = s.stopStartedFlows(r, q.FlowID)
 	}
-	if err == nil {
-		res.Deleted, res.Busy, err = s.cfg.Messages.DeleteMatching(r.Context(), q)
+	if stopErr == nil {
+		res.Deleted, res.Busy, deleteErr = s.cfg.Messages.DeleteMatching(r.Context(), q)
 	}
 	// Start the stopped flows again even if the client has gone away.
 	ctx := context.WithoutCancel(r.Context())
+	var notStarted []string
 	for _, id := range res.Restarted {
-		if _, startErr := s.cfg.Lifecycle.Transition(ctx, id, "start"); startErr != nil && err == nil {
-			err = fmt.Errorf("removed %d messages, but flow %s did not start again: %w", res.Deleted, id, startErr)
+		if _, err := s.cfg.Lifecycle.Transition(ctx, id, "start"); err != nil {
+			notStarted = append(notStarted, id)
 		}
 	}
-	if err != nil {
-		writeFlowError(w, err)
-		return
+	switch {
+	case len(notStarted) > 0:
+		// Say plainly which flows are still stopped, whatever else failed.
+		writeStatusError(w, http.StatusInternalServerError, fmt.Sprintf(
+			"removed %d messages, but these flows are still stopped; start them with POST /api/v1/flows/{id}/start: %s",
+			res.Deleted, strings.Join(notStarted, ", ")))
+	case stopErr != nil:
+		writeFlowError(w, stopErr)
+	case deleteErr != nil:
+		writeStatusError(w, http.StatusInternalServerError, fmt.Sprintf(
+			"removal stopped after %d messages because of an internal error; run it again", res.Deleted))
+	default:
+		writeJSON(w, http.StatusOK, res)
 	}
-	writeJSON(w, http.StatusOK, res)
 }
 
 // stopStartedFlows stops every started flow (only flowID when set) and
