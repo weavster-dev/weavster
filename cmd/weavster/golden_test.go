@@ -63,7 +63,7 @@ var goldenCases = []goldenCase{
 	{name: "snippets", lines: "snippet library import \"$DIR/libs.json\"\nsnippet import \"$DIR/snippets.json\"\nsnippet list\nsnippet library list\nsnippet export \"$DIR/snippets-out.json\"\nsnippet library export \"$DIR/libs-out.json\"\nsnippet library remove hl7\nsnippet remove pid\nsnippet library remove hl7\nsnippet remove pid\nsnippet list extra\n"},
 	{name: "alerts", lines: "importalert \"$DIR/alerts.json\"\nimportalert \"$DIR/alerts.json\"\nimportalert \"$DIR/alerts.json\" force\nexportalert errors \"$DIR/alert.json\"\nexportalert * \"$DIR/alerts-out.json\"\nexportalert nope \"$DIR/x.json\"\nimportalert\n"},
 	{name: "config-validate", lines: "config validate \"$DIR/config.yaml\"\nconfig validate \"$DIR/map.json\"\nconfig validate\n"},
-	{name: "config-plan", lines: "config diff \"$DIR/config.yaml\"\nconfig diff \"$DIR/map.json\"\nconfig plan \"$DIR/map.json\"\n"},
+	{name: "config-plan", lines: "config diff \"$DIR/config.yaml\"\nconfig diff \"$DIR/map.json\"\nconfig plan \"$DIR/map.json\"\nconfig apply \"$DIR/config.yaml\" --dry-run\n"},
 	{name: "config-transfer", lines: "exportcfg \"$DIR/cfg.json\"\nexportcfg \"$DIR/cfg-map.json\" overwriteconfigmap\nimportcfg \"$DIR/cfg.json\"\nimportcfg \"$DIR/cfg.json\" force nodeploy\nimportcfg \"$DIR/cfg-map.json\" overwriteconfigmap force\nimportcfg \"$DIR/none.json\"\nexportcfg\n"},
 	{name: "dump-clear", lines: "dump stats \"$DIR/stats.json\"\ndump events \"$DIR/events.json\"\ndump logs \"$DIR/x\"\nclearallmessages\nclearallmessages now\n"},
 	{name: "deprecated", lines: "channel list\ncodetemplate list\n"},

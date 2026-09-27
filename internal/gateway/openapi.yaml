@@ -613,6 +613,25 @@ paths:
         "200": {description: "Valid: {valid: true, counts}", content: {application/json: {schema: {$ref: "#/components/schemas/ConfigValidation"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "Invalid: the message names every problem", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/config/apply:
+    post:
+      summary: "Apply a config-as-code document: re-plans, refuses a stale fingerprint, applies the changes, and rolls every applied change back if one fails (requires flows:view, flows:edit, alerts:edit, snippets:edit, scripts:edit, settings:edit, configmap:edit)"
+      parameters:
+        - {name: fingerprint, in: query, required: true, schema: {type: string}, description: The fingerprint of the plan you reviewed}
+        - {name: dryRun, in: query, schema: {type: boolean}, description: Check that the plan is current without changing anything}
+        - {name: reason, in: query, schema: {type: string, maxLength: 500}, description: Recorded in the audit log}
+      requestBody:
+        required: true
+        content:
+          application/yaml: {schema: {type: string}}
+          application/json: {schema: {type: object}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{applied, plan}", content: {application/json: {schema: {type: object, properties: {applied: {type: boolean}, plan: {$ref: "#/components/schemas/ConfigPlan"}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "Missing fingerprint, a bad parameter, or an invalid document", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "The plan is stale, or a change failed because of the configuration (every applied change was rolled back)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "500": {description: "A change failed because of the server (rolled back), or rolling back failed (partly applied)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/config/plan:
     post:
       summary: "What applying a config-as-code document (YAML or JSON) would change on the server; nothing is written. Sections the document leaves out are not managed (requires flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit, configmap:edit)"
