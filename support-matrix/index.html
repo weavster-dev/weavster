@@ -50,6 +50,9 @@
                                 <a href="../cli/" class="nav-link">Command-line client</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../api/" class="nav-link">REST API</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../api-errors/" class="nav-link">API errors</a>
                             </li>
                             <li class="nav-item">
@@ -197,6 +200,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>GET /api/openapi.yaml</code> (no marker header needed)</td>
 <td>Implemented (wired)</td>
 <td><code>TestSupportMatrixWired/openapi</code>, <code>TestOpenAPIPublished</code>, <code>TestOpenAPIContract</code>. The served document is exactly <code>agent-docs/openapi.yaml</code>; every route is documented and every documented operation is contract-tested.</td>
+</tr>
+<tr>
+<td>Unversioned API paths (<code>/api/flows</code> = latest, today <code>/api/v1/flows</code>); <code>Weavster-API-Version</code> reply header</td>
+<td>Implemented (wired)</td>
+<td><code>TestUnversionedAPI</code>. See <a href="../api/#versions">REST API</a>.</td>
 </tr>
 <tr>
 <td><code>GET /api/v1/system</code> status document</td>
