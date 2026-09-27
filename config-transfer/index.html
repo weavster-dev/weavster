@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/documentation/">
+        <link rel="canonical" href="https://docs.weavster.dev/config-transfer/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Docs Site Guide - Weavster</title>
+        <title>Configuration Export and Import - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -77,10 +77,10 @@
                                 <a href="../alerts/" class="nav-link">Alerts</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../config-transfer/" class="nav-link">Configuration Export and Import</a>
+                                <a href="./" class="nav-link active" aria-current="page">Configuration Export and Import</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Docs Site Guide</a>
+                                <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../mvp-project-plan/" class="nav-link">MVP Project Plan</a>
@@ -97,17 +97,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../config-transfer/" class="nav-link">
+                                <a rel="prev" href="../alerts/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../mvp-project-plan/" class="nav-link">
+                                <a rel="next" href="../documentation/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/documentation.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/config-transfer.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -128,29 +128,21 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#documentation-site" class="nav-link">Documentation Site</a>
+            <li class="nav-item" data-bs-level="1"><a href="#export-and-import-the-whole-configuration" class="nav-link">Export and import the whole configuration</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#stack" class="nav-link">Stack</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#local-development" class="nav-link">Local development</a>
+            <li class="nav-item" data-bs-level="2"><a href="#export" class="nav-link">Export</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#navigation" class="nav-link">Navigation</a>
+            <li class="nav-item" data-bs-level="2"><a href="#import" class="nav-link">Import</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#deploy" class="nav-link">Deploy</a>
+            <li class="nav-item" data-bs-level="2"><a href="#permissions" class="nav-link">Permissions</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#versioning" class="nav-link">Versioning</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#excluded-files" class="nav-link">Excluded files</a>
+            <li class="nav-item" data-bs-level="2"><a href="#command-line-client" class="nav-link">Command-line client</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -161,77 +153,104 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="documentation-site">Documentation Site</h1>
-<p>This page describes <strong>how</strong> the documentation site is built, served, and deployed.
-For <strong>what</strong> goes into it (user-facing examples, CLI docs, API refs), see
-<a href="../AGENTS.md#documentation">AGENTS.md §Documentation</a>.</p>
-<h2 id="stack">Stack</h2>
+<h1 id="export-and-import-the-whole-configuration">Export and import the whole configuration</h1>
+<p>One document holds a server's whole configuration: flows, <a href="../alerts/">alerts</a>,
+<a href="../snippets/">code snippets and libraries</a>, <a href="../config-items/">global scripts and settings</a>, and,
+when you ask for it, the config map. Use it to back up a server or to copy its setup to another
+one. Users and passwords are never included; create them again on the other server.</p>
+<h2 id="export">Export</h2>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/config/export?includeConfigMap=true' &gt; config.json
+</code></pre>
+<pre><code class="language-json">{&quot;format&quot;:&quot;weavster-config-v1&quot;,
+ &quot;flows&quot;:[{&quot;id&quot;:&quot;adt&quot;,&quot;enabled&quot;:true,&quot;destinations&quot;:[{&quot;name&quot;:&quot;ehr&quot;,&quot;type&quot;:&quot;http&quot;,&quot;url&quot;:&quot;https://ehr.example.com/in&quot;}]}],
+ &quot;alerts&quot;:[],&quot;snippets&quot;:[],&quot;snippetLibraries&quot;:[],
+ &quot;scripts&quot;:{&quot;deploy&quot;:&quot;log('deployed')&quot;},&quot;settings&quot;:{&quot;retention&quot;:{&quot;days&quot;:30}},
+ &quot;configmap&quot;:{&quot;region&quot;:&quot;eu&quot;}}
+</code></pre>
+<p>Flows are exported without their runtime state. The config map is left out unless you add
+<code>includeConfigMap=true</code>, because it usually holds values for one environment (hostnames, for
+example). An empty config map is exported as <code>{}</code>, so importing it with <code>overwriteConfigMap</code>
+empties the target's.</p>
+<h2 id="import">Import</h2>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
+  'http://127.0.0.1:8080/api/v1/config/import' --data-binary @config.json
+</code></pre>
+<pre><code class="language-json">{&quot;flows&quot;:{&quot;created&quot;:[&quot;adt&quot;],&quot;updated&quot;:[]},&quot;alerts&quot;:0,&quot;snippets&quot;:0,&quot;snippetLibraries&quot;:0,
+ &quot;scripts&quot;:1,&quot;settings&quot;:1,&quot;configMapReplaced&quot;:false,&quot;deployed&quot;:[&quot;adt&quot;]}
+</code></pre>
 <table>
 <thead>
 <tr>
-<th>Layer</th>
-<th>Choice</th>
+<th>Parameter</th>
+<th>What it does</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Generator</td>
-<td><a href="https://www.mkdocs.org/">MkDocs</a> <code>1.6.1</code></td>
+<td><code>force=true</code></td>
+<td>Replaces flows, alerts, snippets, and libraries that already exist. Without it, any that exist stop the import with <code>409</code> naming them, and nothing is written.</td>
 </tr>
 <tr>
-<td>Theme</td>
-<td>mkdocs default (readthedocs)</td>
+<td><code>nodeploy=true</code></td>
+<td>Leaves the imported flows undeployed. Without it, every imported flow that is enabled and undeployed is deployed afterwards. Deploying a flow also deploys the flows it depends on (even disabled ones, as <code>POST /api/v1/flows/{id}/deploy</code> does); <code>deployed</code> lists every imported flow that was deployed.</td>
 </tr>
 <tr>
-<td>Hosting</td>
-<td>GitHub Pages (<code>gh-pages</code> branch)</td>
-</tr>
-<tr>
-<td>Deploy trigger</td>
-<td>Push to <code>main</code> (GitHub Actions)</td>
-</tr>
-<tr>
-<td>Python</td>
-<td><code>3.12</code> (CI), any <code>&gt;=3.10</code> locally</td>
+<td><code>overwriteConfigMap=true</code></td>
+<td>Replaces the config map with the document's, which must be there (export with <code>includeConfigMap=true</code>; <code>{}</code> empties the config map). A document without one returns <code>400</code>. Without this parameter, the server keeps its own config map and the document's is ignored (not even checked).</td>
 </tr>
 </tbody>
 </table>
-<h2 id="local-development">Local development</h2>
-<pre><code class="language-bash"># Install (one-time, or after pulling a requirements.txt change)
-pip install -r requirements.txt
-
-# Preview with live reload
-mkdocs serve
-
-# Open http://localhost:8000
-</code></pre>
-<p>Changes to <code>docs/</code> files appear immediately in the browser. The MkDocs
-config is at <a href="../mkdocs.yml"><code>mkdocs.yml</code></a> (repo root).</p>
-<h2 id="navigation">Navigation</h2>
-<p>The site nav is defined in <code>mkdocs.yml</code> under the <code>nav:</code> key. Each entry
-maps a display title to a file under <code>docs/</code>. Current pages:</p>
 <ul>
-<li><strong>Home</strong> — <code>docs/index.md</code></li>
-<li><strong>User Guide</strong> — <code>docs/guide/</code> (CLI, config, API, adapters, etc.)</li>
-<li><em>(expand as features ship)</em></li>
+<li>Everything is checked before anything is written: the format, every flow, alert, snippet, and
+  value, and that each snippet's library is in the document or already on the server. Problems
+  return <code>400</code> naming the item.</li>
+<li>Global scripts and settings in the document are created or replaced; others on the server are
+  kept.</li>
+<li>If someone creates a flow, alert, snippet, or library with an id from the document while the
+  import runs (without <code>force</code>), the import stops with <code>409</code> rather than replacing it.</li>
+<li>If writing fails part-way (for example, the database is unavailable), the reply is <code>500</code>. Fix
+  the cause and import again with <code>force=true</code>.</li>
+<li>If a flow does not deploy, the reply is <code>500</code> and names it; the configuration is imported.
+  Deploy the flow yourself with <code>POST /api/v1/flows/{id}/deploy</code>.</li>
 </ul>
-<p>To add a page, create the <code>.md</code> file and add a <code>nav:</code> entry.</p>
-<h2 id="deploy">Deploy</h2>
-<p>The docs deploy automatically on every push to <code>main</code> via
-<a href="../.github/workflows/docs.yml"><code>.github/workflows/docs.yml</code></a>:</p>
-<pre><code class="language-bash"># Manual trigger (equivalent to what CI does):
-mkdocs gh-deploy --force
+<h2 id="permissions">Permissions</h2>
+<p>Export needs <code>flows:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, and
+<code>settings:edit</code>, plus <code>configmap:edit</code> with <code>includeConfigMap=true</code>. Import needs <code>flows:edit</code>
+and the same <code>…:edit</code> permissions, plus <code>flows:deploy</code> unless <code>nodeploy=true</code>, and
+<code>configmap:edit</code> with <code>overwriteConfigMap=true</code>. The <code>admin</code> permission includes them all.</p>
+<h2 id="command-line-client">Command-line client</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>exportcfg "path"</code></td>
+<td>Writes the configuration without the config map to a file.</td>
+</tr>
+<tr>
+<td><code>exportcfg "path" overwriteconfigmap</code></td>
+<td>Also includes the config map, so importing with <code>overwriteconfigmap</code> replaces the target's config map.</td>
+</tr>
+<tr>
+<td><code>importcfg "path" [nodeploy] [overwriteconfigmap] [force]</code></td>
+<td>Imports a file written by <code>exportcfg</code>. The options match the parameters above and can come in any order.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-text">weavster&gt; exportcfg &quot;config.json&quot; overwriteconfigmap
+exported 2 flows, 1 alerts, 1 snippets, 1 snippet libraries, 1 scripts, 1 settings, 1 config map entries to config.json
+weavster&gt; importcfg &quot;config.json&quot; overwriteconfigmap
+imported 2 flows (2 new, 0 replaced), 1 alerts, 1 snippets, 1 snippet libraries, 1 scripts, 1 settings from config.json
+replaced the config map
+deployed adt
 </code></pre>
-<p>This builds the site into <code>site/</code> and pushes it to the <code>gh-pages</code> branch.
-GitHub Pages serves it at <code>https://weavster-dev.github.io/weavster/</code>.</p>
-<h2 id="versioning">Versioning</h2>
-<p>Not yet versioned. The <code>gh-pages</code> branch always reflects <code>main</code>. When
-versioned docs are added, the plan is to use
-<a href="https://github.com/jimporter/mike">mike</a> with a <code>versions.json</code> file.</p>
-<h2 id="excluded-files">Excluded files</h2>
-<p>Files under <code>docs/</code> that are <strong>not</strong> part of the public site are listed
-in <code>mkdocs.yml</code> under <code>exclude_docs:</code> — currently <code>prompt-3-kickoff.md</code>.
-These are still tracked in the repo but omitted from the built site.</p></div>
+<p>A file that does not exist is reported (<code>Error: open config.json: no such file or directory</code>)
+and nothing is sent to the server.</p></div>
             </div>
         </div>
 

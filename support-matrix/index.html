@@ -77,6 +77,9 @@
                                 <a href="../alerts/" class="nav-link">Alerts</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../config-transfer/" class="nav-link">Configuration Export and Import</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -304,6 +307,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Alert definitions (<code>/api/v1/alerts</code>: create, get, update, delete, enable/disable, import with <code>force</code>, options); CLI <code>importalert</code>, <code>exportalert</code></td>
 <td>Implemented (wired)</td>
 <td><code>TestAlerts</code>. Definitions are stored and validated only: alerts do not fire yet. See <a href="../alerts/">Alerts</a>.</td>
+</tr>
+<tr>
+<td>Full configuration export/import (<code>GET /api/v1/config/export</code>, <code>POST /api/v1/config/import</code> with <code>force</code>, <code>nodeploy</code>, <code>overwriteConfigMap</code>); CLI <code>exportcfg</code>, <code>importcfg</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestConfigTransfer</code>. Users are not included. See <a href="../config-transfer/">Export and import the whole configuration</a>.</td>
 </tr>
 <tr>
 <td>Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction</td>
