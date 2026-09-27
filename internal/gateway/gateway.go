@@ -284,6 +284,8 @@ type Config struct {
 	ConfigPlanner ConfigPlanner
 	// ConfigValidator checks config-as-code documents.
 	ConfigValidator ConfigValidator
+	// Lookups keeps dynamic lookup groups.
+	Lookups LookupStore
 	// Alerts keeps alert definitions.
 	Alerts AlertStore
 	// Snippets keeps code snippets and snippet libraries.

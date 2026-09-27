@@ -19,6 +19,8 @@ const (
 	PermScriptsEdit     = "scripts:edit"
 	PermConfigMapEdit   = "configmap:edit"
 	PermSettingsEdit    = "settings:edit"
+	PermLookupsView     = "lookups:view"
+	PermLookupsEdit     = "lookups:edit"
 )
 
 // PermUsersAdmin allows user administration.
@@ -30,6 +32,7 @@ func KnownPermissions() []string {
 		PermAdmin, PermUsersAdmin, PermFlowsView, PermFlowsEdit, PermFlowsDeploy,
 		PermMessagesView, PermMessagesSend, PermMessagesContent, PermMessagesDelete, PermMessagesImport,
 		PermEventsView, PermAlertsEdit, PermSnippetsEdit, PermScriptsEdit, PermConfigMapEdit, PermSettingsEdit,
+		PermLookupsView, PermLookupsEdit,
 	}
 }
 

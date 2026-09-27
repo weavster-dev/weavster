@@ -81,6 +81,7 @@ func Migrations() []Migration {
 			},
 		},
 		itemsMigration(),
+		lookupsMigration(),
 	}
 }
 
