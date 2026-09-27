@@ -16,6 +16,9 @@ import (
 // SessionTTL is how long a login token stays valid.
 const SessionTTL = 12 * time.Hour
 
+// maxAuthBodyBytes bounds JSON buffering before credentials are checked.
+const maxAuthBodyBytes = 1 << 20
+
 // PasswordChanger errors the handler maps to 400 responses. Any other error
 // is an internal failure (500).
 var (
@@ -243,7 +246,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)).Decode(&req); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeStatusError(w, http.StatusRequestEntityTooLarge, "body larger than 1 MiB")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "body must be JSON with username and password")
 		return
 	}
@@ -288,7 +296,12 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	id, _ := IdentityFrom(r.Context())
 	var req passwordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)).Decode(&req); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeStatusError(w, http.StatusRequestEntityTooLarge, "body larger than 1 MiB")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "body must be JSON with oldPassword and newPassword")
 		return
 	}
