@@ -59,12 +59,19 @@ settings:
 
 ## Check a document
 
-From the command-line client:
+On your machine, with no server and no database:
+
+```bash
+weavster config validate weavster.yaml
+```
 
 ```text
-weavster> config validate "weavster.yaml"
 weavster.yaml is valid: 1 flows, 1 alerts, 1 snippets, 1 snippet libraries, 1 scripts, 1 config map entries, 1 settings
 ```
+
+Give several files to check them all. The exit code is `0` when every file is valid, `1` when
+any is invalid, and `2` when a file cannot be read. The same check runs in the
+[command-line client](cli.md) (`config validate "weavster.yaml"`), also without a server.
 
 Or with the API (permission `flows:edit`; nothing on the server changes):
 
@@ -77,11 +84,11 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @weavster.yaml
 {"counts":{"flows":1,"alerts":1,"snippets":1,"snippetLibraries":1,"scripts":1,"configmap":1,"settings":1},"valid":true}
 ```
 
-An invalid document returns `400`, and the message names each problem with its place in the
+An invalid document is reported (the API returns `400`) with each problem and its place in the
 document, for example:
 
 ```text
-Error: server returned 400 Bad Request: config: alerts.adt-errors: alert adt-errors: unknown trigger event "message.sent"; use [message.errored message.queued message.dead-lettered]
+Error: weavster.yaml: config: alerts.adt-errors: alert adt-errors: unknown trigger event "message.sent"; use [message.errored message.queued message.dead-lettered]
 ```
 
 ## See what would change

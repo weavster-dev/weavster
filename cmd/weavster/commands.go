@@ -550,7 +550,7 @@ func clearAllMessages(ctx context.Context, client Client, args []string, stdout,
 // dumpCommand writes flow statistics or the event log to a JSON file.
 func dumpCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
 	paths := map[string]string{"stats": "/api/v1/flows/stats", "events": "/api/v1/events?limit=" + strconv.Itoa(gateway.MaxEventLimit)}
-	if len(args) != 2 || paths[args[0]] == "" {
+	if _, ok := paths[args[0]]; len(args) != 2 || !ok {
 		_, _ = fmt.Fprintln(stderr, "Error: usage: dump stats|events \"path\"")
 		return 2
 	}
@@ -696,12 +696,20 @@ func importConfig(ctx context.Context, client Client, args []string, stdout, std
 }
 
 // configCommand runs config-as-code commands on a YAML or JSON document,
-// none of which change the server: validate checks it, diff shows what
-// applying it would change, and plan prints that as JSON.
+// none of which change the server: validate checks it locally (no server),
+// diff shows what applying it would change, and plan prints that as JSON.
 func configCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
-	paths := map[string]string{"validate": "/api/v1/config/validate", "diff": "/api/v1/config/plan", "plan": "/api/v1/config/plan"}
+	paths := map[string]string{"validate": "", "diff": "/api/v1/config/plan", "plan": "/api/v1/config/plan"}
 	if len(args) >= 2 && args[0] == "apply" {
 		return configApply(ctx, client, args[1], args[2:], stdout, stderr, debug)
+	}
+	if len(args) == 2 && args[0] == "validate" {
+		out, err := validateFile(args[1])
+		if err != nil {
+			return shellError(stderr, debug, err)
+		}
+		_, _ = fmt.Fprint(stdout, out)
+		return 0
 	}
 	if len(args) != 2 || paths[args[0]] == "" {
 		_, _ = fmt.Fprintln(stderr, "Error: usage: config validate|diff|plan \"path\" | config apply \"path\" [--dry-run] [reason...]")
@@ -722,17 +730,24 @@ func configCommand(ctx context.Context, client Client, args []string, stdout, st
 	return 0
 }
 
+// validateFile checks a config-as-code document on this machine, with the
+// rules the server applies; it needs no server and no database (#107 D-55).
+func validateFile(path string) (string, error) {
+	doc, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	n, err := configValidator{}.ValidateConfig(doc)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	return fmt.Sprintf("%s is valid: %d flows, %d alerts, %d snippets, %d snippet libraries, %d scripts, %d config map entries, %d settings\n",
+		path, n.Flows, n.Alerts, n.Snippets, n.SnippetLibraries, n.Scripts, n.ConfigMap, n.Settings), nil
+}
+
 // configOutput renders a config command's reply.
 func configOutput(cmd, path string, reply []byte) (string, error) {
 	switch cmd {
-	case "validate":
-		var res struct{ Counts gateway.ConfigSummary }
-		if err := json.Unmarshal(reply, &res); err != nil {
-			return "", err
-		}
-		n := res.Counts
-		return fmt.Sprintf("%s is valid: %d flows, %d alerts, %d snippets, %d snippet libraries, %d scripts, %d config map entries, %d settings\n",
-			path, n.Flows, n.Alerts, n.Snippets, n.SnippetLibraries, n.Scripts, n.ConfigMap, n.Settings), nil
 	case "diff":
 		var plan gateway.ConfigPlan
 		if err := json.Unmarshal(reply, &plan); err != nil {

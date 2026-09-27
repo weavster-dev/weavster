@@ -81,6 +81,7 @@ All notable changes to this project are documented here, following
 
 ### Changed
 
+- `config validate` checks the document on the client machine instead of calling the server, and the new `weavster config validate FILE...` checks files with no server and no database (exit 0 valid, 1 invalid, 2 unreadable) (#276, D-55).
 - `GET /api/v1/system` is computed per request (`time`, new `uptimeSeconds`, `status`) and reports TLS as configured under `tls` (`enabled`, `address`, `minVersion`, `protocols`, `ciphers`) instead of fixed top-level `protocols`/`ciphers` (#245).
 - `GET /api/v1/messages` (and export) refuses `from` later than `to` with `400` instead of returning nothing (#243).
 - Config-as-code document: the config map section is `configmap` (was `map`), and alerts use the API shape (`name`, `trigger.events`, `actions`) instead of `trigger`/`recipients`/`scope` (#237).
