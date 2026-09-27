@@ -67,6 +67,30 @@ func TestConfigTransferHandlers(t *testing.T) {
 			func() Config { c := ports(); c.Snippets = &failingLibraries{memSnippets{fail: true}}; return c }, http.StatusInternalServerError, "internal error"},
 		{"conflict lookup fails", http.MethodPost, "/api/v1/config/import", doc, func() Config { c := ports(); c.Flows = &errFlows{}; return c }, http.StatusInternalServerError, "internal error"},
 		{"conflict", http.MethodPost, "/api/v1/config/import", `{"format":"weavster-config-v1","flows":[{"id":"a"}]}`, ports, http.StatusConflict, "flow a"},
+		{"alert conflict", http.MethodPost, "/api/v1/config/import", `{"format":"weavster-config-v1","alerts":[` + validAlert + `]}`,
+			func() Config {
+				c := ports()
+				c.Alerts = &memAlerts{alerts: map[string]Alert{"errors": {ID: "errors"}}}
+				return c
+			}, http.StatusConflict, "alert errors"},
+		{"snippet conflict", http.MethodPost, "/api/v1/config/import", `{"format":"weavster-config-v1","snippets":[{"name":"s"}]}`,
+			func() Config {
+				c := ports()
+				c.Snippets = &memSnippets{snippets: map[string]Snippet{"s": {Name: "s"}}, libraries: map[string]SnippetLibrary{}}
+				return c
+			}, http.StatusConflict, "snippet s"},
+		{"library conflict", http.MethodPost, "/api/v1/config/import", `{"format":"weavster-config-v1","snippetLibraries":[{"name":"l"}]}`,
+			func() Config {
+				c := ports()
+				c.Snippets = &memSnippets{snippets: map[string]Snippet{}, libraries: map[string]SnippetLibrary{"l": {Name: "l"}}}
+				return c
+			}, http.StatusConflict, "library l"},
+		{"alert conflict lookup fails", http.MethodPost, "/api/v1/config/import", doc,
+			func() Config { c := ports(); c.Alerts = &memAlerts{fail: true}; return c }, http.StatusInternalServerError, "internal error"},
+		{"snippet conflict lookup fails", http.MethodPost, "/api/v1/config/import", doc,
+			func() Config { c := ports(); c.Snippets = &memSnippets{fail: true}; return c }, http.StatusInternalServerError, "internal error"},
+		{"library conflict lookup fails", http.MethodPost, "/api/v1/config/import", doc,
+			func() Config { c := ports(); c.Snippets = &failingLibraryList{memSnippets{}}; return c }, http.StatusInternalServerError, "internal error"},
 		{"flow import conflict", http.MethodPost, "/api/v1/config/import?force=true", doc,
 			func() Config {
 				c := ports()
@@ -172,4 +196,10 @@ type failingLibraries struct{ memSnippets }
 
 func (f *failingLibraries) GetLibrary(_ context.Context, _ string) (SnippetLibrary, error) {
 	return SnippetLibrary{}, errDisk
+}
+
+type failingLibraryList struct{ memSnippets }
+
+func (f *failingLibraryList) ListLibraries(context.Context) ([]SnippetLibrary, error) {
+	return nil, errDisk
 }
