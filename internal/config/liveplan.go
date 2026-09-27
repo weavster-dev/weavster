@@ -41,7 +41,7 @@ type FieldChange struct {
 // JSON, so formatting and key order never show as changes.
 func LivePlan(desired, live *Config) Plan {
 	d, l := canonical(desired.Artifacts()), canonical(live.Artifacts())
-	var p Plan
+	p := Plan{Fingerprint: fingerprint(l)}
 	for _, k := range sortedKeys(d) {
 		switch lv, ok := l[k]; {
 		case !ok:
@@ -78,28 +78,37 @@ func (c *Config) manages(key string) bool {
 
 // canonical turns artifact contents into compact JSON with sorted keys;
 // script and config-map values, stored as text, become JSON strings.
+// Numbers stay exact and <, >, & are not escaped.
 func canonical(artifacts map[string][]byte) map[string]json.RawMessage {
 	out := make(map[string]json.RawMessage, len(artifacts))
 	for k, v := range artifacts {
 		if strings.HasPrefix(k, "script/") || strings.HasPrefix(k, "configmap/") {
-			out[k], _ = json.Marshal(string(v)) // a string always encodes
+			out[k] = mustRaw(string(v))
 			continue
 		}
-		var x any
-		if json.Unmarshal(v, &x) != nil {
+		x, err := decodeExact(v)
+		if err != nil {
 			out[k] = v
 			continue
 		}
-		out[k], _ = json.Marshal(x) // decoded JSON always encodes
+		out[k] = mustRaw(x)
 	}
 	return out
 }
 
+// decodeExact decodes JSON keeping numbers as written (json.Number).
+func decodeExact(v []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(v))
+	dec.UseNumber()
+	var x any
+	err := dec.Decode(&x)
+	return x, err
+}
+
 // fieldChanges lists the values that differ between two JSON documents.
 func fieldChanges(before, after json.RawMessage) []FieldChange {
-	var b, a any
-	_ = json.Unmarshal(before, &b)
-	_ = json.Unmarshal(after, &a)
+	b, _ := decodeExact(before) // canonical JSON always decodes
+	a, _ := decodeExact(after)
 	var out []FieldChange
 	walkDiff("", b, a, &out)
 	for i := range out {
@@ -156,16 +165,24 @@ func join(path, key string) string {
 	return path + "." + key
 }
 
+// mustRaw encodes decoded JSON (which always encodes) compactly, without
+// HTML escaping, so code in scripts and snippets stays readable.
 func mustRaw(v any) json.RawMessage {
-	b, _ := json.Marshal(v) // decoded JSON always encodes
-	return b
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(v)
+	return bytes.TrimSuffix(b.Bytes(), []byte("\n"))
 }
 
 // Fingerprint identifies the live configuration: it changes whenever any
 // live artifact does, so a plan made against one state can be recognized
-// as stale later.
+// as stale later. LivePlan sets it on the plan.
 func Fingerprint(live *Config) string {
-	arts := canonical(live.Artifacts())
+	return fingerprint(canonical(live.Artifacts()))
+}
+
+func fingerprint(arts map[string]json.RawMessage) string {
 	h := sha256.New()
 	for _, k := range sortedKeys(arts) {
 		h.Write([]byte(k))

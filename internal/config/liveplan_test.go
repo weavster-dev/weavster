@@ -82,3 +82,27 @@ func TestFieldChangesArraysAndRemovals(t *testing.T) {
 		t.Errorf("changes = %v", paths)
 	}
 }
+
+// TestLivePlanExactAndReadable: large integers compare exactly, code keeps
+// < and &, and a section written without entries is managed.
+func TestLivePlanExactAndReadable(t *testing.T) {
+	live := &Config{
+		Settings: map[string]any{"big": json.Number("9007199254740992")},
+		Scripts:  map[string]string{"s": "if (a < b && c)"},
+		Flows:    map[string]flowdef.Flow{"old": {ID: "old"}},
+	}
+	desired, err := Parse([]byte("settings: {big: 9007199254740993}\nscripts: {s: \"if (a <= b && c)\"}\nflows:\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := LivePlan(desired, live)
+	if strings.Join(p.Updated, ",") != "script/s,settings/big" || strings.Join(p.Removed, ",") != "flow/old" {
+		t.Errorf("plan = %+v", p)
+	}
+	if !strings.Contains(p.Text(), `value: "if (a < b && c)" → "if (a <= b && c)"`) || !strings.Contains(p.Text(), "value: 9007199254740992 → 9007199254740993") {
+		t.Errorf("text:\n%s", p.Text())
+	}
+	if p.Fingerprint != Fingerprint(live) {
+		t.Error("the plan's fingerprint is the live one")
+	}
+}

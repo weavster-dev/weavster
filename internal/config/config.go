@@ -70,8 +70,12 @@ func parse(data []byte) (*Config, map[string]json.RawMessage, error) {
 	var doc document
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
-	err := dec.Decode(&doc)
-	if errors.Is(err, io.EOF) {
+	var keys map[string]yaml.Node // which sections are written, even empty
+	err := yaml.Unmarshal(data, &keys)
+	if err == nil {
+		err = dec.Decode(&doc)
+	}
+	if errors.Is(err, io.EOF) || (err == nil && len(keys) == 0 && doc.Version == "") {
 		return nil, nil, errors.New("config: the document is empty")
 	}
 	if err != nil {
@@ -89,10 +93,10 @@ func parse(data []byte) (*Config, map[string]json.RawMessage, error) {
 	if c.Version == "" {
 		c.Version = "1"
 	}
-	c.Managed = map[string]bool{
-		"flows": doc.Flows != nil, "alerts": doc.Alerts != nil, "snippets": doc.Snippets != nil,
-		"snippetLibraries": doc.SnippetLibraries != nil, "scripts": doc.Scripts != nil,
-		"configmap": doc.ConfigMap != nil, "settings": doc.Settings != nil,
+	c.Managed = map[string]bool{}
+	for section := range sections {
+		_, written := keys[section] // "flows:" with no entries still counts
+		c.Managed[section] = written
 	}
 	normalize(c)
 	for key, a := range c.Alerts {

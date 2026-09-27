@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -39,11 +38,11 @@ type ConfigFieldChange struct {
 	After  json.RawMessage `json:"after,omitempty"`
 }
 
-// ConfigPlanner plans a config-as-code document against the live server
-// without changing it. ErrInvalidConfig marks a document problem (its
-// message is safe to show).
+// ConfigPlanner plans a config-as-code document against the live
+// configuration (as export gathers it). ErrInvalidConfig marks a document
+// problem (its message is safe to show).
 type ConfigPlanner interface {
-	PlanConfig(ctx context.Context, doc []byte) (ConfigPlan, error)
+	PlanConfig(doc []byte, live ConfigBundle) (ConfigPlan, error)
 }
 
 // ErrInvalidConfig: the config-as-code document is not valid.
@@ -55,11 +54,19 @@ func (s *Server) handleConfigPlan(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusServiceUnavailable, "configuration planning unavailable")
 		return
 	}
+	if !s.configPorts(w, false, false) {
+		return
+	}
 	doc, ok := readConfigBody(w, r)
 	if !ok {
 		return
 	}
-	plan, err := s.cfg.ConfigPlanner.PlanConfig(r.Context(), doc)
+	live, err := s.liveConfig(r.Context(), true)
+	if err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	plan, err := s.cfg.ConfigPlanner.PlanConfig(doc, live)
 	if errors.Is(err, ErrInvalidConfig) {
 		writeStatusError(w, http.StatusBadRequest, err.Error())
 		return

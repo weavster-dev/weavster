@@ -92,20 +92,22 @@ applying it would change. Nothing on the server changes.
 
 ```text
 weavster> config diff "weavster.yaml"
-~ flow/adt
-    name: "ADT" → "ADT Inbound"
-    destinations[0].url: "https://old.example.com/in" → "https://ehr.example.com/in"
-+ flow/lab
-- flow/legacy
 ~ configmap/region
     value: "us" → "eu"
+~ flow/adt
+    destinations[0].url: "https://old.example.com/in" → "https://ehr.example.com/in"
+    name: "ADT" → "ADT Inbound"
++ flow/lab
+- flow/legacy
 1 to add, 2 to change, 1 to remove, 4 unchanged
 ```
 
-- `+` adds, `~` changes (one line per changed value), `-` removes.
+- `+` adds, `~` changes (one line per changed value), `-` removes. Adds and changes come first,
+  sorted by key, then removals; changed values are sorted by path.
 - **A section you leave out is not managed.** Nothing in it is changed or removed. A section you
   include is managed completely: an artifact the server has but the section lacks is removed.
-  Write `settings: {}` to remove every setting; leave `settings` out to keep them.
+  Write `settings: {}` (or `settings:` with nothing under it) to remove every setting; leave
+  `settings` out to keep them.
 - Flows are compared without their runtime state, so a deployed flow is not "changed" because
   it is deployed. Formatting and key order never count as changes.
 
