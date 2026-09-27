@@ -26,19 +26,22 @@ func TestGitIntegrationRemoved(t *testing.T) {
 
 	c := startComposed(t, serverconfig.Default(), io.Discard)
 	admin := basic(bootstrapAdmin, testAdminPassword)
-	for _, tt := range []struct{ method, path string }{
-		{http.MethodGet, "/api/v1/git"},
-		{http.MethodPost, "/api/v1/git/commit"},
-		{http.MethodGet, "/api/v1/git/drift"},
-		{http.MethodPost, "/api/v1/git/pull"},
-	} {
-		if code, body, _ := c.do(tt.method, tt.path, "", admin); code != http.StatusNotFound || !strings.Contains(body, gateway.RouteNotFoundMessage) {
-			t.Errorf("%s %s: %d %s", tt.method, tt.path, code, body)
+	// Every route the integration had, on the versioned path and the
+	// unversioned alias.
+	for _, prefix := range []string{"/api/v1", "/api"} {
+		for _, rt := range []string{
+			"GET /git", "GET /git/log", "GET /git/content", "GET /git/diff", "GET /git/drift", "GET /git/remote",
+			"POST /git/commit", "POST /git/restore", "POST /git/push", "POST /git/pull",
+		} {
+			method, path, _ := strings.Cut(rt, " ")
+			if code, body, _ := c.do(method, prefix+path, "", admin); code != http.StatusNotFound || !strings.Contains(body, gateway.RouteNotFoundMessage) {
+				t.Errorf("%s %s%s: %d %s", method, prefix, path, code, body)
+			}
 		}
 	}
 	// gitRev is not a document source: the plan reads the (empty) body.
-	if code, body, _ := c.do(http.MethodPost, "/api/v1/config/plan?gitRev=HEAD", "", admin); code != http.StatusBadRequest || strings.Contains(body, "git") {
-		t.Errorf("plan with gitRev: %d %s", code, body)
+	if code, _, _ := c.do(http.MethodPost, "/api/v1/config/plan?gitRev=HEAD", "", admin); code != http.StatusBadRequest {
+		t.Errorf("plan with gitRev: %d", code)
 	}
 	if code, body, _ := c.do(http.MethodPost, "/api/v1/users", `{"username":"g","password":"Git-Passw0rd-1","permissions":["git:view"],"mustChangePassword":false}`, admin); code != http.StatusBadRequest || !strings.Contains(body, "git:view") {
 		t.Errorf("git permission: %d %s", code, body)

@@ -77,10 +77,6 @@ All notable changes to this project are documented here, following
 - Message trends (#251): `GET /api/v1/messages/trends?from=&to=&interval=hour|day[&flowId=]` counts the stored messages per bucket and status, empty buckets included.
 - XML responses (#253): API responses, errors included, are sent as XML when the client explicitly asks for it (`Accept: application/xml` ranked above JSON and everything else), with a documented mapping; browsers still get JSON, message content is never converted, and request bodies stay JSON.
 - Statistics over time (#255): the server samples every flow's lifetime statistics (`stats.sampleIntervalMs`, default one minute; kept for `stats.retentionHours`, default 24) and `GET /api/v1/stats/series[?flowId=&from=&to=&limit=]` returns the newest matching samples (default 1000), oldest first.
-- Git repository (#262): server config `git.path`; `POST /api/v1/git/commit` commits the live configuration (one config-as-code document per artifact under `flows/`, `alerts/`, `snippets/`, `snippetLibraries/`, `scripts/`, `settings/`; never the config map); `GET /api/v1/git`, `/git/log[?path=&limit=]`, `/git/content?path=[&rev=]`; permissions `git:view` and `git:commit` (reading files and committing also need the configuration-export permissions).
-- Git plan/apply and drift (#264): `gitRev=REV` on `POST /api/v1/config/plan` and `/config/apply` uses the repository (every managed file merged; config map unmanaged) as the document; `GET /api/v1/git/drift[?rev=]` and CLI `config drift [revision]` (fails on drift) compare it with the live configuration.
-- Git remote (#266): server config `git.remote` (`url`, `username`, `passwordEnv`); `GET /api/v1/git/remote` (fetch, ahead/behind), `POST /api/v1/git/push` (409 when the remote moved on), `POST /api/v1/git/pull` (remote wins; dropped local commits reported).
-- Git diff and restore (#268): `GET /api/v1/git/diff?from=&to=` (files and unified patch; working-tree changes without `from`); `POST /api/v1/git/restore` (`rev`, optional `path`, `message`) records a revision's content as a new commit.
 - CI/CD samples (#270): GitHub Actions and GitLab CI workflows that plan a config-as-code document on pull/merge requests and apply it on merge to `main` (`docs/examples/ci/`, docs page "CI/CD").
 
 ### Changed
@@ -107,7 +103,7 @@ All notable changes to this project are documented here, following
 
 ### Removed
 
-- The in-server Git integration added in #263–#269 (server config `git.*`, `/api/v1/git/*`, `gitRev` on config plan/apply, CLI `config drift`, permissions `git:view`/`git:commit`): the MVP is driven by the CLI and config files, with Git as automation around them (D-55, #274). `internal/gitstore` is back to the library it was before #263.
+- The in-server Git integration built in #263–#269 was taken out before release (never shipped): the MVP is driven by the CLI and config files, with Git as automation around them (D-55, #274). `internal/gitstore` is back to the library it was before #263.
 - The synthetic `admit` flow that the server seeded at startup; a new server starts with no flows (#151).
 - The hard-coded `admin`/`admin123!` seed user in the composition root. It never passed the default password policy, and a relaxed `auth.passwordPolicy` would have created it (#147).
 
