@@ -104,7 +104,11 @@ func (s *MLLPServer) serve(conn net.Conn) {
 		if _, err := r.Peek(1); err != nil { // waits, at most IdleTimeout, for the next frame
 			return
 		}
-		if conn.SetReadDeadline(time.Now().Add(s.opts.FrameTimeout)) != nil {
+		// Also under the lock: Close must be able to cut a frame short.
+		s.mu.Lock()
+		stop = s.closing || conn.SetReadDeadline(time.Now().Add(s.opts.FrameTimeout)) != nil
+		s.mu.Unlock()
+		if stop {
 			return
 		}
 		frame, err := readFrame(r, s.opts.MaxFrame)

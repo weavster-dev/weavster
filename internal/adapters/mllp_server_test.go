@@ -158,3 +158,27 @@ func TestMLLPServerSlowFrame(t *testing.T) {
 		t.Errorf("reply = %q", got)
 	}
 }
+
+// TestMLLPServerCloseCutsPartialFrame: Close does not wait for a frame that
+// stopped arriving half-way (the frame timeout is long).
+func TestMLLPServerCloseCutsPartialFrame(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := ServeMLLP(ln, func(frame []byte, _ error) []byte { return frame }, MLLPOptions{MaxFrame: 100, IdleTimeout: time.Minute, FrameTimeout: time.Hour})
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_, _ = conn.Write([]byte("\x0bhalf"))
+	time.Sleep(100 * time.Millisecond)
+	closed := make(chan struct{})
+	go func() { _ = srv.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close waited for a partial frame")
+	}
+}

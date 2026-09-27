@@ -41,6 +41,7 @@ func TestMLLPHandler(t *testing.T) {
 		{"too large, nothing kept", nil, adapters.ErrMLLPFrameTooLarge, mllpIngest{}, "MSA|AR||message larger than 10 MiB"},
 		{"space before MSH", []byte(" " + string(msg)), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
 		{"MSHX", []byte("MSHX|1\r"), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
+		{"framing bytes in MSH-10", []byte("MSH|^~\\&|LAB|HOSP|W|H|1||ORU^R01|C\x1c1\x0b|P|2.5\r"), nil, mllpIngest{res: gateway.IngestResult{ID: "m1"}}, "MSA|AA|C1"},
 		{"line break before MSH", append([]byte("\r\n"), msg...), nil, mllpIngest{res: gateway.IngestResult{ID: "m1"}}, "MSA|AA|C1"},
 		{"not HL7", []byte("hello"), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
 	} {

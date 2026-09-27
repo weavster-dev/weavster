@@ -34,7 +34,7 @@ const maxControlIDMetadata = 199
 func mllpHandler(id string, ingest gateway.SourceIngester) adapters.MLLPHandler {
 	tooLarge := fmt.Sprintf("message larger than %d MiB", gateway.MaxMessageBytes>>20)
 	return func(frame []byte, readErr error) []byte {
-		msh := firstSegment(frame) // the ACK needs only MSH
+		msh := withoutFraming(firstSegment(frame)) // the ACK needs only MSH
 		ack := func(code, text string) []byte {
 			// HL7ACK answers any input (the HL7 parser accepts every byte string).
 			b, _ := codecs.HL7ACK(msh, codecs.HL7AckOptions{Code: code, Text: text, ControlID: newControlID(), Now: time.Now()})
@@ -73,6 +73,17 @@ func firstSegment(frame []byte) []byte {
 		return frame[:i]
 	}
 	return frame
+}
+
+// withoutFraming drops MLLP's start and end bytes from seg, so values the
+// ACK echoes from it can never end the ACK's frame early.
+func withoutFraming(seg []byte) []byte {
+	return bytes.Map(func(r rune) rune {
+		if r == 0x0b || r == 0x1c {
+			return -1
+		}
+		return r
+	}, seg)
 }
 
 // isMSH reports whether seg is an MSH segment: "MSH" and its field
