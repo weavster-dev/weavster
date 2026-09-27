@@ -67,6 +67,7 @@ All notable changes to this project are documented here, following
 - Alert definitions (#227): `/api/v1/alerts` (list, create, get/put/delete, enable/disable, `import` with `force`, `options`; permission `alerts:edit`), validated and SQLite-durable. CLI `importalert "path" [force]` and `exportalert id|"name"|* "path"`. Alerts do not fire yet.
 - Full configuration export and import (#229): `GET /api/v1/config/export[?includeConfigMap=true]` and `POST /api/v1/config/import` (`force`, `nodeploy`, `overwriteConfigMap`; validated and conflict-checked before writing; enabled flows deployed unless `nodeploy`). CLI `exportcfg "path" [overwriteconfigmap]` and `importcfg "path" [nodeploy] [overwriteconfigmap] [force]`.
 - Deprecated command names `channel` (→ `flow`) and `codetemplate` (→ `snippet`) run with a warning naming the replacement (#231). Exit codes and error format documented in one table.
+- CLI golden tests (#233): every command in `help`, every `flow` subcommand, and their error paths, in batch and interactive mode, pinned in `cmd/weavster/testdata/golden/` (`go test ./cmd/weavster -run TestCLIGolden -update` rewrites them).
 
 ### Changed
 

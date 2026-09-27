@@ -1,0 +1,8 @@
+# flow-connectors-ports
+flow connectors
+flow ports
+--- stdout
+[{"id":"adt","name":"ADT Inbound","sourceType":"","destinations":["out"]}]
+[{"address":"127.0.0.1:8080","port":8080,"usedBy":"api"}]
+--- stderr
+--- exit 0

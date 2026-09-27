@@ -1,0 +1,28 @@
+# flow-lifecycle
+flow deploy adt
+flow start adt
+flow pause adt
+flow resume adt
+flow halt adt
+flow resume adt
+flow stop adt
+flow start adt
+flow pause nope
+flow stop-destination adt out
+flow start-destination adt out
+flow start-destination adt nope
+--- stdout
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"deployed","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"started","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"paused","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"started","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"halted","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"started","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"stopped","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"started","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"started","enabled":true,"stoppedDestinations":["out"],"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"started","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+--- stderr
+Error: no flow with id or name "nope"
+Error: server returned 404 Not Found: destination not found: flow adt has no destination "nope"
+--- exit 2

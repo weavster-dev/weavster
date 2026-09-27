@@ -1,0 +1,16 @@
+# config-items
+importmap "$DIR/map.json"
+exportmap "$DIR/map-out.json"
+importscripts "$DIR/scripts.json"
+exportscripts "$DIR/scripts-out.json"
+importmap "$DIR/none.json"
+importmap
+--- stdout
+imported 1 config map entries from $DIR/map.json (they replace the previous set)
+exported 1 config map entries to $DIR/map-out.json
+imported 1 scripts from $DIR/scripts.json (they replace the previous set)
+exported 1 scripts to $DIR/scripts-out.json
+--- stderr
+Error: open $DIR/none.json: no such file or directory
+Error: usage: importmap "path"
+--- exit 2

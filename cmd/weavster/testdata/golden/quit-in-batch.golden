@@ -1,0 +1,8 @@
+# quit-in-batch
+quit
+exit
+status
+--- stdout
+no deployed flows
+--- stderr
+--- exit 0

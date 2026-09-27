@@ -1,0 +1,14 @@
+# interactive
+status
+bogus
+
+flow get nope
+quit
+status
+--- stdout
+weavster> no deployed flows
+weavster> weavster> weavster> weavster> 
+--- stderr
+Error: unknown command "bogus"
+Error: no flow with id or name "nope"
+--- exit 0

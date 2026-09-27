@@ -1,0 +1,14 @@
+# dump-clear
+dump stats "$DIR/stats.json"
+dump events "$DIR/events.json"
+dump logs "$DIR/x"
+clearallmessages
+clearallmessages now
+--- stdout
+wrote stats to $DIR/stats.json
+wrote events to $DIR/events.json
+removed 1 messages; restarted adt
+--- stderr
+Error: usage: dump stats|events "path"
+Error: usage: clearallmessages
+--- exit 2

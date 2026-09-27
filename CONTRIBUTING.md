@@ -78,6 +78,16 @@ GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build ./cmd/weavster
    that the document validates with kin-openapi (OpenAPI 3.0 rules; keep to constructs valid in
    both 3.0 and 3.1, for example no `type` lists), and that every documented operation reaches its
    handler and answers only statuses it documents.
+   CLI output is pinned by golden files in `cmd/weavster/testdata/golden/`: `TestCLIGolden` runs
+   each case in `cmd/weavster/golden_test.go` against one server and compares stdout, stderr, and
+   the exit code. A new CLI command needs a case there (the test fails when a command listed by
+   `help` or a `flow` subcommand has none). After an intended output change, rewrite the files and
+   review the diff:
+
+   ```bash
+   go test ./cmd/weavster -run TestCLIGolden -update
+   git diff cmd/weavster/testdata/golden
+   ```
 6. Add a `CHANGELOG.md` entry under `[Unreleased]` (Added/Changed/Fixed/Removed).
 7. Ensure `README.md` reflects what exists now — never aspirational.
 8. Open a pull request using the PR template and reference the issue (`Closes #N`).

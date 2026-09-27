@@ -1,0 +1,9 @@
+# deprecated
+channel list
+codetemplate list
+--- stdout
+adt	started	ADT Inbound
+--- stderr
+Warning: "channel" is deprecated; use "flow"
+Warning: "codetemplate" is deprecated; use "snippet"
+--- exit 0

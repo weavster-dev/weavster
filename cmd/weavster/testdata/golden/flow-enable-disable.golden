@@ -1,0 +1,10 @@
+# flow-enable-disable
+flow disable adt
+flow enable adt
+flow enable nope
+--- stdout
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"undeployed","enabled":false,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"undeployed","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+--- stderr
+Error: no flow with id or name "nope"
+--- exit 2
