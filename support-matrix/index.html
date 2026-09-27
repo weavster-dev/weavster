@@ -89,6 +89,9 @@
                                 <a href="../git/" class="nav-link">Git Repository</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../ci-cd/" class="nav-link">CI/CD</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../system-info/" class="nav-link">System Information</a>
                             </li>
                             <li class="nav-item">
@@ -352,6 +355,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Git diff and restore (<code>GET /api/v1/git/diff?from=&amp;to=</code>, working-tree changes without <code>from</code>; <code>POST /api/v1/git/restore</code> as a new commit)</td>
 <td>Implemented (wired)</td>
 <td><code>TestGitDiffRestore</code>. Restoring changes the repository only; apply from Git brings the server to it. See <a href="../git/#restore-a-revision">Git repository</a>.</td>
+</tr>
+<tr>
+<td>CI/CD samples: GitHub Actions and GitLab CI, plan on pull/merge request and apply on merge to <code>main</code> (<code>docs/examples/ci/</code>)</td>
+<td>Implemented (samples)</td>
+<td><code>TestCISamples</code> runs each sample's <code>weavster</code> commands against a server and checks the page shows the files. Install is <code>go install</code> until release binaries exist. See <a href="../ci-cd/">CI/CD</a>.</td>
 </tr>
 <tr>
 <td>Alert definitions (<code>/api/v1/alerts</code>: create, get, update, delete, enable/disable, import with <code>force</code>, options); CLI <code>importalert</code>, <code>exportalert</code></td>

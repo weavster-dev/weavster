@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://docs.weavster.dev/ci-cd/">
+        <link rel="shortcut icon" href="../img/favicon.ico">
+        <title>CI/CD - Weavster</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="..">Weavster</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href=".." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../support-matrix/" class="nav-link">Support Matrix</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../server-config/" class="nav-link">Server Configuration</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../authentication/" class="nav-link">Authentication</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../cli/" class="nav-link">Command-line client</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../api/" class="nav-link">REST API</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../api-errors/" class="nav-link">API errors</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../audit-log/" class="nav-link">Audit Log</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../processing-messages/" class="nav-link">Processing Messages</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../flow-export-import/" class="nav-link">Flow Dependencies, Export, Import</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../config-items/" class="nav-link">Config Map, Scripts, Settings</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../snippets/" class="nav-link">Code Snippets</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../alerts/" class="nav-link">Alerts</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../lookups/" class="nav-link">Dynamic Lookups</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../config-transfer/" class="nav-link">Configuration Export and Import</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../git/" class="nav-link">Git Repository</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="./" class="nav-link active" aria-current="page">CI/CD</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../system-info/" class="nav-link">System Information</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../api-formats/" class="nav-link">JSON and XML</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../documentation/" class="nav-link">Docs Site Guide</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../mvp-project-plan/" class="nav-link">MVP Project Plan</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../agent-onboarding/" class="nav-link">Agent Onboarding</a>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../git/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../system-info/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/ci-cd.md" class="nav-link">Edit on weavster-dev/weavster
+                                    </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#cicd" class="nav-link">CI/CD</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#before-you-start" class="nav-link">Before you start</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#the-document" class="nav-link">The document</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#github-actions" class="nav-link">GitHub Actions</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#gitlab-ci" class="nav-link">GitLab CI</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#pitfalls" class="nav-link">Pitfalls</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="cicd">CI/CD</h1>
+<p>Keep the server's configuration in a repository as a <a href="../config-as-code/">config-as-code document</a>
+(<code>weavster.yaml</code>) and let CI do the rest:</p>
+<ul>
+<li><strong>On a pull request or merge request</strong> the pipeline shows what applying the changed document
+  would do to the server (<a href="../cli/"><code>config diff</code></a>). Nothing changes on the server. An invalid
+  document, or a server that refuses the credentials, fails the job with the reason.</li>
+<li><strong>On merge to <code>main</code></strong> the pipeline applies the document (<a href="../config-as-code/#apply"><code>config apply</code></a>)
+  and then deploys the flows that are <code>enabled</code> but not yet deployed (<a href="../cli/"><code>deploy</code></a>) and
+  starts them (<a href="../cli/"><code>flow start-all</code></a>), so the merged change takes effect. The
+  apply plans again first, so it applies what the server needs at that moment, and records the
+  commit in the <a href="../audit-log/">audit log</a> as the reason. If a change fails, the apply undoes the
+  changes it already made; if undoing one also fails, it reports <code>rollback failed</code> with what is
+  left, and the job fails. Deploying and starting run only after a successful apply.</li>
+</ul>
+<p>Copy a sample below into the repository that holds <code>weavster.yaml</code>; the files are also available
+to download: <a href="../examples/ci/github-actions.yml"><code>github-actions.yml</code></a>,
+<a href="../examples/ci/gitlab-ci.yml"><code>gitlab-ci.yml</code></a>, <a href="../examples/ci/weavster.yaml"><code>weavster.yaml</code></a>.</p>
+<h2 id="before-you-start">Before you start</h2>
+<ol>
+<li>A server reachable from CI over <strong>HTTPS</strong> (<code>listen.tlsAddress</code>, see
+   <a href="../server-config/">Server configuration</a>). Plain HTTP would send the password in cleartext.</li>
+<li>Two users for CI, so a pull request cannot apply (see the table below).</li>
+<li>Secrets in the CI system: <code>WEAVSTER_ADDRESS</code> (for example <code>https://weavster.example.com</code>), and
+   <code>WEAVSTER_USER</code> / <code>WEAVSTER_PASSWORD</code> once for each user, scoped as the sample's header
+   comment describes: the plan user's values for every pipeline, the apply user's values only for
+   the protected <code>production</code> environment. The jobs write them to a <a href="../cli/">connection file</a>
+   readable only by the job, so the password never appears on a command line or in the log.</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>User</th>
+<th>Used by</th>
+<th>Permissions</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Plan user</td>
+<td>pull/merge request pipelines</td>
+<td><code>flows:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>settings:edit</code>, <code>configmap:edit</code> (the <a href="../config-as-code/#see-what-would-change">config plan permissions</a>)</td>
+</tr>
+<tr>
+<td>Apply user</td>
+<td>merges to <code>main</code> only</td>
+<td>the plan permissions plus <code>flows:edit</code> and <code>flows:deploy</code> (deploy and start)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-document">The document</h2>
+<p>Only the sections the document has are managed; the server keeps what it has for the others. For
+example, this document manages flows, scripts, and settings, and leaves alerts, snippets, and the
+config map alone:</p>
+<pre><code class="language-yaml"># The configuration this repository manages (config-as-code, version 1).
+# Sections left out are not managed: the server keeps what it has for them.
+version: &quot;1&quot;
+flows:
+  adt:
+    id: adt
+    name: ADT inbound
+    enabled: true
+    destinations:
+      - name: archive
+        type: file
+        dir: /var/lib/weavster/out/adt
+scripts:
+  deploy: log(&quot;deployed from CI&quot;)
+settings:
+  retention: {days: 30}
+</code></pre>
+<blockquote>
+<p><strong>Warning: a managed section is managed completely.</strong> Applying this document to a server that
+already has other flows, scripts, or settings <strong>removes them</strong>, because they are not in the
+document. Before the first merge, make the document list everything you want to keep, and read
+the pull request's plan: every <code>-</code> line is a removal.</p>
+</blockquote>
+<h2 id="github-actions">GitHub Actions</h2>
+<p>Save as <code>.github/workflows/weavster.yml</code>. The plan appears in the job summary of the pull
+request's checks (and in the step log). Add required reviewers to the <code>production</code> environment to
+have a person approve each apply.</p>
+<pre><code class="language-yaml"># Weavster config-as-code on GitHub Actions: plan on pull requests, apply on
+# merge to main. Save as .github/workflows/weavster.yml in the repository that
+# holds weavster.yaml.
+#
+# Secrets: WEAVSTER_ADDRESS (https://weavster.example.com) as a repository
+# secret. WEAVSTER_USER / WEAVSTER_PASSWORD twice: as repository secrets for
+# the plan user, and as secrets of the `production` environment for the apply
+# user (environment secrets override repository secrets in the apply job).
+# GitHub gives no secrets to pull requests from forks: their plan job fails to
+# log in, and a maintainer runs the plan from a branch in this repository.
+name: weavster-config
+
+on:
+  pull_request:
+    paths: [weavster.yaml]
+  push:
+    branches: [main]
+    paths: [weavster.yaml]
+
+permissions:
+  contents: read
+
+env:
+  WEAVSTER_VERSION: latest # pin a commit hash (or a release tag once releases exist)
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # A newer push to the same pull request replaces its running plan.
+    concurrency:
+      group: weavster-plan-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - &amp;checkout
+        uses: actions/checkout@v4
+      - &amp;setup-go
+        uses: actions/setup-go@v5
+        with:
+          go-version: &quot;1.22&quot;
+      - &amp;install
+        name: Install weavster
+        run: go install &quot;github.com/weavster-dev/weavster/cmd/weavster@${WEAVSTER_VERSION}&quot;
+      - &amp;connect
+        name: Write the connection file
+        env:
+          WEAVSTER_ADDRESS: ${{ secrets.WEAVSTER_ADDRESS }}
+          WEAVSTER_USER: ${{ secrets.WEAVSTER_USER }}
+          WEAVSTER_PASSWORD: ${{ secrets.WEAVSTER_PASSWORD }}
+        run: |
+          umask 077
+          quote() { printf &quot;'%s'&quot; &quot;$(printf '%s' &quot;$1&quot; | sed &quot;s/'/''/g&quot;)&quot;; }
+          {
+            printf 'address: %s\n' &quot;$(quote &quot;$WEAVSTER_ADDRESS&quot;)&quot;
+            printf 'user: %s\n' &quot;$(quote &quot;$WEAVSTER_USER&quot;)&quot;
+            printf 'password: %s\n' &quot;$(quote &quot;$WEAVSTER_PASSWORD&quot;)&quot;
+          } &gt; &quot;$RUNNER_TEMP/weavster.conn&quot;
+      - name: Plan
+        run: |
+          printf 'config diff &quot;weavster.yaml&quot;\n' &gt; &quot;$RUNNER_TEMP/plan.txt&quot;
+          status=0
+          weavster -c &quot;$RUNNER_TEMP/weavster.conn&quot; -s &quot;$RUNNER_TEMP/plan.txt&quot; &gt; plan.out 2&gt;&amp;1 || status=$?
+          cat plan.out
+          {
+            echo '### Weavster plan for weavster.yaml'
+            echo '```'
+            cat plan.out
+            echo '```'
+          } &gt;&gt; &quot;$GITHUB_STEP_SUMMARY&quot;
+          exit &quot;$status&quot;
+
+  apply:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production # holds the apply user's secrets; add required reviewers to gate applies
+    # One apply at a time. A newer merge replaces an apply still waiting to
+    # start; it applies the whole document, so nothing is lost.
+    concurrency:
+      group: weavster-apply
+      cancel-in-progress: false
+    steps:
+      - *checkout
+      - *setup-go
+      - *install
+      - *connect
+      - name: Apply, deploy, and start
+        # Separate runs, so nothing is deployed or started if the apply fails.
+        run: |
+          printf 'config apply &quot;weavster.yaml&quot; %s\n' &quot;merged ${GITHUB_SHA}&quot; &gt; &quot;$RUNNER_TEMP/apply.txt&quot;
+          printf 'deploy 120\n' &gt; &quot;$RUNNER_TEMP/deploy.txt&quot;
+          printf 'flow start-all\n' &gt; &quot;$RUNNER_TEMP/start.txt&quot;
+          weavster -c &quot;$RUNNER_TEMP/weavster.conn&quot; -s &quot;$RUNNER_TEMP/apply.txt&quot; &amp;&amp;
+            weavster -c &quot;$RUNNER_TEMP/weavster.conn&quot; -s &quot;$RUNNER_TEMP/deploy.txt&quot; &amp;&amp;
+            weavster -c &quot;$RUNNER_TEMP/weavster.conn&quot; -s &quot;$RUNNER_TEMP/start.txt&quot;
+</code></pre>
+<h2 id="gitlab-ci">GitLab CI</h2>
+<p>Save as <code>.gitlab-ci.yml</code>. Protect <code>main</code>, so only merges can apply. The plan is in the merge
+request pipeline's job log. Only pushes to <code>main</code> apply; scheduled, manual, and API pipelines do
+not.</p>
+<pre><code class="language-yaml"># Weavster config-as-code on GitLab CI: plan on merge requests, apply on
+# merge to main. Save as .gitlab-ci.yml in the repository that holds
+# weavster.yaml.
+#
+# CI/CD variables: WEAVSTER_ADDRESS (https://weavster.example.com).
+# WEAVSTER_USER / WEAVSTER_PASSWORD twice: masked for all environments for
+# the plan user (not protected: merge request pipelines run on unprotected
+# branches), and masked + protected for the `production` environment for the
+# apply user (the environment-scoped values win in the apply job).
+# Anyone who can push a branch to this project can read the plan user's
+# password (a branch can change this file); merge requests from forks run in
+# the fork without these variables.
+#
+# Set the resource group to run applies in order, once per project:
+#   curl --request PUT --header &quot;PRIVATE-TOKEN: $TOKEN&quot; \
+#     &quot;https://gitlab.example.com/api/v4/projects/$PROJECT_ID/resource_groups/weavster-config?process_mode=oldest_first&quot;
+stages: [plan, apply]
+
+variables:
+  WEAVSTER_VERSION: latest # pin a commit hash (or a release tag once releases exist)
+
+.weavster:
+  image: golang:1.22
+  before_script:
+    - go install &quot;github.com/weavster-dev/weavster/cmd/weavster@${WEAVSTER_VERSION}&quot;
+    - |
+      umask 077
+      quote() { printf &quot;'%s'&quot; &quot;$(printf '%s' &quot;$1&quot; | sed &quot;s/'/''/g&quot;)&quot;; }
+      {
+        printf 'address: %s\n' &quot;$(quote &quot;$WEAVSTER_ADDRESS&quot;)&quot;
+        printf 'user: %s\n' &quot;$(quote &quot;$WEAVSTER_USER&quot;)&quot;
+        printf 'password: %s\n' &quot;$(quote &quot;$WEAVSTER_PASSWORD&quot;)&quot;
+      } &gt; /tmp/weavster.conn
+
+plan:
+  extends: .weavster
+  stage: plan
+  rules:
+    - if: $CI_PIPELINE_SOURCE == &quot;merge_request_event&quot;
+      changes: [weavster.yaml]
+  script:
+    - printf 'config diff &quot;weavster.yaml&quot;\n' &gt; /tmp/plan.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/plan.txt
+
+apply:
+  extends: .weavster
+  stage: apply
+  resource_group: weavster-config # one apply at a time, oldest first (see above)
+  environment: production
+  rules:
+    - if: $CI_PIPELINE_SOURCE == &quot;push&quot; &amp;&amp; $CI_COMMIT_BRANCH == &quot;main&quot;
+      changes: [weavster.yaml]
+  script:
+    # Separate runs, so nothing is deployed or started if the apply fails.
+    - printf 'config apply &quot;weavster.yaml&quot; %s\n' &quot;merged ${CI_COMMIT_SHORT_SHA}&quot; &gt; /tmp/apply.txt
+    - printf 'deploy 120\n' &gt; /tmp/deploy.txt
+    - printf 'flow start-all\n' &gt; /tmp/start.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/apply.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/deploy.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/start.txt
+</code></pre>
+<h2 id="pitfalls">Pitfalls</h2>
+<ul>
+<li><strong>Pin the version.</strong> <code>WEAVSTER_VERSION: latest</code> installs the newest client from the default
+  branch. Pin the commit hash (or, once releases exist, the release tag) that matches your server.</li>
+<li><strong>Who can use the plan user.</strong> The plan needs the same permissions as a configuration export,
+  which include editing alerts, snippets, scripts, settings, and the config map through the API
+  (there is no read-only plan permission yet); it cannot apply a document or change flows. Anyone
+  who can push a branch to the repository can change the pipeline and read the plan user's
+  password, so give push access only to people you would trust with those permissions. Pull and
+  merge requests from forks get no secrets: their plan job cannot log in, and a maintainer runs the
+  plan from a branch in the repository instead.</li>
+<li><strong>Order applies on GitLab.</strong> A resource group runs one job at a time but not in order by
+  default. Set its process mode to <code>oldest_first</code> once (the command is in the sample's header),
+  or an older queued apply could run after a newer one and restore an older <code>weavster.yaml</code>.</li>
+<li><strong>The server moved on.</strong> If someone changes the server between the plan and the merge, the
+  apply job plans again and applies the current differences, which may be more than the pull
+  request showed. Check the apply job's output; to be warned instead, run the pull request plan
+  again just before merging.</li>
+<li><strong>Sections you leave out are not managed.</strong> Deleting a whole section from <code>weavster.yaml</code> does
+  not remove those artifacts from the server; keep the section with no entries (<code>scripts: {}</code>)
+  to remove them all.</li>
+<li><strong>One apply at a time.</strong> The samples queue applies (<code>concurrency</code>, <code>resource_group</code>). On GitHub a
+  newer merge replaces an apply that has not started yet; the newer apply applies the whole
+  document, so nothing is lost. Do not apply to one server from two pipelines at once.</li>
+<li><strong><code>flow start-all</code> starts every deployed or stopped flow,</strong> including one someone stopped on
+  purpose. If you stop flows by hand, remove that line and start new flows yourself, or keep a
+  flow off by setting <code>enabled: false</code> and undeploying it.</li>
+<li><strong>Secrets in the document.</strong> <code>weavster.yaml</code> is committed: keep passwords and tokens out of it
+  (use the config map on the server, which a document that leaves out <code>configmap</code> does not touch).</li>
+</ul></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+        <script src="../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>
