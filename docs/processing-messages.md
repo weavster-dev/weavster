@@ -341,7 +341,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @adt.json.gz \
 {"imported":120,"skipped":3,"busy":0}
 ```
 
-- Messages keep their id, status, times, attempts, metadata, and content. A message whose id
+- Messages keep their id, status, receive time, attempts, metadata, and content; their update time
+  becomes the time of the import. A message whose id
   already exists is `skipped`; add `overwrite=true` to replace it. A message the server is
   processing at that moment is left as it is and counted as `busy`.
 - Every flow the messages belong to must exist, or nothing is imported (`404` naming the flow).

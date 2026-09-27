@@ -246,8 +246,12 @@ func exportFlowMessages(ctx context.Context, client Client, arg string) ([]byte,
 		return archive, err
 	}
 	flows, err := listFlows(ctx, client)
+	var se *serverError
+	if errors.As(err, &se) && se.Code == http.StatusForbidden {
+		return archive, nil // no flows:view to check names: arg was an id with no messages
+	}
 	if err != nil {
-		return archive, nil // names cannot be listed: keep the (empty) archive
+		return nil, err
 	}
 	id, err := flowByName(flows, arg)
 	if err != nil || id == arg {

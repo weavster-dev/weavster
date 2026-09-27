@@ -222,3 +222,50 @@ func TestArchiveCount(t *testing.T) {
 		}
 	}
 }
+
+// flowsListClient exports an empty archive and answers the flow list with
+// status (or the given flows when status is 200).
+type flowsListClient struct {
+	status int
+	flows  string
+}
+
+func (flowsListClient) UserList(context.Context) ([]string, error) { return nil, nil }
+func (flowsListClient) Version(context.Context) string             { return version }
+func (c flowsListClient) Call(_ context.Context, _, path string, _ []byte) ([]byte, error) {
+	if strings.HasPrefix(path, "/api/v1/messages/export") {
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		_, _ = zw.Write([]byte(`{"items":[]}`))
+		_ = zw.Close()
+		return buf.Bytes(), nil
+	}
+	if c.status != http.StatusOK {
+		return nil, &serverError{Code: c.status, Status: http.StatusText(c.status), Body: "no"}
+	}
+	return []byte(c.flows), nil
+}
+
+// TestExportFlowMessagesLookup: an empty export by id falls back to a name
+// lookup; a refusal to list flows keeps the empty archive, any other
+// failure is reported.
+func TestExportFlowMessagesLookup(t *testing.T) {
+	tests := []struct {
+		name    string
+		client  flowsListClient
+		wantErr bool
+	}{
+		{"no permission to list flows", flowsListClient{status: http.StatusForbidden}, false},
+		{"flow list fails", flowsListClient{status: http.StatusInternalServerError}, true},
+		{"not a name either", flowsListClient{status: http.StatusOK, flows: `[{"id":"a","name":"A"}]`}, true},
+		{"the id exists with no messages", flowsListClient{status: http.StatusOK, flows: `[{"id":"x","name":"X"}]`}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := exportFlowMessages(context.Background(), tt.client, "x")
+			if (err != nil) != tt.wantErr {
+				t.Errorf("err = %v, want error %v", err, tt.wantErr)
+			}
+		})
+	}
+}
