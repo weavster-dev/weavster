@@ -482,9 +482,9 @@ func (s *Server) handleConnectorNames(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePortsInUse(w http.ResponseWriter, _ *http.Request) {
-	ports := s.cfg.Listeners
-	if ports == nil {
-		ports = []PortInUse{}
+	ports := append([]PortInUse{}, s.cfg.Listeners...)
+	if s.cfg.Sources != nil {
+		ports = append(ports, s.cfg.Sources.Ports()...)
 	}
 	writeJSON(w, http.StatusOK, ports)
 }

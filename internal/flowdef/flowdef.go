@@ -7,7 +7,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -42,9 +44,9 @@ type Flow struct {
 
 // Source is a flow's own message source (#107 D-56).
 type Source struct {
-	Type string `json:"type"` // file
+	Type string `json:"type"` // file or http
 	// Dir is the absolute directory a file source polls.
-	Dir string `json:"dir"`
+	Dir string `json:"dir,omitempty"`
 	// Pattern is a file-name glob (default "*").
 	Pattern string `json:"pattern,omitempty"`
 	// PollIntervalMs is how often the directory is read (default 1000).
@@ -52,6 +54,12 @@ type Source struct {
 	// MoveTo is an absolute directory processed files are moved to
 	// (default: they are deleted).
 	MoveTo string `json:"moveTo,omitempty"`
+	// Address is the host:port an http source listens on (#107 D-57).
+	Address string `json:"address,omitempty"`
+	// Path is the request path an http source accepts (default "/").
+	Path string `json:"path,omitempty"`
+	// Method is the request method an http source accepts (default POST).
+	Method string `json:"method,omitempty"`
 }
 
 // Destination is one delivery target of a flow.
@@ -68,10 +76,15 @@ type Destination struct {
 }
 
 // CheckSource checks what the schema cannot: a file source's directories
-// are absolute and distinct, and its pattern is a valid file-name glob.
+// are absolute and distinct, and its pattern is a valid file-name glob; an
+// http source's address is host:port with a non-zero port.
 func CheckSource(s *Source) error {
 	if s == nil {
 		return nil
+	}
+	if s.Type == "http" {
+		_, err := SourcePort(s)
+		return err
 	}
 	switch {
 	case !filepath.IsAbs(s.Dir):
@@ -89,4 +102,17 @@ func CheckSource(s *Source) error {
 		return fmt.Errorf("source.pattern %q: %w", s.Pattern, err)
 	}
 	return nil
+}
+
+// SourcePort is the port an http source listens on.
+func SourcePort(s *Source) (int, error) {
+	_, p, err := net.SplitHostPort(s.Address)
+	if err != nil {
+		return 0, fmt.Errorf("source.address must be host:port, got %q", s.Address)
+	}
+	port, err := strconv.Atoi(p)
+	if err != nil || port < 1 || port > 65535 {
+		return 0, fmt.Errorf("source.address needs a port from 1 to 65535, got %q", s.Address)
+	}
+	return port, nil
 }

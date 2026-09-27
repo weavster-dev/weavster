@@ -157,7 +157,7 @@ func TestOpenAPIResponsesHaveSchemas(t *testing.T) {
 // flowdef.Destination, so a new field cannot be left out of the contract.
 func TestOpenAPIFlowSchemaMatchesFlowdef(t *testing.T) {
 	doc := loadSpec(t)
-	for name, v := range map[string]any{"Flow": flowdef.Flow{}, "FlowDestination": flowdef.Destination{}} {
+	for name, v := range map[string]any{"Flow": flowdef.Flow{}, "FlowSource": flowdef.Source{}, "FlowDestination": flowdef.Destination{}} {
 		var fields []string
 		rt := reflect.TypeOf(v)
 		for i := 0; i < rt.NumField(); i++ {

@@ -69,7 +69,7 @@ type FlowChange struct {
 type PortInUse struct {
 	Address string `json:"address"`
 	Port    int    `json:"port"`
-	// UsedBy names the listener, e.g. "api" or "api-tls".
+	// UsedBy names the listener, e.g. "api", "api-tls", or "flow:adt".
 	UsedBy string `json:"usedBy"`
 }
 
@@ -312,8 +312,15 @@ type Config struct {
 	Topology     TopologyProvider
 	System       SystemReporter
 	// Listeners are the ports the server listens on (ports-in-use).
-	Listeners   []PortInUse
+	Listeners []PortInUse
+	// Sources lists the ports flows' http sources listen on now.
+	Sources     SourcePorts
 	RequireCSRF bool
+}
+
+// SourcePorts reports the ports flows' own sources listen on.
+type SourcePorts interface {
+	Ports() []PortInUse
 }
 
 // Server is the HTTP gateway.

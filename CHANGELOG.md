@@ -80,6 +80,7 @@ All notable changes to this project are documented here, following
 - CI/CD samples (#270): GitHub Actions and GitLab CI workflows that plan a config-as-code document on pull/merge requests and apply it on merge to `main` (`docs/examples/ci/`, docs page "CI/CD").
 - Dead-letter requeue (#279): `POST /api/v1/messages/{id}/requeue` and `POST /api/v1/messages/requeue[?flowId=]` give dead-lettered messages another round of attempts (delivered destinations are not sent again; previous attempts kept in the audit log and a `message.requeued` event); CLI `deadletter list|show|requeue|remove`.
 - File source (#288): a flow with `source: {type: file, dir, pattern, pollIntervalMs, moveTo}` reads the files that appear in a directory while it is started, sends each through the flow with `source.file` metadata, and deletes or moves it afterwards (at-least-once); rejected files are moved to `moveTo/rejected` or skipped, with a `source.file.rejected` event.
+- HTTP source (#290): a flow with `source: {type: http, address, path, method}` listens on its own address while it is started and runs each request with that method and path through the flow like `POST /api/v1/flows/{id}/messages` (`source.http.path` metadata); the port opens and closes with the flow, one flow source per port, a port that cannot be opened is a `source.http.failed` event, and `ports-in-use` lists open flow ports as `flow:<id>`. No authentication or TLS on the flow listener yet.
 
 ### Changed
 

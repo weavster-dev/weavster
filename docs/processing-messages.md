@@ -69,7 +69,7 @@ below, in order, on the message as a JSON object.
 | `enabled`, `initialState` | Automatic deployment at startup; see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
 | `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). |
 | `responseSelector` | The destination whose reply is returned to the sender; see [Return a destination's reply](#return-a-destinations-reply). |
-| `source` | Where the flow reads messages on its own; see [Read files from a directory](#read-files-from-a-directory). Without it, messages arrive only through the API. |
+| `source` | Where the flow receives messages on its own; see [Read files from a directory](#read-files-from-a-directory) and [Receive messages over HTTP](#receive-messages-over-http). Without it, messages arrive only through the API. |
 
 ### `destinations`
 
@@ -221,8 +221,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1
 [{"address":"127.0.0.1:8080","port":8080,"usedBy":"api"},{"address":":8443","port":8443,"usedBy":"api-tls"}]
 ```
 
-`usedBy` is `api` for `listen.address` and `api-tls` for `listen.tlsAddress`. Flows do not
-listen on their own ports yet, so no flow appears in this list.
+`usedBy` is `api` for `listen.address`, `api-tls` for `listen.tlsAddress`, and `flow:<id>` for
+the open port of a started flow's [http source](#receive-messages-over-http).
 
 ### Read files from a directory
 
@@ -272,6 +272,57 @@ the flow as a message, and then deletes it (or moves it into `moveTo`):
 - `dir` must not be `moveTo/rejected`, where refused files go.
 - The server reads and moves files with its own permissions; only give `flows:edit` to users you
   trust with the directories it can reach.
+
+### Receive messages over HTTP
+
+A flow with an http `source` listens on its own address while it is started. Each request with
+the configured method and path is a message:
+
+```json
+{
+  "id": "adt",
+  "source": {"type": "http", "address": "127.0.0.1:9001", "path": "/adt", "method": "POST"},
+  "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}]
+}
+```
+
+| Field | Meaning |
+|---|---|
+| `type` | `http`. |
+| `address` | Required. `host:port` to listen on, for example `127.0.0.1:9001`, or `:9001` for every interface. The port must be a number from 1 to 65535. |
+| `path` | Request path accepted; default `/`. Must start with `/`. |
+| `method` | `POST` (default) or `PUT`. |
+
+Once the flow is started, send it a message:
+
+```bash
+curl -s -X POST http://127.0.0.1:9001/adt -d '{"PID":{"5":{"1":"Doe"}}}'
+```
+
+```json
+{"id":"6f1c…","status":"sent"}
+```
+
+- The request body becomes a message exactly like one sent with
+  [`POST /api/v1/flows/{id}/messages`](#3-send-a-message): the same checks, transform, delivery,
+  10 MiB limit, and reply (`202` with the message id and status, plus `response` with a
+  `responseSelector`). Each message has the metadata `source.http.path`.
+- Other paths get `404`, other methods `405` with an `Allow` header, a body over 10 MiB `413`, and
+  a message the flow refuses (for example not a JSON object when the flow has a transform) `400`.
+  While the flow is stopping, or after it was removed, requests get `503`.
+- A message stored before a later failure is still answered `202`: the flow has it, and
+  resending it would store it twice.
+- The port is open only while the flow is `started`. Starting, stopping, pausing, changing, or
+  deleting the flow opens or closes it within about a second; stopping the server closes it.
+- A port can have one flow source; a second flow with the same port is refused. A port that
+  cannot be opened (for example another program or the API uses it) is logged and recorded as a
+  `source.http.failed` [event](#5-statistics-and-events) with the address, and tried again every
+  second.
+- `weavster flow ports` (`GET /api/v1/flows/ports-in-use`) lists the open flow ports as
+  `flow:<id>`.
+- **The listener has no authentication or TLS yet.** Anyone who can reach the address can send
+  the flow messages. Listen on `127.0.0.1` or a private network, or put a reverse proxy with TLS
+  and authentication in front of it.
 
 ## 2. Deploy and start the flow
 
@@ -693,8 +744,9 @@ again as a new message instead, use `reprocess`.
   and only the newest 10,000 events are kept.
 - The first delivery attempt runs while your request waits; retries run in the background.
 - Only `http` and `file` destinations are available.
-- Besides this API, messages enter only through [file sources](#read-files-from-a-directory); flows do
-  not listen on their own ports yet.
+- Besides this API, messages enter only through [file sources](#read-files-from-a-directory) and
+  [http sources](#receive-messages-over-http); TCP/MLLP and database sources are not available
+  yet, and http sources have no authentication or TLS.
 - A `file` destination writes wherever `dir` points, with the server's permissions, and an
   `http` destination can target any address the server can reach, including internal ones.
   Only give `flows:edit` to trusted users.
