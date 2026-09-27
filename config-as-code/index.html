@@ -266,19 +266,25 @@ settings:
   instead of ignored.</li>
 </ul>
 <h2 id="check-a-document">Check a document</h2>
-<p>From the command-line client:</p>
-<pre><code class="language-text">weavster&gt; config validate &quot;weavster.yaml&quot;
-weavster.yaml is valid: 1 flows, 1 alerts, 1 snippets, 1 snippet libraries, 1 scripts, 1 config map entries, 1 settings
+<p>On your machine, with no server and no database:</p>
+<pre><code class="language-bash">weavster config validate weavster.yaml
 </code></pre>
+<pre><code class="language-text">weavster.yaml is valid: 1 flows, 1 alerts, 1 snippets, 1 snippet libraries, 1 scripts, 1 config map entries, 1 settings
+</code></pre>
+<p>Give several files to check them all. The exit code is <code>0</code> when every file is valid, <code>1</code> when
+any is invalid, and <code>2</code> when a file cannot be read or is larger than 50 MiB. The same check runs
+in the <a href="../cli/">command-line client</a> (<code>config validate "weavster.yaml"</code>), also without a server.</p>
+<p>The check uses the rules of the <code>weavster</code> binary you run, so use the same version as your
+server; <code>config diff</code> and <code>config apply</code> always check the document on the server too.</p>
 <p>Or with the API (permission <code>flows:edit</code>; nothing on the server changes):</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @weavster.yaml \
   http://127.0.0.1:8080/api/v1/config/validate
 </code></pre>
 <pre><code class="language-json">{&quot;counts&quot;:{&quot;flows&quot;:1,&quot;alerts&quot;:1,&quot;snippets&quot;:1,&quot;snippetLibraries&quot;:1,&quot;scripts&quot;:1,&quot;configmap&quot;:1,&quot;settings&quot;:1},&quot;valid&quot;:true}
 </code></pre>
-<p>An invalid document returns <code>400</code>, and the message names each problem with its place in the
+<p>An invalid document is reported (the API returns <code>400</code>) with each problem and its place in the
 document, for example:</p>
-<pre><code class="language-text">Error: server returned 400 Bad Request: config: alerts.adt-errors: alert adt-errors: unknown trigger event &quot;message.sent&quot;; use [message.errored message.queued message.dead-lettered]
+<pre><code class="language-text">Error: weavster.yaml: config: alerts.adt-errors: alert adt-errors: unknown trigger event &quot;message.sent&quot;; use [message.errored message.queued message.dead-lettered]
 </code></pre>
 <h2 id="see-what-would-change">See what would change</h2>
 <p><code>config diff</code> compares the document with the server's live configuration and shows what

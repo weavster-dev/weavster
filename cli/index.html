@@ -181,8 +181,10 @@
                     <div class="col-md-9" role="main">
 
 <h1 id="command-line-client">Command-line client</h1>
-<p><code>weavster</code> without <code>server</code> or <code>test</code> is the command-line client. It talks to a running server
-over the REST API, either as an interactive shell or running a script file (batch mode).</p>
+<p><code>weavster</code> without <code>server</code>, <code>test</code>, or <code>config</code> is the command-line client. It talks to a
+running server over the REST API, either as an interactive shell or running a script file (batch
+mode). Checking config-as-code files needs no server: <code>weavster config validate FILE...</code> (see
+<a href="../config-as-code/#check-a-document">Check a document</a>).</p>
 <pre><code class="language-bash"># Interactive shell
 weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd'
 weavster&gt; flow list
@@ -403,7 +405,7 @@ name, or a name several flows share, is an error that lists their ids.</p>
 </tr>
 <tr>
 <td><code>config validate "path"</code></td>
-<td>Checks a config-as-code document (YAML or JSON) on the server without changing anything. See <a href="../config-as-code/">Config-as-code documents</a>.</td>
+<td>Checks a config-as-code document (YAML or JSON) on this machine; it needs no server or login. See <a href="../config-as-code/">Config-as-code documents</a>.</td>
 </tr>
 <tr>
 <td><code>config diff "path"</code>, <code>config plan "path"</code></td>
@@ -555,6 +557,12 @@ adt started ADT Inbound
 <td>Every fixture passed, or <code>-h</code></td>
 <td>A fixture failed</td>
 <td>An unknown flag, or the results could not be written</td>
+</tr>
+<tr>
+<td><code>weavster config validate FILE...</code></td>
+<td>Every file is valid, or <code>-h</code></td>
+<td>A file is invalid</td>
+<td>No file given, a file cannot be read or is larger than 50 MiB, or another <code>config</code> command (<code>diff</code>, <code>plan</code>, and <code>apply</code> need a server: run them in the shell or with <code>-s</code>)</td>
 </tr>
 </tbody>
 </table>
