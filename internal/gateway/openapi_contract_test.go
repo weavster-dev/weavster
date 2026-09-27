@@ -223,15 +223,26 @@ func init() {
 func TestOpenAPIExamplesMatchSchemas(t *testing.T) {
 	doc := loadSpec(t)
 	for name, s := range doc.Components.Schemas {
-		if ex := s.Value.Example; ex != nil {
-			if err := s.Value.VisitJSON(ex); err != nil {
-				t.Errorf("schema %s: example does not match: %v", name, err)
-			}
+		ex := s.Value.Example
+		if ex == nil {
+			t.Errorf("schema %s has no example", name)
+			continue
+		}
+		if err := s.Value.VisitJSON(ex); err != nil {
+			t.Errorf("schema %s: example does not match: %v", name, err)
 		}
 	}
 	check := func(where string, mt *openapi3.MediaType) {
 		if mt == nil || mt.Schema == nil || mt.Schema.Value == nil {
 			return
+		}
+		// Examples on an inline schema (or its item schema) count too.
+		for which, sch := range map[string]*openapi3.SchemaRef{"schema example": mt.Schema, "items example": mt.Schema.Value.Items} {
+			if sch != nil && sch.Value != nil && sch.Value.Example != nil {
+				if err := sch.Value.VisitJSON(sch.Value.Example); err != nil {
+					t.Errorf("%s %s: does not match: %v", where, which, err)
+				}
+			}
 		}
 		values := map[string]any{"example": mt.Example}
 		for name, e := range mt.Examples {

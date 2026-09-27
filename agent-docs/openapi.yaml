@@ -1671,6 +1671,7 @@ components:
         events: {type: array, minItems: 1, items: {type: string, enum: [message.errored, message.queued, message.dead-lettered]}}
         flows: {type: array, items: {type: string}, description: Flow ids; none means every flow}
     AlertAction:
+      example: {"type": "email", "to": ["ops@example.com"]}
       oneOf:
         - {$ref: "#/components/schemas/AlertEmailAction"}
         - {$ref: "#/components/schemas/AlertWebhookAction"}
