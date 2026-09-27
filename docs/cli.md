@@ -43,8 +43,10 @@ commands as batch mode.
 
 ## Batch mode
 
-Commands are split on spaces: arguments (such as file names) cannot contain spaces, and there is
-no quoting. File names are relative to the directory you run `weavster` from.
+Commands are split on spaces. Put an argument that contains spaces in double quotes, and write
+`\"` and `\\` for a quote or backslash inside them: `flow rename adt "ADT \"Inbound\""`. A
+missing closing quote is an error. File names are relative to the directory you run `weavster`
+from.
 
 Every command in the script runs, even after an error. The client exits `0` when every command
 succeeded and `2` when any command failed: an unknown command, a usage error, a file that cannot
@@ -79,18 +81,35 @@ flow list
 | `flow remove <id>` | Deletes the flow and prints `removed <id>`. | `DELETE /api/v1/flows/{id}` |
 | `flow export <file> [<id>…]` | Writes an export document (all flows, or the listed ids and their dependencies) to `<file>`. | `GET /api/v1/flows/export` |
 | `flow import <file> [--overwrite]` | Imports an export document; `--overwrite` replaces existing flows. | `POST /api/v1/flows/import` |
-| `flow deploy\|undeploy\|start\|stop\|pause\|halt\|resume <id>` | Changes the flow's [lifecycle](flow-lifecycle.md) status. | `POST /api/v1/flows/{id}/{action}` |
+| `flow deploy <id>`, and likewise `undeploy`, `start`, `stop`, `pause`, `halt`, `resume` | Changes the flow's [lifecycle](flow-lifecycle.md) status. | `POST /api/v1/flows/{id}/{action}` |
 | `flow redeploy-all` | Undeploys and redeploys every flow that is not `undeployed`; each ends `deployed`. | `POST /api/v1/flows/redeploy-all` |
 | `flow stop-destination <id> <destination>`, `flow start-destination <id> <destination>` | Holds or releases one destination's deliveries. | `POST /api/v1/flows/{id}/destinations/{name}/{stop,start}` |
 | `flow connectors` | Every flow's source type and destination names. | `GET /api/v1/flows/connector-names` |
 | `flow ports` | The ports the server listens on. | `GET /api/v1/flows/ports-in-use` |
+| `flow stats [<id>]` | Statistics of one flow, or of every flow: `id  received=… filtered=… transformed=… sent=… errored=… queued=…`. | `GET /api/v1/flows/{id}/stats` |
 | `flow help` | Lists the flow commands. | — |
 
-`export`, `import`, `redeploy-all`, `connector-names`, and `ports-in-use` are not flow ids; using
-one as `<id>` is an error.
+Wherever a command takes `<id>`, you can also give the flow's name (spec: `id|name`). The client
+first uses the argument as an id. Only if the server reports that flow missing does it look the
+argument up by name (this needs the `flows:view` permission) and run the command again. An unknown
+name, or a name several flows share, is an error that lists their ids.
 
 Commands that change a flow print the server's reply (the flow, or the import/update result).
 `flow export` and `flow import` use the [export document](flow-export-import.md) format.
+
+## Deploy, import, and export (spec forms)
+
+| Command | What it does |
+|---|---|
+| `deploy [timeout]` | Deploys every flow that is `enabled` and `undeployed` (dependencies first, as `flow deploy` does); disabled flows are skipped, as at server start. Prints `deployed <id>` for each and `deployed N flows`. After `timeout` seconds no further flow is started (a deploy already sent finishes) and the command exits `2`. A flow that fails is reported, the others still deploy, and the command exits `2`. |
+| `import "path" [force]` | Same as `flow import`; `force` replaces existing flows. |
+| `export <id> "path"`, `export "name" "path"`, `export * "path"` | Same as `flow export`: one flow (by id or name) and its dependencies, or `*` for all flows. |
+
+```text
+deploy 60
+export * "backups/all flows.json"
+import "backups/all flows.json" force
+```
 
 ## Other commands
 

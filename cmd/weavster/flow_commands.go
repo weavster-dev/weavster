@@ -34,23 +34,81 @@ const flowUsage = `flow subcommands:
   flow redeploy-all
   flow start-destination|stop-destination <id> <destination>
   flow connectors
-  flow ports`
+  flow ports
+  flow stats [<id>]
+
+<id> is a flow id or name; quote arguments with spaces: "ADT Inbound".`
 
 // flowCommand runs one "flow" subcommand; args excludes "flow". Replies
 // from the server are printed as returned. It returns the §3.3 exit code.
+//
+// Spec §3.2 lets <id> be a flow name too. The command first runs with the
+// argument as an id; only when the server reports something missing (404)
+// are the id arguments looked up by name and the command run once more.
+// So a name costs one extra list call, and an id costs nothing extra.
 func flowCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
 	sub, rest := "", []string(nil)
 	if len(args) > 0 {
 		sub, rest = args[0], args[1:]
 	}
-	usage := func() int {
-		_, _ = fmt.Fprintln(stderr, "Error: usage:\n"+flowUsage)
-		return 2
+	// Route words (export, import, ...) are never ids: look them up as
+	// names before any request, so they cannot reach those routes.
+	for i, arg := range idArgs(sub, rest) {
+		if flowdef.Reserved(arg) {
+			flows, err := listFlows(ctx, client)
+			if err == nil {
+				arg, err = flowByName(flows, arg)
+			}
+			if err != nil {
+				return shellError(stderr, debug, err)
+			}
+			idArgs(sub, rest)[i] = arg
+		}
+	}
+	var missed error
+	code := runFlowCommand(ctx, client, sub, rest, stdout, stderr, debug, &missed)
+	if missed == nil {
+		return code
+	}
+	ids := idArgs(sub, rest)
+	if len(ids) == 0 {
+		return shellError(stderr, debug, missed)
+	}
+	flows, err := listFlows(ctx, client)
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	changed := false
+	for i, arg := range ids {
+		id, err := flowByName(flows, arg)
+		if err != nil {
+			return shellError(stderr, debug, err)
+		}
+		if id != arg {
+			ids[i], changed = id, true
+		}
+	}
+	if !changed { // every argument is an existing id: the 404 was about something else
+		return shellError(stderr, debug, missed)
+	}
+	return runFlowCommand(ctx, client, sub, rest, stdout, stderr, debug, nil)
+}
+
+// runFlowCommand runs a flow subcommand once. When missed is set, a 404
+// reply is stored there instead of being printed.
+func runFlowCommand(ctx context.Context, client Client, sub string, rest []string, stdout, stderr io.Writer, debug bool, missed *error) int {
+	fail := func(err error) int {
+		var se *serverError
+		if missed != nil && errors.As(err, &se) && se.Code == http.StatusNotFound {
+			*missed = err
+			return 2
+		}
+		return shellError(stderr, debug, err)
 	}
 	call := func(method, path string, body []byte) int {
 		out, err := client.Call(ctx, method, path, body)
 		if err != nil {
-			return shellError(stderr, debug, err)
+			return fail(err)
 		}
 		if len(out) > 0 {
 			_, _ = fmt.Fprintln(stdout, strings.TrimSpace(string(out)))
@@ -72,12 +130,6 @@ func flowCommand(ctx context.Context, client Client, args []string, stdout, stde
 		return send(data)
 	}
 
-	for _, id := range idArgs(sub, rest) {
-		if flowdef.Reserved(id) {
-			_, _ = fmt.Fprintf(stderr, "Error: %q is not a flow id (it names an API route)\n", id)
-			return 2
-		}
-	}
 	switch {
 	case sub == "help":
 		_, _ = fmt.Fprintln(stdout, flowUsage)
@@ -98,7 +150,7 @@ func flowCommand(ctx context.Context, client Client, args []string, stdout, stde
 	case sub == "rename" && len(rest) >= 2:
 		body, err := renamed(ctx, client, flowPath(rest[0]), strings.Join(rest[1:], " "))
 		if err != nil {
-			return shellError(stderr, debug, err)
+			return fail(err)
 		}
 		return call(http.MethodPut, flowPath(rest[0]), body)
 	case (sub == "enable" || sub == "disable" || sub == "deploy" || sub == "undeploy" || sub == "start" ||
@@ -116,10 +168,10 @@ func flowCommand(ctx context.Context, client Client, args []string, stdout, stde
 			path += "?ids=" + url.QueryEscape(strings.Join(rest[1:], ","))
 		}
 		out, err := client.Call(ctx, http.MethodGet, path, nil)
-		if err == nil {
-			err = os.WriteFile(rest[0], out, 0o600)
-		}
 		if err != nil {
+			return fail(err)
+		}
+		if err := os.WriteFile(rest[0], out, 0o600); err != nil {
 			return shellError(stderr, debug, err)
 		}
 		_, _ = fmt.Fprintf(stdout, "exported to %s\n", rest[0])
@@ -139,11 +191,76 @@ func flowCommand(ctx context.Context, client Client, args []string, stdout, stde
 		return call(http.MethodGet, "/api/v1/flows/connector-names", nil)
 	case sub == "ports" && len(rest) == 0:
 		return call(http.MethodGet, "/api/v1/flows/ports-in-use", nil)
+	case sub == "stats" && len(rest) == 1:
+		return flowStats(ctx, client, rest[0], stdout, fail)
+	case sub == "stats" && len(rest) == 0:
+		flows, err := listFlows(ctx, client)
+		if err != nil {
+			return shellError(stderr, debug, err)
+		}
+		code := 0
+		for _, f := range flows { // a flow removed meanwhile is reported; the rest still print
+			if c := flowStats(ctx, client, f.ID, stdout, func(err error) int { return shellError(stderr, debug, err) }); c != 0 {
+				code = c
+			}
+		}
+		return code
 	}
-	return usage()
+	_, _ = fmt.Fprintln(stderr, "Error: usage:\n"+flowUsage)
+	return 2
 }
 
-// idArgs returns the arguments of a subcommand that are flow ids.
+// listFlows returns every flow.
+func listFlows(ctx context.Context, client Client) ([]gateway.Flow, error) {
+	out, err := client.Call(ctx, http.MethodGet, "/api/v1/flows", nil)
+	if err != nil {
+		return nil, err
+	}
+	var flows []gateway.Flow
+	if err := json.Unmarshal(out, &flows); err != nil {
+		return nil, err
+	}
+	return flows, nil
+}
+
+// flowByName returns the id of the flow arg names: arg itself when a flow
+// has that id, otherwise the one flow whose name is arg.
+func flowByName(flows []gateway.Flow, arg string) (string, error) {
+	var matches []string
+	for _, f := range flows {
+		if f.ID == arg {
+			return arg, nil
+		}
+		if f.Name == arg {
+			matches = append(matches, f.ID)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", fmt.Errorf("no flow with id or name %q", arg)
+	case 1:
+		return matches[0], nil
+	}
+	return "", fmt.Errorf("flow name %q is ambiguous (ids %s); use the id", arg, strings.Join(matches, ", "))
+}
+
+// flowStats prints one flow's statistics: id, then the counters.
+func flowStats(ctx context.Context, client Client, id string, stdout io.Writer, fail func(error) int) int {
+	out, err := client.Call(ctx, http.MethodGet, "/api/v1/flows/"+url.PathEscape(id)+"/stats", nil)
+	var st gateway.FlowStats
+	if err == nil {
+		err = json.Unmarshal(out, &st)
+	}
+	if err != nil {
+		return fail(err)
+	}
+	_, _ = fmt.Fprintf(stdout, "%s\treceived=%d filtered=%d transformed=%d sent=%d errored=%d queued=%d\n",
+		id, st.Received, st.Filtered, st.Transformed, st.Sent, st.Errored, st.Queued)
+	return 0
+}
+
+// idArgs returns the arguments of a subcommand that are flow ids (a
+// slice of rest, so callers can replace them).
 func idArgs(sub string, rest []string) []string {
 	switch sub {
 	case "list", "help", "create", "update-all", "import", "redeploy-all", "connectors", "ports":

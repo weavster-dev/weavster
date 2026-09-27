@@ -55,6 +55,7 @@ All notable changes to this project are documented here, following
 - Per-destination transforms and filters (#190): a destination's optional `transform` (same DSL steps as the flow transform) runs on the flow output before delivery to that destination; its `filter` steps drop the message for that destination only, and a message every destination drops is `filtered`.
 - Response transform and response selector (#192): a flow's `responseSelector` names the destination whose reply `POST /api/v1/flows/{id}/messages` returns as `response`, after that destination's optional `responseTransform`.
 - CLI flow commands (#196) in batch mode (`-s`): `flow list|get|create|update|update-all|rename|enable|disable|remove|export|import|deploy|undeploy|start|stop|pause|halt|resume|redeploy-all|start-destination|stop-destination|connectors|ports`; server errors print `Error: server returned <status>: <message>` and exit `2`. See `docs/cli.md`.
+- CLI spec §3.2 flow commands (#200): `deploy [timeout]`, `flow stats [id|name]`, `import "path" [force]`, `export id|"name"|* "path"`; flow commands accept a flow id or name; arguments can be double-quoted (`\"` and `\\` escapes).
 
 ### Changed
 
