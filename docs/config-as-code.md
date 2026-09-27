@@ -70,8 +70,11 @@ weavster.yaml is valid: 1 flows, 1 alerts, 1 snippets, 1 snippet libraries, 1 sc
 ```
 
 Give several files to check them all. The exit code is `0` when every file is valid, `1` when
-any is invalid, and `2` when a file cannot be read. The same check runs in the
-[command-line client](cli.md) (`config validate "weavster.yaml"`), also without a server.
+any is invalid, and `2` when a file cannot be read or is larger than 50 MiB. The same check runs
+in the [command-line client](cli.md) (`config validate "weavster.yaml"`), also without a server.
+
+The check uses the rules of the `weavster` binary you run, so use the same version as your
+server; `config diff` and `config apply` always check the document on the server too.
 
 Or with the API (permission `flows:edit`; nothing on the server changes):
 

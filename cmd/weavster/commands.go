@@ -550,7 +550,7 @@ func clearAllMessages(ctx context.Context, client Client, args []string, stdout,
 // dumpCommand writes flow statistics or the event log to a JSON file.
 func dumpCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
 	paths := map[string]string{"stats": "/api/v1/flows/stats", "events": "/api/v1/events?limit=" + strconv.Itoa(gateway.MaxEventLimit)}
-	if _, ok := paths[args[0]]; len(args) != 2 || !ok {
+	if len(args) != 2 || paths[args[0]] == "" {
 		_, _ = fmt.Fprintln(stderr, "Error: usage: dump stats|events \"path\"")
 		return 2
 	}
@@ -699,12 +699,16 @@ func importConfig(ctx context.Context, client Client, args []string, stdout, std
 // none of which change the server: validate checks it locally (no server),
 // diff shows what applying it would change, and plan prints that as JSON.
 func configCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
-	paths := map[string]string{"validate": "", "diff": "/api/v1/config/plan", "plan": "/api/v1/config/plan"}
+	paths := map[string]string{"diff": "/api/v1/config/plan", "plan": "/api/v1/config/plan"}
 	if len(args) >= 2 && args[0] == "apply" {
 		return configApply(ctx, client, args[1], args[2:], stdout, stderr, debug)
 	}
 	if len(args) == 2 && args[0] == "validate" {
-		out, err := validateFile(args[1])
+		doc, err := readDocument(args[1])
+		var out string
+		if err == nil {
+			out, err = checkDocument(args[1], doc)
+		}
 		if err != nil {
 			return shellError(stderr, debug, err)
 		}
@@ -730,13 +734,27 @@ func configCommand(ctx context.Context, client Client, args []string, stdout, st
 	return 0
 }
 
-// validateFile checks a config-as-code document on this machine, with the
-// rules the server applies; it needs no server and no database (#107 D-55).
-func validateFile(path string) (string, error) {
-	doc, err := os.ReadFile(path)
+// maxDocumentBytes is the largest config-as-code document, as on the server.
+const maxDocumentBytes = 50 << 20
+
+// readDocument reads a config-as-code document of at most maxDocumentBytes.
+func readDocument(path string) ([]byte, error) {
+	f, err := os.Open(path)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
+	defer func() { _ = f.Close() }()
+	doc, err := io.ReadAll(io.LimitReader(f, maxDocumentBytes+1))
+	if err == nil && len(doc) > maxDocumentBytes {
+		err = fmt.Errorf("%s: larger than 50 MiB", path)
+	}
+	return doc, err
+}
+
+// checkDocument checks a config-as-code document on this machine, with the
+// rules of this client's version; it needs no server and no database
+// (#107 D-55).
+func checkDocument(path string, doc []byte) (string, error) {
 	n, err := configValidator{}.ValidateConfig(doc)
 	if err != nil {
 		return "", fmt.Errorf("%s: %w", path, err)

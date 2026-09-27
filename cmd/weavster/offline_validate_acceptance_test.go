@@ -22,6 +22,10 @@ func TestConfigValidateOffline(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	huge := filepath.Join(dir, "huge.yaml")
+	if err := os.WriteFile(huge, bytes.Repeat([]byte("#"), maxDocumentBytes+1), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	unreachable := "http://127.0.0.1:1" // nothing listens here
 
 	// The shell command in batch mode, with no server to talk to.
@@ -44,7 +48,10 @@ func TestConfigValidateOffline(t *testing.T) {
 		{"valid", []string{"config", "validate", good}, 0, good + " is valid: 0 flows", ""},
 		{"invalid", []string{"config", "validate", good, bad}, 1, good + " is valid", "Error: " + bad + ": config: snippets.pid: library \"none\" is not in snippetLibraries"},
 		{"unreadable", []string{"config", "validate", missing, bad}, 2, "", "no such file"},
+		{"directory", []string{"config", "validate", dir}, 2, "", "is a directory"},
+		{"too large", []string{"config", "validate", huge}, 2, "", "larger than 50 MiB"},
 		{"no file", []string{"config", "validate"}, 2, "", "usage: weavster config validate FILE..."},
+		{"help after validate", []string{"config", "validate", "-h"}, 0, "Usage: weavster config validate FILE...", ""},
 		{"needs a server", []string{"config", "diff", good}, 2, "", "config diff, plan, and apply need a server"},
 		{"help", []string{"config", "-h"}, 0, "Usage: weavster config validate FILE...", ""},
 	} {
@@ -55,5 +62,17 @@ func TestConfigValidateOffline(t *testing.T) {
 				t.Errorf("exit %d, stdout %q, stderr %q", code, out.String(), errb.String())
 			}
 		})
+	}
+}
+
+// TestDumpUsage: a bare dump prints the usage (it does not panic).
+func TestDumpUsage(t *testing.T) {
+	script := filepath.Join(t.TempDir(), "s.txt")
+	if err := os.WriteFile(script, []byte("dump\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errb bytes.Buffer
+	if code := run([]string{"-a", "http://127.0.0.1:1", "-s", script}, strings.NewReader(""), &out, &errb); code != 2 || !strings.Contains(errb.String(), "usage: dump stats|events") {
+		t.Errorf("dump: %d %q", code, errb.String())
 	}
 }

@@ -9,7 +9,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 )
 
@@ -140,9 +139,11 @@ Flags:
 // when every file is valid, 1 when any is invalid, and 2 on a usage error or
 // an unreadable file.
 func runConfig(args []string, stdout, stderr io.Writer) int {
-	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
-		_, _ = fmt.Fprintln(stdout, "Usage: weavster config validate FILE...")
-		return 0
+	for _, a := range args {
+		if a == "-h" || a == "--help" {
+			_, _ = fmt.Fprintln(stdout, "Usage: weavster config validate FILE...")
+			return 0
+		}
 	}
 	if len(args) < 2 || args[0] != "validate" {
 		_, _ = fmt.Fprintln(stderr, "Error: usage: weavster config validate FILE... (config diff, plan, and apply need a server: run them in the shell or with -s)")
@@ -150,17 +151,19 @@ func runConfig(args []string, stdout, stderr io.Writer) int {
 	}
 	code := 0
 	for _, path := range args[1:] {
-		out, err := validateFile(path)
-		switch {
-		case errors.Is(err, fs.ErrNotExist), errors.Is(err, fs.ErrPermission):
+		doc, err := readDocument(path)
+		if err != nil { // unreadable: missing, a directory, too large, ...
 			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 			code = 2
-		case err != nil:
+			continue
+		}
+		out, err := checkDocument(path, doc)
+		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 			code = max(code, 1)
-		default:
-			_, _ = fmt.Fprint(stdout, out)
+			continue
 		}
+		_, _ = fmt.Fprint(stdout, out)
 	}
 	return code
 }
