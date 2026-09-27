@@ -141,7 +141,8 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `POST /api/v1/git/push`, `POST /api/v1/git/pull` | `git:commit` |
 | `GET /api/v1/git/drift` | `git:view`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, `configmap:edit` |
 | `POST /api/v1/config/plan?gitRev=…`, `POST /api/v1/config/apply?gitRev=…` | `git:view` plus the endpoint's permissions |
-| `GET /api/v1/git/content` | `git:view`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
+| `GET /api/v1/git/content`, `GET /api/v1/git/diff` | `git:view`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
+| `POST /api/v1/git/restore` | `git:commit`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
 | `POST /api/v1/git/commit` | `git:commit`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
 | `POST /api/v1/config/apply` | `flows:view`, `flows:edit`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit` |
 | `POST /api/v1/config/plan` | `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit` |

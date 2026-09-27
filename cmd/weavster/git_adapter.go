@@ -428,3 +428,47 @@ func hasAnchors(n *yaml.Node) bool {
 	}
 	return false
 }
+
+func (a gitAdapter) GitDiff(_ context.Context, from, to string) (gateway.GitDiff, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	d := gateway.GitDiff{From: from, To: to}
+	var changes []gitstore.FileChange
+	var err error
+	if from == "" {
+		changes, err = a.store.WorkingChanges()
+	} else {
+		changes, d.Patch, err = a.store.Diff(from, to)
+	}
+	if errors.Is(err, gitstore.ErrNotFound) {
+		return gateway.GitDiff{}, gateway.ErrGitNotFound
+	}
+	if err != nil {
+		return gateway.GitDiff{}, err
+	}
+	d.Files = make([]gateway.GitFileChange, len(changes))
+	for i, c := range changes {
+		d.Files[i] = gateway.GitFileChange{Path: c.Path, Status: c.Status}
+	}
+	return d, nil
+}
+
+func (a gitAdapter) GitRestore(_ context.Context, rev, path, message, author string) (gateway.GitCommitResult, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	head, changed, err := a.store.RestoreTo(rev, path, message, gitstore.Author{Name: author})
+	switch {
+	case errors.Is(err, gitstore.ErrNotFound):
+		return gateway.GitCommitResult{}, gateway.ErrGitNotFound
+	case errors.Is(err, gitstore.ErrUncommitted):
+		return gateway.GitCommitResult{}, fmt.Errorf("%w: %w", gateway.ErrGitConflict, err)
+	case err != nil:
+		return gateway.GitCommitResult{}, err
+	}
+	res := gateway.GitCommitResult{Committed: head != "", Head: head, Changed: changed}
+	if head == "" {
+		res.Changed = []string{}
+		res.Head, _, err = a.store.Head()
+	}
+	return res, err
+}

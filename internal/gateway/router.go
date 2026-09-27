@@ -198,6 +198,8 @@ func (s *Server) Router() http.Handler {
 				s.require("scripts", "edit"), s.require("settings", "edit"), s.require("configmap", "edit")).Get("/git/drift", s.handleGitDrift)
 			r.With(append([]func(http.Handler) http.Handler{s.require("git", "view")}, exportPerms...)...).Get("/git/content", s.handleGitContent)
 			r.With(append([]func(http.Handler) http.Handler{s.require("git", "commit")}, exportPerms...)...).Post("/git/commit", s.handleGitCommit)
+			r.With(append([]func(http.Handler) http.Handler{s.require("git", "view")}, exportPerms...)...).Get("/git/diff", s.handleGitDiff)
+			r.With(append([]func(http.Handler) http.Handler{s.require("git", "commit")}, exportPerms...)...).Post("/git/restore", s.handleGitRestore)
 			lookupsView, lookupsEdit := s.require("lookups", "view"), s.require("lookups", "edit")
 			r.With(lookupsView).Get("/lookups", s.handleLookupGroups)
 			r.With(lookupsView).Get("/lookups/{group}", s.handleLookupMatching)

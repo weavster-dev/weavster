@@ -54,6 +54,27 @@ type GitRepository interface {
 	// GitPull makes the branch and working tree match the remote's: the
 	// remote wins.
 	GitPull(ctx context.Context) (GitPullResult, error)
+	// GitDiff compares revisions from and to; with from "" it lists the
+	// working-tree changes against HEAD.
+	GitDiff(ctx context.Context, from, to string) (GitDiff, error)
+	// GitRestore makes the repository (or path) match rev and commits that
+	// as a new commit by author (Committed false when nothing changed).
+	GitRestore(ctx context.Context, rev, path, message, author string) (GitCommitResult, error)
+}
+
+// GitFileChange is one changed file: added, modified, or deleted.
+type GitFileChange struct {
+	Path   string `json:"path"`
+	Status string `json:"status"`
+}
+
+// GitDiff is a comparison of two revisions, or of the working tree with
+// HEAD (From and Patch empty).
+type GitDiff struct {
+	From  string          `json:"from"`
+	To    string          `json:"to"`
+	Files []GitFileChange `json:"files"`
+	Patch string          `json:"patch"`
 }
 
 // GitRemoteStatus compares the repository's branch with the remote's.
@@ -343,4 +364,58 @@ func (s *Server) auditGit(r *http.Request, kv ...string) {
 	for i := 0; i+1 < len(kv); i += 2 {
 		info.detail[kv[i]] = kv[i+1]
 	}
+}
+
+func (s *Server) handleGitDiff(w http.ResponseWriter, r *http.Request) {
+	if !s.gitAvailable(w) {
+		return
+	}
+	q := r.URL.Query()
+	from, to := q.Get("from"), q.Get("to")
+	if from == "" && to != "" {
+		writeStatusError(w, http.StatusBadRequest, "to needs from")
+		return
+	}
+	if from != "" && to == "" {
+		to = "HEAD"
+	}
+	d, err := s.cfg.Git.GitDiff(r.Context(), from, to)
+	if err != nil {
+		writeGitError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
+// handleGitRestore records a revision's content (all files, or one) as a
+// new commit; the live configuration follows only through an apply.
+func (s *Server) handleGitRestore(w http.ResponseWriter, r *http.Request) {
+	if !s.gitAvailable(w) {
+		return
+	}
+	var req struct {
+		Rev     string `json:"rev"`
+		Path    string `json:"path"`
+		Message string `json:"message"`
+	}
+	if !readStrictJSON(w, r, 1<<20, &req) {
+		return
+	}
+	if req.Rev == "" || strings.TrimSpace(req.Message) == "" {
+		writeStatusError(w, http.StatusBadRequest, "rev and message are required")
+		return
+	}
+	author := "weavster"
+	if id, ok := IdentityFrom(r.Context()); ok {
+		author = id.Username
+	}
+	s.gitMu.Lock() // not while a commit or pull writes the working tree
+	defer s.gitMu.Unlock()
+	res, err := s.cfg.Git.GitRestore(r.Context(), req.Rev, req.Path, req.Message, author)
+	if err != nil {
+		writeGitError(w, err)
+		return
+	}
+	s.auditGit(r, "git.rev", req.Rev, "git.path", req.Path, "git.head", res.Head)
+	writeJSON(w, http.StatusOK, res)
 }

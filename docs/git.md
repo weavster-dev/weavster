@@ -110,6 +110,52 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 
 An unknown revision, or a file that did not exist at it, returns `404`.
 
+## Compare revisions
+
+`GET /api/v1/git/diff?from=REV[&to=REV]` lists the files changed between two revisions (`to`
+defaults to `HEAD`) and the unified patch:
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/git/diff?from=HEAD~2'
+```
+
+```json
+{"from":"HEAD~2","to":"HEAD","files":[{"path":"scripts/deploy.yaml","status":"modified"},{"path":"settings/retention.yaml","status":"deleted"}],
+ "patch":"diff --git a/scripts/deploy.yaml b/scripts/deploy.yaml\n...\n-    deploy: log()\n+    deploy: log(2)\n..."}
+```
+
+Without `from`, it lists the files changed in the repository directory but not committed
+(`added`, `modified`, `deleted`) and no patch. Changes made through the API are always committed,
+so this shows only files edited on disk.
+
+## Restore a revision
+
+`POST /api/v1/git/restore` makes the repository match a revision and records that as a **new
+commit**, so the history is kept. With `path`, only that file is restored:
+
+```bash
+# One file, as it was two commits ago
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Content-Type: application/json' \
+  -X POST http://127.0.0.1:8080/api/v1/git/restore \
+  -d '{"rev":"HEAD~2","path":"scripts/deploy.yaml","message":"Put the deploy script back"}'
+# Everything, as it was at a commit
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Content-Type: application/json' \
+  -X POST http://127.0.0.1:8080/api/v1/git/restore -d '{"rev":"5f0c1e9a8d","message":"Back to Monday"}'
+```
+
+```json
+{"committed":true,"head":"9d4b7a0c2f...","changed":["scripts/deploy.yaml"]}
+```
+
+- A restore changes only the repository. To bring the server back to it,
+  [check the drift](#check-for-drift) and [apply from the repository](#plan-and-apply-from-the-repository):
+  every live change still goes through a plan you can review.
+- Nothing to change: `committed` is `false` and no commit is made.
+- An unknown revision, or a file that did not exist at it, returns `404`. Uncommitted files in the
+  repository directory block a restore with `409`; commit or remove them first.
+- A restore of the whole repository also removes files that did not exist at the revision
+  (including ones outside the configuration directories).
+
 ## Check for drift
 
 Drift is a difference between the live configuration and the repository: someone changed the
@@ -254,7 +300,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 | `POST /api/v1/git/push`, `POST /api/v1/git/pull` | `git:commit` |
 | `GET /api/v1/git/drift` | `git:view` and the [config plan](config-as-code.md#see-what-would-change) permissions |
 | `POST /api/v1/config/plan?gitRev=`, `POST /api/v1/config/apply?gitRev=` | `git:view` and that endpoint's own permissions |
-| `GET /api/v1/git/content` | `git:view`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
+| `GET /api/v1/git/content`, `GET /api/v1/git/diff` | `git:view`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
+| `POST /api/v1/git/restore` | `git:commit`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
 | `POST /api/v1/git/commit` | `git:commit`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
 
 File contents show the whole configuration, so reading them needs the same permissions as a
