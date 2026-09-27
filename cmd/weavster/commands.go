@@ -88,6 +88,10 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return userCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	case "snippet": // spec §3.2: snippet [library] list|import|export|remove
 		return snippetCommand(ctx, client, fields[1:], stdout, stderr, debug)
+	case "importalert": // spec §3.2: importalert "path" [force]
+		return importAlerts(ctx, client, fields[1:], stdout, stderr, debug)
+	case "exportalert": // spec §3.2: exportalert id|"name"|* "path"
+		return exportAlerts(ctx, client, fields[1:], stdout, stderr, debug)
 	case "clearallmessages": // spec §3.2: removes every message, restarting running flows
 		return clearAllMessages(ctx, client, fields[1:], stdout, stderr, debug)
 	case "dump": // spec §3.2: dump stats|events "path"
@@ -111,7 +115,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -471,6 +475,20 @@ func snippetCommand(ctx context.Context, client Client, args []string, stdout, s
 	return 0
 }
 
+// pickAlert returns the alert with id sel, or else every alert named sel.
+func pickAlert(all []gateway.Alert, sel string) []gateway.Alert {
+	var named []gateway.Alert
+	for _, a := range all {
+		if a.ID == sel {
+			return []gateway.Alert{a}
+		}
+		if a.Name == sel {
+			named = append(named, a)
+		}
+	}
+	return named
+}
+
 // callJSON GETs path and decodes the reply into v.
 func callJSON(ctx context.Context, client Client, path string, v any) error {
 	out, err := client.Call(ctx, http.MethodGet, path, nil)
@@ -528,5 +546,61 @@ func dumpCommand(ctx context.Context, client Client, args []string, stdout, stde
 		return shellError(stderr, debug, err)
 	}
 	_, _ = fmt.Fprintf(stdout, "wrote %s to %s\n", args[0], args[1])
+	return 0
+}
+
+// importAlerts saves the alerts in a JSON file (an array, as exportalert
+// writes); with force, alerts with the same id are replaced.
+func importAlerts(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	if len(args) == 0 || len(args) > 2 || (len(args) == 2 && args[1] != "force") {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: importalert \"path\" [force]")
+		return 2
+	}
+	path := "/api/v1/alerts/import"
+	if len(args) == 2 {
+		path += "?force=true"
+	}
+	doc, err := os.ReadFile(args[0])
+	if err == nil {
+		doc, err = client.Call(ctx, http.MethodPost, path, doc)
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	_, _ = fmt.Fprintf(stdout, "imported %d alerts from %s\n", jsonArrayLen(doc), args[0])
+	return 0
+}
+
+// exportAlerts writes one alert (by id or name) or every alert (*) to a
+// JSON file, as an array importalert reads.
+func exportAlerts(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	if len(args) != 2 {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: exportalert id|\"name\"|* \"path\"")
+		return 2
+	}
+	var all, picked []gateway.Alert
+	err := callJSON(ctx, client, "/api/v1/alerts", &all)
+	if args[0] == "*" {
+		picked = all
+	} else {
+		picked = pickAlert(all, args[0])
+	}
+	if err == nil && len(picked) == 0 && args[0] != "*" {
+		err = fmt.Errorf("no alert has the id or name %q", args[0])
+	}
+	if err == nil && len(picked) > 1 && args[0] != "*" {
+		err = fmt.Errorf("%d alerts are named %q; export one by its id", len(picked), args[0])
+	}
+	var out []byte
+	if err == nil {
+		out, err = json.MarshalIndent(append([]gateway.Alert{}, picked...), "", "  ")
+	}
+	if err == nil {
+		err = os.WriteFile(args[1], out, 0o600)
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	_, _ = fmt.Fprintf(stdout, "exported %d alerts to %s\n", len(picked), args[1])
 	return 0
 }

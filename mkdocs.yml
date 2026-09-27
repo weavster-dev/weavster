@@ -22,6 +22,7 @@ nav:
   - Flow Dependencies, Export, Import: flow-export-import.md
   - Config Map, Scripts, Settings: config-items.md
   - Code Snippets: snippets.md
+  - Alerts: alerts.md
   - Docs Site Guide: documentation.md
   - MVP Project Plan: mvp-project-plan.md
   - Agent Onboarding: agent-onboarding.md

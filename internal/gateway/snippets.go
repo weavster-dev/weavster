@@ -67,39 +67,43 @@ func writeSnippetError(w http.ResponseWriter, err error) {
 	}
 }
 
-// nameRef lets saveNamed set and read a document's name.
-func (sn *Snippet) nameRef() *string       { return &sn.Name }
-func (l *SnippetLibrary) nameRef() *string { return &l.Name }
+// key lets saveNamed set and read a document's key, and name its field.
+func (sn *Snippet) key() (*string, string)       { return &sn.Name, "name" }
+func (l *SnippetLibrary) key() (*string, string) { return &l.Name, "name" }
 
-// namedDoc is a pointer to a document with a name.
+// namedDoc is a pointer to a document with a key (its name or id).
 type namedDoc[T any] interface {
 	*T
-	nameRef() *string
+	key() (ref *string, field string)
 }
 
 // checkNames validates each name and rejects repeated names.
 func checkNames[T any, P namedDoc[T]](list []T, noun string) error {
 	seen := map[string]bool{}
 	for i := range list {
-		name := *P(&list[i]).nameRef()
-		if err := checkName(name); err != nil {
-			return err
+		ref, field := P(&list[i]).key()
+		name := *ref
+		if !validItemName.MatchString(name) {
+			return fmt.Errorf("%s %s %q must be 1-128 characters from A-Z a-z 0-9 . _ -", noun, field, name)
 		}
 		if seen[name] {
-			return fmt.Errorf("%s %q appears more than once", noun, name)
+			return fmt.Errorf("%s %s %q appears more than once", noun, field, name)
 		}
 		seen[name] = true
 	}
 	return nil
 }
 
-// saveNamed serves POST (create one, 201), PUT on the collection (create or
-// replace many), and PUT on one document ({name} in the path). check adds
-// per-document validation; save writes the list.
-func saveNamed[T any, P namedDoc[T]](w http.ResponseWriter, r *http.Request, noun string, check func(T) error, save func(context.Context, []T, bool) error) {
+// saveNamed reads and saves documents: with many, a JSON array (create or
+// replace); otherwise one document, which replaces the {name} in the path
+// or, without one, is created (201). check adds per-document validation;
+// save writes the list; writeErr reports a save error.
+func saveNamed[T any, P namedDoc[T]](w http.ResponseWriter, r *http.Request, noun string, many bool, check func(T) error,
+	save func(context.Context, []T, bool) error, writeErr func(http.ResponseWriter, error)) {
 	var list []T
-	status, create, one := http.StatusOK, r.Method == http.MethodPost, r.Method == http.MethodPost
-	if name := r.PathValue("name"); name != "" || create {
+	name := r.PathValue("name")
+	status, create, one := http.StatusOK, !many && name == "", !many
+	if !many {
 		var ptr *T
 		if !readItemsBody(w, r, &ptr) {
 			return
@@ -109,12 +113,12 @@ func saveNamed[T any, P namedDoc[T]](w http.ResponseWriter, r *http.Request, nou
 			return
 		}
 		doc := *ptr
-		if ref := P(&doc).nameRef(); name != "" {
+		if ref, field := P(&doc).key(); name != "" {
 			if *ref != "" && *ref != name {
-				writeStatusError(w, http.StatusBadRequest, "the name in the body does not match the path")
+				writeStatusError(w, http.StatusBadRequest, "the "+field+" in the body does not match the path")
 				return
 			}
-			*ref, one = name, true
+			*ref = name
 		} else {
 			status = http.StatusCreated
 		}
@@ -135,7 +139,7 @@ func saveNamed[T any, P namedDoc[T]](w http.ResponseWriter, r *http.Request, nou
 		return
 	}
 	if err := save(r.Context(), list, create); err != nil {
-		writeSnippetError(w, err)
+		writeErr(w, err)
 		return
 	}
 	if one {
@@ -143,6 +147,11 @@ func saveNamed[T any, P namedDoc[T]](w http.ResponseWriter, r *http.Request, nou
 		return
 	}
 	writeJSON(w, status, list)
+}
+
+// isBulk reports a PUT on a collection, which takes a JSON array.
+func isBulk(r *http.Request) bool {
+	return r.Method == http.MethodPut && r.PathValue("name") == ""
 }
 
 // pathName returns the {name} path value, answering 400 when it is invalid.
@@ -185,7 +194,7 @@ func (s *Server) handleSnippetsSave(w http.ResponseWriter, r *http.Request) {
 	if !s.snippetsAvailable(w) {
 		return
 	}
-	saveNamed(w, r, "snippet", func(sn Snippet) error {
+	saveNamed(w, r, "snippet", isBulk(r), func(sn Snippet) error {
 		if sn.Library == "" {
 			return nil
 		}
@@ -193,7 +202,7 @@ func (s *Server) handleSnippetsSave(w http.ResponseWriter, r *http.Request) {
 			return fmt.Errorf("library: %w", err)
 		}
 		return nil
-	}, s.cfg.Snippets.SaveSnippets)
+	}, s.cfg.Snippets.SaveSnippets, writeSnippetError)
 }
 
 func (s *Server) handleSnippetGet(w http.ResponseWriter, r *http.Request) {
@@ -244,7 +253,7 @@ func (s *Server) handleLibrariesSave(w http.ResponseWriter, r *http.Request) {
 	if !s.snippetsAvailable(w) {
 		return
 	}
-	saveNamed(w, r, "library", func(SnippetLibrary) error { return nil }, s.cfg.Snippets.SaveLibraries)
+	saveNamed(w, r, "library", isBulk(r), func(SnippetLibrary) error { return nil }, s.cfg.Snippets.SaveLibraries, writeSnippetError)
 }
 
 func (s *Server) handleLibraryGet(w http.ResponseWriter, r *http.Request) {
