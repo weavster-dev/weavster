@@ -41,6 +41,22 @@ func (f fakeGit) GitContent(_ context.Context, path, rev string) ([]byte, error)
 	return []byte(path + "@" + rev), f.err
 }
 
+// GitDocument maps revisions to fakePlanner documents: HEAD plans with
+// changes, "same" without, "bad" is rejected by the planner.
+func (f fakeGit) GitDocument(_ context.Context, rev string) ([]byte, error) {
+	switch rev {
+	case "HEAD":
+		return []byte("changed"), f.err
+	case "same":
+		return []byte("ok"), f.err
+	case "invalid":
+		return nil, fmt.Errorf("%w: flows/a.yaml: bad", ErrInvalidConfig)
+	case "missing":
+		return nil, ErrGitNotFound
+	}
+	return []byte(rev), f.err
+}
+
 func TestGitHandlers(t *testing.T) {
 	var committed ConfigBundle
 	var author string
@@ -95,5 +111,49 @@ func TestGitHandlers(t *testing.T) {
 	// "weavster" as author when no one is signed in.
 	if committed.Format != ConfigFormat || committed.ConfigMap != nil || author != "weavster" {
 		t.Errorf("committed %+v by %q", committed, author)
+	}
+}
+
+func TestGitPlanApplyDrift(t *testing.T) {
+	var committed ConfigBundle
+	var author string
+	ports := func(err error) Config {
+		return Config{
+			Git: fakeGit{committed: &committed, author: &author, err: err}, ConfigPlanner: fakePlanner{}, Transfer: fakeTransfer{},
+			Flows: &fakeFlows{}, Alerts: &memAlerts{alerts: map[string]Alert{}}, Items: memItems{},
+			Snippets: &memSnippets{snippets: map[string]Snippet{}, libraries: map[string]SnippetLibrary{}},
+		}
+	}
+	for _, tt := range []struct {
+		name, method, path, body string
+		cfg                      Config
+		status                   int
+		want                     string
+	}{
+		{"drift", http.MethodGet, "/api/v1/git/drift", "", ports(nil), http.StatusOK, `{"rev":"HEAD","drifted":true,"plan":{"fingerprint":"c"`},
+		{"no drift", http.MethodGet, "/api/v1/git/drift?rev=same", "", ports(nil), http.StatusOK, `{"rev":"same","drifted":false`},
+		{"drift unknown rev", http.MethodGet, "/api/v1/git/drift?rev=missing", "", ports(nil), http.StatusNotFound, "not found in the repository"},
+		{"drift invalid repository", http.MethodGet, "/api/v1/git/drift?rev=invalid", "", ports(nil), http.StatusBadRequest, "flows/a.yaml: bad"},
+		{"drift planner rejects", http.MethodGet, "/api/v1/git/drift?rev=bad", "", ports(nil), http.StatusBadRequest, "flows.a: bad"},
+		{"drift planner fails", http.MethodGet, "/api/v1/git/drift?rev=other", "", ports(nil), http.StatusInternalServerError, "internal error"},
+		{"drift read fails", http.MethodGet, "/api/v1/git/drift", "", ports(errDisk), http.StatusInternalServerError, "internal error"},
+		{"drift without planner", http.MethodGet, "/api/v1/git/drift", "", Config{Git: fakeGit{}}, http.StatusServiceUnavailable, "planning unavailable"},
+		{"drift without git", http.MethodGet, "/api/v1/git/drift", "", Config{ConfigPlanner: fakePlanner{}}, http.StatusServiceUnavailable, "git.path"},
+		{"drift without stores", http.MethodGet, "/api/v1/git/drift", "", Config{Git: fakeGit{}, ConfigPlanner: fakePlanner{}}, http.StatusServiceUnavailable, "export and import unavailable"},
+		{"plan from git", http.MethodPost, "/api/v1/config/plan?gitRev=", "ignored", ports(nil), http.StatusOK, `"fingerprint":"c"`},
+		{"plan from git rev", http.MethodPost, "/api/v1/config/plan?gitRev=same", "", ports(nil), http.StatusOK, `"fingerprint":"f"`},
+		{"plan from unknown rev", http.MethodPost, "/api/v1/config/plan?gitRev=missing", "", ports(nil), http.StatusNotFound, "not found"},
+		{"plan from git off", http.MethodPost, "/api/v1/config/plan?gitRev=", "", func() Config { c := ports(nil); c.Git = nil; return c }(), http.StatusServiceUnavailable, "git.path"},
+		{"apply from git", http.MethodPost, "/api/v1/config/apply?gitRev=same&fingerprint=f&dryRun=true", "", ports(nil), http.StatusOK, `"applied":false`},
+		{"apply from git stale", http.MethodPost, "/api/v1/config/apply?gitRev=same&fingerprint=old", "", ports(nil), http.StatusConflict, "plan again"},
+		{"apply from invalid repository", http.MethodPost, "/api/v1/config/apply?gitRev=invalid&fingerprint=f", "", ports(nil), http.StatusBadRequest, "flows/a.yaml"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))
+			if rec.Code != tt.status || !strings.Contains(rec.Body.String(), tt.want) {
+				t.Errorf("got %d %.300s; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.want)
+			}
+		})
 	}
 }

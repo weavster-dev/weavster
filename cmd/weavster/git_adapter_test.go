@@ -6,10 +6,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/gitstore"
 )
+
+var gitstoreAuthor = gitstore.Author{Name: "test"}
 
 func TestGitAdapterCommit(t *testing.T) {
 	dir := t.TempDir()
@@ -105,5 +109,51 @@ func TestManagedFile(t *testing.T) {
 		if got := managedFile(f); got != want {
 			t.Errorf("%s = %v, want %v", f, got, want)
 		}
+	}
+}
+
+func TestGitAdapterDocument(t *testing.T) {
+	a, err := newGitAdapter(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, err := a.GitDocument(ctx, "HEAD"); !errors.Is(err, gateway.ErrGitNotFound) {
+		t.Errorf("empty repository = %v", err)
+	}
+	for _, tt := range []struct {
+		name, file, content, want string
+	}{
+		{"several artifacts in one file", "flows/many.yaml", "version: \"1\"\nscripts:\n  a: x\n  b: \"1\"\nsettings:\n  n: 9007199254740993\n",
+			"version: \"1\"\nflows: {}\nalerts: {}\nsnippets: {}\nsnippetLibraries: {}\nscripts:\n    a: x\n    b: \"1\"\nsettings:\n    n: 9007199254740993\n"},
+		{"unmanaged files ignored", "flows/examples/x.yaml", "not yaml: [", "scripts:\n    a: x"},
+		{"bad file", "alerts/bad.yaml", "version: \"1\"\nalerts:\n  x: [", "alerts/bad.yaml"},
+		{"unknown field", "settings/bad.yaml", "version: \"1\"\nbogus: 1\n", "settings/bad.yaml"},
+		{"config map refused", "settings/map.yaml", "version: \"1\"\nconfigmap:\n  region: eu\n", "the config map is not read from the repository"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := a.store.WriteFile(tt.file, []byte(tt.content)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.store.Commit(tt.name, gitstoreAuthor); err != nil {
+				t.Fatal(err)
+			}
+			doc, err := a.GitDocument(ctx, "HEAD")
+			got := string(doc)
+			if err != nil {
+				got = err.Error()
+			}
+			if !strings.Contains(got, tt.want) {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+			if err != nil { // leave the repository valid for the next case
+				if err := a.store.RemoveFile(tt.file); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := a.store.Commit("undo", gitstoreAuthor); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
 	}
 }

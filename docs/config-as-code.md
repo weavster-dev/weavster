@@ -131,6 +131,9 @@ changes whenever anything in it changes. Planning needs the permissions an
 [export](config-transfer.md#permissions) with the config map needs: `flows:view`,
 `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit`.
 
+To plan against the server's [Git repository](git.md#plan-and-apply-from-the-repository)
+instead of a document you send, pass `gitRev` (a revision; empty means `HEAD`) with no body.
+
 ## Apply
 
 ```text

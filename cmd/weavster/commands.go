@@ -131,7 +131,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate|diff|plan "path", config apply "path" [--dry-run] [reason], exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate|diff|plan "path", config apply "path" [--dry-run] [reason], config drift [revision], exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -703,8 +703,11 @@ func configCommand(ctx context.Context, client Client, args []string, stdout, st
 	if len(args) >= 2 && args[0] == "apply" {
 		return configApply(ctx, client, args[1], args[2:], stdout, stderr, debug)
 	}
+	if len(args) >= 1 && len(args) <= 2 && args[0] == "drift" {
+		return configDrift(ctx, client, append(args[1:], "HEAD")[0], stdout, stderr, debug)
+	}
 	if len(args) != 2 || paths[args[0]] == "" {
-		_, _ = fmt.Fprintln(stderr, "Error: usage: config validate|diff|plan \"path\" | config apply \"path\" [--dry-run] [reason...]")
+		_, _ = fmt.Fprintln(stderr, "Error: usage: config validate|diff|plan \"path\" | config apply \"path\" [--dry-run] [reason...] | config drift [revision]")
 		return 2
 	}
 	doc, err := os.ReadFile(args[1])
@@ -719,6 +722,26 @@ func configCommand(ctx context.Context, client Client, args []string, stdout, st
 		return shellError(stderr, debug, err)
 	}
 	_, _ = fmt.Fprint(stdout, out)
+	return 0
+}
+
+// configDrift compares the live configuration with the server's Git
+// repository at rev: it prints the differences and fails when there are
+// any, so a script can gate on it.
+func configDrift(ctx context.Context, client Client, rev string, stdout, stderr io.Writer, debug bool) int {
+	reply, err := client.Call(ctx, http.MethodGet, "/api/v1/git/drift?rev="+url.QueryEscape(rev), nil)
+	var drift gateway.GitDrift
+	if err == nil {
+		err = json.Unmarshal(reply, &drift)
+	}
+	if err == nil && drift.Drifted {
+		_, _ = fmt.Fprint(stdout, drift.Plan.Text)
+		err = fmt.Errorf("the live configuration differs from the repository at %s (%d changes)", rev, len(drift.Plan.Changes))
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	_, _ = fmt.Fprintf(stdout, "no drift: the live configuration matches the repository at %s\n", rev)
 	return 0
 }
 

@@ -53,6 +53,19 @@ func TestOpenOrInitFilesHeadRevisions(t *testing.T) {
 		t.Errorf("files = %v %v", files, err)
 	}
 	for _, tt := range []struct {
+		rev, want string
+		err       error
+	}{
+		{"HEAD", "flows/a.yaml", nil},
+		{"HEAD~1", "flows/a.yaml,flows/b.yaml", nil},
+		{"nope", "", ErrNotFound},
+	} {
+		files, err := s.FilesAt(tt.rev)
+		if strings.Join(files, ",") != tt.want || !errors.Is(err, tt.err) {
+			t.Errorf("FilesAt(%s) = %v %v", tt.rev, files, err)
+		}
+	}
+	for _, tt := range []struct {
 		path, rev, want string
 		err             error
 	}{

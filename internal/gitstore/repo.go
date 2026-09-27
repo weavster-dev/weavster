@@ -102,3 +102,23 @@ func (s *Store) Unstage() error {
 	}
 	return s.wt.Reset(&git.ResetOptions{Mode: git.MixedReset})
 }
+
+// FilesAt lists the files of revision rev (any revision Git understands),
+// sorted; ErrNotFound when there is no such revision.
+func (s *Store) FilesAt(rev string) ([]string, error) {
+	c, err := s.resolve(rev)
+	if err != nil {
+		return nil, err
+	}
+	tree, err := c.Tree()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0)
+	err = tree.Files().ForEach(func(f *object.File) error {
+		out = append(out, f.Name)
+		return nil
+	})
+	sort.Strings(out)
+	return out, err
+}

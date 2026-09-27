@@ -57,7 +57,7 @@ func (s *Server) handleConfigPlan(w http.ResponseWriter, r *http.Request) {
 	if !s.configPorts(w, false, false) {
 		return
 	}
-	doc, ok := readConfigBody(w, r)
+	doc, ok := s.configDocument(w, r)
 	if !ok {
 		return
 	}

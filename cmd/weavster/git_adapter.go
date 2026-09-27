@@ -214,3 +214,77 @@ func blockStyle(n *yaml.Node) {
 		blockStyle(c)
 	}
 }
+
+// repoSections are the document sections the repository holds, in document
+// order; the config map is never read from it (#107 D-52).
+var repoSections = []string{"flows", "alerts", "snippets", "snippetLibraries", "scripts", "settings"}
+
+// GitDocument merges every managed file at rev into one config document.
+// Each file must be a valid config document; an artifact defined in two
+// files, or a configmap section, makes the document invalid.
+func (a gitAdapter) GitDocument(_ context.Context, rev string) ([]byte, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	files, err := a.store.FilesAt(rev)
+	if errors.Is(err, gitstore.ErrNotFound) {
+		return nil, gateway.ErrGitNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	merged := map[string]map[string]*yaml.Node{}
+	from := map[string]string{} // section/name -> file
+	for _, f := range files {
+		if !managedFile(f) {
+			continue
+		}
+		content, err := a.store.ContentAtRevision(f, rev)
+		if err != nil {
+			return nil, err
+		}
+		invalid := func(err error) error { return fmt.Errorf("%w: %s: %w", gateway.ErrInvalidConfig, f, err) }
+		if _, err := config.Parse(content); err != nil {
+			return nil, invalid(err)
+		}
+		var doc yaml.Node
+		if err := yaml.Unmarshal(content, &doc); err != nil || len(doc.Content) == 0 {
+			return nil, invalid(errors.New("not a YAML document"))
+		}
+		root := doc.Content[0]
+		for i := 0; i+1 < len(root.Content); i += 2 {
+			section, entries := root.Content[i].Value, root.Content[i+1]
+			switch section {
+			case "version":
+				continue
+			case "configmap":
+				return nil, invalid(errors.New("the config map is not read from the repository"))
+			}
+			if merged[section] == nil {
+				merged[section] = map[string]*yaml.Node{}
+			}
+			for j := 0; j+1 < len(entries.Content); j += 2 {
+				name := entries.Content[j].Value
+				if other, dup := from[section+"/"+name]; dup {
+					return nil, invalid(fmt.Errorf("%s.%s is also defined in %s", section, name, other))
+				}
+				from[section+"/"+name] = f
+				merged[section][name] = entries.Content[j+1]
+			}
+		}
+	}
+	str := func(v string) *yaml.Node { return &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: v} }
+	root := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{str("version"), str("1")}}
+	for _, section := range repoSections { // every section, so each is managed
+		m := &yaml.Node{Kind: yaml.MappingNode}
+		names := make([]string, 0, len(merged[section]))
+		for n := range merged[section] {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		for _, n := range names {
+			m.Content = append(m.Content, str(n), merged[section][n])
+		}
+		root.Content = append(root.Content, str(section), m)
+	}
+	return yaml.Marshal(root)
+}
