@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/weavster-dev/weavster/internal/auth"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 )
 
@@ -28,25 +29,28 @@ func TestSystemInfo(t *testing.T) {
 		}
 		return body
 	}
-	var first, second struct {
-		Time string
-		TLS  struct {
+	var status struct {
+		Time          string
+		UptimeSeconds *int64
+		TLS           struct {
 			Enabled    bool
 			MinVersion string
 			Protocols  []string
 			Ciphers    []string
 		}
 	}
-	_ = json.Unmarshal([]byte(get("/api/v1/system")), &first)
-	time.Sleep(1100 * time.Millisecond)
-	_ = json.Unmarshal([]byte(get("/api/v1/system")), &second)
-	if first.Time == second.Time {
-		t.Errorf("time is not computed per request: %s", first.Time)
+	before := time.Now().Add(-time.Second)
+	if err := json.Unmarshal([]byte(get("/api/v1/system")), &status); err != nil {
+		t.Fatal(err)
 	}
+	if at, err := time.Parse(time.RFC3339, status.Time); err != nil || at.Before(before.Truncate(time.Second)) || status.UptimeSeconds == nil {
+		t.Errorf("time %q (%v) is not the request time; uptime %v", status.Time, err, status.UptimeSeconds)
+	}
+	first := status
 	if !first.TLS.Enabled || first.TLS.MinVersion != "1.3" || strings.Join(first.TLS.Protocols, ",") != "TLS 1.3" || len(first.TLS.Ciphers) != 3 {
 		t.Errorf("tls = %+v", first.TLS)
 	}
-	if body := get("/api/v1/system/password-requirements"); !strings.Contains(body, `"rules":["at least 12 characters","at least 1 uppercase letter","at least 2 lowercase letters","at least 1 digit","at least 2 special characters"]`) {
+	if body := get("/api/v1/system/password-requirements"); !strings.Contains(body, `"minLength":12`) || !strings.Contains(body, `"at least 2 lowercase letters"`) {
 		t.Errorf("password requirements = %s", body)
 	}
 	for path, want := range map[string]string{
@@ -70,11 +74,44 @@ func TestSystemInfo(t *testing.T) {
 	}
 }
 
-// TestPasswordRulesForbidden: -1 forbids a class, and 0 adds no rule.
-func TestPasswordRulesForbidden(t *testing.T) {
+// TestSystemAdapter covers the password rules for every count, and the
+// TLS report for each certificate key type.
+func TestSystemAdapter(t *testing.T) {
+	for _, tt := range []struct {
+		policy auth.PasswordPolicy
+		want   string
+	}{
+		{auth.PasswordPolicy{}, ""},
+		{auth.PasswordPolicy{MinLength: 8, MinUpper: 1, MinLower: 2, MinNumeric: 1, MinSpecial: 3},
+			"at least 8 characters|at least 1 uppercase letter|at least 2 lowercase letters|at least 1 digit|at least 3 special characters (anything but letters and digits, spaces included)"},
+		{auth.PasswordPolicy{MinUpper: -1, MinLower: -1, MinNumeric: -1, MinSpecial: -1},
+			"no uppercase letters|no lowercase letters|no digits|no special characters (only letters and digits)"},
+		{auth.PasswordPolicy{MinSpecial: 1}, "at least 1 special character (anything but a letter or digit, spaces included)"},
+	} {
+		if got := strings.Join((systemAdapter{policy: tt.policy}).PasswordRequirements().Rules, "|"); got != tt.want {
+			t.Errorf("%+v: rules %q, want %q", tt.policy, got, tt.want)
+		}
+	}
 	cfg := serverconfig.Default()
-	cfg.Auth.PasswordPolicy = serverconfig.PasswordPolicy{MinSpecial: -1}
-	if got := (systemAdapter{cfg: cfg}).PasswordRequirements().Rules; strings.Join(got, ",") != "no special characters" {
-		t.Errorf("rules = %v", got)
+	cfg.Listen.TLSAddress = "127.0.0.1:8443"
+	for _, tt := range []struct {
+		key, want string
+		n         int
+	}{
+		{"rsa", "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256", 5},
+		{"ecdsa", "TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256", 5},
+		{"", "TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384", 7},
+	} {
+		st := (systemAdapter{cfg: cfg, certKey: tt.key}).tlsStatus()
+		if len(st.Ciphers) != tt.n || !strings.Contains(strings.Join(st.Ciphers, ","), tt.want) {
+			t.Errorf("key %q: ciphers %v", tt.key, st.Ciphers)
+		}
+	}
+	s := systemAdapter{started: time.Now().Add(-time.Minute)}
+	if st := s.Status(); st.UptimeSeconds < 60 || st.Timezone == "Local" || !strings.Contains(st.Timezone, ":") {
+		t.Errorf("status = %+v", st)
+	}
+	if r := s.Resources(); r.CPUs < 1 || r.MemorySysBytes == 0 || r.MemoryAllocBytes == 0 || r.UptimeSeconds < 60 {
+		t.Errorf("resources = %+v", r)
 	}
 }

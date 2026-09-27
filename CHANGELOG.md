@@ -103,6 +103,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- `auth.passwordPolicy.minLength` counts characters, not bytes, so a password with accented letters is not accepted as longer than it is (#245).
 - `GET /api/v1/messages?flowId=…` filters in the store before the page limit (#212); before, it filtered the first page afterwards and could miss that flow's messages. With `store.dialect: memory`, messages now get their receive and update times.
 - With `store.dialect: sqlite`, a restart could fail writes with `database is locked (SQLITE_BUSY)` when the previous run had stopped during a store query. SQLite statements now run to completion instead of being cancelled.
 - Flow API status codes (#151):

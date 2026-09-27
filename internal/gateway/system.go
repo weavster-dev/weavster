@@ -1,9 +1,9 @@
 package gateway
 
 import (
-	"crypto/rand"
-	"fmt"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
 // SystemStatus is the server's status, computed per request (spec §5
@@ -84,12 +84,10 @@ func (s *Server) systemRoute(view func(SystemReporter) any) http.HandlerFunc {
 
 // handleGUID returns a new random (version 4) UUID.
 func (s *Server) handleGUID(w http.ResponseWriter, _ *http.Request) {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
+	id, err := uuid.NewRandom()
+	if err != nil {
 		writeBackendError(w, err)
 		return
 	}
-	b[6] = b[6]&0x0f | 0x40
-	b[8] = b[8]&0x3f | 0x80
-	writeJSON(w, http.StatusOK, map[string]string{"guid": fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])})
+	writeJSON(w, http.StatusOK, map[string]string{"guid": id.String()})
 }
