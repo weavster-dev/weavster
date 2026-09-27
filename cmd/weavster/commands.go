@@ -131,7 +131,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate|diff|plan "path", exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate|diff|plan "path", config apply "path" [--dry-run] [reason], exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -700,8 +700,11 @@ func importConfig(ctx context.Context, client Client, args []string, stdout, std
 // applying it would change, and plan prints that as JSON.
 func configCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
 	paths := map[string]string{"validate": "/api/v1/config/validate", "diff": "/api/v1/config/plan", "plan": "/api/v1/config/plan"}
+	if len(args) >= 2 && args[0] == "apply" {
+		return configApply(ctx, client, args[1], args[2:], stdout, stderr, debug)
+	}
 	if len(args) != 2 || paths[args[0]] == "" {
-		_, _ = fmt.Fprintln(stderr, "Error: usage: config validate|diff|plan \"path\"")
+		_, _ = fmt.Fprintln(stderr, "Error: usage: config validate|diff|plan \"path\" | config apply \"path\" [--dry-run] [reason...]")
 		return 2
 	}
 	doc, err := os.ReadFile(args[1])
@@ -742,4 +745,52 @@ func configOutput(cmd, path string, reply []byte) (string, error) {
 		return "", err
 	}
 	return pretty.String(), nil
+}
+
+// configApply plans the document, prints the plan, and applies it with the
+// plan's fingerprint, so what is applied is exactly what was shown. With
+// --dry-run it stops after checking the plan is current; any other words
+// are the reason recorded in the audit log.
+func configApply(ctx context.Context, client Client, path string, rest []string, stdout, stderr io.Writer, debug bool) int {
+	query := url.Values{}
+	var reason []string
+	for _, a := range rest {
+		switch {
+		case a == "--dry-run":
+			query.Set("dryRun", "true")
+		case strings.HasPrefix(a, "-"): // a mistyped --dry-run must not apply
+			_, _ = fmt.Fprintf(stderr, "Error: unknown option %q; use --dry-run (reason words cannot start with -)\n", a)
+			return 2
+		default:
+			reason = append(reason, a)
+		}
+	}
+	if len(reason) > 0 {
+		query.Set("reason", strings.Join(reason, " "))
+	}
+	doc, err := os.ReadFile(path)
+	var plan gateway.ConfigPlan
+	if err == nil {
+		var out []byte
+		if out, err = client.Call(ctx, http.MethodPost, "/api/v1/config/plan", doc); err == nil {
+			err = json.Unmarshal(out, &plan)
+		}
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	_, _ = fmt.Fprint(stdout, plan.Text)
+	if len(plan.Changes) == 0 && query.Get("dryRun") == "" {
+		return 0
+	}
+	query.Set("fingerprint", plan.Fingerprint)
+	if _, err := client.Call(ctx, http.MethodPost, "/api/v1/config/apply?"+query.Encode(), doc); err != nil {
+		return shellError(stderr, debug, err)
+	}
+	if query.Get("dryRun") != "" {
+		_, _ = fmt.Fprintln(stdout, "dry run: the plan is current; nothing was changed")
+		return 0
+	}
+	_, _ = fmt.Fprintf(stdout, "applied %d changes\n", len(plan.Changes))
+	return 0
 }

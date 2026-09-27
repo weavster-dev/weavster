@@ -96,7 +96,7 @@ settings: {}
 	}{
 		{`config diff "` + path + `"`, "+ flow/c\n", 0},
 		{`config plan "` + path + `"`, `  "added": [` + "\n" + `    "flow/c"`, 0},
-		{`config apply "` + path + `"`, "", 2},
+		{`config drift "` + path + `"`, "", 2},
 	} {
 		if err := os.WriteFile(script, []byte(tt.line+"\n"), 0o600); err != nil {
 			t.Fatal(err)

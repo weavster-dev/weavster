@@ -4,10 +4,9 @@ A config-as-code document describes a server's configuration in one YAML (or JSO
 you keep in version control: flows, alerts, code snippets and libraries, global scripts, the
 config map, and settings. Every artifact has the same shape it has in the API.
 
-!!! note "Checked and planned, not applied yet"
-    Today you can check a document (`config validate`) and see what applying it would change
-    (`config diff`, `config plan`). Applying it is not available yet; to copy configuration
-    between servers use [export and import](config-transfer.md).
+You check a document (`config validate`), see what applying it would change (`config diff`,
+`config plan`), and apply it (`config apply`). To copy a whole configuration between servers
+without a document, use [export and import](config-transfer.md).
 
 ## Example
 
@@ -131,6 +130,57 @@ and `settings/…`. `fingerprint` identifies the live configuration the plan was
 changes whenever anything in it changes. Planning needs the permissions an
 [export](config-transfer.md#permissions) with the config map needs: `flows:view`,
 `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit`.
+
+## Apply
+
+```text
+weavster> config apply "weavster.yaml" CHG-1234 rotate EHR endpoint
+~ flow/adt
+    destinations[0].url: "https://old.example.com/in" → "https://ehr.example.com/in"
+0 to add, 1 to change, 0 to remove, 6 unchanged
+applied 1 changes
+```
+
+`config apply` plans the document, prints the plan, and applies exactly that plan. Words after
+the path (other than `--dry-run`) are the reason, recorded in the audit log; a word starting
+with `-` that is not `--dry-run` is refused, so a mistyped flag never applies.
+
+- **Stale plans are refused.** The plan's `fingerprint` covers both the live configuration and
+  the document, and goes with the apply. If either changed in between, the apply is refused with
+  `409` and nothing changes; plan again and review the new plan.
+- **All or nothing.** Changes are applied in a safe order: libraries, snippets, flows (all added
+  and changed flows together, so new flows may depend on each other), alerts, then scripts,
+  config map, and settings; removals come last, and a flow is removed before the flows it uses.
+  If any change fails, every change already made is undone and the reply says which change
+  failed (`409` for a problem in the configuration, such as removing a flow that a flow you keep
+  depends on; `500` for a server problem). If undoing a change fails, the others are still
+  undone, and the reply names what could not be undone: the configuration is partly applied, so
+  plan again to see where it stands.
+- One apply runs at a time, but other API calls are not blocked: avoid editing the same flows,
+  alerts, or items through the API while an apply runs, because a rollback puts back the values
+  from the plan.
+- New flows are created undeployed; deploy them as usual. A removed flow that was running is
+  undeployed first; if the apply is rolled back, the flow comes back undeployed and the reply
+  lists it so you can deploy it again.
+- `--dry-run` checks that the plan is still current and changes nothing.
+
+With the API, send the plan's fingerprint:
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @weavster.yaml \
+  'http://127.0.0.1:8080/api/v1/config/apply?fingerprint=78ff2b…&reason=CHG-1234'
+```
+
+```json
+{"applied":true,"plan":{"fingerprint":"78ff2b…","added":[],"updated":["flow/adt"], …}}
+```
+
+Applying needs `flows:view`, `flows:edit`, `alerts:edit`, `snippets:edit`, `scripts:edit`,
+`settings:edit`, and `configmap:edit`. Every attempt is written to the
+[audit log](audit-log.md) as `POST /api/v1/config/apply`, with the planned keys
+(`plan.added`, `plan.updated`, `plan.removed`), the fingerprint, the reason, and the result:
+`applied`, `dry run`, `stale`, `invalid`, `refused` (a bad parameter), `failed` (the live
+configuration could not be read), `rolled back`, or `rollback failed`.
 
 ## Editor support
 

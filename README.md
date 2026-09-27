@@ -73,7 +73,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
 - **Configuration management** (API and CLI): user administration; the config map, global
   scripts, and settings; code snippets and libraries; alert definitions (stored and validated;
   they do not send notifications yet); whole-configuration export and import; and checking a
-  config-as-code document (`config validate`). These are stored and managed only: flows do not
+  config-as-code document and planning and applying it (`config validate`, `diff`, `plan`,
+  `apply`). These are stored and managed only: flows do not
   use snippets, scripts, or the config map yet.
 - **CLI**: `weavster server`, `weavster test` (four built-in codec round-trip fixtures,
   JUnit/JSON output), and the command-line client: a bare `weavster` opens the interactive
@@ -82,7 +83,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   a connection file, and `-v` prints the server's version.
 - **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
   scheduler, adapters, outbox, codecs, WASM compiler/executor/registry, PostgreSQL
-  store, config-as-code plan/apply/drift, Git store, alert evaluation, notifiers, secrets,
+  store, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
   metrics/tracing.
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.
 - **Build**: CI verifies static `CGO_ENABLED=0` builds for linux/amd64, linux/arm64,

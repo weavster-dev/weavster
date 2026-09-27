@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync"
 	"time"
 
 	"github.com/weavster-dev/weavster/internal/flowdef"
@@ -309,6 +310,7 @@ type Config struct {
 type Server struct {
 	cfg      Config
 	sessions *sessions
+	applyMu  sync.Mutex // one configuration apply at a time
 }
 
 // New returns a gateway server.

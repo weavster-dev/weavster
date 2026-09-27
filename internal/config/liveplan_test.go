@@ -62,9 +62,9 @@ settings: {}
 	if (Plan{}).Text() != "no changes\n" {
 		t.Error("empty plan text")
 	}
-	first, second := Fingerprint(live), Fingerprint(live)
-	if first == Fingerprint(desired) || first != second {
-		t.Error("fingerprint must follow the content")
+	other, _ := Parse([]byte("flows: {}\n"))
+	if p.Fingerprint == "" || p.Fingerprint != LivePlan(desired, live).Fingerprint || p.Fingerprint == LivePlan(other, live).Fingerprint {
+		t.Error("the fingerprint must follow the live configuration and the document")
 	}
 	// A config built in code manages every section.
 	if !(&Config{}).manages("alert/x") || desired.manages("unknown/x") {
@@ -102,7 +102,19 @@ func TestLivePlanExactAndReadable(t *testing.T) {
 	if !strings.Contains(p.Text(), `value: "if (a < b && c)" → "if (a <= b && c)"`) || !strings.Contains(p.Text(), "value: 9007199254740992 → 9007199254740993") {
 		t.Errorf("text:\n%s", p.Text())
 	}
-	if p.Fingerprint != Fingerprint(live) {
-		t.Error("the plan's fingerprint is the live one")
+	live.Scripts["s"] = "changed"
+	if p.Fingerprint == LivePlan(desired, live).Fingerprint {
+		t.Error("a live change must change the fingerprint")
+	}
+}
+
+// TestFingerprintCoversManagedSections: leaving a section out and emptying it
+// plan the same artifacts but differ in what apply removes.
+func TestFingerprintCoversManagedSections(t *testing.T) {
+	live := &Config{Flows: map[string]flowdef.Flow{}}
+	leaveOut, _ := Parse([]byte("scripts: {}\n"))
+	empty, _ := Parse([]byte("scripts: {}\nflows: {}\n"))
+	if LivePlan(leaveOut, live).Fingerprint == LivePlan(empty, live).Fingerprint {
+		t.Error("the fingerprint must tell a left-out section from an empty one")
 	}
 }

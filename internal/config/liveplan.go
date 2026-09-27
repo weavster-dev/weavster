@@ -41,7 +41,9 @@ type FieldChange struct {
 // JSON, so formatting and key order never show as changes.
 func LivePlan(desired, live *Config) Plan {
 	d, l := canonical(desired.Artifacts()), canonical(live.Artifacts())
-	p := Plan{Fingerprint: fingerprint(l)}
+	// The fingerprint covers the live configuration and the document, so
+	// an apply can tell that both are what the plan was made from.
+	p := Plan{Fingerprint: fingerprint(l, d, desired.managedSet())}
 	for _, k := range sortedKeys(d) {
 		switch lv, ok := l[k]; {
 		case !ok:
@@ -61,6 +63,18 @@ func LivePlan(desired, live *Config) Plan {
 		}
 	}
 	return p
+}
+
+// managedSet lists the managed sections, so the fingerprint tells a
+// document that leaves a section out from one that empties it.
+func (c *Config) managedSet() map[string]json.RawMessage {
+	out := map[string]json.RawMessage{}
+	for section := range sections {
+		if c.manages(sections[section]) {
+			out[section] = json.RawMessage("1")
+		}
+	}
+	return out
 }
 
 // manages reports whether the document manages the section key belongs to.
@@ -175,20 +189,18 @@ func mustRaw(v any) json.RawMessage {
 	return bytes.TrimSuffix(b.Bytes(), []byte("\n"))
 }
 
-// Fingerprint identifies the live configuration: it changes whenever any
-// live artifact does, so a plan made against one state can be recognized
-// as stale later. LivePlan sets it on the plan.
-func Fingerprint(live *Config) string {
-	return fingerprint(canonical(live.Artifacts()))
-}
-
-func fingerprint(arts map[string]json.RawMessage) string {
+// fingerprint hashes sets of artifacts in order: it changes whenever any
+// artifact of any set does, so a plan can be recognized as stale later.
+func fingerprint(sets ...map[string]json.RawMessage) string {
 	h := sha256.New()
-	for _, k := range sortedKeys(arts) {
-		h.Write([]byte(k))
-		h.Write([]byte{0})
-		h.Write(arts[k])
-		h.Write([]byte{0})
+	for _, arts := range sets {
+		for _, k := range sortedKeys(arts) {
+			h.Write([]byte(k))
+			h.Write([]byte{0})
+			h.Write(arts[k])
+			h.Write([]byte{0})
+		}
+		h.Write([]byte{1}) // ends a set
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }

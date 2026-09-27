@@ -7,5 +7,5 @@ $DIR/config.yaml is valid: 1 flows, 0 alerts, 0 snippets, 0 snippet libraries, 0
 --- stderr
 Error: server returned 400 Bad Request: config: parse: yaml: unmarshal errors:
   line 1: field region not found
-Error: usage: config validate|diff|plan "path"
+Error: usage: config validate|diff|plan "path" | config apply "path" [--dry-run] [reason...]
 --- exit 2
