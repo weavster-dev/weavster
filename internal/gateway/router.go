@@ -181,6 +181,16 @@ func (s *Server) Router() http.Handler {
 				s.require("scripts", "edit"), s.require("settings", "edit"),
 				s.requireWhen(func(r *http.Request) bool { return !queryTrue("nodeploy")(r) }, "flows", "deploy"),
 				s.requireWhen(queryTrue("overwriteConfigMap"), "configmap", "edit")).Post("/config/import", s.handleConfigImport)
+			lookupsView, lookupsEdit := s.require("lookups", "view"), s.require("lookups", "edit")
+			r.With(lookupsView).Get("/lookups", s.handleLookupGroups)
+			r.With(lookupsView).Get("/lookups/{group}", s.handleLookupMatching)
+			r.With(lookupsEdit).Delete("/lookups/{group}", s.handleLookupDeleteGroup)
+			r.With(lookupsEdit).Post("/lookups/{group}/import", s.handleLookupImport)
+			r.With(lookupsView).Post("/lookups/{group}/batch", s.handleLookupBatch)
+			r.With(lookupsView).Get("/lookups/{group}/{key}", s.handleLookupGet)
+			r.With(lookupsView).Get("/lookups/{group}/{key}/exists", s.handleLookupExists)
+			r.With(lookupsEdit).Put("/lookups/{group}/{key}", s.handleLookupPut)
+			r.With(lookupsEdit).Delete("/lookups/{group}/{key}", s.handleLookupDelete)
 			alerts := s.require("alerts", "edit")
 			r.With(alerts).Get("/alerts", s.handleAlertsList)
 			r.With(alerts).Post("/alerts", s.handleAlertsSave)

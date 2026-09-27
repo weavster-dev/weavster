@@ -73,6 +73,7 @@ All notable changes to this project are documented here, following
 - Config-as-code apply (#241): `POST /api/v1/config/apply?fingerprint=…` and CLI `config apply "path" [--dry-run] [reason]` apply a reviewed plan, refuse stale plans, roll back every applied change when one fails, and audit the plan, reason, and result.
 - Events API (#243): `from`, `to`, and `afterId` filters on `GET /api/v1/events`; `GET /api/v1/events/{id}`, `/count`, `/max-id`, and `/export` (JSON download).
 - System information (#245): `GET /api/v1/system/about`, `/password-requirements`, `/resources`, and `/guid`.
+- Dynamic lookups (#249): `/api/v1/lookups` groups of text key → text value with prefix matching, get, exists, batch, put, delete, and import (merge or replace); SQLite-durable (migration 7); permissions `lookups:view` and `lookups:edit`. Flows do not read lookups yet.
 
 ### Changed
 

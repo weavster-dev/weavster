@@ -146,6 +146,9 @@ func TestStoresImplementFlowRepository(t *testing.T) {
 		if _, ok := s.(itemRepository); !ok {
 			t.Errorf("%T does not implement itemRepository", s)
 		}
+		if _, ok := s.(lookupRepository); !ok {
+			t.Errorf("%T does not implement lookupRepository", s)
+		}
 	}
 }
 

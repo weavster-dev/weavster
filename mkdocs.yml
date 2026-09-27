@@ -23,6 +23,7 @@ nav:
   - Config Map, Scripts, Settings: config-items.md
   - Code Snippets: snippets.md
   - Alerts: alerts.md
+  - Dynamic Lookups: lookups.md
   - Configuration Export and Import: config-transfer.md
   - Config-as-Code Documents: config-as-code.md
   - System Information: system-info.md

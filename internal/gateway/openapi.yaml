@@ -743,6 +743,98 @@ paths:
         "409": {description: "Items that already exist (without force; the message lists them), or were created or deleted by others during the import", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "500": {description: "Import stopped part-way, or a flow did not deploy (the message says which)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/lookups:
+    get:
+      summary: "Every lookup group with its number of entries (requires lookups:view)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "Groups sorted by name", content: {application/json: {schema: {type: array, items: {type: object, properties: {name: {type: string}, entries: {type: integer}}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/lookups/{group}:
+    parameters:
+      - {name: group, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    get:
+      summary: "The group's entries whose key starts with prefix, first in key order (requires lookups:view)"
+      parameters:
+        - {name: prefix, in: query, schema: {type: string}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 10000, default: 1000}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{key: value}", content: {application/json: {schema: {type: object, additionalProperties: {type: string}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad group name or limit", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: "Delete every entry of the group (requires lookups:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: "Deleted", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad group name", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "The group has no entries", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/lookups/{group}/import:
+    parameters:
+      - {name: group, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    post:
+      summary: "Store entries (a JSON object of key: text), all or nothing; replace=true makes them the whole group (requires lookups:edit)"
+      parameters:
+        - {name: replace, in: query, schema: {type: boolean}}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, additionalProperties: {type: string}}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{imported}", content: {application/json: {schema: {type: object, properties: {imported: {type: integer}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad key or value, or not a JSON object of text", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: "Body larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/lookups/{group}/batch:
+    parameters:
+      - {name: group, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    post:
+      summary: "Look up many keys at once, 1-1000 (requires lookups:view)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [keys], properties: {keys: {type: array, minItems: 1, maxItems: 1000, items: {type: string}}}}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{found, missing}", content: {application/json: {schema: {type: object, properties: {found: {type: object, additionalProperties: {type: string}}, missing: {type: array, items: {type: string}}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "No keys or too many", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/lookups/{group}/{key}:
+    parameters:
+      - {name: group, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+      - {name: key, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 512}, description: "Any text without control characters (URL-encoded)"}
+    get:
+      summary: "One entry (requires lookups:view)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{key, value}", content: {application/json: {schema: {type: object, properties: {key: {type: string}, value: {type: string}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad group name or key", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown key", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Create or replace one entry; the body is {value: text} (requires lookups:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: object, required: [value], properties: {value: {type: string, description: "UTF-8 text of at most 64 KiB (65536 bytes)"}}}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{key, value}", content: {application/json: {schema: {type: object, properties: {key: {type: string}, value: {type: string}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad group name, key, or value", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: "Delete one entry (requires lookups:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: "Deleted", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad group name or key", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown key", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/lookups/{group}/{key}/exists:
+    parameters:
+      - {name: group, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+      - {name: key, in: path, required: true, schema: {type: string, minLength: 1, maxLength: 512}, description: "Any text without control characters (URL-encoded)"}
+    get:
+      summary: "Whether the key exists: {exists: true|false} (requires lookups:view)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{exists}", content: {application/json: {schema: {type: object, properties: {exists: {type: boolean}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad group name or key", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/alerts:
     get:
       summary: "Every alert definition, sorted by id (requires alerts:edit)"
