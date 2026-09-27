@@ -56,6 +56,7 @@ All notable changes to this project are documented here, following
 - Response transform and response selector (#192): a flow's `responseSelector` names the destination whose reply `POST /api/v1/flows/{id}/messages` returns as `response`, after that destination's optional `responseTransform`.
 - CLI flow commands (#196) in batch mode (`-s`): `flow list|get|create|update|update-all|rename|enable|disable|remove|export|import|deploy|undeploy|start|stop|pause|halt|resume|redeploy-all|start-destination|stop-destination|connectors|ports`; server errors print `Error: server returned <status>: <message>` and exit `2`. See `docs/cli.md`.
 - CLI spec §3.2 flow commands (#200): `deploy [timeout]`, `flow stats [id|name]`, `import "path" [force]`, `export id|"name"|* "path"`; flow commands accept a flow id or name; arguments can be double-quoted (`\"` and `\\` escapes).
+- Unversioned API paths (#206): every `/api/v1/...` endpoint is also served at `/api/...`, resolving to the latest version (spec §5); replies carry `Weavster-API-Version: v1`. See `docs/api.md`.
 
 ### Changed
 

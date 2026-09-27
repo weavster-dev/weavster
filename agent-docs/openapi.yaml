@@ -5,6 +5,8 @@ info:
   description: >
     REST API for the Weavster message-oriented integration platform.
     Errors use the JSON error envelope (components.schemas.Error).
+    Every /api/v1 path is also served unversioned (/api/flows), resolving to
+    the latest version; replies carry Weavster-API-Version.
 paths:
   /api/openapi.yaml:
     get:
@@ -377,9 +379,15 @@ components:
           properties:
             code: {type: string, description: "Stable code, e.g. NOT_FOUND, CONFLICT, NOT_IMPLEMENTED"}
             message: {type: string}
+  headers:
+    WeavsterAPIVersion:
+      description: The API version that answered (every /api/v1 and unversioned /api reply).
+      schema: {type: string, example: v1}
   responses:
     Error:
       description: Error envelope
+      headers:
+        Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}
       content:
         application/json:
           schema: {$ref: "#/components/schemas/Error"}

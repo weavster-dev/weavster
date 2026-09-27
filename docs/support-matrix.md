@@ -22,6 +22,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | Capability | Tier | Proof / notes |
 |---|---|---|
 | `GET /api/openapi.yaml` (no marker header needed) | Implemented (wired) | `TestSupportMatrixWired/openapi`, `TestOpenAPIPublished`, `TestOpenAPIContract`. The served document is exactly `agent-docs/openapi.yaml`; every route is documented and every documented operation is contract-tested. |
+| Unversioned API paths (`/api/flows` = latest, today `/api/v1/flows`); `Weavster-API-Version` reply header | Implemented (wired) | `TestUnversionedAPI`. See [REST API](api.md#versions). |
 | `GET /api/v1/system` status document | Implemented (wired) | `TestSupportMatrixWired/system` |
 | CSRF marker enforcement (`400` without `X-Weavster-CSRF: 1`) | Implemented (wired) | `TestSupportMatrixWired/csrf-marker` |
 | `TRACE`/`TRACK` rejected with `405` | Implemented (wired) | `TestSupportMatrixWired/trace-blocked` |

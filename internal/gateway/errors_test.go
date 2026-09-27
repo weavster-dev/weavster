@@ -94,3 +94,38 @@ func TestMethodNotAllowedListsAllowed(t *testing.T) {
 		}
 	}
 }
+
+func TestUnversionedPaths(t *testing.T) {
+	tests := []struct {
+		method, path string
+		status       int
+		version      string
+	}{
+		{http.MethodGet, "/api/v1/flows", http.StatusOK, "v1"},
+		{http.MethodGet, "/api/flows", http.StatusOK, "v1"},
+		{http.MethodGet, "/api/flows/f/stats", http.StatusServiceUnavailable, "v1"},
+		{http.MethodGet, "/api/v2/flows", http.StatusNotFound, ""},
+		{http.MethodGet, "/api/openapi.yaml", http.StatusOK, ""},
+		{http.MethodPatch, "/api/flows/f", http.StatusMethodNotAllowed, "v1"},
+		{http.MethodGet, "/api/", http.StatusNotFound, ""},
+		{http.MethodGet, "/api/v1/nope", http.StatusNotFound, "v1"},
+		// An escaped slash stays part of the id on both paths.
+		{http.MethodGet, "/api/v1/flows/f%2Fstats", http.StatusOK, "v1"},
+		{http.MethodGet, "/api/flows/f%2Fstats", http.StatusOK, "v1"},
+	}
+	for _, tt := range tests {
+		rec := httptest.NewRecorder()
+		New(Config{Flows: &fakeFlows{}}).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, nil))
+		if rec.Code != tt.status || rec.Header().Get("Weavster-API-Version") != tt.version {
+			t.Errorf("%s %s: %d, version %q; want %d, %q", tt.method, tt.path, rec.Code, rec.Header().Get("Weavster-API-Version"), tt.status, tt.version)
+		}
+	}
+}
+
+func TestIsVersion(t *testing.T) {
+	for seg, want := range map[string]bool{"v1": true, "v12": true, "v": false, "vx": false, "V1": false, "flows": false, "": false} {
+		if got := isVersion(seg); got != want {
+			t.Errorf("isVersion(%q) = %v, want %v", seg, got, want)
+		}
+	}
+}

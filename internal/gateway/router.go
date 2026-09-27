@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -8,12 +9,76 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// APIVersion is the latest API version; unversioned /api/... paths use it
+// (spec §5).
+const APIVersion = "v1"
+
+// apiVersion serves unversioned API paths (/api/flows) as the latest
+// version (/api/v1/flows), like http.StripPrefix: on a copy of the request,
+// with Path and RawPath rewritten alike. The path the client called stays
+// available to the audit log (requestedPath). /api/openapi.yaml and bare
+// /api/ are not versioned.
+func apiVersion(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rest, ok := strings.CutPrefix(r.URL.Path, "/api/")
+		first, _, _ := strings.Cut(rest, "/")
+		if !ok || rest == "" || rest == "openapi.yaml" || isVersion(first) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		r2 := r.WithContext(context.WithValue(r.Context(), requestedPathKey{}, r.URL.Path))
+		u := *r.URL
+		u.Path = "/api/" + APIVersion + "/" + rest
+		if raw, ok := strings.CutPrefix(u.RawPath, "/api/"); ok {
+			u.RawPath = "/api/" + APIVersion + "/" + raw
+		}
+		r2.URL = &u
+		next.ServeHTTP(w, r2)
+	})
+}
+
+// requestedPathKey holds the path the client called before apiVersion
+// rewrote it.
+type requestedPathKey struct{}
+
+// requestedPath is the path the client called.
+func requestedPath(r *http.Request) string {
+	if p, ok := r.Context().Value(requestedPathKey{}).(string); ok {
+		return p
+	}
+	return r.URL.Path
+}
+
+// versionHeader names the API version that serves a route group.
+func versionHeader(version string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Weavster-API-Version", version)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// isVersion reports whether a path segment names an API version (v1, v2, ...).
+func isVersion(seg string) bool {
+	if len(seg) < 2 || seg[0] != 'v' {
+		return false
+	}
+	for _, c := range seg[1:] {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // RouteNotFoundMessage is the error message for a path no route serves.
 const RouteNotFoundMessage = "no such endpoint"
 
 // Router builds the chi router with middleware and routes.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
+	r.Use(apiVersion)
 	r.Use(SecurityHeaders)
 	// BlockTrace refuses TRACE before routing; say which methods the path
 	// does allow (RFC 9110 requires Allow on 405).
@@ -40,7 +105,8 @@ func (s *Server) Router() http.Handler {
 		_, _ = w.Write([]byte(OpenAPISpec()))
 	})
 
-	r.Route("/api/v1", func(r chi.Router) {
+	r.Route("/api/"+APIVersion, func(r chi.Router) {
+		r.Use(versionHeader(APIVersion))
 		// audited runs first so requests rejected by any later middleware
 		// (CSRF marker, authentication, authorization) are still recorded.
 		r.Use(s.audited)

@@ -88,7 +88,7 @@ func (s *Server) audited(next http.Handler) http.Handler {
 			}
 			// Requests rejected before routing (e.g. missing CSRF marker) only
 			// have the wildcard pattern; record their literal path instead.
-			route := r.URL.Path
+			route := requestedPath(r)
 			if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" && !strings.HasSuffix(rc.RoutePattern(), "*") {
 				route = rc.RoutePattern()
 			}
@@ -103,6 +103,6 @@ func (s *Server) audited(next http.Handler) http.Handler {
 			detail["query."+k] = strings.Join(v, ",")
 		}
 		// Audit failures never change the response.
-		_ = s.cfg.Audit.Record(r.Context(), AuditEvent{Actor: actor, Action: action, Resource: r.URL.Path, Detail: detail})
+		_ = s.cfg.Audit.Record(r.Context(), AuditEvent{Actor: actor, Action: action, Resource: requestedPath(r), Detail: detail})
 	})
 }
