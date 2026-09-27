@@ -141,8 +141,8 @@ func TestValidate(t *testing.T) {
 	if err := Validate([]byte(validYAML)); err != nil {
 		t.Fatalf("valid config rejected: %v", err)
 	}
-	if err := Validate([]byte("settings:\n  s: {1: x}\n")); err != nil {
-		t.Errorf("setting with a numeric key rejected: %v", err)
+	if err := Validate([]byte("settings:\n  s: {key: x}\n")); err != nil {
+		t.Errorf("setting with a string key rejected: %v", err)
 	}
 	tests := []struct{ name, doc, want string }{
 		{"flows not an object", `{"flows": 5}`, "config: parse"},
@@ -169,7 +169,7 @@ func TestValidate(t *testing.T) {
 		{"two YAML documents", "flows: {}\n---\nbogus: 1\n", "more than one YAML document"},
 		{"unsupported version", "version: \"2\"\n", `version "2" is not supported`},
 		{"bad alert key", "alerts:\n  \"a b\": {name: X, trigger: {events: [message.errored]}, actions: [{type: email, to: [a@b.co]}]}\n", `alerts.a b: name "a b" must be`},
-		{"flow with a non-string name", "flows:\n  a: {name: {1: x}}\n", "cannot unmarshal object into Go struct field Flow.name of type string"},
+		{"flow with a non-string name", "flows:\n  a: {name: {key: x}}\n", "cannot unmarshal object into Go struct field Flow.name of type string"},
 	}
 	for _, tt := range tests {
 		if err := Validate([]byte(tt.doc)); err == nil || !strings.Contains(err.Error(), tt.want) {
