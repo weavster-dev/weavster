@@ -315,6 +315,55 @@ recorded in the [audit log](audit-log.md) as `phi.access`.
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/messages/6f1c…/content?part=raw'
 ```
 
+### Export and import messages
+
+Export writes the messages that match the search parameters into one gzipped archive (permission
+`messages:content`, audited). An archive holds complete messages: the content as received and after
+the transform, status, times, attempts, and metadata. It takes up to 10,000 messages, the newest
+first unless you set `sort`; with `limit` and `offset` you export larger sets in parts:
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -o adt.json.gz \
+  'http://127.0.0.1:8080/api/v1/messages/export?flowId=adt'
+```
+
+The reply header `Weavster-Message-Count` says how many messages the archive holds; when it is
+10,000 there may be more, so export the next part with `offset=10000`.
+
+Import restores an archive (permission `messages:import`, up to 100 MiB):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @adt.json.gz \
+  'http://127.0.0.1:8080/api/v1/messages/import?flowId=adt'
+```
+
+```json
+{"imported":120,"skipped":3,"busy":0}
+```
+
+- Messages keep their id, status, times, attempts, metadata, and content. A message whose id
+  already exists is `skipped`; add `overwrite=true` to replace it. A message the server is
+  processing at that moment is left as it is and counted as `busy`.
+- Every flow the messages belong to must exist, or nothing is imported (`404` naming the flow).
+  `flowId` assigns every imported message to that flow instead.
+- Imported messages that are `queued` (or were still being processed) are picked up by the retry
+  worker when their flow is `started`, and delivered. Import into a stopped flow to keep them as
+  history.
+- An archive that is not gzip, not an export, encrypted with another key, or larger than 512 MiB
+  once decompressed returns `400`.
+- If writing fails part-way, the reply is `500 {"error":{"code":"IMPORT_INCOMPLETE",…},"imported":…}`
+  with what was already written; importing the same archive again skips those messages.
+
+To encrypt an archive, send a key in the `Weavster-Archive-Key` header on export, and the same key
+on import. The key is 32 random bytes in base64; keep it safe, because the archive cannot be read
+without it. An encrypted archive is `application/octet-stream` (it is compressed before encryption):
+
+```bash
+KEY=$(openssl rand -base64 32)
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H "Weavster-Archive-Key: $KEY" -o adt.enc.gz \
+  'http://127.0.0.1:8080/api/v1/messages/export?flowId=adt'
+```
+
 ## 5. Statistics and events
 
 Per-flow counters (permission `flows:view`):

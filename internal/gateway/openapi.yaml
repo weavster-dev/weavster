@@ -453,6 +453,44 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "[{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: A filter or paging parameter is invalid, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/messages/export:
+    get:
+      summary: A gzipped archive of the messages matching the search filters, with one content form (requires messages:content; audited)
+      parameters:
+        - {name: flowId, in: query, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}}
+        - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 10000, default: 100}}
+        - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
+        - {name: sort, in: query, schema: {type: string, enum: [-receivedAt, receivedAt, id, -id], default: -receivedAt}}
+        - {name: form, in: query, schema: {type: string, enum: [raw, transformed], default: raw}}
+        - {name: Weavster-Archive-Key, in: header, schema: {type: string}, description: "Optional AES-256-GCM key: base64 of 32 bytes"}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: The archive; Weavster-Message-Count says how many messages it holds.
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+          content:
+            application/gzip: {schema: {type: string, format: binary}}
+        "400": {description: "A filter, form, or key is invalid", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/messages/import:
+    post:
+      summary: Restore an archive made by the export (requires messages:import)
+      parameters:
+        - {name: flowId, in: query, schema: {type: string}, description: Assign every message to this flow}
+        - {name: overwrite, in: query, schema: {type: boolean}, description: Replace messages whose id exists (skipped otherwise)}
+        - {name: Weavster-Archive-Key, in: header, schema: {type: string}, description: The key the archive was encrypted with}
+      requestBody:
+        required: true
+        content:
+          application/gzip: {schema: {type: string, format: binary}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{imported, skipped}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "Not a readable archive (not gzip, wrong key, or not an export document), or a bad parameter", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: flowId names no flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: Archive larger than 100 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/messages/{id}:
     get:
       summary: One stored message, without its content (requires messages:view; audited)

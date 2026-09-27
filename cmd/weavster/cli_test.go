@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"io"
 	"net/http"
@@ -204,5 +205,20 @@ func TestDeployTimeoutStopsNewDeploys(t *testing.T) {
 	code := deployAll(context.Background(), slowDeployClient{delay: 1100 * time.Millisecond}, []string{"1"}, &out, &errb, false)
 	if code != 2 || !strings.Contains(out.String(), "deployed a\ndeployed 1 flows") || !strings.Contains(errb.String(), "timeout: deploy stopped before b") {
 		t.Errorf("exit %d, stdout %q, stderr %q", code, out.String(), errb.String())
+	}
+}
+
+func TestArchiveCount(t *testing.T) {
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	_, _ = zw.Write([]byte(`{"items":[{},{}]}`))
+	_ = zw.Close()
+	for name, tt := range map[string]struct {
+		archive []byte
+		want    int
+	}{"two items": {buf.Bytes(), 2}, "not gzip": {[]byte("x"), 0}} {
+		if got := archiveCount(tt.archive); got != tt.want {
+			t.Errorf("%s: archiveCount = %d, want %d", name, got, tt.want)
+		}
 	}
 }

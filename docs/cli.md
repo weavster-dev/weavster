@@ -103,6 +103,8 @@ Commands that change a flow print the server's reply (the flow, or the import/up
 
 | Command | What it does |
 |---|---|
+| `exportmessages "path" <flow>` | Writes an archive of the flow's messages (by id or name; `*` for every flow), the newest 10,000, to `path`. |
+| `importmessages "path" <flow>` | Imports an archive file into the flow (existing message ids are skipped). |
 | `resetstats [lifetime]` | Clears every flow's current statistics; `lifetime` also clears the lifetime totals. |
 | `deploy [timeout]` | Deploys every flow that is `enabled` and `undeployed` (dependencies first, as `flow deploy` does); disabled flows are skipped, as at server start. Prints `deployed <id>` for each and `deployed N flows`. After `timeout` seconds no further flow is started (a deploy already sent finishes) and the command exits `2`. A flow that fails is reported, the others still deploy, and the command exits `2`. |
 | `import "path" [force]` | Same as `flow import`; `force` replaces existing flows. |

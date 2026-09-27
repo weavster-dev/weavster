@@ -12,6 +12,7 @@ const (
 	PermMessagesSend    = "messages:send"
 	PermMessagesContent = "messages:content"
 	PermMessagesDelete  = "messages:delete"
+	PermMessagesImport  = "messages:import"
 	PermAlertsEdit      = "alerts:edit"
 	PermEventsView      = "events:view"
 	PermSnippetsEdit    = "snippets:edit"

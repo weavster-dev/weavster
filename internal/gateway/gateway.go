@@ -163,6 +163,11 @@ var (
 	// ErrNoContent: the message has no content of the requested part (for
 	// example no transformed content yet); wrapped with the detail.
 	ErrNoContent = errors.New("no such content")
+	// ErrInvalidArchive: an import is not a readable archive (not gzip,
+	// wrong key, or not an export document); wrapped with the reason.
+	ErrInvalidArchive = errors.New("invalid message archive")
+	// ErrMessageImportIncomplete: a message import stopped part-way.
+	ErrMessageImportIncomplete = errors.New("message import stopped part-way")
 	// ErrMessageBusy: the message is being processed or retried.
 	ErrMessageBusy = errors.New("message is being processed; try again")
 )
@@ -225,6 +230,29 @@ type MessageStore interface {
 	// Reprocess runs the message's original content through its flow again
 	// as a new message.
 	Reprocess(ctx context.Context, id string) (IngestResult, error)
+	// Export writes an archive of the matching messages (complete, every
+	// content part), encrypted when key is set.
+	Export(ctx context.Context, q MessageQuery, key []byte) (archive []byte, count int, err error)
+	// Import restores an archive: ErrInvalidArchive when it cannot be read,
+	// ErrFlowNotFound when it refers to a missing flow (nothing written),
+	// ErrMessageImportIncomplete when a write fails part-way (the result
+	// counts what was written).
+	Import(ctx context.Context, archive []byte, opts MessageImport) (MessageImportResult, error)
+}
+
+// MessageImport controls an import: FlowID assigns every message to that
+// flow; existing ids are skipped unless Overwrite; Key decrypts.
+type MessageImport struct {
+	FlowID    string
+	Overwrite bool
+	Key       []byte
+}
+
+// MessageImportResult counts an import.
+type MessageImportResult struct {
+	Imported int `json:"imported"`
+	Skipped  int `json:"skipped"` // the id exists and overwrite is off
+	Busy     int `json:"busy"`    // being processed; left as it is
 }
 
 // TopologyProvider serves the read-only topology graphs (contract §3).
