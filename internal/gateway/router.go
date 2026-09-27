@@ -155,10 +155,15 @@ func (s *Server) Router() http.Handler {
 				r.With(edit).Put("/"+k.kind+"/{name}", s.handleItemPut(k))
 				r.With(edit).Delete("/"+k.kind+"/{name}", s.handleItemDelete(k))
 			}
+			// The config map and deploying need their permissions only when
+			// the request touches them.
 			r.With(s.require("flows", "view"), s.require("alerts", "edit"), s.require("snippets", "edit"),
-				s.require("scripts", "edit"), s.require("settings", "edit"), s.require("configmap", "edit")).Get("/config/export", s.handleConfigExport)
-			r.With(s.require("flows", "edit"), s.require("flows", "deploy"), s.require("alerts", "edit"), s.require("snippets", "edit"),
-				s.require("scripts", "edit"), s.require("settings", "edit"), s.require("configmap", "edit")).Post("/config/import", s.handleConfigImport)
+				s.require("scripts", "edit"), s.require("settings", "edit"),
+				s.requireWhen(queryTrue("includeConfigMap"), "configmap", "edit")).Get("/config/export", s.handleConfigExport)
+			r.With(s.require("flows", "edit"), s.require("alerts", "edit"), s.require("snippets", "edit"),
+				s.require("scripts", "edit"), s.require("settings", "edit"),
+				s.requireWhen(func(r *http.Request) bool { return !queryTrue("nodeploy")(r) }, "flows", "deploy"),
+				s.requireWhen(queryTrue("overwriteConfigMap"), "configmap", "edit")).Post("/config/import", s.handleConfigImport)
 			alerts := s.require("alerts", "edit")
 			r.With(alerts).Get("/alerts", s.handleAlertsList)
 			r.With(alerts).Post("/alerts", s.handleAlertsSave)

@@ -602,7 +602,7 @@ paths:
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/config/export:
     get:
-      summary: "The full configuration: flows, alerts, snippets, snippet libraries, global scripts, settings, and optionally the config map; never users (requires flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit, configmap:edit)"
+      summary: "The full configuration: flows, alerts, snippets, snippet libraries, global scripts, settings, and optionally the config map; never users (requires flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit; configmap:edit with includeConfigMap)"
       parameters:
         - {name: includeConfigMap, in: query, schema: {type: boolean}, description: Include the config map}
       responses:
@@ -611,7 +611,7 @@ paths:
         "400": {description: "A bad parameter", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/config/import:
     post:
-      summary: "Restore a configuration document; everything is validated and checked for conflicts before anything is written (requires flows:edit, flows:deploy, alerts:edit, snippets:edit, scripts:edit, settings:edit, configmap:edit)"
+      summary: "Restore a configuration document; everything is validated and checked for conflicts before anything is written (requires flows:edit, alerts:edit, snippets:edit, scripts:edit, settings:edit; flows:deploy unless nodeploy; configmap:edit with overwriteConfigMap)"
       parameters:
         - {name: force, in: query, schema: {type: boolean}, description: "Replace flows, alerts, snippets, and libraries that already exist"}
         - {name: nodeploy, in: query, schema: {type: boolean}, description: Leave imported flows undeployed}
@@ -624,7 +624,7 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "What was imported", content: {application/json: {schema: {$ref: "#/components/schemas/ConfigImportResult"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "An invalid document, or snippets naming missing libraries", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
-        "409": {description: "Items that already exist (without force); the message lists them", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "Items that already exist (without force; the message lists them), or were created or deleted by others during the import", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "500": {description: "Import stopped part-way, or a flow did not deploy (the message says which)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/alerts:

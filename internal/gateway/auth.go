@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -166,6 +167,35 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), identityKey{}, id)))
 	})
+}
+
+// requireWhen checks the permission only for requests cond selects.
+func (s *Server) requireWhen(cond func(*http.Request) bool, resource, action string) func(http.Handler) http.Handler {
+	check := s.require(resource, action)
+	return func(next http.Handler) http.Handler {
+		checked := check(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if cond(r) {
+				checked.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// queryTrue selects requests whose query parameter name is not a false
+// value: set to anything but false/0, it counts as true, so a bad value
+// is checked rather than let through.
+func queryTrue(name string) func(*http.Request) bool {
+	return func(r *http.Request) bool {
+		v := r.URL.Query().Get(name)
+		if v == "" {
+			return false
+		}
+		b, err := strconv.ParseBool(v)
+		return err != nil || b
+	}
 }
 
 // require returns middleware that allows the request only when the

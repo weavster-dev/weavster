@@ -134,8 +134,8 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `/api/v1/settings`, `/api/v1/settings/{name}` (all methods) | `settings:edit` |
 | `/api/v1/snippets`, `/api/v1/snippet-libraries` and their `/{name}` routes (all methods) | `snippets:edit` |
 | `/api/v1/alerts` and every route under it | `alerts:edit` |
-| `GET /api/v1/config/export` | `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit` |
-| `POST /api/v1/config/import` | `flows:edit`, `flows:deploy`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit` |
+| `GET /api/v1/config/export` | `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, and `settings:edit`; also `configmap:edit` with `includeConfigMap=true` |
+| `POST /api/v1/config/import` | `flows:edit`, `alerts:edit`, `snippets:edit`, `scripts:edit`, and `settings:edit`; also `flows:deploy` unless `nodeploy=true`, and `configmap:edit` with `overwriteConfigMap=true` |
 
 The `admin` permission grants everything. A signed-in user without the permission gets:
 

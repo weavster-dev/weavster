@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"sort"
 	"strconv"
@@ -26,7 +25,8 @@ type ConfigBundle struct {
 	SnippetLibraries []SnippetLibrary           `json:"snippetLibraries"`
 	Scripts          map[string]json.RawMessage `json:"scripts"`
 	Settings         map[string]json.RawMessage `json:"settings"`
-	ConfigMap        map[string]json.RawMessage `json:"configmap,omitempty"`
+	// ConfigMap is nil unless asked for; an empty map is exported as {}.
+	ConfigMap *map[string]json.RawMessage `json:"configmap,omitempty"`
 }
 
 // ConfigImportResult reports what a configuration import wrote.
@@ -79,29 +79,39 @@ func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	b := ConfigBundle{Format: ConfigFormat}
 	var err error
-	steps := []func() error{
-		func() (e error) { b.Flows, e = s.cfg.Transfer.Export(ctx, nil); return },
-		func() (e error) { b.Alerts, e = s.cfg.Alerts.ListAlerts(ctx); return },
-		func() (e error) { b.Snippets, e = s.cfg.Snippets.ListSnippets(ctx); return },
-		func() (e error) { b.SnippetLibraries, e = s.cfg.Snippets.ListLibraries(ctx); return },
-		func() (e error) { b.Scripts, e = s.cfg.Items.ListItems(ctx, "scripts"); return },
-		func() (e error) { b.Settings, e = s.cfg.Items.ListItems(ctx, "settings"); return },
+	if b.Flows, err = s.cfg.Transfer.Export(ctx, nil); err == nil {
+		b.Alerts, err = s.cfg.Alerts.ListAlerts(ctx)
 	}
-	if opts["includeConfigMap"] {
-		steps = append(steps, func() (e error) { b.ConfigMap, e = s.cfg.Items.ListItems(ctx, "configmap"); return })
+	if err == nil {
+		b.Snippets, err = s.cfg.Snippets.ListSnippets(ctx)
 	}
-	for _, step := range steps {
-		if err = step(); err != nil {
-			writeBackendError(w, err)
-			return
+	if err == nil {
+		b.SnippetLibraries, err = s.cfg.Snippets.ListLibraries(ctx)
+	}
+	if err == nil {
+		b.Scripts, err = s.cfg.Items.ListItems(ctx, "scripts")
+	}
+	if err == nil {
+		b.Settings, err = s.cfg.Items.ListItems(ctx, "settings")
+	}
+	if err == nil && opts["includeConfigMap"] {
+		var m map[string]json.RawMessage
+		m, err = s.cfg.Items.ListItems(ctx, "configmap")
+		b.ConfigMap = &m
+	}
+	// Empty sets are written as {}, never null.
+	for _, m := range []*map[string]json.RawMessage{&b.Scripts, &b.Settings, b.ConfigMap} {
+		if m != nil && *m == nil {
+			*m = map[string]json.RawMessage{}
 		}
+	}
+	if err != nil {
+		writeBackendError(w, err)
+		return
 	}
 	sort.Slice(b.Alerts, func(i, j int) bool { return b.Alerts[i].ID < b.Alerts[j].ID })
 	sort.Slice(b.Snippets, func(i, j int) bool { return b.Snippets[i].Name < b.Snippets[j].Name })
 	sort.Slice(b.SnippetLibraries, func(i, j int) bool { return b.SnippetLibraries[i].Name < b.SnippetLibraries[j].Name })
-	b.Alerts = append([]Alert{}, b.Alerts...)
-	b.Snippets = append([]Snippet{}, b.Snippets...)
-	b.SnippetLibraries = append([]SnippetLibrary{}, b.SnippetLibraries...)
 	writeJSON(w, http.StatusOK, b)
 }
 
@@ -122,23 +132,10 @@ type configDocument struct {
 // maxImportBytes, rejecting unknown fields.
 func readConfigDocument(w http.ResponseWriter, r *http.Request) (configDocument, bool) {
 	var doc configDocument
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxImportBytes))
-	dec.DisallowUnknownFields()
-	err := dec.Decode(&doc)
-	if err == nil {
-		if _, tokErr := dec.Token(); tokErr != io.EOF {
-			err = errors.New("trailing data after the document")
-		}
+	if !readStrictJSON(w, r, maxImportBytes, &doc) {
+		return doc, false
 	}
-	var tooLarge *http.MaxBytesError
-	switch {
-	case errors.As(err, &tooLarge):
-		writeStatusError(w, http.StatusRequestEntityTooLarge, "configuration document larger than 50 MiB")
-		return doc, false
-	case err != nil:
-		writeStatusError(w, http.StatusBadRequest, "invalid configuration document: "+err.Error())
-		return doc, false
-	case doc.Format != ConfigFormat:
+	if doc.Format != ConfigFormat {
 		writeStatusError(w, http.StatusBadRequest, fmt.Sprintf("format must be %q, as exported by GET /api/v1/config/export", ConfigFormat))
 		return doc, false
 	}
@@ -146,7 +143,8 @@ func readConfigDocument(w http.ResponseWriter, r *http.Request) (configDocument,
 }
 
 // checkConfigDocument validates every part of doc; the error is safe to show.
-func checkConfigDocument(doc configDocument) error {
+// The config map is checked only when it will be written (withConfigMap).
+func checkConfigDocument(doc configDocument, withConfigMap bool) error {
 	if err := checkNames[SnippetLibrary](doc.SnippetLibraries, "library"); err != nil {
 		return err
 	}
@@ -172,8 +170,12 @@ func checkConfigDocument(doc configDocument) error {
 			return err
 		}
 	}
+	parts := map[string]map[string]json.RawMessage{"scripts": doc.Scripts, "settings": doc.Settings}
+	if withConfigMap {
+		parts["configmap"] = doc.ConfigMap
+	}
 	for _, k := range itemKinds {
-		for name, v := range map[string]map[string]json.RawMessage{"scripts": doc.Scripts, "settings": doc.Settings, "configmap": doc.ConfigMap}[k.kind] {
+		for name, v := range parts[k.kind] {
 			if err := k.checkItem(name, v); err != nil {
 				return fmt.Errorf("%s: %w", k.kind, err)
 			}
@@ -257,7 +259,7 @@ func (s *Server) handleConfigImport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := checkConfigDocument(doc); err != nil {
+	if err := checkConfigDocument(doc, opts["overwriteConfigMap"]); err != nil {
 		writeStatusError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -281,57 +283,89 @@ func (s *Server) handleConfigImport(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	res := ConfigImportResult{Flows: ImportResult{Created: []string{}, Updated: []string{}}, Deployed: []string{}}
+	// Without force, the stores refuse ids created since the conflict check
+	// (create), so nothing that appeared meanwhile is overwritten.
+	create := !opts["force"]
 	// Flows first: their import validates every flow (dependencies
 	// included) before writing any, and the other parts are checked above.
-	writes := []func() error{
-		func() (err error) {
-			if len(flows) > 0 {
-				res.Flows, err = s.cfg.Transfer.Import(ctx, flows, opts["force"])
-			}
-			return err
-		},
-		func() error {
-			res.SnippetLibraries = len(doc.SnippetLibraries)
-			return s.cfg.Snippets.SaveLibraries(ctx, doc.SnippetLibraries, false)
-		},
-		func() error {
-			res.Snippets = len(doc.Snippets)
-			return s.cfg.Snippets.SaveSnippets(ctx, doc.Snippets, false)
-		},
-		func() error { res.Alerts = len(doc.Alerts); return s.cfg.Alerts.SaveAlerts(ctx, doc.Alerts, false) },
-		func() error { return s.putItems(ctx, "scripts", doc.Scripts, &res.Scripts) },
-		func() error { return s.putItems(ctx, "settings", doc.Settings, &res.Settings) },
-		func() error {
-			if !opts["overwriteConfigMap"] || doc.ConfigMap == nil {
-				return nil
-			}
-			res.ConfigMap = true
-			return s.cfg.Items.ReplaceItems(ctx, "configmap", doc.ConfigMap)
-		},
+	var err error
+	if len(flows) > 0 {
+		res.Flows, err = s.cfg.Transfer.Import(ctx, flows, opts["force"])
 	}
-	for _, write := range writes {
-		if err := write(); err != nil {
-			s.writeConfigImportError(w, err)
+	if err == nil {
+		if err = s.cfg.Snippets.SaveLibraries(ctx, doc.SnippetLibraries, create); err == nil {
+			res.SnippetLibraries = len(doc.SnippetLibraries)
+		}
+	}
+	if err == nil {
+		if err = s.cfg.Snippets.SaveSnippets(ctx, doc.Snippets, create); err == nil {
+			res.Snippets = len(doc.Snippets)
+		}
+	}
+	if err == nil {
+		if err = s.cfg.Alerts.SaveAlerts(ctx, doc.Alerts, create); err == nil {
+			res.Alerts = len(doc.Alerts)
+		}
+	}
+	if err == nil {
+		err = s.putItems(ctx, "scripts", doc.Scripts, &res.Scripts)
+	}
+	if err == nil {
+		err = s.putItems(ctx, "settings", doc.Settings, &res.Settings)
+	}
+	if err == nil && opts["overwriteConfigMap"] && doc.ConfigMap != nil {
+		if err = s.cfg.Items.ReplaceItems(ctx, "configmap", doc.ConfigMap); err == nil {
+			res.ConfigMap = true
+		}
+	}
+	if err != nil {
+		writeConfigImportError(w, err)
+		return
+	}
+	if !opts["nodeploy"] {
+		if res.Deployed, err = s.deployImported(ctx, flows); err != nil {
+			writeStatusError(w, http.StatusInternalServerError, "the configuration was imported, but "+err.Error())
 			return
 		}
 	}
-	if !opts["nodeploy"] {
-		for _, f := range flows {
-			// The stored flow says whether it is enabled (the document may
-			// leave it to the default).
-			cur, err := s.cfg.Flows.Get(ctx, f.ID)
-			if err != nil || !cur.Enabled || cur.Status != "undeployed" {
-				continue // gone, disabled, or already deployed (as a dependency, or before)
-			}
+	writeJSON(w, http.StatusOK, res)
+}
+
+// deployImported deploys the imported flows that are enabled and
+// undeployed, and returns every imported flow that went from undeployed to
+// deployed, including dependencies a deploy took along.
+func (s *Server) deployImported(ctx context.Context, flows []Flow) ([]string, error) {
+	wasUndeployed := map[string]bool{}
+	for _, f := range flows {
+		cur, err := s.cfg.Flows.Get(ctx, f.ID)
+		if err != nil {
+			return nil, fmt.Errorf("flow %s could not be read: %w", f.ID, err)
+		}
+		wasUndeployed[f.ID] = cur.Status == "undeployed"
+	}
+	deployed := []string{}
+	for _, f := range flows {
+		// The stored flow says whether it is enabled (the document may leave
+		// it to the default), and whether an earlier deploy took it along.
+		cur, err := s.cfg.Flows.Get(ctx, f.ID)
+		if err != nil {
+			return deployed, fmt.Errorf("flow %s could not be read: %w", f.ID, err)
+		}
+		if cur.Enabled && cur.Status == "undeployed" {
 			if _, err := s.cfg.Lifecycle.Transition(ctx, f.ID, "deploy"); err != nil {
-				writeStatusError(w, http.StatusInternalServerError, fmt.Sprintf(
-					"the configuration was imported, but flow %s did not deploy: %v; deploy it with POST /api/v1/flows/%s/deploy", f.ID, err, f.ID))
-				return
+				return deployed, fmt.Errorf("flow %s did not deploy: %w; deploy it with POST /api/v1/flows/%s/deploy", f.ID, err, f.ID)
 			}
-			res.Deployed = append(res.Deployed, f.ID)
 		}
 	}
-	writeJSON(w, http.StatusOK, res)
+	for _, f := range flows {
+		if !wasUndeployed[f.ID] {
+			continue
+		}
+		if cur, err := s.cfg.Flows.Get(ctx, f.ID); err == nil && cur.Status != "undeployed" {
+			deployed = append(deployed, f.ID)
+		}
+	}
+	return deployed, nil
 }
 
 // missingLibraries lists the libraries doc's snippets name that neither doc
@@ -372,13 +406,17 @@ func (s *Server) putItems(ctx context.Context, kind string, items map[string]jso
 	return nil
 }
 
-// writeConfigImportError reports a failed write: invalid flows and flow
-// conflicts (nothing written yet) as usual, anything else as a part-way
-// failure.
-func (s *Server) writeConfigImportError(w http.ResponseWriter, err error) {
+// writeConfigImportError reports a failed write. Invalid flows and flow
+// conflicts come before anything is written; the rest are changes made
+// meanwhile by others, or a part-way failure.
+func writeConfigImportError(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, ErrInvalidFlow), errors.Is(err, ErrImportConflict):
+	case errors.Is(err, ErrInvalidFlow):
 		writeFlowError(w, err)
+	case errors.Is(err, ErrImportConflict), errors.Is(err, ErrAlertExists), errors.Is(err, ErrSnippetExists), errors.Is(err, ErrLibraryExists):
+		writeStatusError(w, http.StatusConflict, "an item in the document was created on the server during the import; import again, with force=true to replace it")
+	case errors.Is(err, ErrLibraryNotFound):
+		writeStatusError(w, http.StatusConflict, "a snippet library the document's snippets use was deleted during the import; import again")
 	default:
 		writeStatusError(w, http.StatusInternalServerError, "import stopped part-way because of an internal error; fix the cause and import again with force=true")
 	}

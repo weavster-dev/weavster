@@ -634,7 +634,7 @@ func exportConfig(ctx context.Context, client Client, args []string, stdout, std
 	}
 	_, _ = fmt.Fprintf(stdout, "exported %d flows, %d alerts, %d snippets, %d snippet libraries, %d scripts, %d settings", len(b.Flows), len(b.Alerts), len(b.Snippets), len(b.SnippetLibraries), len(b.Scripts), len(b.Settings))
 	if b.ConfigMap != nil {
-		_, _ = fmt.Fprintf(stdout, ", %d config map entries", len(b.ConfigMap))
+		_, _ = fmt.Fprintf(stdout, ", %d config map entries", len(*b.ConfigMap))
 	}
 	_, _ = fmt.Fprintf(stdout, " to %s\n", args[0])
 	return 0

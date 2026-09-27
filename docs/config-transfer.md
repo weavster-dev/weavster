@@ -22,7 +22,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 
 Flows are exported without their runtime state. The config map is left out unless you add
 `includeConfigMap=true`, because it usually holds values for one environment (hostnames, for
-example).
+example). An empty config map is exported as `{}`, so importing it with `overwriteConfigMap`
+empties the target's.
 
 ## Import
 
@@ -39,14 +40,16 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
 | Parameter | What it does |
 |---|---|
 | `force=true` | Replaces flows, alerts, snippets, and libraries that already exist. Without it, any that exist stop the import with `409` naming them, and nothing is written. |
-| `nodeploy=true` | Leaves the imported flows undeployed. Without it, every imported flow that is enabled and undeployed is deployed afterwards and listed in `deployed`. |
-| `overwriteConfigMap=true` | Replaces the config map with the document's. Without it, the server keeps its own config map and the document's is ignored. |
+| `nodeploy=true` | Leaves the imported flows undeployed. Without it, every imported flow that is enabled and undeployed is deployed afterwards. Deploying a flow also deploys the flows it depends on (even disabled ones, as `POST /api/v1/flows/{id}/deploy` does); `deployed` lists every imported flow that was deployed. |
+| `overwriteConfigMap=true` | Replaces the config map with the document's. Without it, the server keeps its own config map and the document's is ignored (not even checked). |
 
 - Everything is checked before anything is written: the format, every flow, alert, snippet, and
   value, and that each snippet's library is in the document or already on the server. Problems
   return `400` naming the item.
 - Global scripts and settings in the document are created or replaced; others on the server are
   kept.
+- If someone creates a flow, alert, snippet, or library with an id from the document while the
+  import runs (without `force`), the import stops with `409` rather than replacing it.
 - If writing fails part-way (for example, the database is unavailable), the reply is `500`. Fix
   the cause and import again with `force=true`.
 - If a flow does not deploy, the reply is `500` and names it; the configuration is imported.
@@ -54,9 +57,10 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
 
 ## Permissions
 
-Export needs `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`,
-and `configmap:edit`. Import needs `flows:edit`, `flows:deploy`, and the same `…:edit`
-permissions. The `admin` permission includes them all.
+Export needs `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, and
+`settings:edit`, plus `configmap:edit` with `includeConfigMap=true`. Import needs `flows:edit`
+and the same `…:edit` permissions, plus `flows:deploy` unless `nodeploy=true`, and
+`configmap:edit` with `overwriteConfigMap=true`. The `admin` permission includes them all.
 
 ## Command-line client
 

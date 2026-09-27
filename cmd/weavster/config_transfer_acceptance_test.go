@@ -90,10 +90,14 @@ func TestConfigTransfer(t *testing.T) {
 		t.Errorf("flows-only user: %d %q", code, body)
 	}
 
-	// Holding exactly the export permissions (without admin) is enough.
-	dst.do(http.MethodPost, "/api/v1/users", `{"username":"backup","password":"Backup-Passw0rd","permissions":["flows:view","alerts:edit","snippets:edit","scripts:edit","settings:edit","configmap:edit"],"mustChangePassword":false}`, admin)
+	// Holding exactly the export permissions (without admin) is enough;
+	// the config map needs configmap:edit too.
+	dst.do(http.MethodPost, "/api/v1/users", `{"username":"backup","password":"Backup-Passw0rd","permissions":["flows:view","alerts:edit","snippets:edit","scripts:edit","settings:edit"],"mustChangePassword":false}`, admin)
 	if code, body, _ := dst.do(http.MethodGet, "/api/v1/config/export", "", basic("backup", "Backup-Passw0rd")); code != http.StatusOK {
 		t.Errorf("backup user export: %d %q", code, body)
+	}
+	if code, body, _ := dst.do(http.MethodGet, "/api/v1/config/export?includeConfigMap=true", "", basic("backup", "Backup-Passw0rd")); code != http.StatusForbidden || !strings.Contains(body, "configmap:edit") {
+		t.Errorf("backup user export with the config map: %d %q", code, body)
 	}
 
 	// CLI: exportcfg from the source, importcfg into a third server.
