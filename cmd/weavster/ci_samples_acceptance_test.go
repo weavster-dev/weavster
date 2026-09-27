@@ -3,10 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -40,13 +44,23 @@ func TestCISamples(t *testing.T) {
 			PullRequest struct{ Paths []string } `yaml:"pull_request"`
 			Push        struct{ Branches, Paths []string }
 		} `yaml:"on"`
-		Jobs map[string]struct{ If string } `yaml:"jobs"`
+		Jobs map[string]struct {
+			If          string
+			Concurrency struct {
+				Group            string
+				CancelInProgress bool `yaml:"cancel-in-progress"`
+			}
+		} `yaml:"jobs"`
 	}
 	if err := yaml.Unmarshal([]byte(github), &gh); err != nil {
 		t.Fatalf("github-actions.yml: %v", err)
 	}
 	if strings.Join(gh.On.PullRequest.Paths, ",") != "weavster.yaml" || strings.Join(gh.On.Push.Branches, ",") != "main" ||
-		!strings.Contains(gh.Jobs["plan"].If, "pull_request") || !strings.Contains(gh.Jobs["apply"].If, "push") {
+		!strings.Contains(gh.Jobs["plan"].If, "pull_request") || !strings.Contains(gh.Jobs["apply"].If, "push") ||
+		// Plans are grouped per pull request; applies share one group and
+		// are never cancelled once running.
+		!strings.Contains(gh.Jobs["plan"].Concurrency.Group, "github.ref") || gh.Jobs["apply"].Concurrency.Group != "weavster-apply" ||
+		gh.Jobs["apply"].Concurrency.CancelInProgress {
 		t.Errorf("github triggers = %+v", gh)
 	}
 	var glDoc map[string]yaml.Node
@@ -66,24 +80,28 @@ func TestCISamples(t *testing.T) {
 		gl[name] = j
 	}
 	if len(gl["plan"].Rules) != 1 || !strings.Contains(gl["plan"].Rules[0].If, "merge_request_event") ||
-		len(gl["apply"].Rules) != 1 || !strings.Contains(gl["apply"].Rules[0].If, `"main"`) {
+		len(gl["apply"].Rules) != 1 || !strings.Contains(gl["apply"].Rules[0].If, `"main"`) || !strings.Contains(gl["apply"].Rules[0].If, `"push"`) {
 		t.Errorf("gitlab rules = %+v", gl)
 	}
 
-	// The weavster script lines each sample writes: printf 'config …\n'
-	// with %s filled in as the pipeline would.
-	printf := regexp.MustCompile(`printf '(config [^']*)\\n'`)
-	lines := map[string][]string{}
+	// The weavster scripts each sample writes: printf 'config …\n…' with
+	// %s filled in as the pipeline would.
+	printf := regexp.MustCompile(`printf '(config [^']*)'`)
+	lines := map[string][][]string{} // sample -> scripts -> lines
 	for name, sample := range map[string]string{"github": github, "gitlab": gitlab} {
 		for _, m := range printf.FindAllStringSubmatch(sample, -1) {
-			lines[name] = append(lines[name], strings.ReplaceAll(m[1], "%s", "merged 0123abc"))
+			script := strings.Split(strings.TrimSuffix(strings.ReplaceAll(m[1], "%s", "merged 0123abc"), `\n`), `\n`)
+			lines[name] = append(lines[name], script)
 		}
-		if len(lines[name]) != 2 || !strings.HasPrefix(lines[name][0], "config diff ") || !strings.HasPrefix(lines[name][1], "config apply ") {
-			t.Fatalf("%s script lines = %q", name, lines[name])
+		if got := fmt.Sprint(lines[name]); len(lines[name]) != 2 || !strings.HasPrefix(got, `[[config diff "weavster.yaml"] [config apply "weavster.yaml" merged 0123abc deploy 120 flow start-all]]`) {
+			t.Fatalf("%s scripts = %s", name, got)
 		}
 	}
+	// The shell that writes the connection file, as the samples run it.
+	connect := regexp.MustCompile(`(?s)umask 077\n\s*(quote\(\).*?\} > )\S+`)
 
-	for name, script := range lines {
+	for name, scripts := range lines {
+		script := scripts
 		t.Run(name, func(t *testing.T) {
 			auditLog := &syncBuffer{}
 			handler, closeStore, err := buildServer(context.Background(), slog.New(slog.NewTextHandler(auditLog, nil)), io.Discard, serverconfig.Default())
@@ -97,19 +115,34 @@ func TestCISamples(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(work, "weavster.yaml"), []byte(doc), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			// The connection file as the samples write it: single-quoted,
-			// quotes doubled.
-			pw := testAdminPassword
-			conn := filepath.Join(work, "weavster.conn")
-			quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "''") + "'" }
-			if err := os.WriteFile(conn, []byte("address: "+quote(c.base)+"\nuser: "+quote(bootstrapAdmin)+"\npassword: "+quote(pw)+"\n"), 0o600); err != nil {
-				t.Fatal(err)
+			// A CI user whose password has a quote, a backslash, and a
+			// colon; the connection file is written by the sample's own
+			// shell code.
+			password := `It's\n: #CI-Pass1`
+			body, _ := json.Marshal(map[string]any{"username": "ci", "password": password, "mustChangePassword": false,
+				"permissions": []string{"flows:view", "flows:edit", "flows:deploy", "alerts:edit", "snippets:edit", "scripts:edit", "settings:edit", "configmap:edit"}})
+			if code, out, _ := c.do(http.MethodPost, "/api/v1/users", string(body), basic(bootstrapAdmin, testAdminPassword)); code != http.StatusCreated {
+				t.Fatalf("create ci user: %d %s", code, out)
 			}
-			runLine := func(line string) (int, string, string) {
+			conn := filepath.Join(work, "weavster.conn")
+			sample := map[string]string{"github": github, "gitlab": gitlab}[name]
+			m := connect.FindStringSubmatch(sample)
+			if m == nil {
+				t.Fatalf("%s: connection-file shell not found", name)
+			}
+			shell := exec.Command("sh", "-c", "umask 077\n"+dedent(m[1])+`"$CONN"`)
+			shell.Env = append(os.Environ(), "WEAVSTER_ADDRESS="+c.base, "WEAVSTER_USER=ci", "WEAVSTER_PASSWORD="+password, "CONN="+conn)
+			if out, err := shell.CombinedOutput(); err != nil {
+				t.Fatalf("%s connection shell: %v %s", name, err, out)
+			}
+			if st, err := os.Stat(conn); err != nil || st.Mode().Perm() != 0o600 {
+				t.Errorf("connection file mode = %v %v", st.Mode(), err)
+			}
+			runLine := func(lines []string) (int, string, string) {
 				t.Helper()
-				line = strings.ReplaceAll(line, `"weavster.yaml"`, `"`+filepath.Join(work, "weavster.yaml")+`"`)
+				text := strings.ReplaceAll(strings.Join(lines, "\n"), `"weavster.yaml"`, `"`+filepath.Join(work, "weavster.yaml")+`"`)
 				s := filepath.Join(work, "s.txt")
-				if err := os.WriteFile(s, []byte(line+"\n"), 0o600); err != nil {
+				if err := os.WriteFile(s, []byte(text+"\n"), 0o600); err != nil {
 					t.Fatal(err)
 				}
 				var out, errb bytes.Buffer
@@ -119,8 +152,11 @@ func TestCISamples(t *testing.T) {
 			if code, out, errOut := runLine(script[0]); code != 0 || !strings.Contains(out, "+ flow/adt") || !strings.Contains(out, "+ script/deploy") {
 				t.Errorf("plan: %d %q %q", code, out, errOut)
 			}
-			if code, out, errOut := runLine(script[1]); code != 0 || !strings.Contains(out, "applied 3 changes") {
-				t.Errorf("apply: %d %q %q", code, out, errOut)
+			if code, out, errOut := runLine(script[1]); code != 0 || !strings.Contains(out, "applied 3 changes") || !strings.Contains(out, "deployed adt") {
+				t.Errorf("apply and deploy: %d %q %q", code, out, errOut)
+			}
+			if _, out, _ := c.do(http.MethodGet, "/api/v1/flows/adt", "", basic(bootstrapAdmin, testAdminPassword)); !strings.Contains(out, `"status":"started"`) {
+				t.Errorf("flow after apply = %s", out)
 			}
 			if code, out, _ := runLine(script[0]); code != 0 || !strings.Contains(out, "no changes") {
 				t.Errorf("plan after apply: %d %q", code, out)
@@ -139,12 +175,6 @@ func TestCISamples(t *testing.T) {
 		})
 	}
 
-	// A password with a quote survives the samples' quoting.
-	var parsed struct{ Password string }
-	if err := yaml.Unmarshal([]byte("password: 'it''s: #fine'\n"), &parsed); err != nil || parsed.Password != "it's: #fine" {
-		t.Errorf("quoted password = %q %v", parsed.Password, err)
-	}
-
 	page, err := os.ReadFile(filepath.Join("..", "..", "docs", "ci-cd.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -154,4 +184,13 @@ func TestCISamples(t *testing.T) {
 			t.Errorf("docs/ci-cd.md does not show %s exactly", name)
 		}
 	}
+}
+
+// dedent removes the indentation the YAML block gave the shell lines.
+func dedent(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, l := range lines {
+		lines[i] = strings.TrimLeft(l, " ")
+	}
+	return strings.Join(lines, "\n")
 }

@@ -2,14 +2,15 @@
 # merge to main. Save as .gitlab-ci.yml in the repository that holds
 # weavster.yaml.
 #
-# CI/CD variables (masked; WEAVSTER_PASSWORD also protected):
-# WEAVSTER_ADDRESS (https://weavster.example.com), WEAVSTER_USER,
-# WEAVSTER_PASSWORD. The user needs the config plan permissions, plus the
-# config apply permissions for the apply job.
+# CI/CD variables: WEAVSTER_ADDRESS (https://weavster.example.com).
+# WEAVSTER_USER / WEAVSTER_PASSWORD twice: masked for all environments for
+# the plan user (not protected: merge request pipelines run on unprotected
+# branches), and masked + protected for the `production` environment for the
+# apply user (the environment-scoped values win in the apply job).
 stages: [plan, apply]
 
 variables:
-  WEAVSTER_VERSION: latest # pin a release tag in production
+  WEAVSTER_VERSION: latest # pin a commit hash (or a release tag once releases exist)
 
 .weavster:
   image: golang:1.22
@@ -19,9 +20,9 @@ variables:
       umask 077
       quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
       {
-        echo "address: $(quote "$WEAVSTER_ADDRESS")"
-        echo "user: $(quote "$WEAVSTER_USER")"
-        echo "password: $(quote "$WEAVSTER_PASSWORD")"
+        printf 'address: %s\n' "$(quote "$WEAVSTER_ADDRESS")"
+        printf 'user: %s\n' "$(quote "$WEAVSTER_USER")"
+        printf 'password: %s\n' "$(quote "$WEAVSTER_PASSWORD")"
       } > /tmp/weavster.conn
 
 plan:
@@ -40,8 +41,8 @@ apply:
   resource_group: weavster-config # one apply at a time
   environment: production
   rules:
-    - if: $CI_COMMIT_BRANCH == "main"
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
       changes: [weavster.yaml]
   script:
-    - printf 'config apply "weavster.yaml" %s\n' "merged ${CI_COMMIT_SHORT_SHA}" > /tmp/apply.txt
+    - printf 'config apply "weavster.yaml" %s\ndeploy 120\nflow start-all\n' "merged ${CI_COMMIT_SHORT_SHA}" > /tmp/apply.txt
     - weavster -c /tmp/weavster.conn -s /tmp/apply.txt

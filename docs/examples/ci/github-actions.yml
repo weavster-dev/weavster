@@ -2,9 +2,10 @@
 # merge to main. Save as .github/workflows/weavster.yml in the repository that
 # holds weavster.yaml.
 #
-# Repository secrets: WEAVSTER_ADDRESS (https://weavster.example.com),
-# WEAVSTER_USER, WEAVSTER_PASSWORD. The user needs the config plan
-# permissions, plus the config apply permissions for the apply job.
+# Secrets: WEAVSTER_ADDRESS (https://weavster.example.com) as a repository
+# secret. WEAVSTER_USER / WEAVSTER_PASSWORD twice: as repository secrets for
+# the plan user, and as secrets of the `production` environment for the apply
+# user (environment secrets override repository secrets in the apply job).
 name: weavster-config
 
 on:
@@ -17,26 +18,29 @@ on:
 permissions:
   contents: read
 
-# One apply at a time; a queued apply waits instead of being cancelled.
-concurrency:
-  group: weavster-config-${{ github.event_name }}
-  cancel-in-progress: false
-
 env:
-  WEAVSTER_VERSION: latest # pin a release tag in production
+  WEAVSTER_VERSION: latest # pin a commit hash (or a release tag once releases exist)
 
 jobs:
   plan:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # A newer push to the same pull request replaces its running plan.
+    concurrency:
+      group: weavster-plan-${{ github.ref }}
+      cancel-in-progress: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - &checkout
+        uses: actions/checkout@v4
+      - &setup-go
+        uses: actions/setup-go@v5
         with:
           go-version: "1.22"
-      - name: Install weavster
+      - &install
+        name: Install weavster
         run: go install "github.com/weavster-dev/weavster/cmd/weavster@${WEAVSTER_VERSION}"
-      - name: Write the connection file
+      - &connect
+        name: Write the connection file
         env:
           WEAVSTER_ADDRESS: ${{ secrets.WEAVSTER_ADDRESS }}
           WEAVSTER_USER: ${{ secrets.WEAVSTER_USER }}
@@ -45,15 +49,16 @@ jobs:
           umask 077
           quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
           {
-            echo "address: $(quote "$WEAVSTER_ADDRESS")"
-            echo "user: $(quote "$WEAVSTER_USER")"
-            echo "password: $(quote "$WEAVSTER_PASSWORD")"
+            printf 'address: %s\n' "$(quote "$WEAVSTER_ADDRESS")"
+            printf 'user: %s\n' "$(quote "$WEAVSTER_USER")"
+            printf 'password: %s\n' "$(quote "$WEAVSTER_PASSWORD")"
           } > "$RUNNER_TEMP/weavster.conn"
       - name: Plan
         run: |
           printf 'config diff "weavster.yaml"\n' > "$RUNNER_TEMP/plan.txt"
           status=0
-          weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/plan.txt" > plan.out || status=$?
+          weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/plan.txt" > plan.out 2>&1 || status=$?
+          cat plan.out
           {
             echo '### Weavster plan for weavster.yaml'
             echo '```'
@@ -65,28 +70,18 @@ jobs:
   apply:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    environment: production # add required reviewers here to gate applies
+    environment: production # holds the apply user's secrets; add required reviewers to gate applies
+    # One apply at a time. A newer merge replaces an apply still waiting to
+    # start; it applies the whole document, so nothing is lost.
+    concurrency:
+      group: weavster-apply
+      cancel-in-progress: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-      - name: Install weavster
-        run: go install "github.com/weavster-dev/weavster/cmd/weavster@${WEAVSTER_VERSION}"
-      - name: Write the connection file
-        env:
-          WEAVSTER_ADDRESS: ${{ secrets.WEAVSTER_ADDRESS }}
-          WEAVSTER_USER: ${{ secrets.WEAVSTER_USER }}
-          WEAVSTER_PASSWORD: ${{ secrets.WEAVSTER_PASSWORD }}
+      - *checkout
+      - *setup-go
+      - *install
+      - *connect
+      - name: Apply and deploy
         run: |
-          umask 077
-          quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
-          {
-            echo "address: $(quote "$WEAVSTER_ADDRESS")"
-            echo "user: $(quote "$WEAVSTER_USER")"
-            echo "password: $(quote "$WEAVSTER_PASSWORD")"
-          } > "$RUNNER_TEMP/weavster.conn"
-      - name: Apply
-        run: |
-          printf 'config apply "weavster.yaml" %s\n' "merged ${GITHUB_SHA}" > "$RUNNER_TEMP/apply.txt"
+          printf 'config apply "weavster.yaml" %s\ndeploy 120\nflow start-all\n' "merged ${GITHUB_SHA}" > "$RUNNER_TEMP/apply.txt"
           weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/apply.txt"
