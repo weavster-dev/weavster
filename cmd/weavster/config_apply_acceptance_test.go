@@ -143,6 +143,7 @@ configmap:
 		{`config apply "` + path + `" --dry-run`, "~ configmap/region\n    value: \"eu\" → \"ap\"\n0 to add, 1 to change", 0},
 		{`config apply "` + path + `" "rotate region"`, "applied 1 changes\n", 0},
 		{`config apply "` + path + `"`, "no changes\n", 0},
+		{`config apply "` + path + `" --dry-run`, "no changes\ndry run: the plan is current; nothing was changed\n", 0},
 		{`config apply "` + filepath.Join(dir, "none.yaml") + `"`, "", 2},
 		{`config apply "` + path + `" --dryrun`, "", 2},
 	} {

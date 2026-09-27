@@ -780,7 +780,7 @@ func configApply(ctx context.Context, client Client, path string, rest []string,
 		return shellError(stderr, debug, err)
 	}
 	_, _ = fmt.Fprint(stdout, plan.Text)
-	if len(plan.Changes) == 0 {
+	if len(plan.Changes) == 0 && query.Get("dryRun") == "" {
 		return 0
 	}
 	query.Set("fingerprint", plan.Fingerprint)

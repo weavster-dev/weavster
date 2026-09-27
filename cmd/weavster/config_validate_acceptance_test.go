@@ -66,10 +66,15 @@ func TestConfigValidate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for path, v := range map[string]any{
-		"/api/v1/snippet-libraries": cfg.SnippetLibraries["hl7"], "/api/v1/snippets": cfg.Snippets["pid"], "/api/v1/alerts": cfg.Alerts["errors"],
+	// In order: the snippet names the library.
+	for _, p := range []struct {
+		path string
+		v    any
+	}{
+		{"/api/v1/snippet-libraries", cfg.SnippetLibraries["hl7"]}, {"/api/v1/snippets", cfg.Snippets["pid"]}, {"/api/v1/alerts", cfg.Alerts["errors"]},
 	} {
-		body, _ := json.Marshal(v)
+		path := p.path
+		body, _ := json.Marshal(p.v)
 		if code, resp, _ := c.do(http.MethodPost, path, string(body), admin); code != http.StatusCreated {
 			t.Errorf("POST %s %s: %d %q", path, body, code, resp)
 		}

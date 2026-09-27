@@ -43,7 +43,7 @@ func LivePlan(desired, live *Config) Plan {
 	d, l := canonical(desired.Artifacts()), canonical(live.Artifacts())
 	// The fingerprint covers the live configuration and the document, so
 	// an apply can tell that both are what the plan was made from.
-	p := Plan{Fingerprint: fingerprint(l, d)}
+	p := Plan{Fingerprint: fingerprint(l, d, desired.managedSet())}
 	for _, k := range sortedKeys(d) {
 		switch lv, ok := l[k]; {
 		case !ok:
@@ -63,6 +63,18 @@ func LivePlan(desired, live *Config) Plan {
 		}
 	}
 	return p
+}
+
+// managedSet lists the managed sections, so the fingerprint tells a
+// document that leaves a section out from one that empties it.
+func (c *Config) managedSet() map[string]json.RawMessage {
+	out := map[string]json.RawMessage{}
+	for section := range sections {
+		if c.manages(sections[section]) {
+			out[section] = json.RawMessage("1")
+		}
+	}
+	return out
 }
 
 // manages reports whether the document manages the section key belongs to.

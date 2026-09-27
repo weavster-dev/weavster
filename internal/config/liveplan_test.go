@@ -107,3 +107,14 @@ func TestLivePlanExactAndReadable(t *testing.T) {
 		t.Error("a live change must change the fingerprint")
 	}
 }
+
+// TestFingerprintCoversManagedSections: leaving a section out and emptying it
+// plan the same artifacts but differ in what apply removes.
+func TestFingerprintCoversManagedSections(t *testing.T) {
+	live := &Config{Flows: map[string]flowdef.Flow{}}
+	leaveOut, _ := Parse([]byte("scripts: {}\n"))
+	empty, _ := Parse([]byte("scripts: {}\nflows: {}\n"))
+	if LivePlan(leaveOut, live).Fingerprint == LivePlan(empty, live).Fingerprint {
+		t.Error("the fingerprint must tell a left-out section from an empty one")
+	}
+}

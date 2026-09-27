@@ -210,3 +210,73 @@ func TestFirstN(t *testing.T) {
 		t.Errorf("firstN = %v", got[48:])
 	}
 }
+
+// partialTransfer writes the first flow of an import, then fails.
+type partialTransfer struct{ log *[]string }
+
+func (partialTransfer) Export(context.Context, []string) ([]Flow, error) { return nil, nil }
+func (p partialTransfer) Import(_ context.Context, flows []Flow, _ bool) (ImportResult, error) {
+	*p.log = append(*p.log, "import "+flows[0].ID)
+	return ImportResult{Created: []string{flows[0].ID}}, errDisk
+}
+
+// loggingFlows logs deletions; deleting "stuck" fails.
+type loggingFlows struct {
+	fakeFlows
+	log *[]string
+}
+
+func (l *loggingFlows) Delete(_ context.Context, id string) error {
+	*l.log = append(*l.log, "delete "+id)
+	if id == "stuck" {
+		return errDisk
+	}
+	return nil
+}
+
+// TestFlowPutStepPartialImport: flows written before an import failed are
+// undone at once; if that fails, the step reports it as partly written.
+func TestFlowPutStepPartialImport(t *testing.T) {
+	for _, tt := range []struct {
+		id      string
+		partial bool
+	}{{"new", false}, {"stuck", true}} {
+		var log []string
+		s := New(Config{Transfer: partialTransfer{&log}, Flows: &loggingFlows{log: &log}})
+		st, _ := s.flowPutStep([]ConfigChange{{Key: "flow/" + tt.id, Action: "add", After: json.RawMessage(`{"id":"` + tt.id + `"}`)}})
+		err := st.do(context.Background())
+		var pw *partlyWritten
+		if !errors.Is(err, errDisk) || errors.As(err, &pw) != tt.partial || strings.Join(log, ",") != "import "+tt.id+",delete "+tt.id {
+			t.Errorf("%s: err %v, log %v", tt.id, err, log)
+		}
+		_, undoFailed, _, _ := runSteps(context.Background(), []configStep{st})
+		if tt.partial != (len(undoFailed) == 1) {
+			t.Errorf("%s: undoFailed = %v", tt.id, undoFailed)
+		}
+	}
+}
+
+// TestFlowPutStepUndoOrder: undo restores updated flows before deleting
+// added ones (an updated flow may depend on an added one).
+func TestFlowPutStepUndoOrder(t *testing.T) {
+	var log []string
+	s := New(Config{Transfer: logTransfer{&log}, Flows: &loggingFlows{log: &log}})
+	st, _ := s.flowPutStep([]ConfigChange{
+		{Key: "flow/new", Action: "add", After: json.RawMessage(`{"id":"new"}`)},
+		{Key: "flow/old", Action: "update", Before: json.RawMessage(`{"id":"old"}`), After: json.RawMessage(`{"id":"old","dependsOn":["new"]}`)},
+	})
+	if err := st.undo(context.Background()); err != nil || strings.Join(log, ",") != "import old,delete new" {
+		t.Errorf("undo: %v, log %v", err, log)
+	}
+}
+
+// logTransfer logs imported ids.
+type logTransfer struct{ log *[]string }
+
+func (logTransfer) Export(context.Context, []string) ([]Flow, error) { return nil, nil }
+func (l logTransfer) Import(_ context.Context, flows []Flow, _ bool) (ImportResult, error) {
+	for _, f := range flows {
+		*l.log = append(*l.log, "import "+f.ID)
+	}
+	return ImportResult{}, nil
+}

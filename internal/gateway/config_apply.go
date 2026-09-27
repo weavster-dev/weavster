@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -147,6 +148,10 @@ func runSteps(ctx context.Context, steps []configStep) (failed string, undoFaile
 				restored = append(restored, steps[j].restores)
 			}
 		}
+		var pw *partlyWritten
+		if errors.As(err, &pw) {
+			undoFailed = append(undoFailed, pw.keys)
+		}
 		return st.key, undoFailed, restored, err
 	}
 	return "", nil, nil, nil
@@ -226,26 +231,58 @@ func (s *Server) flowPutStep(changes []ConfigChange) (configStep, error) {
 		}
 		before = append(before, b)
 	}
+	// undo puts the updated flows back first (they may depend on added
+	// ones), then deletes the added ones.
+	undo := func(ctx context.Context, updated, created []string) error {
+		var restore []Flow
+		for _, b := range before {
+			if slices.Contains(updated, b.ID) {
+				restore = append(restore, b)
+			}
+		}
+		if len(restore) > 0 {
+			if _, err := s.cfg.Transfer.Import(ctx, restore, true); err != nil {
+				return err
+			}
+		}
+		for _, id := range created {
+			if err := s.cfg.Flows.Delete(ctx, id); err != nil && !errors.Is(err, ErrFlowNotFound) {
+				return err
+			}
+		}
+		return nil
+	}
+	var all []string
+	for _, b := range before {
+		all = append(all, b.ID)
+	}
 	return configStep{
 		key: strings.Join(keys, ", "),
 		do: func(ctx context.Context) error {
-			_, err := s.cfg.Transfer.Import(ctx, after, true)
+			res, err := s.cfg.Transfer.Import(ctx, after, true)
+			if err == nil || len(res.Created)+len(res.Updated) == 0 {
+				return err
+			}
+			// Some flows were written before the import failed: undo them
+			// here, since runSteps only undoes steps that succeeded.
+			if uerr := undo(ctx, res.Updated, res.Created); uerr != nil {
+				return &partlyWritten{keys: strings.Join(keys, ", "), err: err}
+			}
 			return err
 		},
-		undo: func(ctx context.Context) error {
-			for _, id := range added {
-				if err := s.cfg.Flows.Delete(ctx, id); err != nil && !errors.Is(err, ErrFlowNotFound) {
-					return err
-				}
-			}
-			if len(before) == 0 {
-				return nil
-			}
-			_, err := s.cfg.Transfer.Import(ctx, before, true)
-			return err
-		},
+		undo: func(ctx context.Context) error { return undo(ctx, all, added) },
 	}, nil
 }
+
+// partlyWritten: a step failed after writing part of its changes, and
+// undoing that part failed too.
+type partlyWritten struct {
+	keys string
+	err  error
+}
+
+func (e *partlyWritten) Error() string { return e.err.Error() }
+func (e *partlyWritten) Unwrap() error { return e.err }
 
 // removalOrder orders flow removals so a flow goes before the flows it
 // depends on (from the removed flows' own dependsOn).
