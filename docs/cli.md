@@ -159,11 +159,16 @@ Update your scripts to the new names; the old ones may be removed in a later rel
 
 | Command | `0` | `1` | `2` |
 |---|---|---|---|
-| `weavster` (shell or `-s` script) | Every command succeeded, `-h`, or `quit`/end of input | — | A usage error, an unknown flag, a missing connection file, or any failed command (the script still runs to the end) |
-| `weavster server` | `-h`, or a clean stop on SIGINT/SIGTERM | The configuration is invalid or the server could not start (store, TLS, bootstrap) | An unknown flag or extra arguments |
-| `weavster test` | Every fixture passed | A fixture failed | An unknown flag, or the results could not be written |
+| `weavster -s script` (batch) | Every command succeeded | — | Any command failed (the script still runs to the end), a line longer than 1 MiB (the script stops there), an unknown flag, or a missing connection file |
+| `weavster` (interactive shell) | `quit`, `exit`, or end of input, even after failed commands (their errors are shown) | — | A line longer than 1 MiB, a read error, an unknown flag, or a missing connection file |
+| `weavster server` | `-h`, or a clean stop on SIGINT/SIGTERM | The configuration is invalid, the server could not start (store, TLS, bootstrap), or it runs as a privileged user without `WEAVSTER_ALLOW_ROOT=1` | An unknown flag or extra arguments |
+| `weavster test` | Every fixture passed, or `-h` | A fixture failed | An unknown flag, or the results could not be written |
 
-Errors go to stderr and start with `Error:`. A reply from the server shows its status and
+`-h` (or `--help`) prints usage and exits `0` for every command. Usage errors are checked
+before anything else runs.
+
+Errors go to stderr and start with `Error:`; an unknown flag is followed by the list of flags
+(`Error: flag provided but not defined: -nope`). A reply from the server shows its status and
 message, for example `Error: server returned 404 Not Found: snippet not found`. With `-d`, the
 client also prints each underlying cause:
 
