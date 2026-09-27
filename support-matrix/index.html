@@ -239,7 +239,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>GET /api/v1/messages</code> search (<code>flowId</code>, <code>status</code>, <code>from</code>/<code>to</code>, <code>limit</code>/<code>offset</code>, <code>sort</code>), <code>GET /api/v1/messages/{id}</code>, <code>/content</code>, <code>DELETE</code>, <code>POST …/reprocess</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixWired/messages</code>, <code>TestPipelineEndToEnd</code>, <code>TestMessagesAPI</code>. Filters run in the store before paging. Content needs <code>messages:content</code>; search, read, and content are audited. Message import/export is not available yet. See <a href="../processing-messages/#4-find-processed-messages">Processing messages</a>.</td>
+<td><code>TestSupportMatrixWired/messages</code>, <code>TestPipelineEndToEnd</code>, <code>TestMessagesAPI</code>. Filters run in the store before paging. Content needs <code>messages:content</code>; search, read, and content are audited. Export/import (<code>GET /api/v1/messages/export</code>, <code>POST /api/v1/messages/import</code>, gzip, optional AES-256-GCM, <code>TestMessageArchive</code>; CLI <code>exportmessages</code>/<code>importmessages</code>). See <a href="../processing-messages/#4-find-processed-messages">Processing messages</a>.</td>
 </tr>
 <tr>
 <td>Authentication (Basic or Bearer token) on every <code>/api/v1</code> route except login</td>

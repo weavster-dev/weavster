@@ -351,6 +351,14 @@ name, or a name several flows share, is an error that lists their ids.</p>
 </thead>
 <tbody>
 <tr>
+<td><code>exportmessages "path" &lt;flow&gt;</code></td>
+<td>Writes an archive of the flow's messages (by id or name; <code>*</code> for every flow), the newest 10,000, to <code>path</code>.</td>
+</tr>
+<tr>
+<td><code>importmessages "path" &lt;flow&gt;</code></td>
+<td>Imports an archive file into the flow (existing message ids are skipped).</td>
+</tr>
+<tr>
 <td><code>resetstats [lifetime]</code></td>
 <td>Clears every flow's current statistics; <code>lifetime</code> also clears the lifetime totals.</td>
 </tr>

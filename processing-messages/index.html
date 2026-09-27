@@ -557,6 +557,44 @@ messages while no new ones arrive.</p>
 recorded in the <a href="../audit-log/">audit log</a> as <code>phi.access</code>.</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/messages/6f1c…/content?part=raw'
 </code></pre>
+<h3 id="export-and-import-messages">Export and import messages</h3>
+<p>Export writes the messages that match the search parameters into one gzipped archive (permission
+<code>messages:content</code>, audited). An archive holds complete messages: the content as received and after
+the transform, status, times, attempts, and metadata. It takes up to 10,000 messages, the newest
+first unless you set <code>sort</code>; with <code>limit</code> and <code>offset</code> you export larger sets in parts:</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -o adt.json.gz \
+  'http://127.0.0.1:8080/api/v1/messages/export?flowId=adt'
+</code></pre>
+<p>The reply header <code>Weavster-Message-Count</code> says how many messages the archive holds; when it is
+10,000 there may be more, so export the next part with <code>offset=10000</code>.</p>
+<p>Import restores an archive (permission <code>messages:import</code>, up to 100 MiB):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @adt.json.gz \
+  'http://127.0.0.1:8080/api/v1/messages/import?flowId=adt'
+</code></pre>
+<pre><code class="language-json">{&quot;imported&quot;:120,&quot;skipped&quot;:3,&quot;busy&quot;:0}
+</code></pre>
+<ul>
+<li>Messages keep their id, status, receive time, attempts, metadata, and content; their update time
+  becomes the time of the import. A message whose id
+  already exists is <code>skipped</code>; add <code>overwrite=true</code> to replace it. A message the server is
+  processing at that moment is left as it is and counted as <code>busy</code>.</li>
+<li>Every flow the messages belong to must exist, or nothing is imported (<code>404</code> naming the flow).
+  <code>flowId</code> assigns every imported message to that flow instead.</li>
+<li>Imported messages that are <code>queued</code> (or were still being processed) are picked up by the retry
+  worker when their flow is <code>started</code>, and delivered. Import into a stopped flow to keep them as
+  history.</li>
+<li>An archive that is not gzip, not an export, encrypted with another key, or larger than 512 MiB
+  once decompressed returns <code>400</code>.</li>
+<li>If writing fails part-way, the reply is <code>500 {"error":{"code":"IMPORT_INCOMPLETE",…},"imported":…}</code>
+  with what was already written; importing the same archive again skips those messages.</li>
+</ul>
+<p>To encrypt an archive, send a key in the <code>Weavster-Archive-Key</code> header on export, and the same key
+on import. The key is 32 random bytes in base64; keep it safe, because the archive cannot be read
+without it. An encrypted archive is <code>application/octet-stream</code> (it is compressed before encryption):</p>
+<pre><code class="language-bash">KEY=$(openssl rand -base64 32)
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H &quot;Weavster-Archive-Key: $KEY&quot; -o adt.enc.gz \
+  'http://127.0.0.1:8080/api/v1/messages/export?flowId=adt'
+</code></pre>
 <h2 id="5-statistics-and-events">5. Statistics and events</h2>
 <p>Per-flow counters (permission <code>flows:view</code>):</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/flows/adt/stats

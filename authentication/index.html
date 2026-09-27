@@ -283,8 +283,12 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>messages:view</code></td>
 </tr>
 <tr>
-<td><code>GET /api/v1/messages/{id}/content</code></td>
+<td><code>GET /api/v1/messages/{id}/content</code>, <code>GET /api/v1/messages/export</code></td>
 <td><code>messages:content</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/messages/import</code></td>
+<td><code>messages:import</code></td>
 </tr>
 <tr>
 <td><code>DELETE /api/v1/messages/{id}</code></td>
