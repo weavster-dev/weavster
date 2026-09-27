@@ -9,8 +9,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/weavster-dev/weavster/internal/enterprise"
-
 	"github.com/weavster-dev/weavster/internal/flowdef"
 )
 
@@ -26,12 +24,10 @@ func writeFlowError(w http.ResponseWriter, err error) {
 		writeStatusError(w, http.StatusConflict, "flow already exists")
 	case errors.Is(err, ErrFlowNotRunning), errors.Is(err, ErrInvalidTransition), errors.Is(err, ErrFlowInUse), errors.Is(err, ErrImportConflict), errors.Is(err, ErrDependency):
 		writeStatusError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, enterprise.ErrNotImplemented):
-		writeStatusError(w, http.StatusNotImplemented, err.Error())
 	case errors.Is(err, ErrInvalidFlow), errors.Is(err, ErrInvalidMessage):
 		writeStatusError(w, http.StatusBadRequest, err.Error())
 	default:
-		writeStatusError(w, http.StatusInternalServerError, "internal error")
+		writeBackendError(w, err)
 	}
 }
 

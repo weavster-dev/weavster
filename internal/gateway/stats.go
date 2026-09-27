@@ -94,7 +94,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	events, err := s.cfg.Events.SearchEvents(r.Context(), EventQuery{Type: r.URL.Query().Get("type"), FlowID: r.URL.Query().Get("flowId"), Limit: limit})
 	if err != nil {
-		writeStatusError(w, http.StatusInternalServerError, "internal error")
+		writeBackendError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, events)

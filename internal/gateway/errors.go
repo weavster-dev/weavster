@@ -1,6 +1,11 @@
 package gateway
 
-import "net/http"
+import (
+	"errors"
+	"net/http"
+
+	"github.com/weavster-dev/weavster/internal/enterprise"
+)
 
 // Error codes of the JSON error envelope {"error":{"code","message"}}.
 // Handlers use a specific code where one exists (UNAUTHORIZED,
@@ -32,6 +37,16 @@ func writeErrorWith(w http.ResponseWriter, status int, code, message string, ext
 		body[k] = v
 	}
 	writeJSON(w, status, body)
+}
+
+// writeBackendError answers an unexpected backend error: 501 for an
+// Enterprise-only feature (D-17), otherwise a 500 that hides the detail.
+func writeBackendError(w http.ResponseWriter, err error) {
+	if errors.Is(err, enterprise.ErrNotImplemented) {
+		writeStatusError(w, http.StatusNotImplemented, err.Error())
+		return
+	}
+	writeStatusError(w, http.StatusInternalServerError, "internal error")
 }
 
 // writeStatusError writes the JSON error envelope with the status's code.

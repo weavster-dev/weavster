@@ -19,6 +19,18 @@ func (notImplementedFlows) List(context.Context) ([]Flow, error) {
 	return nil, fmt.Errorf("%w: flow federation", enterprise.ErrNotImplemented)
 }
 
+// notImplementedSearch answers message and event searches with the D-17
+// sentinel.
+type notImplementedSearch struct{}
+
+func (notImplementedSearch) Search(context.Context, MessageQuery) ([]Message, error) {
+	return nil, fmt.Errorf("%w: message archive", enterprise.ErrNotImplemented)
+}
+
+func (notImplementedSearch) SearchEvents(context.Context, EventQuery) ([]Event, error) {
+	return nil, fmt.Errorf("%w: event archive", enterprise.ErrNotImplemented)
+}
+
 // TestErrorEnvelope: every error reply is the JSON envelope with the
 // status's code, and internal errors do not leak detail.
 func TestErrorEnvelope(t *testing.T) {
@@ -39,6 +51,8 @@ func TestErrorEnvelope(t *testing.T) {
 		{"conflict", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"a"}]}`, Config{Transfer: fakeTransfer{err: ErrImportConflict}}, http.StatusConflict, "CONFLICT", "flows already exist"},
 		{"internal error hides detail", http.MethodGet, "/api/v1/flows", ``, Config{Flows: &errFlows{}}, http.StatusInternalServerError, "INTERNAL", "internal error"},
 		{"not implemented", http.MethodGet, "/api/v1/flows", ``, Config{Flows: &notImplementedFlows{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "not implemented in this edition: flow federation"},
+		{"not implemented messages", http.MethodGet, "/api/v1/messages", ``, Config{Messages: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "message archive"},
+		{"not implemented events", http.MethodGet, "/api/v1/events", ``, Config{Events: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "event archive"},
 		{"specific code kept", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"a"}]}`, Config{Transfer: fakeTransfer{err: ErrImportIncomplete}}, http.StatusInternalServerError, "IMPORT_INCOMPLETE", "stopped part-way"},
 	}
 	for _, tt := range tests {
@@ -72,9 +86,11 @@ func TestStatusCodeFallback(t *testing.T) {
 }
 
 func TestMethodNotAllowedListsAllowed(t *testing.T) {
-	rec := httptest.NewRecorder()
-	New(Config{}).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodPatch, "/api/v1/flows/f", nil))
-	if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") != "GET, PUT, DELETE" {
-		t.Errorf("status %d, Allow %q", rec.Code, rec.Header().Get("Allow"))
+	for _, method := range []string{http.MethodPatch, http.MethodTrace, "TRACK"} {
+		rec := httptest.NewRecorder()
+		New(Config{}).Router().ServeHTTP(rec, httptest.NewRequest(method, "/api/v1/flows/f", nil))
+		if rec.Code != http.StatusMethodNotAllowed || rec.Header().Get("Allow") != "GET, PUT, DELETE" {
+			t.Errorf("%s: status %d, Allow %q", method, rec.Code, rec.Header().Get("Allow"))
+		}
 	}
 }
