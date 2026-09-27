@@ -169,6 +169,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#dead-lettered-messages" class="nav-link">Dead-lettered messages</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#limits-today" class="nav-link">Limits today</a>
               <ul class="nav flex-column">
               </ul>
@@ -603,6 +607,11 @@ counts once, in its current status.</p>
 <td>The content as received (<code>part=transformed</code>: after the flow transform), as bytes. A message with no transformed content (for example one that errored in its transform) returns <code>404</code> for <code>part=transformed</code>.</td>
 </tr>
 <tr>
+<td><code>POST /api/v1/messages/{id}/requeue</code></td>
+<td><code>messages:view</code>, <code>messages:send</code></td>
+<td>Gives a dead-lettered message another round of delivery attempts; see <a href="#dead-lettered-messages">Dead-lettered messages</a>.</td>
+</tr>
+<tr>
 <td><code>POST /api/v1/messages/{id}/reprocess</code></td>
 <td><code>messages:send</code></td>
 <td>Sends the original content through the message's flow again. The new message (<code>202</code>, same reply as sending) keeps the old message's metadata (except its <code>error</code>) and adds <code>reprocessedFrom</code> with the old id. The flow must be <code>started</code> (<code>409</code> otherwise).</td>
@@ -845,12 +854,66 @@ wait stops the server immediately.</p>
 <p>Messages of a flow that is not <code>started</code> are not retried; they stay <code>queued</code>.</p>
 <p>A retried message that later succeeds changes to <code>sent</code>. The statistics then count it once as
 <code>queued</code> and once as <code>sent</code>.</p>
+<h2 id="dead-lettered-messages">Dead-lettered messages</h2>
+<p>A message is <code>dead-lettered</code> when a destination still failed after <code>delivery.maxAttempts</code>
+attempts (see <a href="#retries">Retries</a>). It is kept, with each destination's attempts and last error,
+until you requeue or remove it.</p>
+<p>From the <a href="../cli/">command-line client</a>:</p>
+<pre><code class="language-text">weavster&gt; deadletter list adt
+7f3c9a1e    adt 2026-09-27T10:00:00Z    archive: delivered; ehr: 5 attempts, POST https://ehr.example.com/in: 503 Service Unavailable
+1 dead-lettered messages
+weavster&gt; deadletter show 7f3c9a1e
+{ &quot;id&quot;: &quot;7f3c9a1e&quot;, &quot;flowId&quot;: &quot;adt&quot;, &quot;status&quot;: &quot;dead-lettered&quot;, &quot;attempts&quot;: { ... }, ... }
+weavster&gt; deadletter requeue 7f3c9a1e
+requeued 7f3c9a1e (before: archive: delivered; ehr: 5 attempts, POST https://ehr.example.com/in: 503 Service Unavailable)
+weavster&gt; deadletter requeue all adt
+requeued 12 messages, skipped 0
+weavster&gt; deadletter remove 7f3c9a1e
+removed 7f3c9a1e
+</code></pre>
+<p><code>deadletter list</code> without a flow lists every flow's dead letters, newest first; it shows at most
+1000 and says so when there may be more. <code>requeue all</code> without a flow requeues every dead letter.</p>
+<p><strong>Requeue</strong> gives the message another round of attempts:</p>
+<ul>
+<li>Every destination that did not deliver starts again with no attempts; destinations that
+  delivered keep their record and are <strong>not sent again</strong>. The message becomes <code>queued</code>, and the
+  retry loop delivers it with the usual backoff, so fix the destination first.</li>
+<li>The attempts the message had are kept: the reply shows each destination's attempts and last
+  error; the <a href="../audit-log/">audit log</a> and a <code>message.requeued</code> <a href="#5-statistics-and-events">event</a>
+  record the attempt counts (<code>previous.&lt;destination&gt;.attempts</code>) but not the error text, which can
+  quote message content. The message's <code>requeues</code> metadata counts its requeues.</li>
+<li>A message that was never transformed (its flow was deleted before that) goes back to
+  <code>received</code>, so it is transformed before it is delivered.</li>
+<li>Statistics count each outcome: a requeued message that is then sent counts once as errored
+  (when it was dead-lettered) and once as sent.</li>
+<li>Only a dead-lettered message can be requeued (<code>409</code> otherwise, and while it is being
+  processed). A message whose flow was deleted cannot be requeued (<code>404</code>); send its content again
+  to another flow instead.</li>
+<li><code>requeue all</code> skips messages it cannot requeue and lists them with the reason.</li>
+</ul>
+<p>With the API (permission <code>messages:send</code>; requeuing one message also needs <code>messages:view</code>,
+because the reply shows the previous errors, and is logged as PHI access):</p>
+<pre><code class="language-bash"># One message
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/messages/7f3c9a1e/requeue
+# Every dead letter of a flow (omit flowId for all flows)
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST 'http://127.0.0.1:8080/api/v1/messages/requeue?flowId=adt'
+</code></pre>
+<pre><code class="language-json">{&quot;message&quot;:{&quot;id&quot;:&quot;7f3c9a1e&quot;,&quot;flowId&quot;:&quot;adt&quot;,&quot;status&quot;:&quot;queued&quot;,&quot;metadata&quot;:{&quot;requeues&quot;:&quot;1&quot;},&quot;attempts&quot;:{&quot;archive&quot;:{&quot;attempts&quot;:1}}},
+ &quot;previous&quot;:{&quot;archive&quot;:{&quot;attempts&quot;:1},&quot;ehr&quot;:{&quot;attempts&quot;:5,&quot;lastError&quot;:&quot;POST https://ehr.example.com/in: 503 Service Unavailable&quot;}}}
+</code></pre>
+<pre><code class="language-json">{&quot;requeued&quot;:[&quot;7f3c9a1e&quot;,&quot;8a01b2c3&quot;],&quot;skipped&quot;:[]}
+</code></pre>
+<p>Listing and inspecting use the message endpoints <code>GET /api/v1/messages?status=dead-lettered</code> and
+<code>GET /api/v1/messages/{id}</code> (see <a href="#work-with-one-message">Work with one message</a>). Removing uses
+<code>DELETE /api/v1/messages/{id}?status=dead-lettered</code> (permission <code>messages:delete</code>), which deletes
+the message only if it is still dead-lettered (<code>409</code> otherwise), so a mistyped id or a message
+someone just requeued is never removed; <code>deadletter remove</code> uses it. To send the original content
+again as a new message instead, use <code>reprocess</code>.</p>
 <h2 id="limits-today">Limits today</h2>
 <ul>
 <li>Statistics and events are kept in memory: they restart from zero when the server restarts,
   and only the newest 10,000 events are kept.</li>
 <li>The first delivery attempt runs while your request waits; retries run in the background.</li>
-<li>Dead-lettered messages cannot be listed, inspected, or requeued through the API yet.</li>
 <li>Only <code>http</code> and <code>file</code> destinations are available.</li>
 <li>Messages enter only through this API; flows do not listen on their own ports or read files yet.</li>
 <li>A <code>file</code> destination writes wherever <code>dir</code> points, with the server's permissions, and an

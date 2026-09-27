@@ -330,8 +330,12 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>messages:delete</code></td>
 </tr>
 <tr>
-<td><code>POST /api/v1/flows/{id}/messages</code>, <code>POST /api/v1/messages/{id}/reprocess</code></td>
+<td><code>POST /api/v1/flows/{id}/messages</code>, <code>POST /api/v1/messages/{id}/reprocess</code>, <code>POST /api/v1/messages/requeue</code></td>
 <td><code>messages:send</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/messages/{id}/requeue</code></td>
+<td><code>messages:view</code>, <code>messages:send</code></td>
 </tr>
 <tr>
 <td><code>POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}</code>, <code>POST /api/v1/flows/redeploy-all</code>, <code>POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all</code>, <code>POST /api/v1/flows/{id}/destinations/{name}/{start,stop}</code>, <code>POST /api/v1/flows/stats/reset</code>, <code>POST /api/v1/flows/{id}/stats/reset</code></td>

@@ -424,6 +424,18 @@ name, or a name several flows share, is an error that lists their ids.</p>
 <td>Imports alerts from a JSON file (<code>force</code> replaces existing ids), or exports one alert or all of them. See <a href="../alerts/">Alerts</a>.</td>
 </tr>
 <tr>
+<td><code>deadletter list [flow]</code>, <code>deadletter show &lt;id&gt;</code></td>
+<td>Lists dead-lettered messages (each destination's attempts and last error), or shows one as JSON.</td>
+</tr>
+<tr>
+<td><code>deadletter requeue &lt;id&gt;</code>, <code>deadletter requeue all [flow]</code></td>
+<td>Gives dead-lettered messages another round of delivery attempts; delivered destinations are not sent again. See <a href="../processing-messages/#dead-lettered-messages">Dead-lettered messages</a>.</td>
+</tr>
+<tr>
+<td><code>deadletter remove &lt;id&gt;</code></td>
+<td>Deletes a dead-lettered message (refuses any other status).</td>
+</tr>
+<tr>
 <td><code>clearallmessages</code></td>
 <td>Removes every message. Started flows are stopped first and started again afterwards; the output names them, and counts messages kept because they were being processed.</td>
 </tr>
