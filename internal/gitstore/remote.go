@@ -3,11 +3,13 @@ package gitstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/protocol/packp"
 	"github.com/go-git/go-git/v5/plumbing/storer"
 	"github.com/go-git/go-git/v5/plumbing/transport"
@@ -73,6 +75,14 @@ var ErrRejected = errors.New("the remote has commits this repository does not ha
 // ErrNothingToPush: the repository has no commits yet.
 var ErrNothingToPush = errors.New("nothing to push: the repository has no commits")
 
+// ErrDetached: HEAD is not on a branch, so there is no branch to push or
+// pull.
+var ErrDetached = errors.New("HEAD is not on a branch; check out a branch in the repository")
+
+// ErrRemote marks a failure talking to the remote (unreachable, refused,
+// timed out), as opposed to a local repository error.
+var ErrRemote = errors.New("remote")
+
 func (r Remote) auth() transport.AuthMethod {
 	if r.Username == "" && r.Password == "" {
 		return nil
@@ -80,11 +90,15 @@ func (r Remote) auth() transport.AuthMethod {
 	return &http.BasicAuth{Username: r.Username, Password: r.Password}
 }
 
-// setRemote points origin at r.URL.
+// setRemote points origin at r.URL, writing the repository configuration
+// only when it changes.
 func (s *Store) setRemote(r Remote) error {
 	cfg, err := s.repo.Config()
 	if err != nil {
 		return err
+	}
+	if old, ok := cfg.Remotes[remoteName]; ok && len(old.URLs) == 1 && old.URLs[0] == r.URL {
+		return nil
 	}
 	cfg.Remotes[remoteName] = &config.RemoteConfig{
 		Name: remoteName, URLs: []string{r.URL},
@@ -93,21 +107,22 @@ func (s *Store) setRemote(r Remote) error {
 	return s.repo.SetConfig(cfg)
 }
 
-// fetch updates the remote-tracking branches from r.
-func (s *Store) fetch(r Remote) error {
+// fetch updates the remote-tracking branches from r, dropping those whose
+// branch is gone from the remote.
+func (s *Store) fetch(ctx context.Context, r Remote) error {
 	if err := s.setRemote(r); err != nil {
 		return err
 	}
-	err := s.repo.Fetch(&git.FetchOptions{RemoteName: remoteName, Auth: r.auth(), Force: true})
-	if errors.Is(err, git.NoErrAlreadyUpToDate) || errors.Is(err, transport.ErrEmptyRemoteRepository) {
-		return nil
+	err := s.repo.FetchContext(ctx, &git.FetchOptions{RemoteName: remoteName, Auth: r.auth(), Force: true, Prune: true})
+	if err == nil || errors.Is(err, git.NoErrAlreadyUpToDate) {
+		return nil // an empty remote prunes every tracking branch too
 	}
-	return err
+	return fmt.Errorf("%w: %w", ErrRemote, err)
 }
 
 // RemoteState compares the current branch with the same branch on the
-// remote (after fetching): Ahead lists the local commits the remote lacks,
-// newest first; Behind counts the remote's commits missing locally.
+// remote (as last fetched): Ahead lists the local commits the remote
+// lacks, newest first; Behind counts the remote's commits missing locally.
 type RemoteState struct {
 	Branch, Head, RemoteHead string // "" when there is no commit
 	Ahead                    []string
@@ -115,17 +130,22 @@ type RemoteState struct {
 }
 
 // Status fetches from r and compares.
-func (s *Store) Status(r Remote) (RemoteState, error) {
-	if err := s.fetch(r); err != nil {
+func (s *Store) Status(ctx context.Context, r Remote) (RemoteState, error) {
+	if err := s.fetch(ctx, r); err != nil {
 		return RemoteState{}, err
 	}
-	return s.state()
+	return s.State()
 }
 
-func (s *Store) state() (RemoteState, error) {
+// State compares the current branch with the remote's as last fetched,
+// without contacting the remote.
+func (s *Store) State() (RemoteState, error) {
 	head, branch, err := s.Head()
 	if err != nil {
 		return RemoteState{}, err
+	}
+	if branch == "" {
+		return RemoteState{}, ErrDetached
 	}
 	st := RemoteState{Branch: branch, Head: head, Ahead: []string{}}
 	ref, err := s.repo.Reference(plumbing.NewRemoteReferenceName(remoteName, branch), true)
@@ -142,13 +162,19 @@ func (s *Store) state() (RemoteState, error) {
 	if err != nil {
 		return RemoteState{}, err
 	}
+	inRemote := make(map[string]bool, len(remote))
+	for _, h := range remote {
+		inRemote[h] = true
+	}
+	inLocal := make(map[string]bool, len(local))
 	for _, h := range local {
-		if !contains(remote, h) {
+		inLocal[h] = true
+		if !inRemote[h] {
 			st.Ahead = append(st.Ahead, h)
 		}
 	}
 	for _, h := range remote {
-		if !contains(local, h) {
+		if !inLocal[h] {
 			st.Behind++
 		}
 	}
@@ -164,70 +190,72 @@ func (s *Store) ancestors(hash string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	revs, err := revisions(iter, 0)
-	out := make([]string, len(revs))
-	for i, r := range revs {
-		out[i] = r.Hash
-	}
+	var out []string
+	err = iter.ForEach(func(c *object.Commit) error {
+		out = append(out, c.Hash.String())
+		return nil
+	})
 	return out, err
 }
 
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
-}
-
-// PushTo sends the current branch to r; ErrRejected when the remote has
-// commits this repository lacks.
-func (s *Store) PushTo(r Remote) error {
+// PushTo sends the current branch to r (ErrRejected when the remote has
+// commits this repository lacks) and records the remote-tracking branch
+// as pushed, so State reports the result without fetching again.
+func (s *Store) PushTo(ctx context.Context, r Remote) error {
 	head, branch, err := s.Head()
 	if err != nil {
 		return err
 	}
-	if head == "" {
+	switch {
+	case branch == "":
+		return ErrDetached
+	case head == "":
 		return ErrNothingToPush
 	}
 	if err := s.setRemote(r); err != nil {
 		return err
 	}
 	spec := config.RefSpec("refs/heads/" + branch + ":refs/heads/" + branch)
-	err = s.repo.Push(&git.PushOptions{RemoteName: remoteName, Auth: r.auth(), RefSpecs: []config.RefSpec{spec}})
+	err = s.repo.PushContext(ctx, &git.PushOptions{RemoteName: remoteName, Auth: r.auth(), RefSpecs: []config.RefSpec{spec}})
 	switch {
-	case errors.Is(err, git.NoErrAlreadyUpToDate):
-		err = nil
-	case err != nil && strings.Contains(err.Error(), "non-fast-forward"): // go-git does not wrap a sentinel
+	case err == nil, errors.Is(err, git.NoErrAlreadyUpToDate):
+	case strings.Contains(err.Error(), "non-fast-forward"): // go-git does not wrap a sentinel
 		return ErrRejected
+	default:
+		return fmt.Errorf("%w: %w", ErrRemote, err)
 	}
-	if err != nil {
-		return err
-	}
-	return s.fetch(r) // the remote-tracking branch now matches
+	tracking := plumbing.NewHashReference(plumbing.NewRemoteReferenceName(remoteName, branch), plumbing.NewHash(head))
+	return s.repo.Storer.SetReference(tracking)
 }
 
 // PullRemoteWins fetches from r and resets the current branch, the index,
 // and the working tree to the remote branch: the remote wins (spec
 // §2.12.40). It returns the local commits that were dropped, newest first;
-// ErrNotFound when the remote has no such branch.
-func (s *Store) PullRemoteWins(r Remote) (dropped []string, err error) {
-	if err := s.fetch(r); err != nil {
+// ErrNotFound when the remote has no such branch. If the reset fails, the
+// branch and working tree are put back.
+func (s *Store) PullRemoteWins(ctx context.Context, r Remote) (dropped []string, err error) {
+	if err := s.fetch(ctx, r); err != nil {
 		return nil, err
 	}
-	st, err := s.state()
+	st, err := s.State()
 	if err != nil {
 		return nil, err
 	}
 	if st.RemoteHead == "" {
 		return nil, ErrNotFound
 	}
+	branch := plumbing.NewBranchReferenceName(st.Branch)
 	target := plumbing.NewHash(st.RemoteHead)
-	if err := s.repo.Storer.SetReference(plumbing.NewHashReference(plumbing.NewBranchReferenceName(st.Branch), target)); err != nil {
+	if err := s.repo.Storer.SetReference(plumbing.NewHashReference(branch, target)); err != nil {
 		return nil, err
 	}
 	if err := s.wt.Reset(&git.ResetOptions{Commit: target, Mode: git.HardReset}); err != nil {
+		if st.Head == "" {
+			_ = s.repo.Storer.RemoveReference(branch)
+		} else {
+			_ = s.repo.Storer.SetReference(plumbing.NewHashReference(branch, plumbing.NewHash(st.Head)))
+			_ = s.wt.Reset(&git.ResetOptions{Commit: plumbing.NewHash(st.Head), Mode: git.HardReset})
+		}
 		return nil, err
 	}
 	return st.Ahead, nil

@@ -235,9 +235,14 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 - A pull changes only the repository, never the live configuration. Check
   [drift](#check-for-drift), then [apply](#plan-and-apply-from-the-repository) to take the
   pulled configuration, or commit to record the live one on top.
-- Without `git.remote.url` these endpoints answer `409` (`no remote configured`). A remote that
-  cannot be reached or refuses the credentials answers `502` with the reason; the password or
+- Without `git.remote.url` these endpoints answer `409` (`no remote configured`), as they do when
+  the repository's HEAD is not on a branch. A remote that cannot be reached, refuses the
+  credentials, or does not answer within a minute gives `502` with the reason; the password or
   token is never shown.
+- A branch deleted on the remote stops being reported at the next status, push, or pull.
+- If a pull fails part way, the branch and files are put back as they were.
+- Checking the status fetches from the remote with the server's credentials; like `git fetch`,
+  it updates only the repository's record of the remote.
 
 ## Permissions
 

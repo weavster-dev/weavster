@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -190,6 +191,8 @@ func TestGitAdapterDocumentNamesOnlyTheBadFile(t *testing.T) {
 	}
 }
 
+var errDiskFull = errors.New("disk full")
+
 func TestRemoteError(t *testing.T) {
 	r := gitstore.Remote{URL: "https://example.com/r.git", Password: "s3cret"}
 	for _, tt := range []struct {
@@ -201,7 +204,9 @@ func TestRemoteError(t *testing.T) {
 		{gitstore.ErrRejected, gateway.ErrGitConflict, "pull first", ""},
 		{gitstore.ErrNothingToPush, gateway.ErrGitConflict, "no commits", ""},
 		{gitstore.ErrNotFound, gateway.ErrGitConflict, "the remote has no branch main; push first", ""},
-		{errors.New("auth failed for s3cret"), gateway.ErrGitRemote, "https://example.com/r.git: auth failed for ***", "s3cret"},
+		{gitstore.ErrDetached, gateway.ErrGitConflict, "not on a branch", ""},
+		{fmt.Errorf("%w: auth failed for s3cret", gitstore.ErrRemote), gateway.ErrGitRemote, "https://example.com/r.git: auth failed for ***", "s3cret"},
+		{errDiskFull, errDiskFull, "disk full", ""}, // a local error is not the remote's
 	} {
 		got := remoteError(r, "main", tt.err)
 		if !errors.Is(got, tt.is) || !strings.Contains(got.Error(), tt.want) || (tt.absent != "" && strings.Contains(got.Error(), tt.absent)) {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -71,7 +72,7 @@ func TestGitRemote(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := gitstore.Remote{URL: remoteDir}
-	if _, err := team.PullRemoteWins(r); err != nil {
+	if _, err := team.PullRemoteWins(context.Background(), r); err != nil {
 		t.Fatal(err)
 	}
 	if err := team.WriteFile("scripts/deploy.yaml", []byte("version: \"1\"\nscripts:\n    deploy: log(team)\n")); err != nil {
@@ -81,7 +82,7 @@ func TestGitRemote(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := team.PushTo(r); err != nil {
+	if err := team.PushTo(context.Background(), r); err != nil {
 		t.Fatal(err)
 	}
 

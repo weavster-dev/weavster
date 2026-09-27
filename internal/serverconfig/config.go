@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -241,6 +242,11 @@ func (c Config) Validate() error {
 	if r := c.Git.Remote; r != (GitRemote{}) {
 		if c.Git.Path == "" || r.URL == "" {
 			return errors.New("config: git.remote needs git.path and git.remote.url")
+		}
+		scheme, _, hasScheme := strings.Cut(r.URL, "://")
+		beforeSlash, _, _ := strings.Cut(r.URL, "/")
+		if (hasScheme && scheme != "https" && scheme != "file") || (!hasScheme && strings.Contains(beforeSlash, ":")) {
+			return errors.New("config: git.remote.url must be an https:// or file:// URL or a local path (SSH and plain http:// are not supported)")
 		}
 		if u, err := url.Parse(r.URL); err == nil {
 			if _, hasPassword := u.User.Password(); hasPassword {

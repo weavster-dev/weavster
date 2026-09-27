@@ -78,6 +78,14 @@ auth:
 		{name: "git remote without path", yaml: "git: {remote: {url: https://example.com/r.git}}\n", wantErr: "git.remote needs git.path and git.remote.url"},
 		{name: "git remote without url", yaml: "git: {path: /r, remote: {username: u}}\n", wantErr: "git.remote needs git.path and git.remote.url"},
 		{name: "git remote url with password", yaml: "git: {path: /r, remote: {url: \"https://u:secret@example.com/r.git\"}}\n", wantErr: "must not contain a password"},
+		{name: "git remote over ssh", yaml: "git: {path: /r, remote: {url: \"ssh://git@example.com/r.git\"}}\n", wantErr: "SSH and plain http:// are not supported"},
+		{name: "git remote scp style", yaml: "git: {path: /r, remote: {url: \"git@github.com:org/r.git\"}}\n", wantErr: "SSH and plain http:// are not supported"},
+		{name: "git remote over http", yaml: "git: {path: /r, remote: {url: \"http://git.internal/r.git\"}}\n", wantErr: "SSH and plain http:// are not supported"},
+		{name: "git remote local path", yaml: "git: {path: /r, remote: {url: /srv/git/config.git}}\n", check: func(t *testing.T, c Config) {
+			if c.Git.Remote.URL != "/srv/git/config.git" {
+				t.Errorf("remote = %+v", c.Git.Remote)
+			}
+		}},
 		{name: "git remote", yaml: "git: {path: /r, remote: {url: \"https://ci@example.com/r.git\", username: ci, passwordEnv: GIT_TOKEN}}\n", check: func(t *testing.T, c Config) {
 			if c.Git.Remote != (GitRemote{URL: "https://ci@example.com/r.git", Username: "ci", PasswordEnv: "GIT_TOKEN"}) {
 				t.Errorf("remote = %+v", c.Git.Remote)
