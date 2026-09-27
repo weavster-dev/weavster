@@ -51,6 +51,10 @@ func flowCommand(ctx context.Context, client Client, args []string, stdout, stde
 	if len(args) > 0 {
 		sub, rest = args[0], args[1:]
 	}
+	if !flowUsageOK(sub, len(rest), rest) {
+		_, _ = fmt.Fprintln(stderr, "Error: usage:\n"+flowUsage)
+		return 2
+	}
 	// Route words (export, import, ...) are never ids: look them up as
 	// names before any request, so they cannot reach those routes.
 	for i, arg := range idArgs(sub, rest) {
@@ -208,6 +212,31 @@ func runFlowCommand(ctx context.Context, client Client, sub string, rest []strin
 	}
 	_, _ = fmt.Fprintln(stderr, "Error: usage:\n"+flowUsage)
 	return 2
+}
+
+// flowUsageOK reports whether a flow subcommand has the right number of
+// arguments, so usage errors are reported before any request.
+func flowUsageOK(sub string, n int, rest []string) bool {
+	switch sub {
+	case "help", "list":
+		return true
+	case "get", "create", "update-all", "enable", "disable", "deploy", "undeploy", "start", "stop",
+		"pause", "halt", "resume", "remove":
+		return n == 1
+	case "update", "start-destination", "stop-destination":
+		return n == 2
+	case "rename":
+		return n >= 2
+	case "export":
+		return n >= 1
+	case "import":
+		return n == 1 || n == 2 && rest[1] == "--overwrite"
+	case "redeploy-all", "connectors", "ports":
+		return n == 0
+	case "stats":
+		return n <= 1
+	}
+	return false
 }
 
 // listFlows returns every flow.

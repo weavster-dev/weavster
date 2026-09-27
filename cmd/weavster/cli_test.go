@@ -173,6 +173,15 @@ func (c slowDeployClient) Call(_ context.Context, method, path string, _ []byte)
 	return []byte(`{"status":"undeployed"}`), nil
 }
 
+func TestFlowUsageCheckedFirst(t *testing.T) {
+	var out, errb bytes.Buffer
+	// The erroring client fails every request: a usage error must not
+	// reach it.
+	if code := flowCommand(context.Background(), erroringClient{}, []string{"get", "export", "extra"}, &out, &errb, false); code != 2 || !strings.Contains(errb.String(), "usage:") || strings.Contains(errb.String(), "unavailable") {
+		t.Errorf("exit %d, stderr %q", code, errb.String())
+	}
+}
+
 func TestDeployTimeoutStopsNewDeploys(t *testing.T) {
 	var out, errb bytes.Buffer
 	code := deployAll(context.Background(), slowDeployClient{delay: 1100 * time.Millisecond}, []string{"1"}, &out, &errb, false)

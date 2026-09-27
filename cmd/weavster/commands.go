@@ -159,16 +159,16 @@ func deployAll(ctx context.Context, client Client, args []string, stdout, stderr
 		if f.Status != flowlife.Undeployed || !f.Enabled {
 			continue
 		}
-		if !deadline.IsZero() && time.Now().After(deadline) {
-			_, _ = fmt.Fprintf(stderr, "Error: timeout: deploy stopped before %s\n", f.ID)
-			code = 2
-			break
-		}
 		path := "/api/v1/flows/" + url.PathEscape(f.ID)
 		// An earlier deploy may have deployed this flow as a dependency.
 		var cur gateway.Flow
 		if out, err := client.Call(ctx, http.MethodGet, path, nil); err == nil && json.Unmarshal(out, &cur) == nil && cur.Status != flowlife.Undeployed {
 			continue
+		}
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			_, _ = fmt.Fprintf(stderr, "Error: timeout: deploy stopped before %s\n", f.ID)
+			code = 2
+			break
 		}
 		if _, err := client.Call(ctx, http.MethodPost, path+"/deploy", nil); err != nil {
 			code = shellError(stderr, debug, fmt.Errorf("flow %s: %w", f.ID, err))
