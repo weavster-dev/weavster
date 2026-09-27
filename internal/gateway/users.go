@@ -138,11 +138,16 @@ func (s *Server) guard(w http.ResponseWriter, r *http.Request, perms []string) b
 	return true
 }
 
-// ownToken is the caller's bearer token when it manages its own account,
-// so a change to it does not end the caller's own session.
-func ownToken(r *http.Request, name string) string {
+// ownToken preserves the caller's session only when its permissions are
+// unchanged. A permission change must invalidate the cached identity.
+func ownToken(r *http.Request, name string, permissions []string) string {
 	if id, ok := IdentityFrom(r.Context()); ok && id.Username == name {
-		return bearerToken(r)
+		before, after := slices.Clone(id.Permissions), slices.Clone(permissions)
+		slices.Sort(before)
+		slices.Sort(after)
+		if slices.Equal(slices.Compact(before), slices.Compact(after)) {
+			return bearerToken(r)
+		}
 	}
 	return ""
 }
@@ -216,7 +221,7 @@ func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request) {
 		writeUserError(w, err)
 		return
 	}
-	s.sessions.revokeUser(name, ownToken(r, name)) // new permissions apply from the next login
+	s.sessions.revokeUser(name, ownToken(r, name, u.Permissions)) // new permissions apply from the next login
 	writeJSON(w, http.StatusOK, u)
 }
 
