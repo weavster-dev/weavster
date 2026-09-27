@@ -75,6 +75,14 @@ auth:
 				t.Errorf("stats = %+v", c.Stats)
 			}
 		}},
+		{name: "git remote without path", yaml: "git: {remote: {url: https://example.com/r.git}}\n", wantErr: "git.remote needs git.path and git.remote.url"},
+		{name: "git remote without url", yaml: "git: {path: /r, remote: {username: u}}\n", wantErr: "git.remote needs git.path and git.remote.url"},
+		{name: "git remote url with password", yaml: "git: {path: /r, remote: {url: \"https://u:secret@example.com/r.git\"}}\n", wantErr: "must not contain a password"},
+		{name: "git remote", yaml: "git: {path: /r, remote: {url: \"https://ci@example.com/r.git\", username: ci, passwordEnv: GIT_TOKEN}}\n", check: func(t *testing.T, c Config) {
+			if c.Git.Remote != (GitRemote{URL: "https://ci@example.com/r.git", Username: "ci", PasswordEnv: "GIT_TOKEN"}) {
+				t.Errorf("remote = %+v", c.Git.Remote)
+			}
+		}},
 		{name: "zero backoff", yaml: "delivery: {backoffBaseMs: 0}\n", wantErr: "delivery.backoffBaseMs must be between"},
 		{name: "negative lockout", yaml: "auth: {lockout: {retryLimit: -2}}\n", wantErr: "auth.lockout values must be >= 0"},
 		{name: "class count below -1", yaml: "auth: {passwordPolicy: {minUpper: -2}}\n", wantErr: "must be >= -1"},

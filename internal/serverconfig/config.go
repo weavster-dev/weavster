@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 
@@ -39,7 +40,17 @@ type Config struct {
 type Git struct {
 	// Path is the repository directory, created when missing; empty
 	// disables Git.
-	Path string `yaml:"path"`
+	Path   string    `yaml:"path"`
+	Remote GitRemote `yaml:"remote"`
+}
+
+// GitRemote is the repository's remote (#107 D-53). The password or token
+// is read from the environment variable PasswordEnv names, never from this
+// file.
+type GitRemote struct {
+	URL         string `yaml:"url"`
+	Username    string `yaml:"username"`
+	PasswordEnv string `yaml:"passwordEnv"`
 }
 
 // Stats configures time-series statistics (spec §2.11.37): every flow's
@@ -226,6 +237,16 @@ func (c Config) Validate() error {
 		return errors.New("config: stats.retentionHours must be between 1 and 8760 (one year)")
 	} else if int64(st.RetentionHours)*3600000/int64(st.SampleIntervalMs)+1 > MaxStatsSamples { // +1: the sample at the start of the window
 		return fmt.Errorf("config: stats.retentionHours / stats.sampleIntervalMs keeps more than %d samples per flow", MaxStatsSamples)
+	}
+	if r := c.Git.Remote; r != (GitRemote{}) {
+		if c.Git.Path == "" || r.URL == "" {
+			return errors.New("config: git.remote needs git.path and git.remote.url")
+		}
+		if u, err := url.Parse(r.URL); err == nil {
+			if _, hasPassword := u.User.Password(); hasPassword {
+				return errors.New("config: git.remote.url must not contain a password; use git.remote.passwordEnv")
+			}
+		}
 	}
 	p := c.Auth.PasswordPolicy
 	for _, v := range []int{p.MinLength, c.Auth.Lockout.RetryLimit, c.Auth.Lockout.LockoutPeriodSeconds} {

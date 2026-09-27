@@ -57,6 +57,21 @@ func (f fakeGit) GitDocument(_ context.Context, rev string) ([]byte, string, err
 	return []byte(rev), "0ther", f.err
 }
 
+func (f fakeGit) GitRemote(context.Context) (GitRemoteStatus, error) {
+	return GitRemoteStatus{URL: "https://example.com/r.git", Branch: "main", Head: "abc", RemoteHead: "abc"}, f.err
+}
+
+func (f fakeGit) GitPush(context.Context) (GitRemoteStatus, error) {
+	if f.err != nil {
+		return GitRemoteStatus{}, f.err
+	}
+	return GitRemoteStatus{Branch: "main", Head: "def", RemoteHead: "def"}, nil
+}
+
+func (f fakeGit) GitPull(context.Context) (GitPullResult, error) {
+	return GitPullResult{Head: "abc", Dropped: []string{"def"}}, f.err
+}
+
 func TestGitHandlers(t *testing.T) {
 	var committed ConfigBundle
 	var author string
@@ -151,6 +166,34 @@ func TestGitPlanApplyDrift(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))
+			if rec.Code != tt.status || !strings.Contains(rec.Body.String(), tt.want) {
+				t.Errorf("got %d %.300s; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.want)
+			}
+		})
+	}
+}
+
+func TestGitRemoteHandlers(t *testing.T) {
+	with := func(err error) Config { return Config{Git: fakeGit{err: err}} }
+	for _, tt := range []struct {
+		name, method, path string
+		cfg                Config
+		status             int
+		want               string
+	}{
+		{"status", http.MethodGet, "/api/v1/git/remote", with(nil), http.StatusOK, `"remoteHead":"abc","ahead":0,"behind":0`},
+		{"push", http.MethodPost, "/api/v1/git/push", with(nil), http.StatusOK, `"head":"def"`},
+		{"pull", http.MethodPost, "/api/v1/git/pull", with(nil), http.StatusOK, `{"head":"abc","dropped":["def"]}`},
+		{"push rejected", http.MethodPost, "/api/v1/git/push", with(fmt.Errorf("%w: moved on; pull first", ErrGitConflict)), http.StatusConflict, "pull first"},
+		{"remote unreachable", http.MethodGet, "/api/v1/git/remote", with(fmt.Errorf("%w: https://example.com/r.git: authentication required", ErrGitRemote)), http.StatusBadGateway, "authentication required"},
+		{"pull fails", http.MethodPost, "/api/v1/git/pull", with(errDisk), http.StatusInternalServerError, "internal error"},
+		{"status not configured", http.MethodGet, "/api/v1/git/remote", Config{}, http.StatusServiceUnavailable, "git.path"},
+		{"push not configured", http.MethodPost, "/api/v1/git/push", Config{}, http.StatusServiceUnavailable, "git.path"},
+		{"pull not configured", http.MethodPost, "/api/v1/git/pull", Config{}, http.StatusServiceUnavailable, "git.path"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, nil))
 			if rec.Code != tt.status || !strings.Contains(rec.Body.String(), tt.want) {
 				t.Errorf("got %d %.300s; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.want)
 			}

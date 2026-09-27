@@ -11,13 +11,14 @@ import (
 
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/gitstore"
+	"github.com/weavster-dev/weavster/internal/serverconfig"
 )
 
 var gitstoreAuthor = gitstore.Author{Name: "test"}
 
 func TestGitAdapterCommit(t *testing.T) {
 	dir := t.TempDir()
-	a, err := newGitAdapter(dir)
+	a, err := newGitAdapter(serverconfig.Git{Path: dir})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +114,7 @@ func TestManagedFile(t *testing.T) {
 }
 
 func TestGitAdapterDocument(t *testing.T) {
-	a, err := newGitAdapter(t.TempDir())
+	a, err := newGitAdapter(serverconfig.Git{Path: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +169,7 @@ func TestGitAdapterDocument(t *testing.T) {
 // TestGitAdapterDocumentNamesOnlyTheBadFile: a problem with flows.adt
 // names adt's file, not the file of flows.ad.
 func TestGitAdapterDocumentNamesOnlyTheBadFile(t *testing.T) {
-	a, err := newGitAdapter(t.TempDir())
+	a, err := newGitAdapter(serverconfig.Git{Path: t.TempDir()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,5 +187,32 @@ func TestGitAdapterDocumentNamesOnlyTheBadFile(t *testing.T) {
 	_, _, err = a.GitDocument(context.Background(), "HEAD")
 	if err == nil || !strings.Contains(err.Error(), "flows/adt.yaml: ") || strings.Contains(err.Error(), "flows/ad.yaml") {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestRemoteError(t *testing.T) {
+	r := gitstore.Remote{URL: "https://example.com/r.git", Password: "s3cret"}
+	for _, tt := range []struct {
+		err    error
+		is     error
+		want   string
+		absent string
+	}{
+		{gitstore.ErrRejected, gateway.ErrGitConflict, "pull first", ""},
+		{gitstore.ErrNothingToPush, gateway.ErrGitConflict, "no commits", ""},
+		{gitstore.ErrNotFound, gateway.ErrGitConflict, "the remote has no branch main; push first", ""},
+		{errors.New("auth failed for s3cret"), gateway.ErrGitRemote, "https://example.com/r.git: auth failed for ***", "s3cret"},
+	} {
+		got := remoteError(r, "main", tt.err)
+		if !errors.Is(got, tt.is) || !strings.Contains(got.Error(), tt.want) || (tt.absent != "" && strings.Contains(got.Error(), tt.absent)) {
+			t.Errorf("%v -> %v", tt.err, got)
+		}
+	}
+	if _, err := (gitAdapter{}).remoteOf(); !errors.Is(err, gateway.ErrGitConflict) {
+		t.Errorf("no remote = %v", err)
+	}
+	t.Setenv("WEAVSTER_TEST_TOKEN", "tok")
+	if r, err := (gitAdapter{remote: serverconfig.GitRemote{URL: "u", Username: "ci", PasswordEnv: "WEAVSTER_TEST_TOKEN"}}).remoteOf(); err != nil || r.Password != "tok" || r.Username != "ci" {
+		t.Errorf("remote = %+v %v", r, err)
 	}
 }
