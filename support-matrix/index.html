@@ -83,6 +83,9 @@
                                 <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../system-info/" class="nav-link">System Information</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -222,9 +225,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestUnversionedAPI</code>. See <a href="../api/#versions">REST API</a>.</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/system</code> status document</td>
+<td>System information: <code>GET /api/v1/system</code> (per request, TLS as configured), <code>/about</code>, <code>/password-requirements</code>, <code>/resources</code>, <code>/guid</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixWired/system</code></td>
+<td><code>TestSupportMatrixWired/system</code>, <code>TestSystemInfo</code>. See <a href="../system-info/">System information</a>.</td>
 </tr>
 <tr>
 <td>CSRF marker enforcement (<code>400</code> without <code>X-Weavster-CSRF: 1</code>)</td>

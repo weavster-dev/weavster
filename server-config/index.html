@@ -83,6 +83,9 @@
                                 <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../system-info/" class="nav-link">System Information</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -386,12 +389,12 @@ stops the server immediately with exit code <code>0</code>. When every attempt f
 <tr>
 <td><code>passwordPolicy.minLength</code></td>
 <td><code>8</code></td>
-<td>Minimum password length (<code>0</code> = none).</td>
+<td>Minimum password length in characters (<code>0</code> = none).</td>
 </tr>
 <tr>
 <td><code>passwordPolicy.minUpper</code> / <code>minLower</code> / <code>minNumeric</code> / <code>minSpecial</code></td>
 <td><code>1</code> / <code>1</code> / <code>1</code> / <code>0</code></td>
-<td>Required characters of each class. <code>-1</code> forbids the class.</td>
+<td>Required characters of each class. <code>-1</code> forbids the class. A special character is anything that is not a letter (of any script) or digit, spaces included. <code>GET /api/v1/system/password-requirements</code> shows the rules in words.</td>
 </tr>
 <tr>
 <td><code>lockout.retryLimit</code></td>
