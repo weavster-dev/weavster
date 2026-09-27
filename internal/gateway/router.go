@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -12,6 +13,20 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(SecurityHeaders)
 	r.Use(BlockTrace)
+	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+		writeStatusError(w, http.StatusNotFound, "no such endpoint")
+	})
+	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
+		// A custom handler replaces chi's, which set Allow (RFC 9110).
+		var allowed []string
+		for _, m := range []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+			if r.Match(chi.NewRouteContext(), m, req.URL.Path) {
+				allowed = append(allowed, m)
+			}
+		}
+		w.Header().Set("Allow", strings.Join(allowed, ", "))
+		writeStatusError(w, http.StatusMethodNotAllowed, "method not allowed for this endpoint")
+	})
 
 	// Unauthenticated metadata.
 	r.Get("/api/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {

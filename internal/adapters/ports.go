@@ -4,13 +4,15 @@ package adapters
 
 import (
 	"context"
-	"errors"
 	"io"
+
+	"github.com/weavster-dev/weavster/internal/enterprise"
 )
 
-// ErrNotImplemented is returned by Enterprise-scoped adapter stubs
+// ErrNotImplemented (the shared D-17 sentinel) is returned by
+// Enterprise-scoped adapter stubs
 // (message-queue broker, DICOM).
-var ErrNotImplemented = errors.New("adapters: enterprise adapter not implemented in MVP")
+var ErrNotImplemented = enterprise.ErrNotImplemented
 
 // IdempotencyKeyMetadata is the Message.Metadata key whose value sinks that
 // support idempotency send downstream (the HTTP sink: Idempotency-Key header).

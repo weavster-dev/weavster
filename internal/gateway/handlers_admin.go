@@ -8,7 +8,7 @@ func (s *Server) handleSystem(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) handleTopologyOverview(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Topology == nil {
-		http.Error(w, "topology unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "topology unavailable")
 		return
 	}
 	g, err := s.cfg.Topology.Overview(r.Context())
@@ -21,7 +21,7 @@ func (s *Server) handleTopologyOverview(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleTopologyFlow(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Topology == nil {
-		http.Error(w, "topology unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "topology unavailable")
 		return
 	}
 	id := r.PathValue("flowId")

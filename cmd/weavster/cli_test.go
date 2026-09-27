@@ -60,6 +60,16 @@ func TestHTTPClientInvalidURL(t *testing.T) {
 
 func TestHTTPClientCall(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/partial" {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":{"code":"IMPORT_INCOMPLETE","message":"import stopped part-way"},"created":["a"],"updated":[]}`))
+			return
+		}
+		if r.URL.Path == "/envelope" {
+			w.WriteHeader(http.StatusNotImplemented)
+			_, _ = w.Write([]byte(`{"error":{"code":"NOT_IMPLEMENTED","message":"not implemented in this edition: SSO"}}`))
+			return
+		}
 		if r.URL.Path == "/missing" {
 			http.Error(w, "flow not found", http.StatusNotFound)
 			return
@@ -74,8 +84,15 @@ func TestHTTPClientCall(t *testing.T) {
 	if err != nil || string(out) != "PUT doc" {
 		t.Errorf("Call = %q, %v", out, err)
 	}
-	if _, err := c.Call(context.Background(), http.MethodGet, "/missing", nil); err == nil || err.Error() != "server returned 404 Not Found: flow not found" {
+	if _, err := c.Call(context.Background(), http.MethodGet, "/missing", nil); err == nil || err.Error() != "server returned 404 Not Found: flow not found" { // not an envelope: raw body
 		t.Errorf("Call error = %v", err)
+	}
+	if _, err := c.Call(context.Background(), http.MethodGet, "/partial", nil); err == nil ||
+		err.Error() != `server returned 500 Internal Server Error: import stopped part-way {"created":["a"],"updated":[]}` {
+		t.Errorf("partial error = %v", err)
+	}
+	if _, err := c.Call(context.Background(), http.MethodGet, "/envelope", nil); err == nil || err.Error() != "server returned 501 Not Implemented: not implemented in this edition: SSO" {
+		t.Errorf("envelope error = %v", err)
 	}
 	if _, err := newHTTPClient("http://[::1]:namedport", "", "").Call(context.Background(), http.MethodGet, "/x", nil); err == nil {
 		t.Error("expected request error, got nil")

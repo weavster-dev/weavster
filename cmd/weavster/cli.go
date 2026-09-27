@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
@@ -74,7 +75,25 @@ type serverError struct {
 	Body   string
 }
 
-func (e *serverError) Error() string { return "server returned " + e.Status + ": " + e.Body }
+// Error shows the message of the server's JSON error envelope followed by
+// any other fields of the reply (such as what a stopped import already
+// wrote), or the raw body when the reply is not an envelope.
+func (e *serverError) Error() string {
+	var fields map[string]json.RawMessage
+	var env struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal([]byte(e.Body), &fields) != nil || json.Unmarshal(fields["error"], &env) != nil || env.Message == "" {
+		return "server returned " + e.Status + ": " + e.Body
+	}
+	msg := env.Message
+	delete(fields, "error")
+	if len(fields) > 0 {
+		extra, _ := json.Marshal(fields) // raw JSON values re-encode
+		msg += " " + string(extra)
+	}
+	return "server returned " + e.Status + ": " + msg
+}
 
 func (c *httpClient) UserList(ctx context.Context) ([]string, error) {
 	// MVP: user listing is not exposed over REST yet; return empty.

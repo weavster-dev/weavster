@@ -14,6 +14,7 @@ nav:
   - Server Configuration: server-config.md
   - Authentication: authentication.md
   - Command-line client: cli.md
+  - API errors: api-errors.md
   - Audit Log: audit-log.md
   - Processing Messages: processing-messages.md
   - Flow Lifecycle: flow-lifecycle.md

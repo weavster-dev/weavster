@@ -104,10 +104,6 @@ func (s *sessions) revoke(token string) {
 	delete(s.tokens, token)
 }
 
-func writeError(w http.ResponseWriter, status int, code, message string) {
-	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
-}
-
 // bearerToken returns the token of a Bearer Authorization header. The scheme
 // name is case-insensitive (RFC 7235).
 func bearerToken(r *http.Request) string {
@@ -197,7 +193,7 @@ func toIdentityResponse(id Identity) identityResponse {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Auth == nil {
-		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "authentication is not configured")
+		writeStatusError(w, http.StatusServiceUnavailable, "authentication is not configured")
 		return
 	}
 	var req loginRequest
@@ -240,7 +236,7 @@ type passwordRequest struct {
 
 func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Passwords == nil {
-		writeError(w, http.StatusServiceUnavailable, "UNAVAILABLE", "password change is not configured")
+		writeStatusError(w, http.StatusServiceUnavailable, "password change is not configured")
 		return
 	}
 	id, _ := IdentityFrom(r.Context())

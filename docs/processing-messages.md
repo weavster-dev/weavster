@@ -26,10 +26,10 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 ```
 
 The server checks the transform and destinations when you create the flow. A problem is
-reported as `400` with the reason, for example:
+reported as `400` with the reason in the [error envelope](api-errors.md), for example:
 
-```text
-invalid flow: dsl: normalize: step 1: build: dsl: step not supported yet
+```json
+{"error":{"code":"BAD_REQUEST","message":"invalid flow: dsl: normalize: step 1: build: dsl: step not supported yet"}}
 ```
 
 Every flow definition you send (create, update, import) is checked against
@@ -37,7 +37,7 @@ Every flow definition you send (create, update, import) is checked against
 Unknown fields and wrong types are rejected rather than ignored:
 
 ```text
-400 flow does not match flow.schema.json: /destinations/0/type: value must be one of "http", "file"
+400 {"error":{"code":"BAD_REQUEST","message":"flow does not match flow.schema.json: /destinations/0/type: value must be one of \"http\", \"file\""}}
 ```
 
 ### `transform`
