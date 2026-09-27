@@ -149,6 +149,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#apply" class="nav-link">Apply</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#editor-support" class="nav-link">Editor support</a>
               <ul class="nav flex-column">
               </ul>
@@ -164,10 +168,9 @@
 <p>A config-as-code document describes a server's configuration in one YAML (or JSON) file that
 you keep in version control: flows, alerts, code snippets and libraries, global scripts, the
 config map, and settings. Every artifact has the same shape it has in the API.</p>
-<p>!!! note "Checked and planned, not applied yet"
-    Today you can check a document (<code>config validate</code>) and see what applying it would change
-    (<code>config diff</code>, <code>config plan</code>). Applying it is not available yet; to copy configuration
-    between servers use <a href="../config-transfer/">export and import</a>.</p>
+<p>You check a document (<code>config validate</code>), see what applying it would change (<code>config diff</code>,
+<code>config plan</code>), and apply it (<code>config apply</code>). To copy a whole configuration between servers
+without a document, use <a href="../config-transfer/">export and import</a>.</p>
 <h2 id="example">Example</h2>
 <pre><code class="language-yaml">version: &quot;1&quot;
 flows:
@@ -303,6 +306,48 @@ and <code>settings/…</code>. <code>fingerprint</code> identifies the live conf
 changes whenever anything in it changes. Planning needs the permissions an
 <a href="../config-transfer/#permissions">export</a> with the config map needs: <code>flows:view</code>,
 <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>settings:edit</code>, and <code>configmap:edit</code>.</p>
+<h2 id="apply">Apply</h2>
+<pre><code class="language-text">weavster&gt; config apply &quot;weavster.yaml&quot; CHG-1234 rotate EHR endpoint
+~ flow/adt
+    destinations[0].url: &quot;https://old.example.com/in&quot; → &quot;https://ehr.example.com/in&quot;
+0 to add, 1 to change, 0 to remove, 6 unchanged
+applied 1 changes
+</code></pre>
+<p><code>config apply</code> plans the document, prints the plan, and applies exactly that plan. Words after
+the path (other than <code>--dry-run</code>) are the reason, recorded in the audit log; a word starting
+with <code>-</code> that is not <code>--dry-run</code> is refused, so a mistyped flag never applies.</p>
+<ul>
+<li><strong>Stale plans are refused.</strong> The plan's <code>fingerprint</code> covers both the live configuration and
+  the document, and goes with the apply. If either changed in between, the apply is refused with
+  <code>409</code> and nothing changes; plan again and review the new plan.</li>
+<li><strong>All or nothing.</strong> Changes are applied in a safe order: libraries, snippets, flows (all added
+  and changed flows together, so new flows may depend on each other), alerts, then scripts,
+  config map, and settings; removals come last, and a flow is removed before the flows it uses.
+  If any change fails, every change already made is undone and the reply says which change
+  failed (<code>409</code> for a problem in the configuration, such as removing a flow that a flow you keep
+  depends on; <code>500</code> for a server problem). If undoing a change fails, the others are still
+  undone, and the reply names what could not be undone: the configuration is partly applied, so
+  plan again to see where it stands.</li>
+<li>One apply runs at a time, but other API calls are not blocked: avoid editing the same flows,
+  alerts, or items through the API while an apply runs, because a rollback puts back the values
+  from the plan.</li>
+<li>New flows are created undeployed; deploy them as usual. A removed flow that was running is
+  undeployed first; if the apply is rolled back, the flow comes back undeployed and the reply
+  lists it so you can deploy it again.</li>
+<li><code>--dry-run</code> checks that the plan is still current and changes nothing.</li>
+</ul>
+<p>With the API, send the plan's fingerprint:</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @weavster.yaml \
+  'http://127.0.0.1:8080/api/v1/config/apply?fingerprint=78ff2b…&amp;reason=CHG-1234'
+</code></pre>
+<pre><code class="language-json">{&quot;applied&quot;:true,&quot;plan&quot;:{&quot;fingerprint&quot;:&quot;78ff2b…&quot;,&quot;added&quot;:[],&quot;updated&quot;:[&quot;flow/adt&quot;], …}}
+</code></pre>
+<p>Applying needs <code>flows:view</code>, <code>flows:edit</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>,
+<code>settings:edit</code>, and <code>configmap:edit</code>. Every attempt is written to the
+<a href="../audit-log/">audit log</a> as <code>POST /api/v1/config/apply</code>, with the planned keys
+(<code>plan.added</code>, <code>plan.updated</code>, <code>plan.removed</code>), the fingerprint, the reason, and the result:
+<code>applied</code>, <code>dry run</code>, <code>stale</code>, <code>invalid</code>, <code>refused</code> (a bad parameter), <code>failed</code> (the live
+configuration could not be read), <code>rolled back</code>, or <code>rollback failed</code>.</p>
 <h2 id="editor-support">Editor support</h2>
 <p>JSON Schemas for the document and each artifact kind are published in the repository under
 <code>agent-docs/schemas/</code>: <code>config.schema.json</code>, <code>flow.schema.json</code>, <code>alert.schema.json</code>,

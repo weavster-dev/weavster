@@ -398,6 +398,10 @@ name, or a name several flows share, is an error that lists their ids.</p>
 <td>Shows what applying the document would change: <code>diff</code> as text (<code>+</code>, <code>~</code> with changed values, <code>-</code>), <code>plan</code> as JSON. Nothing changes.</td>
 </tr>
 <tr>
+<td><code>config apply "path" [--dry-run] [reason…]</code></td>
+<td>Plans the document, prints the plan, and applies it; refused if the server changed meanwhile, undone completely if a change fails. See <a href="../config-as-code/#apply">Apply</a>.</td>
+</tr>
+<tr>
 <td><code>exportcfg "path" [overwriteconfigmap]</code>, <code>importcfg "path" [nodeploy] [overwriteconfigmap] [force]</code></td>
 <td>Exports or imports the whole configuration (flows, alerts, snippets, scripts, settings, and optionally the config map). See <a href="../config-transfer/">Export and import the whole configuration</a>.</td>
 </tr>

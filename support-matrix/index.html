@@ -319,12 +319,17 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Config-as-code document: typed sections for flows, alerts, snippets, libraries, scripts, config map, settings; strict validation; JSON Schemas per artifact kind; <code>POST /api/v1/config/validate</code>, CLI <code>config validate</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestConfigValidate</code>, <code>TestSchemasPublished</code>. Documents are checked only; they are not applied to a server yet. See <a href="../config-as-code/">Config-as-code documents</a>.</td>
+<td><code>TestConfigValidate</code>, <code>TestSchemasPublished</code>. See <a href="../config-as-code/">Config-as-code documents</a>.</td>
 </tr>
 <tr>
 <td>Config-as-code plan and diff against the live server (<code>POST /api/v1/config/plan</code>; CLI <code>config diff</code>, <code>config plan</code>)</td>
 <td>Implemented (wired)</td>
-<td><code>TestConfigPlan</code>, <code>TestLivePlan</code>. Side-effect free; sections left out of the document are not managed. Applying a plan is not available yet. See <a href="../config-as-code/#see-what-would-change">Config-as-code documents</a>.</td>
+<td><code>TestConfigPlan</code>, <code>TestLivePlan</code>. Side-effect free; sections left out of the document are not managed. See <a href="../config-as-code/#see-what-would-change">Config-as-code documents</a>.</td>
+</tr>
+<tr>
+<td>Config-as-code apply (<code>POST /api/v1/config/apply</code> with the plan fingerprint, <code>dryRun</code>, <code>reason</code>; CLI <code>config apply</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestConfigApply</code>, <code>TestConfigApplyHandler</code>. Stale plans refused; a failing change rolls back every applied change; each attempt audited with its result. See <a href="../config-as-code/#apply">Apply</a>.</td>
 </tr>
 <tr>
 <td>Exit codes (shell, <code>server</code>, <code>test</code>) and <code>Error:</code> format; deprecated <code>channel</code>/<code>codetemplate</code> command names</td>
