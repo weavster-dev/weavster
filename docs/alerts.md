@@ -30,7 +30,7 @@ the command-line client. Every request needs the `alerts:edit` permission.
 | `enabled` | `true` or `false` (default `false`). |
 | `trigger.events` | At least one of `message.errored` (the transform failed), `message.queued` (a delivery failed and will be retried), `message.dead-lettered` (retries ran out). |
 | `trigger.flows` | Flow ids. Leave it out for every flow. |
-| `actions` | At least one. `{"type":"email","to":[addresses]}` or `{"type":"webhook","url":"http(s)://…"}`. |
+| `actions` | At least one. `{"type":"email","to":[addresses]}` with plain addresses (`ops@example.com`, not `Ops <ops@example.com>`), or `{"type":"webhook","url":"http(s)://…"}`. A webhook URL may not contain a user name or password, because everyone who can read alerts sees it; put a token in the path or query only if that is acceptable. |
 
 Unknown fields and invalid values are rejected with `400` and a message naming the problem.
 `GET /api/v1/alerts/options` lists the allowed trigger events and action types.
@@ -58,7 +58,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 
 | Command | What it does |
 |---|---|
-| `exportalert id "path"` | Writes one alert, chosen by id or name (quote a name with spaces), to a JSON file. |
+| `exportalert id "path"` | Writes one alert, chosen by id or name (quote a name with spaces), to a JSON file. An id match wins; a name that several alerts share is refused, so export those by id. |
 | `exportalert * "path"` | Writes every alert. |
 | `importalert "path" [force]` | Saves the alerts in the file. Without `force`, an alert whose id already exists stops the import and nothing is saved. |
 

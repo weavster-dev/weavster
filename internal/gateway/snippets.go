@@ -67,26 +67,27 @@ func writeSnippetError(w http.ResponseWriter, err error) {
 	}
 }
 
-// nameRef lets saveNamed set and read a document's name.
-func (sn *Snippet) nameRef() *string       { return &sn.Name }
-func (l *SnippetLibrary) nameRef() *string { return &l.Name }
+// key lets saveNamed set and read a document's key, and name its field.
+func (sn *Snippet) key() (*string, string)       { return &sn.Name, "name" }
+func (l *SnippetLibrary) key() (*string, string) { return &l.Name, "name" }
 
-// namedDoc is a pointer to a document with a name.
+// namedDoc is a pointer to a document with a key (its name or id).
 type namedDoc[T any] interface {
 	*T
-	nameRef() *string
+	key() (ref *string, field string)
 }
 
 // checkNames validates each name and rejects repeated names.
 func checkNames[T any, P namedDoc[T]](list []T, noun string) error {
 	seen := map[string]bool{}
 	for i := range list {
-		name := *P(&list[i]).nameRef()
-		if err := checkName(name); err != nil {
-			return err
+		ref, field := P(&list[i]).key()
+		name := *ref
+		if !validItemName.MatchString(name) {
+			return fmt.Errorf("%s %s %q must be 1-128 characters from A-Z a-z 0-9 . _ -", noun, field, name)
 		}
 		if seen[name] {
-			return fmt.Errorf("%s %q appears more than once", noun, name)
+			return fmt.Errorf("%s %s %q appears more than once", noun, field, name)
 		}
 		seen[name] = true
 	}
@@ -112,9 +113,9 @@ func saveNamed[T any, P namedDoc[T]](w http.ResponseWriter, r *http.Request, nou
 			return
 		}
 		doc := *ptr
-		if ref := P(&doc).nameRef(); name != "" {
+		if ref, field := P(&doc).key(); name != "" {
 			if *ref != "" && *ref != name {
-				writeStatusError(w, http.StatusBadRequest, "the name or id in the body does not match the path")
+				writeStatusError(w, http.StatusBadRequest, "the "+field+" in the body does not match the path")
 				return
 			}
 			*ref = name

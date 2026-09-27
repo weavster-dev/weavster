@@ -75,6 +75,21 @@ func TestAlerts(t *testing.T) {
 			t.Errorf("%s: exit %d, stdout %q, stderr %q", tt.line, code, out.String(), errb.String())
 		}
 	}
+	// Names are not unique: an id match wins, and a shared name is refused.
+	c.do(http.MethodPost, "/api/v1/alerts", strings.Replace(errorsAlert, `"id":"errors"`, `"id":"e2"`, 1), admin)
+	for _, tt := range []struct {
+		line, want string
+		code       int
+	}{
+		{`exportalert errors "` + filepath.Join(dir, "id.json") + `"`, "exported 1 alerts", 0},
+		{`exportalert "ADT errors" "` + filepath.Join(dir, "name.json") + `"`, "", 2},
+	} {
+		_ = os.WriteFile(script, []byte(tt.line+"\n"), 0o600)
+		var out, errb bytes.Buffer
+		if code := run([]string{"-a", c.base, "-u", bootstrapAdmin, "-p", testAdminPassword, "-s", script}, strings.NewReader(""), &out, &errb); code != tt.code || !strings.Contains(out.String(), tt.want) {
+			t.Errorf("%s: exit %d, stdout %q, stderr %q", tt.line, code, out.String(), errb.String())
+		}
+	}
 	if b, _ := os.ReadFile(one); !strings.HasPrefix(strings.TrimSpace(string(b)), "[") || !strings.Contains(string(b), `"id": "errors"`) {
 		t.Errorf("exported file = %s", b)
 	}

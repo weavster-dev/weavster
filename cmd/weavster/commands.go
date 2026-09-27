@@ -475,6 +475,20 @@ func snippetCommand(ctx context.Context, client Client, args []string, stdout, s
 	return 0
 }
 
+// pickAlert returns the alert with id sel, or else every alert named sel.
+func pickAlert(all []gateway.Alert, sel string) []gateway.Alert {
+	var named []gateway.Alert
+	for _, a := range all {
+		if a.ID == sel {
+			return []gateway.Alert{a}
+		}
+		if a.Name == sel {
+			named = append(named, a)
+		}
+	}
+	return named
+}
+
 // callJSON GETs path and decodes the reply into v.
 func callJSON(ctx context.Context, client Client, path string, v any) error {
 	out, err := client.Call(ctx, http.MethodGet, path, nil)
@@ -566,13 +580,16 @@ func exportAlerts(ctx context.Context, client Client, args []string, stdout, std
 	}
 	var all, picked []gateway.Alert
 	err := callJSON(ctx, client, "/api/v1/alerts", &all)
-	for _, a := range all {
-		if args[0] == "*" || a.ID == args[0] || a.Name == args[0] {
-			picked = append(picked, a)
-		}
+	if args[0] == "*" {
+		picked = all
+	} else {
+		picked = pickAlert(all, args[0])
 	}
 	if err == nil && len(picked) == 0 && args[0] != "*" {
 		err = fmt.Errorf("no alert has the id or name %q", args[0])
+	}
+	if err == nil && len(picked) > 1 && args[0] != "*" {
+		err = fmt.Errorf("%d alerts are named %q; export one by its id", len(picked), args[0])
 	}
 	var out []byte
 	if err == nil {

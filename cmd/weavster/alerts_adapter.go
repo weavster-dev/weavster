@@ -11,8 +11,9 @@ import (
 const alertKind = "alerts"
 
 // alertsAdapter serves gateway.AlertStore from the item store. mu makes
-// create-without-overwrite and enable/disable one step each (one server per
-// database, D-41).
+// create-without-overwrite and enable/disable one step each, and orders
+// deletes with them so a delete is never undone (one server per database,
+// D-41).
 type alertsAdapter struct {
 	repo itemRepository
 	mu   *sync.Mutex
@@ -33,6 +34,8 @@ func (a alertsAdapter) SaveAlerts(ctx context.Context, list []gateway.Alert, cre
 }
 
 func (a alertsAdapter) DeleteAlert(ctx context.Context, id string) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	return deleteDoc(ctx, a.repo, alertKind, id, gateway.ErrAlertNotFound)
 }
 

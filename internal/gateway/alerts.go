@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"unicode/utf8"
 )
 
 // Alert is an alert definition (spec §2.7): which processing events of which
@@ -59,14 +60,14 @@ var (
 	alertActionTypes = []string{"email", "webhook"}
 )
 
-func (a *Alert) nameRef() *string { return &a.ID }
+func (a *Alert) key() (*string, string) { return &a.ID, "id" }
 
 // checkAlert validates one alert definition; the error is safe to show.
 func checkAlert(a Alert) error {
 	if a.ID == "import" || a.ID == "options" {
 		return fmt.Errorf("id %q is reserved", a.ID)
 	}
-	if a.Name == "" || len(a.Name) > 200 {
+	if n := utf8.RuneCountInString(a.Name); n == 0 || n > 200 {
 		return fmt.Errorf("alert %s: name must be 1-200 characters", a.ID)
 	}
 	if len(a.Trigger.Events) == 0 {
@@ -100,14 +101,18 @@ func checkAlertAction(act AlertAction) error {
 			return errors.New("an email action needs to (a list of addresses) and no url")
 		}
 		for _, addr := range act.To {
-			if _, err := mail.ParseAddress(addr); err != nil {
-				return fmt.Errorf("%q is not an email address", addr)
+			// A bare address only: no display name ("Ops <ops@example.com>").
+			if parsed, err := mail.ParseAddress(addr); err != nil || parsed.Name != "" || parsed.Address != addr {
+				return fmt.Errorf("%q is not a plain email address (like ops@example.com)", addr)
 			}
 		}
 	case "webhook":
 		u, err := url.Parse(act.URL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || len(act.To) != 0 {
 			return errors.New("a webhook action needs url (http or https) and no to")
+		}
+		if u.User != nil {
+			return errors.New("a webhook url must not contain a user name or password; they would be shown to everyone who can read alerts")
 		}
 	default:
 		return fmt.Errorf("type must be one of %v", alertActionTypes)
