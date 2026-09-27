@@ -541,6 +541,41 @@ statuses above.</p>
 <p>The filters are applied before <code>limit</code> and <code>offset</code>, so every page holds only matching messages,
 and messages received in the same instant are ordered by id, so pages neither repeat nor skip
 messages while no new ones arrive.</p>
+<h3 id="message-trends">Message trends</h3>
+<p><code>GET /api/v1/messages/trends</code> (permission <code>messages:view</code>) counts the messages received in each
+hour or day of a range, by their current status. It returns counts only, never content.</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/messages/trends?from=2026-09-27T10:00:00Z&amp;to=2026-09-27T12:00:00Z&amp;flowId=adt'
+</code></pre>
+<pre><code class="language-json">[{&quot;start&quot;:&quot;2026-09-27T10:00:00Z&quot;,&quot;total&quot;:0,&quot;statuses&quot;:{&quot;dead-lettered&quot;:0,&quot;errored&quot;:0,&quot;filtered&quot;:0,&quot;queued&quot;:0,&quot;received&quot;:0,&quot;sent&quot;:0,&quot;transformed&quot;:0}},
+ {&quot;start&quot;:&quot;2026-09-27T11:00:00Z&quot;,&quot;total&quot;:3,&quot;statuses&quot;:{&quot;dead-lettered&quot;:0,&quot;errored&quot;:1,&quot;filtered&quot;:0,&quot;queued&quot;:0,&quot;received&quot;:0,&quot;sent&quot;:2,&quot;transformed&quot;:0}}]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>from</code>, <code>to</code></td>
+<td>Required (RFC 3339, to the millisecond). Buckets start at <code>from</code>; <code>to</code> is not included (unlike the message search), so ranges that meet, such as one day and the next, never count a message twice. The last bucket may be shorter.</td>
+</tr>
+<tr>
+<td><code>interval</code></td>
+<td><code>hour</code> (default) or <code>day</code>: the bucket length.</td>
+</tr>
+<tr>
+<td><code>flowId</code></td>
+<td>Only that flow's messages; an unknown flow returns <code>404</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>Every bucket and every status is listed, zeros included, so you can chart the result as it is.
+A range of more than 1000 buckets is refused with <code>400</code>; use <code>interval=day</code> or a shorter range.
+The counts come from the stored messages, so removed messages no longer count and each message
+counts once, in its current status.</p>
 <h3 id="work-with-one-message">Work with one message</h3>
 <table>
 <thead>
