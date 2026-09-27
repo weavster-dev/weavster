@@ -279,11 +279,19 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>flows:edit</code></td>
 </tr>
 <tr>
-<td><code>GET /api/v1/messages</code></td>
+<td><code>GET /api/v1/messages</code>, <code>GET /api/v1/messages/{id}</code></td>
 <td><code>messages:view</code></td>
 </tr>
 <tr>
-<td><code>POST /api/v1/flows/{id}/messages</code></td>
+<td><code>GET /api/v1/messages/{id}/content</code></td>
+<td><code>messages:content</code></td>
+</tr>
+<tr>
+<td><code>DELETE /api/v1/messages/{id}</code></td>
+<td><code>messages:delete</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/flows/{id}/messages</code>, <code>POST /api/v1/messages/{id}/reprocess</code></td>
 <td><code>messages:send</code></td>
 </tr>
 <tr>

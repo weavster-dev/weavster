@@ -478,9 +478,84 @@ statuses above.</p>
 </tbody>
 </table>
 <h2 id="4-find-processed-messages">4. Find processed messages</h2>
-<p>Every message is saved in the configured store with its final status:</p>
+<p>Every message is saved in the configured store with its final status. Search them (permission
+<code>messages:view</code>):</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
-  'http://127.0.0.1:8080/api/v1/messages?flowId=adt&amp;status=queued'
+  'http://127.0.0.1:8080/api/v1/messages?flowId=adt&amp;status=queued&amp;limit=50'
+</code></pre>
+<pre><code class="language-json">[{&quot;id&quot;:&quot;6f1c…&quot;,&quot;flowId&quot;:&quot;adt&quot;,&quot;status&quot;:&quot;queued&quot;,&quot;contentType&quot;:&quot;json&quot;,
+  &quot;receivedAt&quot;:&quot;2026-09-26T12:00:00Z&quot;,&quot;updatedAt&quot;:&quot;2026-09-26T12:00:05Z&quot;,
+  &quot;attempts&quot;:{&quot;ehr&quot;:{&quot;attempts&quot;:2,&quot;lastError&quot;:&quot;Service Unavailable&quot;,&quot;nextAttemptAt&quot;:&quot;2026-09-26T12:00:09Z&quot;}}}]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>flowId</code>, <code>status</code></td>
+<td>Only messages of this flow / with this status.</td>
+</tr>
+<tr>
+<td><code>from</code>, <code>to</code></td>
+<td>Received at or after / at or before this time (RFC 3339, for example <code>2026-09-26T12:00:00Z</code>).</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td>Messages per page, 1–1000 (default 100).</td>
+</tr>
+<tr>
+<td><code>offset</code></td>
+<td>Messages to skip, for the next pages.</td>
+</tr>
+<tr>
+<td><code>sort</code></td>
+<td><code>-receivedAt</code> (newest first, default), <code>receivedAt</code>, <code>id</code>, or <code>-id</code>.</td>
+</tr>
+</tbody>
+</table>
+<p>The filters are applied before <code>limit</code> and <code>offset</code>, so every page holds only matching messages,
+and messages received in the same instant are ordered by id, so pages neither repeat nor skip
+messages while no new ones arrive.</p>
+<h3 id="work-with-one-message">Work with one message</h3>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Permission</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/v1/messages/{id}</code></td>
+<td><code>messages:view</code></td>
+<td>The message as in the search results.</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/messages/{id}/content?part=raw</code></td>
+<td><code>messages:content</code></td>
+<td>The content as received (<code>part=transformed</code>: after the flow transform), as bytes. A message with no transformed content (for example one that errored in its transform) returns <code>404</code> for <code>part=transformed</code>.</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/messages/{id}/reprocess</code></td>
+<td><code>messages:send</code></td>
+<td>Sends the original content through the message's flow again. The new message (<code>202</code>, same reply as sending) keeps the old message's metadata (except its <code>error</code>) and adds <code>reprocessedFrom</code> with the old id. The flow must be <code>started</code> (<code>409</code> otherwise).</td>
+</tr>
+<tr>
+<td><code>DELETE /api/v1/messages/{id}</code></td>
+<td><code>messages:delete</code></td>
+<td>Removes the message (<code>204</code>). A message that is being processed or retried right now returns <code>409</code>; try again.</td>
+</tr>
+</tbody>
+</table>
+<p>An unknown id returns <code>404</code>. Message content can hold protected health information, so
+<code>messages:content</code> is a separate permission and every search, read, and content request is
+recorded in the <a href="../audit-log/">audit log</a> as <code>phi.access</code>.</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/messages/6f1c…/content?part=raw'
 </code></pre>
 <h2 id="5-statistics-and-events">5. Statistics and events</h2>
 <p>Per-flow counters (permission <code>flows:view</code>):</p>
