@@ -314,6 +314,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestConfigTransfer</code>. Users are not included. See <a href="../config-transfer/">Export and import the whole configuration</a>.</td>
 </tr>
 <tr>
+<td>Exit codes (shell, <code>server</code>, <code>test</code>) and <code>Error:</code> format; deprecated <code>channel</code>/<code>codetemplate</code> command names</td>
+<td>Implemented (wired)</td>
+<td><code>TestExitCodesAndDeprecatedCommands</code>, <code>TestServerConfigErrors</code>. See <a href="../cli/#exit-codes-and-errors">Exit codes and errors</a>.</td>
+</tr>
+<tr>
 <td>Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction</td>
 <td>Implemented (wired)</td>
 <td><code>TestAuditLog</code>. Written to stderr only; not stored or searchable. See <a href="../audit-log/">Audit log</a>.</td>

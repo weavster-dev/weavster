@@ -150,6 +150,14 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#deprecated-command-names" class="nav-link">Deprecated command names</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#exit-codes-and-errors" class="nav-link">Exit codes and errors</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
               </ul>
             </li>
         </ul>
@@ -458,7 +466,84 @@ import &quot;backups/all flows.json&quot; force
 <td>End the interactive shell; ignored in batch mode.</td>
 </tr>
 </tbody>
-</table></div>
+</table>
+<h2 id="deprecated-command-names">Deprecated command names</h2>
+<p>Scripts written for older tools can keep their command names. A deprecated name prints a warning
+on stderr and then runs its replacement with the same arguments; the warning does not change the
+exit code.</p>
+<table>
+<thead>
+<tr>
+<th>Deprecated</th>
+<th>Runs</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>channel …</code></td>
+<td><code>flow …</code></td>
+</tr>
+<tr>
+<td><code>codetemplate …</code></td>
+<td><code>snippet …</code></td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-text">weavster&gt; channel list
+Warning: &quot;channel&quot; is deprecated; use &quot;flow&quot;
+adt started ADT Inbound
+</code></pre>
+<p>Update your scripts to the new names; the old ones may be removed in a later release.</p>
+<h2 id="exit-codes-and-errors">Exit codes and errors</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th><code>0</code></th>
+<th><code>1</code></th>
+<th><code>2</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>weavster -s script</code> (batch)</td>
+<td>Every command succeeded</td>
+<td>—</td>
+<td>Any command failed (the script still runs to the end), a line longer than 1 MiB (the script stops there), an unknown flag, or a missing connection file</td>
+</tr>
+<tr>
+<td><code>weavster</code> (interactive shell)</td>
+<td><code>quit</code>, <code>exit</code>, or end of input, even after failed commands (their errors are shown)</td>
+<td>—</td>
+<td>A line longer than 1 MiB, a read error, an unknown flag, or a missing connection file</td>
+</tr>
+<tr>
+<td><code>weavster server</code></td>
+<td><code>-h</code>, or a clean stop on SIGINT/SIGTERM</td>
+<td>The configuration is invalid, the server could not start (store, TLS, bootstrap), or it runs as a privileged user without <code>WEAVSTER_ALLOW_ROOT=1</code></td>
+<td>An unknown flag or extra arguments</td>
+</tr>
+<tr>
+<td><code>weavster test</code></td>
+<td>Every fixture passed, or <code>-h</code></td>
+<td>A fixture failed</td>
+<td>An unknown flag, or the results could not be written</td>
+</tr>
+</tbody>
+</table>
+<p><code>-h</code> (or <code>--help</code>) prints usage and exits <code>0</code> for every command. Usage errors are checked
+before anything else runs.</p>
+<p>Errors go to stderr and start with <code>Error:</code>; an unknown flag is followed by the list of flags
+(<code>Error: flag provided but not defined: -nope</code>). A reply from the server shows its status and
+message, for example <code>Error: server returned 404 Not Found: snippet not found</code>. With <code>-d</code>, the
+client also prints each underlying cause:</p>
+<pre><code class="language-text">Error: Get &quot;http://127.0.0.1:8080/api/v1/flows&quot;: dial tcp 127.0.0.1:8080: connect: connection refused
+  caused by *net.OpError: dial tcp 127.0.0.1:8080: connect: connection refused
+  caused by *os.SyscallError: connect: connection refused
+  caused by syscall.Errno: connection refused
+</code></pre>
+<p>A failed login prints <code>Could not log in to server.</code> and continues (the prompt or the script);
+the commands that follow then fail with the server's <code>401</code> reply.</p></div>
             </div>
         </div>
 
