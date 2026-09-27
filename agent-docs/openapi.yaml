@@ -600,6 +600,91 @@ paths:
         "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/alerts:
+    get:
+      summary: "Every alert definition, sorted by id (requires alerts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The alerts", content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Alert"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    post:
+      summary: "Create one alert (requires alerts:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/Alert"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "201": {description: "Created", content: {application/json: {schema: {$ref: "#/components/schemas/Alert"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "An invalid alert", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "An alert with that id already exists", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/alerts/import:
+    post:
+      summary: "Save several alerts, all or nothing; without force=true an existing id is a conflict (requires alerts:edit)"
+      parameters:
+        - {name: force, in: query, schema: {type: boolean}, description: Replace alerts with the same id}
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Alert"}}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The saved alerts", content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Alert"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "An invalid alert or not a JSON array", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "An alert with one of the ids already exists (without force)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "413": {description: "Body larger than 10 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/alerts/options:
+    get:
+      summary: "The trigger events and action types an alert can use (requires alerts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{events, actionTypes}", content: {application/json: {schema: {type: object, properties: {events: {type: array, items: {type: string}}, actionTypes: {type: array, items: {type: string}}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/alerts/{name}:
+    parameters:
+      - {name: name, in: path, required: true, description: The alert id, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    get:
+      summary: "One alert (requires alerts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The alert", content: {application/json: {schema: {$ref: "#/components/schemas/Alert"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad id", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown alert", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: "Create or replace one alert; id in the body is optional and must match the path (requires alerts:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/AlertUpdate"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The saved alert", content: {application/json: {schema: {$ref: "#/components/schemas/Alert"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "An invalid alert or a bad id", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    delete:
+      summary: "Delete one alert (requires alerts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "204": {description: "Deleted", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad id", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown alert", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/alerts/{name}/enable:
+    parameters:
+      - {name: name, in: path, required: true, description: The alert id, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    post:
+      summary: "Enable one alert (requires alerts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The alert", content: {application/json: {schema: {$ref: "#/components/schemas/Alert"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad id", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown alert", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/alerts/{name}/disable:
+    parameters:
+      - {name: name, in: path, required: true, description: The alert id, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    post:
+      summary: "Disable one alert (requires alerts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The alert", content: {application/json: {schema: {$ref: "#/components/schemas/Alert"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad id", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown alert", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/snippets:
     get:
       summary: "Every code snippet, sorted by name (requires snippets:edit)"
@@ -873,6 +958,59 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    Alert:
+      type: object
+      additionalProperties: false
+      required: [id, name, trigger, actions]
+      properties:
+        id: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$", description: "Not import or options"}
+        name: {type: string, minLength: 1, maxLength: 200}
+        enabled: {type: boolean}
+        trigger:
+          type: object
+          additionalProperties: false
+          required: [events]
+          properties:
+            events: {type: array, minItems: 1, items: {type: string, enum: [message.errored, message.queued, message.dead-lettered]}}
+            flows: {type: array, items: {type: string}, description: Flow ids; none means every flow}
+        actions:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [type]
+            properties:
+              type: {type: string, enum: [email, webhook]}
+              to: {type: array, items: {type: string, format: email}, description: Email recipients (email only)}
+              url: {type: string, format: uri, description: "http or https URL (webhook only)"}
+    AlertUpdate:
+      type: object
+      additionalProperties: false
+      description: "An alert for PUT on /api/v1/alerts/{name}: id is optional and must match the path"
+      required: [name, trigger, actions]
+      properties:
+        id: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$", description: "Not import or options"}
+        name: {type: string, minLength: 1, maxLength: 200}
+        enabled: {type: boolean}
+        trigger:
+          type: object
+          additionalProperties: false
+          required: [events]
+          properties:
+            events: {type: array, minItems: 1, items: {type: string, enum: [message.errored, message.queued, message.dead-lettered]}}
+            flows: {type: array, items: {type: string}, description: Flow ids; none means every flow}
+        actions:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [type]
+            properties:
+              type: {type: string, enum: [email, webhook]}
+              to: {type: array, items: {type: string, format: email}, description: Email recipients (email only)}
+              url: {type: string, format: uri, description: "http or https URL (webhook only)"}
     MessagesDeleted:
       type: object
       required: [deleted, busy, restarted]

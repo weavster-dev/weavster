@@ -280,6 +280,8 @@ type Config struct {
 	Passwords PasswordChanger
 	Users     UserAdmin
 	Items     ItemStore
+	// Alerts keeps alert definitions.
+	Alerts AlertStore
 	// Snippets keeps code snippets and snippet libraries.
 	Snippets    SnippetStore
 	Authorizer  Authorizer
