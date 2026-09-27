@@ -72,7 +72,7 @@ func TestDeadLetterRequeue(t *testing.T) {
 	// The event keeps the attempt counts, never the error text (it can
 	// quote message content, and events:view alone can read events).
 	if _, body, _ := c.do(http.MethodGet, "/api/v1/events?type=message.requeued", "", admin); !strings.Contains(body, `"previous.ehr.attempts":"2"`) ||
-		!strings.Contains(body, `"messageId":"`+id+`"`) || strings.Contains(body, "lastError") || strings.Contains(body, "503") {
+		!strings.Contains(body, `"messageId":"`+id+`"`) || strings.Contains(body, "lastError") || strings.Contains(body, "Service Unavailable") {
 		t.Errorf("requeue event = %s", body)
 	}
 	// A sent message cannot be requeued.
