@@ -2072,25 +2072,26 @@ func (m messageAdapter) Requeue(ctx context.Context, id string) (gateway.Requeue
 }
 
 // requeue requeues one message of flowID while holding the flow's gate, so
-// a flow delete cannot slip between the check and the requeue; flowExists
-// caches flow checks for bulk requeues (nil: no cache). It returns the
-// message as it was.
-func (m messageAdapter) requeue(ctx context.Context, id, flowID string, flowExists map[string]bool) (state.Message, error) {
+// a flow delete cannot slip between the check and the requeue. deleted
+// remembers flows found deleted during a bulk requeue (nil: none); a flow
+// that exists is checked again for every message, as it could be deleted
+// between two of them. It returns the message as it was.
+func (m messageAdapter) requeue(ctx context.Context, id, flowID string, deleted map[string]bool) (state.Message, error) {
 	if gate := m.ingest.flows.locks; gate != nil {
 		defer gate.ProcessFlow(flowID)()
 	}
-	exists, known := flowExists[flowID]
-	if !known {
+	gone := deleted[flowID]
+	if !gone {
 		_, err := m.ingest.flows.Get(ctx, flowID)
 		if err != nil && !errors.Is(err, gateway.ErrFlowNotFound) {
 			return state.Message{}, err
 		}
-		exists = err == nil
-		if flowExists != nil {
-			flowExists[flowID] = exists
+		gone = err != nil
+		if gone && deleted != nil {
+			deleted[flowID] = true
 		}
 	}
-	if !exists {
+	if gone {
 		return state.Message{}, fmt.Errorf("%w: flow %s of message %s was deleted", gateway.ErrFlowNotFound, flowID, id)
 	}
 	before, err := m.pipe.Requeue(ctx, id)
@@ -2121,7 +2122,7 @@ func (m messageAdapter) RequeueAll(ctx context.Context, flowID string) (gateway.
 		}
 	}
 	res := gateway.RequeueAllResult{Requeued: []string{}, Skipped: []gateway.RequeueSkip{}}
-	flows := map[string]bool{}
+	deleted := map[string]bool{}
 	cursor := ""
 	for {
 		page, err := m.store.Search(ctx, state.Query{Status: state.StatusDeadLettered, FlowID: flowID, IDFrom: cursor, Sort: "id", Limit: 500})
@@ -2129,7 +2130,7 @@ func (m messageAdapter) RequeueAll(ctx context.Context, flowID string) (gateway.
 			return res, err
 		}
 		for _, msg := range page {
-			_, err := m.requeue(ctx, msg.ID, msg.FlowID, flows)
+			_, err := m.requeue(ctx, msg.ID, msg.FlowID, deleted)
 			switch {
 			case err == nil:
 				res.Requeued = append(res.Requeued, msg.ID)
