@@ -44,10 +44,18 @@ var validItemName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 // maxItemsBody caps an item request body.
 const maxItemsBody = 10 << 20
 
-// checkItem validates a name and value for kind k; the error is safe to show.
-func (k itemKind) checkItem(name string, value json.RawMessage) error {
+// checkName validates an item name; the error is safe to show.
+func checkName(name string) error {
 	if !validItemName.MatchString(name) {
 		return fmt.Errorf("name %q must be 1-128 characters from A-Z a-z 0-9 . _ -", name)
+	}
+	return nil
+}
+
+// checkItem validates a name and value for kind k; the error is safe to show.
+func (k itemKind) checkItem(name string, value json.RawMessage) error {
+	if err := checkName(name); err != nil {
+		return err
 	}
 	if string(value) == "null" {
 		return fmt.Errorf("value of %s must not be null; delete it instead", name)
@@ -147,6 +155,10 @@ func (s *Server) handleItemGet(k itemKind) http.HandlerFunc {
 			return
 		}
 		name := r.PathValue("name")
+		if err := checkName(name); err != nil {
+			writeStatusError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		v, err := s.cfg.Items.GetItem(r.Context(), k.kind, name)
 		if err != nil {
 			writeItemError(w, k, err)
@@ -189,7 +201,12 @@ func (s *Server) handleItemDelete(k itemKind) http.HandlerFunc {
 		if !s.itemsAvailable(w) {
 			return
 		}
-		if err := s.cfg.Items.DeleteItem(r.Context(), k.kind, r.PathValue("name")); err != nil {
+		name := r.PathValue("name")
+		if err := checkName(name); err != nil {
+			writeStatusError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.cfg.Items.DeleteItem(r.Context(), k.kind, name); err != nil {
 			writeItemError(w, k, err)
 			return
 		}

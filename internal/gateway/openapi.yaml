@@ -478,6 +478,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     put:
       summary: "Create or replace one config map entry; the body is {\"value\": ...} with a string (requires configmap:edit)"
@@ -494,6 +495,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/scripts:
     get:
@@ -520,6 +522,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     put:
       summary: "Create or replace one script; the body is {\"value\": ...} with a string (the script source) (requires scripts:edit)"
@@ -536,6 +539,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/settings:
     get:
@@ -562,6 +566,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     put:
       summary: "Create or replace one setting; the body is {\"value\": ...} with any JSON value (requires settings:edit)"
@@ -578,6 +583,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "204": {description: Deleted, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: A bad name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/users:
     get:

@@ -72,6 +72,8 @@ func TestItemHandlers(t *testing.T) {
 		{"unknown field", http.MethodPut, "/api/v1/settings/retention", `{"value":5,"vaule":6}`, http.StatusBadRequest, "unknown field"},
 		{"setting any JSON", http.MethodPut, "/api/v1/settings/retention", `{"value":{"days":30}}`, http.StatusOK, `"days":30`},
 		{"delete", http.MethodDelete, "/api/v1/scripts/deploy", ``, http.StatusNoContent, ""},
+		{"get bad name", http.MethodGet, "/api/v1/configmap/a%20b", ``, http.StatusBadRequest, "must be 1-128 characters"},
+		{"delete bad name", http.MethodDelete, "/api/v1/scripts/a%20b", ``, http.StatusBadRequest, "must be 1-128 characters"},
 		{"delete unknown", http.MethodDelete, "/api/v1/scripts/deploy", ``, http.StatusNotFound, "script not found"},
 		{"too large", http.MethodPut, "/api/v1/settings", `{"a":"` + strings.Repeat("x", maxItemsBody) + `"}`, http.StatusRequestEntityTooLarge, "larger than 10 MiB"},
 	}
