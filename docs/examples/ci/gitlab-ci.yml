@@ -1,0 +1,47 @@
+# Weavster config-as-code on GitLab CI: plan on merge requests, apply on
+# merge to main. Save as .gitlab-ci.yml in the repository that holds
+# weavster.yaml.
+#
+# CI/CD variables (masked; WEAVSTER_PASSWORD also protected):
+# WEAVSTER_ADDRESS (https://weavster.example.com), WEAVSTER_USER,
+# WEAVSTER_PASSWORD. The user needs the config plan permissions, plus the
+# config apply permissions for the apply job.
+stages: [plan, apply]
+
+variables:
+  WEAVSTER_VERSION: latest # pin a release tag in production
+
+.weavster:
+  image: golang:1.22
+  before_script:
+    - go install "github.com/weavster-dev/weavster/cmd/weavster@${WEAVSTER_VERSION}"
+    - |
+      umask 077
+      quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
+      {
+        echo "address: $(quote "$WEAVSTER_ADDRESS")"
+        echo "user: $(quote "$WEAVSTER_USER")"
+        echo "password: $(quote "$WEAVSTER_PASSWORD")"
+      } > /tmp/weavster.conn
+
+plan:
+  extends: .weavster
+  stage: plan
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: [weavster.yaml]
+  script:
+    - printf 'config diff "weavster.yaml"\n' > /tmp/plan.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/plan.txt
+
+apply:
+  extends: .weavster
+  stage: apply
+  resource_group: weavster-config # one apply at a time
+  environment: production
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+      changes: [weavster.yaml]
+  script:
+    - printf 'config apply "weavster.yaml" %s\n' "merged ${CI_COMMIT_SHORT_SHA}" > /tmp/apply.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/apply.txt
