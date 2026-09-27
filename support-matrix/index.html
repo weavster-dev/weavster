@@ -272,9 +272,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestUsersSurviveRestart</code>. Durable with <code>store.dialect: sqlite</code>; the first-run <code>admin</code> is created once per database.</td>
 </tr>
 <tr>
-<td>User administration API</td>
-<td>Unsupported</td>
-<td><code>admin</code> is the only account.</td>
+<td>User administration (<code>/api/v1/users</code>, CLI <code>user list/add/remove/changepw</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestUserAdministration</code>, <code>TestPermissionMatrix</code>. Permission <code>users:admin</code>. See <a href="../authentication/#manage-users">Authentication</a>.</td>
 </tr>
 <tr>
 <td>Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction</td>
@@ -498,7 +498,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>weavster -s script.txt</code> batch mode</td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixCLI/batch-*</code>, <code>TestFlowCLI</code>. Commands: <code>help</code>, <code>status</code>, <code>version</code>, <code>flow</code> (list, get, create, update, update-all, rename, enable, disable, remove, export, import, lifecycle actions, redeploy-all, start/stop-destination, connectors, ports, stats; flows by id or name), <code>deploy [timeout]</code>, <code>import "path" [force]</code>, <code>export &lt;id or name or *&gt; "path"</code>; double-quoted arguments, <code>user list</code>, <code>quit</code>/<code>exit</code>. <code>user list</code> always prints nothing. Exits <code>2</code> if any line fails (unknown command, usage error, unreadable file, unreachable server, or an error reply). See <a href="../cli/">Command-line client</a>.</td>
+<td><code>TestSupportMatrixCLI/batch-*</code>, <code>TestFlowCLI</code>. Commands: <code>help</code>, <code>status</code>, <code>version</code>, <code>flow</code> (list, get, create, update, update-all, rename, enable, disable, remove, export, import, lifecycle actions, redeploy-all, start/stop-destination, connectors, ports, stats; flows by id or name), <code>deploy [timeout]</code>, <code>import "path" [force]</code>, <code>export &lt;id or name or *&gt; "path"</code>; double-quoted arguments, <code>user list/add/remove/changepw</code>, <code>quit</code>/<code>exit</code>. Exits <code>2</code> if any line fails (unknown command, usage error, unreadable file, unreachable server, or an error reply). See <a href="../cli/">Command-line client</a>.</td>
 </tr>
 <tr>
 <td><code>-a address</code></td>

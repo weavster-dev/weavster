@@ -134,6 +134,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#manage-users" class="nav-link">Manage users</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#cli" class="nav-link">CLI</a>
               <ul class="nav flex-column">
               </ul>
@@ -310,12 +314,71 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>GET /api/v1/events</code></td>
 <td><code>events:view</code></td>
 </tr>
+<tr>
+<td><code>GET/POST /api/v1/users</code>, <code>GET/PUT/DELETE /api/v1/users/{name}</code>, <code>POST /api/v1/users/{name}/password</code></td>
+<td><code>users:admin</code></td>
+</tr>
 </tbody>
 </table>
 <p>The <code>admin</code> permission grants everything. A signed-in user without the permission gets:</p>
 <pre><code class="language-json">{&quot;error&quot;:{&quot;code&quot;:&quot;FORBIDDEN&quot;,&quot;message&quot;:&quot;missing permission flows:edit&quot;}}
 </code></pre>
-<p>The API cannot create other users yet; the only account is <code>admin</code>.</p>
+<p>The other permissions are <code>users:admin</code>, <code>flows:view</code>, <code>flows:edit</code>, <code>flows:deploy</code>,
+<code>messages:view</code>, <code>messages:send</code>, <code>messages:content</code>, <code>messages:delete</code>, <code>messages:import</code>,
+<code>events:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>configmap:edit</code>, and
+<code>settings:edit</code>.</p>
+<h2 id="manage-users">Manage users</h2>
+<p>An account with <code>users:admin</code> (or <code>admin</code>) manages the other accounts.</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/users -d '{
+  &quot;username&quot;: &quot;ops&quot;, &quot;password&quot;: &quot;A-Temp-Passw0rd&quot;,
+  &quot;permissions&quot;: [&quot;flows:view&quot;, &quot;flows:deploy&quot;, &quot;events:view&quot;],
+  &quot;email&quot;: &quot;ops@example.com&quot;
+}'
+</code></pre>
+<pre><code class="language-json">{&quot;username&quot;:&quot;ops&quot;,&quot;email&quot;:&quot;ops@example.com&quot;,&quot;permissions&quot;:[&quot;events:view&quot;,&quot;flows:deploy&quot;,&quot;flows:view&quot;],&quot;mustChangePassword&quot;:true,&quot;locked&quot;:false}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/v1/users</code>, <code>GET /api/v1/users/{name}</code></td>
+<td>Lists accounts, or shows one. Password data is never returned. <code>locked</code> is true during a lockout.</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/users</code></td>
+<td>Creates an account (<code>201</code>). <code>username</code> is 1–64 characters from <code>A-Z a-z 0-9 . _ @ -</code>; <code>permissions</code> must be from the list above; the <a href="../server-config/#auth">password policy</a> applies. The user must choose a new password at the first login unless you send <code>"mustChangePassword": false</code>.</td>
+</tr>
+<tr>
+<td><code>PUT /api/v1/users/{name}</code></td>
+<td>Replaces <code>permissions</code> (required; <code>[]</code> for none). <code>email</code> and <code>org</code> change only when you send them.</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/users/{name}/password</code></td>
+<td>Sets a new password (<code>{"password":"…"}</code>, <code>204</code>). The user must change it at the next login, and a lockout ends.</td>
+</tr>
+<tr>
+<td><code>DELETE /api/v1/users/{name}</code></td>
+<td>Deletes the account (<code>204</code>).</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Changing a user's permissions, setting their password, or deleting them ends all their open
+  sessions (bearer tokens); they sign in again.</li>
+<li>You cannot delete your own account, and the last account with <code>admin</code> cannot be deleted or
+  lose <code>admin</code> (<code>409</code>).</li>
+<li>An account with <code>users:admin</code> but not <code>admin</code> can only grant permissions it holds itself, never
+  <code>admin</code>, and cannot change, reset, or delete an account that has <code>admin</code> (<code>403</code>).</li>
+<li>Editing your own account (<code>PUT</code>) keeps your own session; setting your own password ends every
+  session, yours included.</li>
+<li>Invalid input returns <code>400</code> with the reason, an existing username <code>409</code>, and an unknown user
+  <code>404</code>.</li>
+</ul>
 <h2 id="cli">CLI</h2>
 <p>Batch mode sends <code>-u</code>/<code>-p</code> as Basic credentials:</p>
 <pre><code class="language-bash">weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt

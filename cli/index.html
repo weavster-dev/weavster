@@ -138,10 +138,6 @@
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#limits-today" class="nav-link">Limits today</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
               </ul>
             </li>
         </ul>
@@ -399,7 +395,19 @@ import &quot;backups/all flows.json&quot; force
 </tr>
 <tr>
 <td><code>user list</code></td>
-<td>Prints nothing yet.</td>
+<td>One line per account: username, permissions, and <code>must change password</code> / <code>locked</code> when they apply (permission <code>users:admin</code>).</td>
+</tr>
+<tr>
+<td><code>user add &lt;name&gt; &lt;password&gt; [permission…]</code></td>
+<td>Creates an account; the user must change the password at the first login.</td>
+</tr>
+<tr>
+<td><code>user remove &lt;name&gt;</code></td>
+<td>Deletes an account.</td>
+</tr>
+<tr>
+<td><code>user changepw &lt;name&gt; &lt;password&gt;</code></td>
+<td>Sets an account's password; the user must change it at the next login.</td>
 </tr>
 <tr>
 <td><code>help</code></td>
@@ -410,11 +418,7 @@ import &quot;backups/all flows.json&quot; force
 <td>End the interactive shell; ignored in batch mode.</td>
 </tr>
 </tbody>
-</table>
-<h2 id="limits-today">Limits today</h2>
-<ul>
-<li><code>user list</code> prints nothing yet.</li>
-</ul></div>
+</table></div>
             </div>
         </div>
 
