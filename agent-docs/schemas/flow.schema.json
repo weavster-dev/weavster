@@ -245,6 +245,14 @@
         "null"
       ],
       "pattern": "^[A-Za-z0-9._-]{1,128}$"
+    },
+    "inputFormat": {
+      "enum": [
+        "json",
+        "hl7v2",
+        null
+      ],
+      "description": "How transforms read a message: json (default) or hl7v2 (the HL7 v2 message as JSON: segment.field.component paths such as PID.5.1)"
     }
   },
   "$defs": {

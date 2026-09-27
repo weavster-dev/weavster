@@ -69,6 +69,7 @@ below, in order, on the message as a JSON object.
 | `enabled`, `initialState` | Automatic deployment at startup; see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
 | `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). |
 | `responseSelector` | The destination whose reply is returned to the sender; see [Return a destination's reply](#return-a-destinations-reply). |
+| `inputFormat` | How transforms read a message: `json` (default) or `hl7v2`; see [Transform HL7 v2 messages](#transform-hl7-v2-messages). |
 | `source` | Where the flow receives messages on its own; see [Read files from a directory](#read-files-from-a-directory), [Receive messages over HTTP](#receive-messages-over-http), and [Receive HL7 v2 over MLLP](#receive-hl7-v2-over-mllp). Without it, messages arrive only through the API. |
 
 ### `destinations`
@@ -84,6 +85,61 @@ below, in order, on the message as a JSON object.
 | `maxRedirects` | `http` only: how many redirects to follow, 0–10; default 0. See [Redirects](#redirects). |
 | `transform` | Optional. This destination's own transform, with the same steps as the flow `transform`. See [Per-destination transforms and filters](#per-destination-transforms-and-filters). |
 | `responseTransform` | Optional. Transform applied to this destination's reply. See [Return a destination's reply](#return-a-destinations-reply). |
+
+### Transform HL7 v2 messages
+
+Set `"inputFormat": "hl7v2"` and the flow's transforms read each HL7 v2 message as JSON, so
+paths name segment, field, and component the way HL7 does:
+
+```json
+{
+  "id": "adt",
+  "inputFormat": "hl7v2",
+  "source": {"type": "mllp", "address": ":2575"},
+  "transform": {"name": "adt", "steps": [
+    {"filter": {"when": "MSH.9.2 == 'A01'", "action": "accept"}},
+    {"map": {"from": "PID.5.1", "to": "patient.lastName"}},
+    {"map": {"from": "PID.3.repetitions.1.1", "to": "patient.ssn"}}
+  ]},
+  "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/inbound"}]
+}
+```
+
+For `MSH|^~\&|LAB|HOSP|W|H|20260927120000||ADT^A01|MSG1|P|2.5` and
+`PID|1||123^^^MRN~456^^^SSN||DOE^JOHN`, the transform sees:
+
+```json
+{
+  "MSH": {"name": "MSH", "2": {"1": "^", "2": "~", "3": "\\", "4": "&"}, "3": {"1": "LAB"}, "4": {"1": "HOSP"},
+          "5": {"1": "W"}, "6": {"1": "H"}, "7": {"1": "20260927120000"}, "9": {"1": "ADT", "2": "A01"},
+          "10": {"1": "MSG1"}, "11": {"1": "P"}, "12": {"1": "2.5"}},
+  "PID": {"name": "PID", "1": {"1": "1"},
+          "3": {"1": "123", "4": "MRN", "repetitions": [{"1": "123", "4": "MRN"}, {"1": "456", "4": "SSN"}]},
+          "5": {"1": "DOE", "2": "JOHN"}},
+  "segments": [{"name": "MSH", "…": "…"}, {"name": "PID", "…": "…"}]
+}
+```
+
+- A segment name holds that segment's **first** occurrence: `PID.5.1` is the family name. Every
+  segment, in order, is in `segments` (`segments.2.5.1` is field 5, component 1 of the third
+  segment), which is how you reach a second `OBX`.
+- Fields use HL7 numbers. For MSH, `MSH.9` is MSH-9 (MSH-1, the field separator, is not
+  included; MSH-2 holds the encoding characters).
+- A field is an object of its components, even with one component: `PID.8.1`, not `PID.8`.
+  Subcomponents stay in the component's text, with their `&`.
+- A field that repeats (`~`) shows its first repetition, plus `repetitions` with every
+  non-empty repetition.
+- Escape sequences (`\F\`, `\S\`, `\R\`, `\T\`, `\E\`) are decoded; empty fields and
+  components are left out, so a missing value compares equal to `''`.
+- The message's own delimiters (MSH-1 and MSH-2) are used; line breaks `\n` or `\r\n` between
+  segments are accepted.
+- The transform's output is JSON: the view above with your changes. Destinations receive it as
+  `application/json`; there is no conversion back to HL7 yet. A flow without transforms delivers
+  the HL7 message unchanged.
+- Destination transforms read the same view when the flow itself has no transform (otherwise they
+  read the flow's JSON output).
+- A message that does not start with an MSH segment is refused: `400` over the API, `AR` over
+  MLLP. The stored original is always the message as received.
 
 ### Redirects
 
@@ -420,9 +476,11 @@ MSA|AA|MSG1
   delivery, and 10 MiB limit), with the metadata `source.mllp.controlId`. Delivery problems after
   that are retried and do not change the ACK.
 - `AR` (reject; sending the same message again will be rejected again): the frame is not an HL7 v2
-  message (no MSH segment), is larger than 10 MiB, or the flow refuses it. Today a flow with a
-  `transform` refuses HL7 messages, because transforms need JSON; use flows without `transform`
-  (the message is passed through unchanged) until HL7 parsing is added.
+  message (no MSH segment), is larger than 10 MiB, or the flow refuses it. A flow with a
+  `transform` needs `"inputFormat": "hl7v2"` to read HL7 messages (see
+  [Transform HL7 v2 messages](#transform-hl7-v2-messages)); without it the transform expects JSON
+  and every HL7 message is answered `AR`. A flow without transforms passes HL7 through unchanged.
+- A message the flow's filter drops is still answered `AA`: it was received and stored.
 - `AE` (error; try again later): the message was not stored, because the flow was stopping or
   processing failed.
 - MSA-3 says why in fixed words, never with message content.

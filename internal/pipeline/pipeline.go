@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/weavster-dev/weavster/internal/codecs"
 	"github.com/weavster-dev/weavster/internal/compiler"
 	"github.com/weavster-dev/weavster/internal/dsl"
 	"github.com/weavster-dev/weavster/internal/outbox"
@@ -57,6 +58,9 @@ type Flow struct {
 	Destinations []Destination
 	// ResponseSelector names the destination whose reply Process returns.
 	ResponseSelector string
+	// InputFormat is how transforms read a received message: "json" (or
+	// empty) or "hl7v2" (the HL7 v2 message's JSON view, #107 D-61).
+	InputFormat string
 }
 
 // Delivery is one message sent to one destination.
@@ -223,7 +227,7 @@ func (p *Pipeline) ProcessWithMetadata(ctx context.Context, f Flow, body []byte,
 		}
 	}
 	if needsObject(f) {
-		if _, err := decodeObject(body); err != nil {
+		if _, err := decodeInput(f.InputFormat, body); err != nil {
 			return Result{}, err
 		}
 	}
@@ -360,6 +364,19 @@ func (p *Pipeline) Requeue(ctx context.Context, id string) (state.Message, error
 	return before, p.store.Put(ctx, m)
 }
 
+// decodeInput reads a received message as the object transforms work on:
+// its HL7 v2 JSON view for format "hl7v2", otherwise the JSON object.
+func decodeInput(format string, body []byte) (map[string]any, error) {
+	if format != "hl7v2" {
+		return decodeObject(body)
+	}
+	doc, err := codecs.HL7JSON(body)
+	if err != nil {
+		return nil, fmt.Errorf("%w: body must be an HL7 v2 message (MSH segment first)", ErrInvalidMessage)
+	}
+	return doc, nil
+}
+
 // decodeObject decodes body as a single JSON object, keeping numbers exact
 // (json.Number) so identifiers like 20-digit MRNs survive untouched fields.
 func decodeObject(body []byte) (map[string]any, error) {
@@ -393,7 +410,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 			if err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
-			doc, err := decodeObject(m.Raw)
+			doc, err := decodeInput(f.InputFormat, m.Raw)
 			if err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
@@ -460,7 +477,7 @@ func responseOutput(f Flow, r *Reply) json.RawMessage {
 		}
 	}
 	if t != nil {
-		out, _, err := destinationOutput(*t, r.Body)
+		out, _, err := destinationOutput(*t, "json", r.Body) // replies are read as JSON
 		if err != nil || isJSONNull(out) {
 			return nil
 		}
@@ -501,25 +518,30 @@ type destinationResult struct {
 // transforms are deterministic, so every retry gets the same result.
 func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 	outs := map[string]destinationResult{}
+	format := f.InputFormat // the flow's output is its input, unless it transforms to JSON
+	if f.Transform != nil {
+		format = "json"
+	}
 	for _, d := range f.Destinations {
 		a := m.Attempts[d.Name]
 		if d.Transform == nil || d.Stopped || (a.Attempts > 0 && a.LastError == "") {
 			continue
 		}
 		var r destinationResult
-		r.body, r.filtered, r.err = destinationOutput(*d.Transform, m.Transformed)
+		r.body, r.filtered, r.err = destinationOutput(*d.Transform, format, m.Transformed)
 		outs[d.Name] = r
 	}
 	return outs
 }
 
-// destinationOutput runs transform t over body, the flow's output.
-func destinationOutput(t compiler.Transform, body []byte) (out []byte, filtered bool, err error) {
+// destinationOutput runs transform t over body, the flow's output, read as
+// format.
+func destinationOutput(t compiler.Transform, format string, body []byte) (out []byte, filtered bool, err error) {
 	prog, err := dsl.Compile(t)
 	if err != nil {
 		return nil, false, err
 	}
-	doc, err := decodeObject(body)
+	doc, err := decodeInput(format, body)
 	if err != nil {
 		return nil, false, err
 	}

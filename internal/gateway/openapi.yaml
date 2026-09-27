@@ -1416,6 +1416,7 @@ components:
         transform: {description: The flow's transform}
         destinations: {type: array, items: {$ref: "#/components/schemas/FlowDestination"}}
         responseSelector: {type: string}
+        inputFormat: {type: string, enum: [json, hl7v2], description: "How transforms read a message: json (default) or hl7v2 (the HL7 v2 message as JSON, e.g. PID.5.1)"}
     UpdatedList:
       example: {"updated": ["adt", "lab"]}
       type: object
