@@ -1679,14 +1679,37 @@ func toGatewayStats(s observability.FlowStats) gateway.FlowStats {
 
 type eventsAdapter struct{ log *observability.EventLog }
 
+func eventFilter(q gateway.EventQuery) observability.EventFilter {
+	return observability.EventFilter{Type: q.Type, Flow: q.FlowID, Since: q.From, Until: q.To, AfterID: q.AfterID, Limit: q.Limit}
+}
+
+func toGatewayEvent(e observability.Event) gateway.Event {
+	return gateway.Event{ID: e.ID, At: e.At.UTC(), Type: e.Type, FlowID: e.Flow, Data: e.Data}
+}
+
 func (a eventsAdapter) SearchEvents(_ context.Context, q gateway.EventQuery) ([]gateway.Event, error) {
-	found := a.log.Search(observability.EventFilter{Type: q.Type, Flow: q.FlowID, Limit: q.Limit})
+	found := a.log.Search(eventFilter(q))
 	out := make([]gateway.Event, 0, len(found))
 	for _, e := range found {
-		out = append(out, gateway.Event{ID: e.ID, At: e.At.UTC(), Type: e.Type, FlowID: e.Flow, Data: e.Data})
+		out = append(out, toGatewayEvent(e))
 	}
 	return out, nil
 }
+
+func (a eventsAdapter) GetEvent(_ context.Context, id int64) (gateway.Event, error) {
+	e, ok := a.log.Get(id)
+	if !ok {
+		return gateway.Event{}, gateway.ErrEventNotFound
+	}
+	return toGatewayEvent(e), nil
+}
+
+func (a eventsAdapter) CountEvents(_ context.Context, q gateway.EventQuery) (int, error) {
+	q.Limit = 0
+	return a.log.Count(eventFilter(q)), nil
+}
+
+func (a eventsAdapter) MaxEventID(context.Context) (int64, error) { return a.log.MaxID(), nil }
 
 type topologyAdapter struct {
 	flows gateway.FlowStore

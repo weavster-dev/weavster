@@ -18,20 +18,21 @@ type Event struct {
 
 // EventFilter narrows Search/Count/Export.
 type EventFilter struct {
-	Type  string
-	Flow  string
-	Since time.Time
-	Limit int // newest N matches; 0 = all
+	Type    string
+	Flow    string
+	Since   time.Time // at or after; zero = open
+	Until   time.Time // at or before; zero = open
+	AfterID int64     // only ids above this (polling for new events)
+	Limit   int       // newest N matches; 0 = all
 }
 
 func (f EventFilter) matches(e Event) bool {
-	if f.Type != "" && e.Type != f.Type {
-		return false
-	}
-	if f.Flow != "" && e.Flow != f.Flow {
-		return false
-	}
-	if !f.Since.IsZero() && e.At.Before(f.Since) {
+	switch {
+	case f.Type != "" && e.Type != f.Type,
+		f.Flow != "" && e.Flow != f.Flow,
+		!f.Since.IsZero() && e.At.Before(f.Since),
+		!f.Until.IsZero() && e.At.After(f.Until),
+		e.ID <= f.AfterID:
 		return false
 	}
 	return true
@@ -81,6 +82,22 @@ func (l *EventLog) Search(f EventFilter) []Event {
 		out = out[len(out)-f.Limit:] // the newest Limit, oldest first
 	}
 	return out
+}
+
+// Get returns the event with id, if it is still kept.
+func (l *EventLog) Get(id int64) (Event, bool) {
+	// Ids ascend: the first event above id-1 is id, or id is no longer kept.
+	if found := l.Search(EventFilter{AfterID: id - 1}); len(found) > 0 && found[0].ID == id {
+		return found[0], true
+	}
+	return Event{}, false
+}
+
+// MaxID returns the id of the newest event (0 when none was recorded).
+func (l *EventLog) MaxID() int64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.seq
 }
 
 // Count returns the number of events matching the filter.

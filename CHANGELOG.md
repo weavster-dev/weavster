@@ -71,6 +71,7 @@ All notable changes to this project are documented here, following
 - Config-as-code documents (#237): typed `alerts`, `snippets`, `snippetLibraries`, `scripts`, `configmap`, `settings` sections sharing the API shapes; unknown fields rejected everywhere; cross-artifact checks; JSON Schemas `alert`, `snippet`, `snippet-library` published in `agent-docs/schemas/`; `POST /api/v1/config/validate` and CLI `config validate "path"`.
 - Config-as-code plan (#239): `POST /api/v1/config/plan` and CLI `config diff` / `config plan` compare a document with the live configuration (adds, field-level updates, removals only in sections the document includes) without changing anything; the plan carries a fingerprint of the live state.
 - Config-as-code apply (#241): `POST /api/v1/config/apply?fingerprint=…` and CLI `config apply "path" [--dry-run] [reason]` apply a reviewed plan, refuse stale plans, roll back every applied change when one fails, and audit the plan, reason, and result.
+- Events API (#243): `from`, `to`, and `afterId` filters on `GET /api/v1/events`; `GET /api/v1/events/{id}`, `/count`, `/max-id`, and `/export` (JSON download).
 
 ### Changed
 

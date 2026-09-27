@@ -30,6 +30,11 @@ func (notImplementedSearch) Search(context.Context, MessageQuery) ([]Message, er
 func (notImplementedSearch) SearchEvents(context.Context, EventQuery) ([]Event, error) {
 	return nil, fmt.Errorf("%w: event archive", enterprise.ErrNotImplemented)
 }
+func (notImplementedSearch) GetEvent(context.Context, int64) (Event, error) { return Event{}, nil }
+func (notImplementedSearch) CountEvents(context.Context, EventQuery) (int, error) {
+	return 0, nil
+}
+func (notImplementedSearch) MaxEventID(context.Context) (int64, error) { return 0, nil }
 
 // TestErrorEnvelope: every error reply is the JSON envelope with the
 // status's code, and internal errors do not leak detail.

@@ -77,6 +77,14 @@ type fakeEvents struct{ err error }
 func (f fakeEvents) SearchEvents(context.Context, EventQuery) ([]Event, error) {
 	return []Event{{ID: 1, Type: "message.sent"}}, f.err
 }
+func (f fakeEvents) GetEvent(_ context.Context, id int64) (Event, error) {
+	if id != 1 {
+		return Event{}, ErrEventNotFound
+	}
+	return Event{ID: 1, Type: "message.sent"}, f.err
+}
+func (f fakeEvents) CountEvents(context.Context, EventQuery) (int, error) { return 1, f.err }
+func (f fakeEvents) MaxEventID(context.Context) (int64, error)            { return 1, f.err }
 
 func TestStatsAndEventsHandlers(t *testing.T) {
 	tests := []struct {

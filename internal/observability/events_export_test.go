@@ -35,3 +35,31 @@ func TestEventLogExport(t *testing.T) {
 		t.Fatalf("Export(since=future) len = %d, want 0", len(got))
 	}
 }
+
+func TestEventLogFiltersGetAndMaxID(t *testing.T) {
+	l := NewEventLog()
+	if l.MaxID() != 0 {
+		t.Error("empty log max id")
+	}
+	a := l.Add("flow.deployed", "", "a", nil)
+	b := l.Add("message.sent", "", "a", nil)
+	l.Add("message.sent", "", "b", nil)
+	if got := l.Search(EventFilter{AfterID: a.ID}); len(got) != 2 || got[0].ID != b.ID {
+		t.Errorf("afterId = %+v", got)
+	}
+	if got := l.Count(EventFilter{Until: a.At}); got < 1 {
+		t.Errorf("until = %d", got)
+	}
+	if got := l.Count(EventFilter{Until: a.At.Add(-time.Hour)}); got != 0 {
+		t.Errorf("until before all = %d", got)
+	}
+	if e, ok := l.Get(b.ID); !ok || e.Type != "message.sent" {
+		t.Errorf("get = %+v %v", e, ok)
+	}
+	if _, ok := l.Get(99); ok {
+		t.Error("get unknown")
+	}
+	if l.MaxID() != 3 {
+		t.Errorf("max id = %d", l.MaxID())
+	}
+}

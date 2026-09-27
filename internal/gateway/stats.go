@@ -2,8 +2,10 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -46,9 +48,11 @@ type Event struct {
 
 // EventQuery narrows an event search.
 type EventQuery struct {
-	Type   string
-	FlowID string
-	Limit  int // newest N matches
+	Type     string
+	FlowID   string
+	From, To time.Time // at or after / at or before; zero = open
+	AfterID  int64     // only events with a larger id
+	Limit    int       // newest N matches; 0 = all
 }
 
 // Event search limits.
@@ -57,10 +61,20 @@ const (
 	MaxEventLimit     = 10000
 )
 
-// EventSearcher searches the event log.
+// EventSearcher reads the event log.
 type EventSearcher interface {
 	SearchEvents(ctx context.Context, q EventQuery) ([]Event, error)
+	// GetEvent returns one event (ErrEventNotFound when unknown or no
+	// longer kept).
+	GetEvent(ctx context.Context, id int64) (Event, error)
+	// CountEvents counts the matches (q.Limit is ignored).
+	CountEvents(ctx context.Context, q EventQuery) (int, error)
+	// MaxEventID is the id of the newest event, 0 when there is none.
+	MaxEventID(ctx context.Context) (int64, error)
 }
+
+// ErrEventNotFound: no event has that id (or it is no longer kept).
+var ErrEventNotFound = errors.New("event not found")
 
 func (s *Server) handleFlowStats(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Stats == nil {
@@ -129,24 +143,134 @@ func (s *Server) handleResetStats(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+func (s *Server) eventsAvailable(w http.ResponseWriter) bool {
 	if s.cfg.Events == nil {
 		writeStatusError(w, http.StatusServiceUnavailable, "events unavailable")
+		return false
+	}
+	return true
+}
+
+// eventQuery reads the event filters (type, flowId, from, to, afterId) and,
+// with withLimit, limit; on a bad value it answers 400 and returns false.
+func eventQuery(w http.ResponseWriter, r *http.Request, withLimit bool) (EventQuery, bool) {
+	v := r.URL.Query()
+	q := EventQuery{Type: v.Get("type"), FlowID: v.Get("flowId")}
+	bad := func(msg string) (EventQuery, bool) {
+		writeStatusError(w, http.StatusBadRequest, msg)
+		return q, false
+	}
+	for _, p := range []struct {
+		name string
+		t    *time.Time
+	}{{"from", &q.From}, {"to", &q.To}} {
+		if raw := v.Get(p.name); raw != "" {
+			parsed, err := time.Parse(time.RFC3339, strings.ReplaceAll(raw, " ", "+")) // an unencoded "+" arrives as a space
+			if err != nil {
+				return bad(p.name + " must be an RFC 3339 time, for example 2026-09-26T12:00:00Z")
+			}
+			*p.t = parsed
+		}
+	}
+	if raw := v.Get("afterId"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n < 0 {
+			return bad("afterId must be 0 or more")
+		}
+		q.AfterID = n
+	}
+	if withLimit {
+		q.Limit = DefaultEventLimit
+		if raw := v.Get("limit"); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 || n > MaxEventLimit {
+				return bad("limit must be between 1 and 10000")
+			}
+			q.Limit = n
+		}
+	}
+	return q, true
+}
+
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if !s.eventsAvailable(w) {
 		return
 	}
-	limit := DefaultEventLimit
-	if v := r.URL.Query().Get("limit"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n < 1 || n > MaxEventLimit {
-			writeStatusError(w, http.StatusBadRequest, "limit must be between 1 and 10000")
-			return
-		}
-		limit = n
+	q, ok := eventQuery(w, r, true)
+	if !ok {
+		return
 	}
-	events, err := s.cfg.Events.SearchEvents(r.Context(), EventQuery{Type: r.URL.Query().Get("type"), FlowID: r.URL.Query().Get("flowId"), Limit: limit})
+	events, err := s.cfg.Events.SearchEvents(r.Context(), q)
 	if err != nil {
 		writeBackendError(w, err)
 		return
 	}
+	writeJSON(w, http.StatusOK, events)
+}
+
+func (s *Server) handleEventGet(w http.ResponseWriter, r *http.Request) {
+	if !s.eventsAvailable(w) {
+		return
+	}
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id < 1 {
+		writeStatusError(w, http.StatusBadRequest, "the event id must be a positive number")
+		return
+	}
+	e, err := s.cfg.Events.GetEvent(r.Context(), id)
+	if errors.Is(err, ErrEventNotFound) {
+		writeStatusError(w, http.StatusNotFound, "event not found (it may be older than the events kept)")
+		return
+	}
+	if err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, e)
+}
+
+func (s *Server) handleEventCount(w http.ResponseWriter, r *http.Request) {
+	if !s.eventsAvailable(w) {
+		return
+	}
+	q, ok := eventQuery(w, r, false)
+	if !ok {
+		return
+	}
+	n, err := s.cfg.Events.CountEvents(r.Context(), q)
+	if err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int{"count": n})
+}
+
+func (s *Server) handleEventMaxID(w http.ResponseWriter, r *http.Request) {
+	if !s.eventsAvailable(w) {
+		return
+	}
+	id, err := s.cfg.Events.MaxEventID(r.Context())
+	if err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]int64{"maxId": id})
+}
+
+// handleEventExport sends every match (no limit) as a JSON file.
+func (s *Server) handleEventExport(w http.ResponseWriter, r *http.Request) {
+	if !s.eventsAvailable(w) {
+		return
+	}
+	q, ok := eventQuery(w, r, false)
+	if !ok {
+		return
+	}
+	events, err := s.cfg.Events.SearchEvents(r.Context(), q)
+	if err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	w.Header().Set("Content-Disposition", `attachment; filename="events.json"`)
 	writeJSON(w, http.StatusOK, events)
 }
