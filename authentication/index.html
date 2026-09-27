@@ -77,6 +77,9 @@
                                 <a href="../alerts/" class="nav-link">Alerts</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../lookups/" class="nav-link">Dynamic Lookups</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../config-transfer/" class="nav-link">Configuration Export and Import</a>
                             </li>
                             <li class="nav-item">
@@ -361,6 +364,14 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>alerts:edit</code></td>
 </tr>
 <tr>
+<td><code>GET /api/v1/lookups…</code>, <code>POST /api/v1/lookups/{group}/batch</code></td>
+<td><code>lookups:view</code></td>
+</tr>
+<tr>
+<td><code>PUT</code>/<code>DELETE /api/v1/lookups/{group}/{key}</code>, <code>DELETE /api/v1/lookups/{group}</code>, <code>POST /api/v1/lookups/{group}/import</code></td>
+<td><code>lookups:edit</code></td>
+</tr>
+<tr>
 <td><code>POST /api/v1/config/apply</code></td>
 <td><code>flows:view</code>, <code>flows:edit</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>settings:edit</code>, and <code>configmap:edit</code></td>
 </tr>
@@ -383,8 +394,8 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 </code></pre>
 <p>The other permissions are <code>users:admin</code>, <code>flows:view</code>, <code>flows:edit</code>, <code>flows:deploy</code>,
 <code>messages:view</code>, <code>messages:send</code>, <code>messages:content</code>, <code>messages:delete</code>, <code>messages:import</code>,
-<code>events:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>configmap:edit</code>, and
-<code>settings:edit</code>.</p>
+<code>events:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>configmap:edit</code>,
+<code>settings:edit</code>, <code>lookups:view</code>, and <code>lookups:edit</code>.</p>
 <h2 id="manage-users">Manage users</h2>
 <p>An account with <code>users:admin</code> (or <code>admin</code>) manages the other accounts.</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/users -d '{
