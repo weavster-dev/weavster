@@ -564,15 +564,18 @@ func (a flowAdapter) lock(id string, skipDrain bool) func() {
 // halt waits for the flow's in-flight messages; halt takes effect at once
 // (force-stop, D-30).
 func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway.Flow, error) {
-	return a.transition(ctx, id, action, nil)
+	return a.transition(ctx, id, action, nil, nil)
 }
 
 // errNotEligible is returned by transition when its check refuses the flow.
 var errNotEligible = errors.New("flow not eligible")
 
 // transition is Transition with an optional check of the flow, made under
-// the flow's lock before anything changes (errNotEligible when it fails).
-func (a flowAdapter) transition(ctx context.Context, id, action string, check func(gateway.Flow) bool) (gateway.Flow, error) {
+// the flow's lock before anything changes (errNotEligible when it fails),
+// and an optional changed callback, told (under the lock) of every flow
+// whose status this call changed: dependencies deployed along the way, then
+// the flow itself.
+func (a flowAdapter) transition(ctx context.Context, id, action string, check func(gateway.Flow) bool, changed func(id string)) (gateway.Flow, error) {
 	defer a.lock(id, action == flowlife.Halt)()
 	f, err := a.Get(ctx, id)
 	if err != nil {
@@ -592,11 +595,15 @@ func (a flowAdapter) transition(ctx context.Context, id, action string, check fu
 		// Spec §6.1: deploy also deploys the flow's undeployed dependencies
 		// (D-31). Locks are taken along dependency edges, which are acyclic,
 		// so this cannot deadlock.
-		if err := a.deployDependencies(ctx, f); err != nil {
+		if err := a.deployDependencies(ctx, f, changed); err != nil {
 			return gateway.Flow{}, err
 		}
 	}
-	return a.setStatus(ctx, f, next)
+	out, err := a.setStatus(ctx, f, next)
+	if err == nil && changed != nil {
+		changed(id)
+	}
+	return out, err
 }
 
 // deployDependencies deploys every undeployed flow f depends on, directly or
@@ -605,7 +612,7 @@ func (a flowAdapter) transition(ctx context.Context, id, action string, check fu
 // global (id-sorted) order, so concurrent deploys cannot deadlock. A missing
 // dependency is ErrDependency; on a store failure the dependencies deployed
 // so far stay deployed (visible via GET).
-func (a flowAdapter) deployDependencies(ctx context.Context, root gateway.Flow) error {
+func (a flowAdapter) deployDependencies(ctx context.Context, root gateway.Flow, deployed func(id string)) error {
 	closure := map[string]gateway.Flow{}
 	var collect func(f gateway.Flow) error
 	collect = func(f gateway.Flow) error {
@@ -646,6 +653,9 @@ func (a flowAdapter) deployDependencies(ctx context.Context, root gateway.Flow) 
 		if dep.Status == flowlife.Undeployed {
 			if _, err := a.setStatus(ctx, dep, flowlife.Deployed); err != nil {
 				return err
+			}
+			if deployed != nil {
+				deployed(id)
 			}
 		}
 	}
@@ -804,7 +814,7 @@ func (a flowAdapter) DeployEnabled(ctx context.Context, logger *slog.Logger) {
 				return "", nil
 			}
 			// Same as a manual deploy: undeployed dependencies are deployed.
-			if err := a.deployDependencies(ctx, current); err != nil {
+			if err := a.deployDependencies(ctx, current, nil); err != nil {
 				return "", err
 			}
 			status := initialStatus(current)
@@ -911,11 +921,13 @@ func checkBatch(flows []gateway.Flow) ([]string, error) {
 
 // TransitionAll applies action to every flow it applies to, in dependency
 // order: dependencies first for deploy, start, and resume; dependents first
-// otherwise. deploy skips disabled flows (checked under each flow's lock, as
-// at startup), but an enabled flow's deploy still deploys its dependencies
-// (D-31), disabled or not. Changed lists every flow whose status the run
-// changed, those included; flows left alone are skipped with the reason. A
-// store failure stops the run (ErrTransitionIncomplete).
+// otherwise. deploy skips disabled undeployed flows (checked under each
+// flow's lock, as at startup), but an enabled flow's deploy still deploys its
+// dependencies (D-31), disabled or not. Changed lists, in the order they
+// happened, the flows this call changed (recorded under their locks);
+// skipped lists every other flow with the reason. A store failure stops the
+// run (ErrTransitionIncomplete): the failed flow is skipped as "failed" and
+// the ones not reached as "not attempted".
 func (a flowAdapter) TransitionAll(ctx context.Context, action string) (gateway.TransitionAllResult, error) {
 	res := gateway.TransitionAllResult{Changed: []string{}, Skipped: []gateway.SkippedFlow{}}
 	all, err := a.withFlows(ctx)
@@ -938,10 +950,18 @@ func (a flowAdapter) TransitionAll(ctx context.Context, action string) (gateway.
 		// Only undeployed flows would be deployed; others report why not.
 		check = func(f gateway.Flow) bool { return f.Enabled || f.Status != flowlife.Undeployed }
 	}
+	done := map[string]bool{}
+	record := func(id string) {
+		done[id] = true
+		res.Changed = append(res.Changed, id)
+	}
 	skipped := map[string]string{}
 	var runErr error
-	for _, id := range order {
-		_, err := a.transition(ctx, id, action, check)
+	for i, id := range order {
+		if done[id] { // already deployed as a dependency in this call
+			continue
+		}
+		_, err := a.transition(ctx, id, action, check, record)
 		switch {
 		case err == nil:
 		case errors.Is(err, errNotEligible):
@@ -952,17 +972,17 @@ func (a flowAdapter) TransitionAll(ctx context.Context, action string) (gateway.
 			skipped[id] = err.Error()
 		default:
 			runErr = fmt.Errorf("%w: flow %s: %w", gateway.ErrTransitionIncomplete, id, err)
+			skipped[id] = "failed" // no internal detail in the reply
+			for _, rest := range order[i+1:] {
+				skipped[rest] = "not attempted"
+			}
 		}
 		if runErr != nil {
 			break
 		}
 	}
-	// Report what actually changed: a dependency deployed along with its
-	// dependent counts as changed even if it was skipped itself.
 	for _, id := range order {
-		if cur, err := a.Get(ctx, id); err == nil && cur.Status != all[id].Status {
-			res.Changed = append(res.Changed, id)
-		} else if reason, ok := skipped[id]; ok {
+		if reason, ok := skipped[id]; ok && !done[id] {
 			res.Skipped = append(res.Skipped, gateway.SkippedFlow{ID: id, Reason: reason})
 		}
 	}

@@ -81,7 +81,8 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
   single `deploy` does; such a dependency is then listed in `changed`.
 - `changed` lists every flow whose status the call changed.
 - If the store fails part-way, the reply is
-  `500 {"error":{"code":"TRANSITION_INCOMPLETE",…},"changed":[…],"skipped":[…]}`.
+  `500 {"error":{"code":"TRANSITION_INCOMPLETE",…},"changed":[…],"skipped":[…]}`: the flow that
+  failed is skipped with reason `failed`, and the flows not reached with `not attempted`.
 
 ## What each status means for messages
 

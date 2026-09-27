@@ -565,7 +565,7 @@ func TestTransitionAll(t *testing.T) {
 		changed, skipped     string
 	}{
 		{"deploy with a disabled dependency", "deploy", "", false, nil, "dep,a", "off=disabled"},
-		{"store failure part-way", "start", "c", false, gateway.ErrTransitionIncomplete, "b", ""},
+		{"store failure part-way", "start", "b", false, gateway.ErrTransitionIncomplete, "", "b=failed,c=not attempted,off=not attempted"},
 		{"unknown action", "explode", "", false, gateway.ErrUnknownAction, "", ""},
 		{"failing list", "start", "", true, errors.New("any"), "", ""},
 	}
@@ -583,8 +583,8 @@ func TestTransitionAll(t *testing.T) {
 			res, err := flows.TransitionAll(ctx, tt.action)
 			var skipped []string
 			for _, sk := range res.Skipped {
-				if sk.Reason == "disabled" {
-					skipped = append(skipped, sk.ID+"=disabled")
+				if sk.Reason == "disabled" || sk.Reason == "failed" || sk.Reason == "not attempted" {
+					skipped = append(skipped, sk.ID+"="+sk.Reason)
 				}
 			}
 			switch {
@@ -596,7 +596,7 @@ func TestTransitionAll(t *testing.T) {
 				t.Errorf("changed = %q, want %q", got, tt.changed)
 			}
 			if got := strings.Join(skipped, ","); got != tt.skipped {
-				t.Errorf("skipped (disabled) = %q, want %q", got, tt.skipped)
+				t.Errorf("skipped (disabled, failed, not attempted) = %q, want %q", got, tt.skipped)
 			}
 		})
 	}
