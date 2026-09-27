@@ -38,21 +38,21 @@ func (fakeUsers) CreateUser(_ context.Context, nu NewUser) (UserInfo, error) {
 	return UserInfo{Username: nu.Username}, nil
 }
 
-func (fakeUsers) UpdateUser(_ context.Context, name string, _ UserUpdate) (UserInfo, error) {
+func (fakeUsers) UpdateUser(_ context.Context, name string, _ UserUpdate, _ bool) (UserInfo, error) {
 	if name == "last" {
 		return UserInfo{}, ErrLastAdmin
 	}
 	return UserInfo{Username: name}, nil
 }
 
-func (fakeUsers) DeleteUser(_ context.Context, name string) error {
+func (fakeUsers) DeleteUser(_ context.Context, name string, _ bool) error {
 	if name == "nobody" {
 		return ErrUserNotFound
 	}
 	return nil
 }
 
-func (fakeUsers) SetPassword(_ context.Context, name, _ string) error {
+func (fakeUsers) SetPassword(_ context.Context, name, _ string, _ bool) error {
 	if name == "nobody" {
 		return ErrUserNotFound
 	}
@@ -83,6 +83,7 @@ func TestUserHandlers(t *testing.T) {
 		{"set password", http.MethodPost, "/api/v1/users/u/password", `{"password":"x"}`, http.StatusNoContent, ""},
 		{"set password unknown", http.MethodPost, "/api/v1/users/nobody/password", `{"password":"x"}`, http.StatusNotFound, "user not found"},
 		{"set password bad json", http.MethodPost, "/api/v1/users/u/password", `{"pass":1}`, http.StatusBadRequest, "invalid JSON body"},
+		{"trailing data", http.MethodPost, "/api/v1/users", `{"username":"n"} {"x":1}`, http.StatusBadRequest, "trailing data"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

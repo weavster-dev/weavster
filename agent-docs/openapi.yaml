@@ -464,7 +464,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, description: "{username, password, permissions, email?, org?, mustChangePassword?}"}}
+          application/json: {schema: {$ref: "#/components/schemas/NewUser"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "201": {description: The new account, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -484,7 +484,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, description: "{permissions, email?, org?}"}}
+          application/json: {schema: {$ref: "#/components/schemas/UserUpdate"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: The updated account, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -506,7 +506,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, description: "{password}"}}
+          application/json: {schema: {$ref: "#/components/schemas/PasswordSet"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "204": {description: Set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -610,6 +610,41 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    UserInfo:
+      type: object
+      required: [username, permissions, mustChangePassword, locked]
+      properties:
+        username: {type: string}
+        email: {type: string}
+        org: {type: string}
+        permissions: {type: array, items: {type: string}}
+        mustChangePassword: {type: boolean}
+        locked: {type: boolean}
+    NewUser:
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username: {type: string, pattern: "^[A-Za-z0-9._@-]{1,64}$"}
+        password: {type: string, writeOnly: true}
+        email: {type: string}
+        org: {type: string}
+        permissions: {type: array, items: {type: string}, description: "From the documented permission set; default none"}
+        mustChangePassword: {type: boolean, default: true}
+    UserUpdate:
+      type: object
+      additionalProperties: false
+      required: [permissions]
+      properties:
+        permissions: {type: array, items: {type: string}}
+        email: {type: string, description: Kept when omitted}
+        org: {type: string, description: Kept when omitted}
+    PasswordSet:
+      type: object
+      additionalProperties: false
+      required: [password]
+      properties:
+        password: {type: string, writeOnly: true}
     Error:
       type: object
       description: "Every error reply (see docs/api-errors.md)."

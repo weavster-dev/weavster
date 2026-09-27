@@ -51,6 +51,7 @@ func TestUserAdministration(t *testing.T) {
 		{"cannot delete yourself", http.MethodDelete, "/api/v1/users/admin", ``, admin, http.StatusConflict, "your own account"},
 		{"last admin keeps admin", http.MethodPut, "/api/v1/users/admin", `{"permissions":["flows:view"]}`, admin, http.StatusConflict, "last account with the admin permission"},
 		{"unknown user", http.MethodGet, "/api/v1/users/nobody", ``, admin, http.StatusNotFound, "user not found"},
+		{"password for an unknown user", http.MethodPost, "/api/v1/users/nobody/password", `{"password":"a"}`, admin, http.StatusNotFound, "user not found"},
 	}
 	for _, s := range steps {
 		code, body, _ := c.do(s.method, s.path, s.body, s.creds)
@@ -116,6 +117,13 @@ func TestUserAdministration(t *testing.T) {
 	}
 	if code, _, _ := c.do(http.MethodGet, "/api/v1/users", "", bearer(own)); code != http.StatusOK {
 		t.Errorf("own session after updating yourself: %d, want 200", code)
+	}
+	// Setting your own password ends every session, your own too.
+	if code, _, _ := c.do(http.MethodPost, "/api/v1/users/useradm/password", `{"password":"Self-Reset-Passw0rd"}`, bearer(own)); code != http.StatusNoContent {
+		t.Fatalf("self reset: %d", code)
+	}
+	if code, _, _ := c.do(http.MethodGet, "/api/v1/users", "", bearer(own)); code != http.StatusUnauthorized {
+		t.Errorf("own session after resetting your own password: %d, want 401", code)
 	}
 	// Omitted email keeps it.
 	if _, body, _ := c.do(http.MethodPut, "/api/v1/users/useradm", `{"permissions":["users:admin","flows:view"]}`, admin); !strings.Contains(body, `"email":"me@example.com"`) {

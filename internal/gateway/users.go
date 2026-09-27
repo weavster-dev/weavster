@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 )
@@ -44,10 +45,13 @@ type UserAdmin interface {
 	ListUsers(ctx context.Context) ([]UserInfo, error)
 	GetUser(ctx context.Context, username string) (UserInfo, error)
 	CreateUser(ctx context.Context, u NewUser) (UserInfo, error)
-	UpdateUser(ctx context.Context, username string, u UserUpdate) (UserInfo, error)
-	DeleteUser(ctx context.Context, username string) error
+	// UpdateUser, DeleteUser, and SetPassword refuse an account that has
+	// admin unless asAdmin (ErrAdminTarget), checked atomically with the
+	// change.
+	UpdateUser(ctx context.Context, username string, u UserUpdate, asAdmin bool) (UserInfo, error)
+	DeleteUser(ctx context.Context, username string, asAdmin bool) error
 	// SetPassword sets a new password the user must change at next login.
-	SetPassword(ctx context.Context, username, password string) error
+	SetPassword(ctx context.Context, username, password string, asAdmin bool) error
 }
 
 // User administration errors.
@@ -57,6 +61,9 @@ var (
 	// ErrInvalidUser: a bad username, permission, or password (policy);
 	// wrapped with a message that is safe to show.
 	ErrInvalidUser = errors.New("invalid user")
+	// ErrAdminTarget: only an account with admin may change an account
+	// that has admin.
+	ErrAdminTarget = errors.New("only an account with admin can change an account that has admin")
 	// ErrLastAdmin: the change would leave no account with admin.
 	ErrLastAdmin = errors.New("the last account with the admin permission cannot be removed or lose it")
 )
@@ -67,6 +74,8 @@ func writeUserError(w http.ResponseWriter, err error) {
 		writeStatusError(w, http.StatusNotFound, "user not found")
 	case errors.Is(err, ErrUserExists):
 		writeStatusError(w, http.StatusConflict, "user already exists")
+	case errors.Is(err, ErrAdminTarget):
+		writeStatusError(w, http.StatusForbidden, ErrAdminTarget.Error())
 	case errors.Is(err, ErrLastAdmin):
 		writeStatusError(w, http.StatusConflict, ErrLastAdmin.Error())
 	case errors.Is(err, ErrInvalidUser):
@@ -80,7 +89,13 @@ func writeUserError(w http.ResponseWriter, err error) {
 func decodeStrict(w http.ResponseWriter, r *http.Request, v any) bool {
 	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	dec.DisallowUnknownFields()
-	if err := dec.Decode(v); err != nil {
+	err := dec.Decode(v)
+	if err == nil {
+		if _, tokErr := dec.Token(); tokErr != io.EOF {
+			err = errors.New("trailing data after the JSON document")
+		}
+	}
+	if err != nil {
 		writeStatusError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return false
 	}
@@ -106,35 +121,16 @@ func mayGrant(r *http.Request, perms []string) error {
 	return nil
 }
 
-// mayManage checks that the caller may change the account name: only an
-// account with admin may change an account that has admin.
-func (s *Server) mayManage(r *http.Request, name string) (int, error) {
+// asAdmin reports whether the caller has admin (or authentication is off).
+func asAdmin(r *http.Request) bool {
 	id, ok := IdentityFrom(r.Context())
-	if !ok || slices.Contains(id.Permissions, permAdmin) {
-		return 0, nil
-	}
-	target, err := s.cfg.Users.GetUser(r.Context(), name)
-	if err != nil {
-		return 0, err
-	}
-	if slices.Contains(target.Permissions, permAdmin) {
-		return http.StatusForbidden, errors.New("only an account with admin can change an account that has admin")
-	}
-	return 0, nil
+	return !ok || slices.Contains(id.Permissions, permAdmin)
 }
 
-// guard runs the escalation checks; on refusal it answers and returns false.
-func (s *Server) guard(w http.ResponseWriter, r *http.Request, name string, perms []string) bool {
-	if name != "" {
-		if status, err := s.mayManage(r, name); err != nil {
-			if status != 0 {
-				writeStatusError(w, status, err.Error())
-			} else {
-				writeUserError(w, err)
-			}
-			return false
-		}
-	}
+// guard checks the permissions the caller would grant; on refusal it
+// answers and returns false. (Whether the caller may change the target
+// account is checked by the UserAdmin, atomically with the change.)
+func (s *Server) guard(w http.ResponseWriter, r *http.Request, perms []string) bool {
 	if err := mayGrant(r, perms); err != nil {
 		writeStatusError(w, http.StatusForbidden, err.Error())
 		return false
@@ -188,7 +184,7 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var nu NewUser
-	if !decodeStrict(w, r, &nu) || !s.guard(w, r, "", nu.Permissions) {
+	if !decodeStrict(w, r, &nu) || !s.guard(w, r, nu.Permissions) {
 		return
 	}
 	u, err := s.cfg.Users.CreateUser(r.Context(), nu)
@@ -212,10 +208,10 @@ func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("name")
-	if !s.guard(w, r, name, *uu.Permissions) {
+	if !s.guard(w, r, *uu.Permissions) {
 		return
 	}
-	u, err := s.cfg.Users.UpdateUser(r.Context(), name, uu)
+	u, err := s.cfg.Users.UpdateUser(r.Context(), name, uu, asAdmin(r))
 	if err != nil {
 		writeUserError(w, err)
 		return
@@ -233,10 +229,7 @@ func (s *Server) handleUserDelete(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusConflict, "you cannot delete your own account")
 		return
 	}
-	if !s.guard(w, r, name, nil) {
-		return
-	}
-	if err := s.cfg.Users.DeleteUser(r.Context(), name); err != nil {
+	if err := s.cfg.Users.DeleteUser(r.Context(), name, asAdmin(r)); err != nil {
 		writeUserError(w, err)
 		return
 	}
@@ -255,13 +248,10 @@ func (s *Server) handleUserSetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("name")
-	if !s.guard(w, r, name, nil) {
-		return
-	}
-	if err := s.cfg.Users.SetPassword(r.Context(), name, body.Password); err != nil {
+	if err := s.cfg.Users.SetPassword(r.Context(), name, body.Password, asAdmin(r)); err != nil {
 		writeUserError(w, err)
 		return
 	}
-	s.sessions.revokeUser(name, ownToken(r, name))
+	s.sessions.revokeUser(name, "") // every session, the caller's own too: the old password is gone
 	w.WriteHeader(http.StatusNoContent)
 }

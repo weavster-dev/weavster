@@ -170,8 +170,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 - You cannot delete your own account, and the last account with `admin` cannot be deleted or
   lose `admin` (`409`).
 - An account with `users:admin` but not `admin` can only grant permissions it holds itself, never
-  `admin`, and cannot change, reset, or delete an account that has `admin` (`403`). Changing your
-  own account keeps your own session.
+  `admin`, and cannot change, reset, or delete an account that has `admin` (`403`).
+- Editing your own account (`PUT`) keeps your own session; setting your own password ends every
+  session, yours included.
 - Invalid input returns `400` with the reason, an existing username `409`, and an unknown user
   `404`.
 

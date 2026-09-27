@@ -403,6 +403,12 @@ func (p *LocalProvider) ChangePassword(ctx context.Context, username, oldPasswor
 // policy applies (not the history), the user must change it at the next
 // login, and a lockout is cleared.
 func (p *LocalProvider) SetPassword(ctx context.Context, username, newPassword string) error {
+	p.mu.Lock()
+	_, exists := p.users[username]
+	p.mu.Unlock()
+	if !exists { // before the (expensive) hash; checked again under the lock
+		return ErrUserNotFound
+	}
 	if err := p.opts.Policy.Validate(newPassword); err != nil {
 		return fmt.Errorf("%w: %w", ErrPasswordPolicy, err)
 	}

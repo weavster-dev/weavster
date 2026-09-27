@@ -19,7 +19,8 @@ import (
 var validUsername = regexp.MustCompile(`^[A-Za-z0-9._@-]{1,64}$`)
 
 // userAdminAdapter serves user administration from the local provider.
-// Changes that could remove the last admin are serialized.
+// Changes are serialized, so the last-admin and admin-target checks hold
+// until the change is made.
 type userAdminAdapter struct {
 	p  *auth.LocalProvider
 	mu *sync.Mutex
@@ -80,7 +81,7 @@ func (a userAdminAdapter) CreateUser(ctx context.Context, nu gateway.NewUser) (g
 	return a.GetUser(ctx, nu.Username)
 }
 
-func (a userAdminAdapter) UpdateUser(ctx context.Context, username string, uu gateway.UserUpdate) (gateway.UserInfo, error) {
+func (a userAdminAdapter) UpdateUser(ctx context.Context, username string, uu gateway.UserUpdate, asAdmin bool) (gateway.UserInfo, error) {
 	perms := []string{}
 	if uu.Permissions != nil {
 		perms = *uu.Permissions
@@ -93,6 +94,9 @@ func (a userAdminAdapter) UpdateUser(ctx context.Context, username string, uu ga
 	current, err := a.p.GetUser(ctx, username)
 	if err != nil {
 		return gateway.UserInfo{}, userErr(err)
+	}
+	if !asAdmin && slices.Contains(current.Permissions, auth.PermAdmin) {
+		return gateway.UserInfo{}, gateway.ErrAdminTarget
 	}
 	if !slices.Contains(perms, auth.PermAdmin) {
 		if err := a.keepAnAdmin(ctx, username); err != nil {
@@ -112,9 +116,12 @@ func (a userAdminAdapter) UpdateUser(ctx context.Context, username string, uu ga
 	return a.GetUser(ctx, username)
 }
 
-func (a userAdminAdapter) DeleteUser(ctx context.Context, username string) error {
+func (a userAdminAdapter) DeleteUser(ctx context.Context, username string, asAdmin bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if err := a.adminTarget(ctx, username, asAdmin); err != nil {
+		return err
+	}
 	if err := a.keepAnAdmin(ctx, username); err != nil {
 		return err
 	}
@@ -144,8 +151,26 @@ func (a userAdminAdapter) keepAnAdmin(ctx context.Context, username string) erro
 	return nil
 }
 
-func (a userAdminAdapter) SetPassword(ctx context.Context, username, password string) error {
+func (a userAdminAdapter) SetPassword(ctx context.Context, username, password string, asAdmin bool) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := a.adminTarget(ctx, username, asAdmin); err != nil {
+		return err
+	}
 	return userErr(a.p.SetPassword(ctx, username, password))
+}
+
+// adminTarget refuses a caller without admin when username has admin.
+// Callers hold a.mu, so no concurrent change grants admin in between.
+func (a userAdminAdapter) adminTarget(ctx context.Context, username string, asAdmin bool) error {
+	u, err := a.p.GetUser(ctx, username)
+	if err != nil {
+		return userErr(err)
+	}
+	if !asAdmin && slices.Contains(u.Permissions, auth.PermAdmin) {
+		return gateway.ErrAdminTarget
+	}
+	return nil
 }
 
 // userErr translates the provider's errors: a password the policy rejects
