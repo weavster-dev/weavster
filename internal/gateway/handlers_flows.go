@@ -17,23 +17,23 @@ import (
 func writeFlowError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, ErrFlowNotFound):
-		http.Error(w, "flow not found", http.StatusNotFound)
+		writeStatusError(w, http.StatusNotFound, "flow not found")
 	case errors.Is(err, ErrUnknownAction), errors.Is(err, ErrDestinationNotFound):
-		http.Error(w, err.Error(), http.StatusNotFound)
+		writeStatusError(w, http.StatusNotFound, err.Error())
 	case errors.Is(err, ErrFlowExists):
-		http.Error(w, "flow already exists", http.StatusConflict)
+		writeStatusError(w, http.StatusConflict, "flow already exists")
 	case errors.Is(err, ErrFlowNotRunning), errors.Is(err, ErrInvalidTransition), errors.Is(err, ErrFlowInUse), errors.Is(err, ErrImportConflict), errors.Is(err, ErrDependency):
-		http.Error(w, err.Error(), http.StatusConflict)
+		writeStatusError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrInvalidFlow), errors.Is(err, ErrInvalidMessage):
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeStatusError(w, http.StatusBadRequest, err.Error())
 	default:
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeBackendError(w, err)
 	}
 }
 
 func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Flows == nil {
-		http.Error(w, "flows unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flows unavailable")
 		return
 	}
 	flows, err := s.cfg.Flows.List(r.Context())
@@ -46,7 +46,7 @@ func (s *Server) handleFlowsList(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleFlowsGet(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Flows == nil {
-		http.Error(w, "flows unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flows unavailable")
 		return
 	}
 	f, err := s.cfg.Flows.Get(r.Context(), r.PathValue("id"))
@@ -74,16 +74,16 @@ func runtimeFieldError(doc map[string]any) string {
 func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, map[string]any, bool) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "could not read request body", http.StatusBadRequest)
+		writeStatusError(w, http.StatusBadRequest, "could not read request body")
 		return Flow{}, nil, false
 	}
 	doc, err := flowdef.ParseDoc(body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeStatusError(w, http.StatusBadRequest, err.Error())
 		return Flow{}, nil, false
 	}
 	if msg := runtimeFieldError(doc); msg != "" {
-		http.Error(w, msg, http.StatusBadRequest)
+		writeStatusError(w, http.StatusBadRequest, msg)
 		return Flow{}, nil, false
 	}
 	if pathID != "" {
@@ -92,20 +92,20 @@ func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, ma
 			doc["id"] = pathID
 		case string:
 			if id != pathID {
-				http.Error(w, "flow id cannot be changed; the id in the body must match the URL", http.StatusBadRequest)
+				writeStatusError(w, http.StatusBadRequest, "flow id cannot be changed; the id in the body must match the URL")
 				return Flow{}, nil, false
 			}
 		}
 	}
 	// The schema enforces the id format and reserved ids too.
 	if err := flowdef.ValidateDoc(doc); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeStatusError(w, http.StatusBadRequest, err.Error())
 		return Flow{}, nil, false
 	}
 	normalized, _ := json.Marshal(doc) // a valid document re-encodes
 	var f Flow
 	if err := json.Unmarshal(normalized, &f); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeStatusError(w, http.StatusBadRequest, err.Error())
 		return Flow{}, nil, false
 	}
 	return f, doc, true
@@ -113,7 +113,7 @@ func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, ma
 
 func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Flows == nil {
-		http.Error(w, "flows unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flows unavailable")
 		return
 	}
 	f, _, ok := decodeFlow(w, r, "")
@@ -130,7 +130,7 @@ func (s *Server) handleFlowsCreate(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleFlowsUpdate(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.FlowUpdates == nil {
-		http.Error(w, "flow updates unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flow updates unavailable")
 		return
 	}
 	f, doc, ok := decodeFlow(w, r, r.PathValue("id"))
@@ -150,7 +150,7 @@ func (s *Server) handleFlowsUpdate(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFlowEnable(enabled bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.FlowUpdates == nil {
-			http.Error(w, "flow updates unavailable", http.StatusServiceUnavailable)
+			writeStatusError(w, http.StatusServiceUnavailable, "flow updates unavailable")
 			return
 		}
 		f, err := s.cfg.FlowUpdates.SetEnabled(r.Context(), r.PathValue("id"), enabled)
@@ -164,7 +164,7 @@ func (s *Server) handleFlowEnable(enabled bool) http.HandlerFunc {
 
 func (s *Server) handleFlowsDelete(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Flows == nil {
-		http.Error(w, "flows unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flows unavailable")
 		return
 	}
 	if err := s.cfg.Flows.Delete(r.Context(), r.PathValue("id")); err != nil {
@@ -179,17 +179,17 @@ const maxMessageBytes = 10 << 20
 
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Ingest == nil {
-		http.Error(w, "message processing unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "message processing unavailable")
 		return
 	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxMessageBytes))
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			http.Error(w, "message body larger than 10 MiB", http.StatusRequestEntityTooLarge)
+			writeStatusError(w, http.StatusRequestEntityTooLarge, "message body larger than 10 MiB")
 			return
 		}
-		http.Error(w, "could not read message body", http.StatusBadRequest)
+		writeStatusError(w, http.StatusBadRequest, "could not read message body")
 		return
 	}
 	res, err := s.cfg.Ingest.Ingest(r.Context(), r.PathValue("id"), body)
@@ -203,7 +203,7 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFlowAction(w http.ResponseWriter, r *http.Request) {
 	action := r.PathValue("action")
 	if s.cfg.Lifecycle == nil {
-		http.Error(w, "flow lifecycle unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flow lifecycle unavailable")
 		return
 	}
 	f, err := s.cfg.Lifecycle.Transition(r.Context(), r.PathValue("id"), action)
@@ -216,14 +216,13 @@ func (s *Server) handleFlowAction(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRedeployAll(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Lifecycle == nil {
-		http.Error(w, "flow lifecycle unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flow lifecycle unavailable")
 		return
 	}
 	flows, err := s.cfg.Lifecycle.RedeployAll(r.Context())
 	if err != nil {
 		// Report the flows already redeployed so the caller knows the state.
-		writeJSON(w, http.StatusInternalServerError, map[string]any{
-			"error":      map[string]string{"code": "REDEPLOY_INCOMPLETE", "message": "redeploy-all stopped before finishing; see redeployed"},
+		writeErrorWith(w, http.StatusInternalServerError, "REDEPLOY_INCOMPLETE", "redeploy-all stopped before finishing; see redeployed", map[string]any{
 			"redeployed": flows,
 		})
 		return
@@ -239,21 +238,21 @@ func decodeFlowList(w http.ResponseWriter, raws []json.RawMessage) ([]Flow, []bo
 	for i, raw := range raws {
 		doc, err := flowdef.ParseDoc(raw)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
+			writeStatusError(w, http.StatusBadRequest, fmt.Sprintf("flows[%d]: not a flow object", i))
 			return nil, nil, false
 		}
 		if msg := runtimeFieldError(doc); msg != "" {
-			http.Error(w, fmt.Sprintf("flows[%d]: %s", i, msg), http.StatusBadRequest)
+			writeStatusError(w, http.StatusBadRequest, fmt.Sprintf("flows[%d]: %s", i, msg))
 			return nil, nil, false
 		}
 		// The schema also enforces the id format and reserved ids.
 		if err := flowdef.ValidateDoc(doc); err != nil {
-			http.Error(w, fmt.Sprintf("flows[%d]: %v", i, err), http.StatusBadRequest)
+			writeStatusError(w, http.StatusBadRequest, fmt.Sprintf("flows[%d]: %v", i, err))
 			return nil, nil, false
 		}
 		var f Flow
 		if err := json.Unmarshal(raw, &f); err != nil {
-			http.Error(w, fmt.Sprintf("flows[%d]: not a flow object", i), http.StatusBadRequest)
+			writeStatusError(w, http.StatusBadRequest, fmt.Sprintf("flows[%d]: not a flow object", i))
 			return nil, nil, false
 		}
 		_, sets := doc["enabled"]
@@ -289,10 +288,10 @@ func decodeFlowsBody(w http.ResponseWriter, r *http.Request, shape string) (flow
 	if err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
-			http.Error(w, "document larger than 50 MiB", http.StatusRequestEntityTooLarge)
+			writeStatusError(w, http.StatusRequestEntityTooLarge, "document larger than 50 MiB")
 			return doc, false
 		}
-		http.Error(w, "body must be "+shape, http.StatusBadRequest)
+		writeStatusError(w, http.StatusBadRequest, "body must be "+shape)
 		return doc, false
 	}
 	return doc, true
@@ -306,7 +305,7 @@ const maxImportBytes = 50 << 20
 
 func (s *Server) handleFlowsExport(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Transfer == nil {
-		http.Error(w, "flow export unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flow export unavailable")
 		return
 	}
 	var ids []string
@@ -323,14 +322,14 @@ func (s *Server) handleFlowsExport(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Transfer == nil {
-		http.Error(w, "flow import unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flow import unavailable")
 		return
 	}
 	overwrite := false
 	if v := r.URL.Query().Get("overwrite"); v != "" {
 		var err error
 		if overwrite, err = strconv.ParseBool(v); err != nil {
-			http.Error(w, "overwrite must be true or false", http.StatusBadRequest)
+			writeStatusError(w, http.StatusBadRequest, "overwrite must be true or false")
 			return
 		}
 	}
@@ -340,7 +339,7 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 	}
 	var version int
 	if json.Unmarshal(bundle.Version, &version) != nil || version != FlowBundleVersion {
-		http.Error(w, fmt.Sprintf("unsupported export version %s; expected %d", bundle.Version, FlowBundleVersion), http.StatusBadRequest)
+		writeStatusError(w, http.StatusBadRequest, fmt.Sprintf("unsupported export version %s; expected %d", bundle.Version, FlowBundleVersion))
 		return
 	}
 	flows, _, ok := decodeFlowList(w, *bundle.Flows)
@@ -349,8 +348,7 @@ func (s *Server) handleFlowsImport(w http.ResponseWriter, r *http.Request) {
 	}
 	res, err := s.cfg.Transfer.Import(r.Context(), flows, overwrite)
 	if errors.Is(err, ErrImportIncomplete) {
-		writeJSON(w, http.StatusInternalServerError, map[string]any{
-			"error":   map[string]string{"code": "IMPORT_INCOMPLETE", "message": "import stopped part-way; created and updated list what was written"},
+		writeErrorWith(w, http.StatusInternalServerError, "IMPORT_INCOMPLETE", "import stopped part-way; created and updated list what was written", map[string]any{
 			"created": res.Created, "updated": res.Updated,
 		})
 		return
@@ -369,11 +367,11 @@ func (s *Server) handleDestinationAction(w http.ResponseWriter, r *http.Request)
 		running = true
 	case "stop":
 	default:
-		http.NotFound(w, r)
+		writeStatusError(w, http.StatusNotFound, "unknown destination action (use start or stop)")
 		return
 	}
 	if s.cfg.Lifecycle == nil {
-		http.Error(w, "flow lifecycle unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flow lifecycle unavailable")
 		return
 	}
 	f, err := s.cfg.Lifecycle.SetDestinationRunning(r.Context(), r.PathValue("id"), r.PathValue("dest"), running)
@@ -386,7 +384,7 @@ func (s *Server) handleDestinationAction(w http.ResponseWriter, r *http.Request)
 
 func (s *Server) handleFlowsBulkUpdate(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.FlowUpdates == nil {
-		http.Error(w, "flow updates unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flow updates unavailable")
 		return
 	}
 	body, ok := decodeFlowsBody(w, r, `{"flows":[...]}`)
@@ -394,7 +392,7 @@ func (s *Server) handleFlowsBulkUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if body.Version != nil {
-		http.Error(w, `body must be {"flows":[...]}; version belongs to import documents`, http.StatusBadRequest)
+		writeStatusError(w, http.StatusBadRequest, `body must be {"flows":[...]}; version belongs to import documents`)
 		return
 	}
 	flows, setsEnabled, ok := decodeFlowList(w, *body.Flows)
@@ -409,12 +407,11 @@ func (s *Server) handleFlowsBulkUpdate(w http.ResponseWriter, r *http.Request) {
 	updated, err := s.cfg.FlowUpdates.UpdateMany(r.Context(), changes)
 	switch {
 	case errors.Is(err, ErrUpdateIncomplete):
-		writeJSON(w, http.StatusInternalServerError, map[string]any{
-			"error":   map[string]string{"code": "UPDATE_INCOMPLETE", "message": "bulk update stopped part-way; updated lists what was written"},
+		writeErrorWith(w, http.StatusInternalServerError, "UPDATE_INCOMPLETE", "bulk update stopped part-way; updated lists what was written", map[string]any{
 			"updated": updated,
 		})
 	case errors.Is(err, ErrFlowNotFound):
-		http.Error(w, err.Error(), http.StatusNotFound) // names the missing flows
+		writeStatusError(w, http.StatusNotFound, err.Error()) // names the missing flows
 	case err != nil:
 		writeFlowError(w, err)
 	default:
@@ -432,7 +429,7 @@ type ConnectorNames struct {
 
 func (s *Server) handleConnectorNames(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Flows == nil {
-		http.Error(w, "flows unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "flows unavailable")
 		return
 	}
 	flows, err := s.cfg.Flows.List(r.Context())

@@ -32,17 +32,20 @@ paths:
                 password: {type: string}
                 mfaCode: {type: string}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: "Token, expiresAt, and user"}
         "401": {description: Invalid username or password}
   /api/v1/auth/logout:
     post:
       summary: Revoke the bearer token used for this request
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "204": {description: Logged out}
   /api/v1/auth/me:
     get:
       summary: Current user, permissions, and whether a password change is required
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: Current user}
   /api/v1/auth/password:
     post:
@@ -58,18 +61,21 @@ paths:
                 oldPassword: {type: string}
                 newPassword: {type: string}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "204": {description: Password changed}
         "400": {description: New password rejected by the password policy}
   /api/v1/system:
     get:
       summary: System status
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200":
           description: System information
   /api/v1/topology:
     get:
       summary: Flow topology overview graph (read-only)
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200":
           description: Overview graph
   /api/v1/topology/flows/{flowId}:
@@ -81,16 +87,19 @@ paths:
           required: true
           schema: {type: string}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200":
           description: Flow-internal graph
   /api/v1/flows:
     get:
       summary: List flows
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: Flow list}
     post:
       summary: Create flow
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "201": {description: Created}
     put:
       summary: Replace several flow definitions; each keeps its status, stopped destinations, and (unless set) enabled (requires flows:edit)
@@ -100,6 +109,7 @@ paths:
           application/json:
             schema: {type: object, description: "{flows: [flow definitions]}"}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: "{updated: [ids]}"}
         "400": {description: Invalid document, flow, or dependencies; nothing written}
         "404": {description: Unknown flows (listed); nothing written}
@@ -109,11 +119,13 @@ paths:
     get:
       summary: List every flow's source type and destination names (requires flows:view)
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: "[{id, name, sourceType, destinations: [names]}]"}
   /api/v1/flows/ports-in-use:
     get:
       summary: List the ports the server listens on (requires flows:view)
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: "[{address, port, usedBy}]"}
   /api/v1/flows/{id}:
     get:
@@ -121,6 +133,7 @@ paths:
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: The flow}
         "404": {description: Unknown flow}
     delete:
@@ -128,6 +141,7 @@ paths:
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "204": {description: Deleted}
         "404": {description: Unknown flow}
         "409": {description: Other flows depend on this flow}
@@ -141,6 +155,7 @@ paths:
           application/json:
             schema: {type: object}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: The updated flow}
         "400": {description: Invalid definition, a status field, or a different id in the body}
         "404": {description: Unknown flow}
@@ -150,6 +165,7 @@ paths:
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: The updated flow}
         "404": {description: Unknown flow}
   /api/v1/flows/{id}/disable:
@@ -158,6 +174,7 @@ paths:
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: The updated flow}
         "404": {description: Unknown flow}
   /api/v1/flows/{id}/destinations/{name}/{action}:
@@ -168,6 +185,7 @@ paths:
         - {name: name, in: path, required: true, schema: {type: string}}
         - {name: action, in: path, required: true, schema: {type: string, enum: [start, stop]}}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: "The flow; stoppedDestinations lists stopped destinations"}
         "404": {description: Unknown flow, destination, or action}
   /api/v1/flows/{id}/{action}:
@@ -183,6 +201,7 @@ paths:
           required: true
           schema: {type: string, enum: [deploy, undeploy, start, stop, pause, halt, resume]}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: The updated flow}
         "404": {description: Unknown flow or action}
         "409": {description: "Transition not allowed from the flow's status"}
@@ -195,6 +214,7 @@ paths:
           description: Comma-separated flow ids; omit for all flows
           schema: {type: string}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: "{version: 1, flows: [definitions without status]}"}
         "404": {description: Unknown flow id}
   /api/v1/flows/import:
@@ -210,6 +230,7 @@ paths:
           application/json:
             schema: {type: object}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: "{created: [ids], updated: [ids]}"}
         "400": {description: Invalid document, flow, or dependencies; nothing written}
         "409": {description: Flows already exist and overwrite is not set; nothing written}
@@ -219,6 +240,7 @@ paths:
     post:
       summary: Undeploy and re-deploy every flow that is not undeployed (deployed, started, paused, halted, stopped); each ends deployed (requires flows:deploy)
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: The redeployed flows}
         "500": {description: "Stopped part-way: {error: {code: REDEPLOY_INCOMPLETE}, redeployed: [flows already redeployed]}"}
   /api/v1/flows/{id}/messages:
@@ -241,6 +263,7 @@ paths:
           application/octet-stream:
             schema: {type: string, format: binary}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "202": {description: "Processed: {id, status, response?} with status sent, queued, dead-lettered, filtered, or errored; response is the responseSelector destination's reply"}
         "400": {description: The flow or a destination has a transform (a responseTransform does not count) and the body is not a single JSON object, or the body could not be read}
         "404": {description: Unknown flow}
@@ -258,6 +281,7 @@ paths:
           in: query
           schema: {type: boolean}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: "received, filtered, transformed, sent, errored, queued, destinations, lastMessageAt"}
         "400": {description: lifetime is not a boolean}
         "404": {description: Unknown flow}
@@ -276,12 +300,14 @@ paths:
           description: Newest N matching events (1-10000, default 1000)
           schema: {type: integer, minimum: 1, maximum: 10000}
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: "Events, oldest first: id, at, type, flowId, data"}
         "400": {description: Invalid limit}
   /api/v1/messages:
     get:
       summary: Search messages
       responses:
+        default: {$ref: "#/components/responses/Error"}
         "200": {description: Message search results}
 security:
   - basicAuth: []
@@ -293,6 +319,24 @@ components:
     basicAuth: {type: http, scheme: basic}
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
+  schemas:
+    Error:
+      type: object
+      description: "Every error reply (see docs/api-errors.md)."
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string, description: "Stable code, e.g. NOT_FOUND, CONFLICT, NOT_IMPLEMENTED"}
+            message: {type: string}
+  responses:
+    Error:
+      description: Error envelope
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Error"}
 `
 
 // OpenAPISpec returns the OpenAPI 3.1 contract.

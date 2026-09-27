@@ -59,14 +59,14 @@ type EventSearcher interface {
 
 func (s *Server) handleFlowStats(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Stats == nil {
-		http.Error(w, "statistics unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "statistics unavailable")
 		return
 	}
 	lifetime := false
 	if v := r.URL.Query().Get("lifetime"); v != "" {
 		var err error
 		if lifetime, err = strconv.ParseBool(v); err != nil {
-			http.Error(w, "lifetime must be true or false", http.StatusBadRequest)
+			writeStatusError(w, http.StatusBadRequest, "lifetime must be true or false")
 			return
 		}
 	}
@@ -80,21 +80,21 @@ func (s *Server) handleFlowStats(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Events == nil {
-		http.Error(w, "events unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "events unavailable")
 		return
 	}
 	limit := DefaultEventLimit
 	if v := r.URL.Query().Get("limit"); v != "" {
 		n, err := strconv.Atoi(v)
 		if err != nil || n < 1 || n > MaxEventLimit {
-			http.Error(w, "limit must be between 1 and 10000", http.StatusBadRequest)
+			writeStatusError(w, http.StatusBadRequest, "limit must be between 1 and 10000")
 			return
 		}
 		limit = n
 	}
 	events, err := s.cfg.Events.SearchEvents(r.Context(), EventQuery{Type: r.URL.Query().Get("type"), FlowID: r.URL.Query().Get("flowId"), Limit: limit})
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeBackendError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, events)

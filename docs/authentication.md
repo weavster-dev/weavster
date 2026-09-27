@@ -145,5 +145,5 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
 Without them, `flow list` fails with exit code `2` and prints the server's reply:
 
 ```text
-Error: server returned 401 Unauthorized: {"error":{"code":"UNAUTHORIZED","message":"authentication required"}}
+Error: server returned 401 Unauthorized: authentication required
 ```

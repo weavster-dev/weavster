@@ -4,7 +4,7 @@ import "net/http"
 
 func (s *Server) handleMessagesSearch(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Messages == nil {
-		http.Error(w, "messages unavailable", http.StatusServiceUnavailable)
+		writeStatusError(w, http.StatusServiceUnavailable, "messages unavailable")
 		return
 	}
 	q := MessageQuery{
@@ -16,7 +16,7 @@ func (s *Server) handleMessagesSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	msgs, err := s.cfg.Messages.Search(r.Context(), q)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		writeBackendError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, msgs)

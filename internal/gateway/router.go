@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -11,7 +12,24 @@ import (
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(SecurityHeaders)
-	r.Use(BlockTrace)
+	// BlockTrace refuses TRACE before routing; say which methods the path
+	// does allow (RFC 9110 requires Allow on 405).
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			if req.Method == http.MethodTrace || req.Method == "TRACK" {
+				w.Header().Set("Allow", allowedMethods(r, req.URL.Path))
+			}
+			BlockTrace(next).ServeHTTP(w, req)
+		})
+	})
+	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
+		writeStatusError(w, http.StatusNotFound, "no such endpoint")
+	})
+	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
+		// A custom handler replaces chi's, which set Allow (RFC 9110).
+		w.Header().Set("Allow", allowedMethods(r, req.URL.Path))
+		writeStatusError(w, http.StatusMethodNotAllowed, "method not allowed for this endpoint")
+	})
 
 	// Unauthenticated metadata.
 	r.Get("/api/openapi.yaml", func(w http.ResponseWriter, _ *http.Request) {
@@ -63,4 +81,15 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// allowedMethods lists the methods the router serves for path.
+func allowedMethods(mux *chi.Mux, path string) string {
+	var allowed []string
+	for _, m := range []string{http.MethodGet, http.MethodHead, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		if mux.Match(chi.NewRouteContext(), m, path) {
+			allowed = append(allowed, m)
+		}
+	}
+	return strings.Join(allowed, ", ")
 }

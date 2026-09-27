@@ -28,7 +28,7 @@ func SecurityHeaders(next http.Handler) http.Handler {
 func RequireMarkerHeader(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get(MarkerHeader) != MarkerValue {
-			http.Error(w, "missing cross-site-request marker header", http.StatusBadRequest)
+			writeStatusError(w, http.StatusBadRequest, "missing cross-site-request marker header")
 			return
 		}
 		next.ServeHTTP(w, r)
@@ -39,7 +39,7 @@ func RequireMarkerHeader(next http.Handler) http.Handler {
 func BlockTrace(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodTrace || r.Method == "TRACK" {
-			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			writeStatusError(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
 		next.ServeHTTP(w, r)

@@ -19,7 +19,7 @@ The server checks dependencies on create, update, and import. It returns `400` w
 You cannot delete a flow that another flow depends on:
 
 ```text
-409 flow is a dependency of other flows: adt depended on by adt-archive
+409 {"error":{"code":"CONFLICT","message":"flow is a dependency of other flows: adt depended on by adt-archive"}}
 ```
 
 To prove nothing depends on it, the server must be able to read every other flow. If one is

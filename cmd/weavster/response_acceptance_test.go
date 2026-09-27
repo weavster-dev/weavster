@@ -30,7 +30,7 @@ func TestResponseSelector(t *testing.T) {
 	defer stop()
 
 	for body, want := range map[string]string{
-		`{"id":"x","responseSelector":"nope","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `"}]}`:                                                         `no destination named "nope"`,
+		`{"id":"x","responseSelector":"nope","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `"}]}`:                                                         `no destination named \"nope\"`, // JSON-escaped in the error envelope
 		`{"id":"x","responseSelector":"a","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `","responseTransform":{"steps":[{"build":{"template":"x"}}]}}]}`: "not supported yet",
 		`{"id":"x","responseSelector":"a","destinations":[{"name":"a","type":"file","dir":"` + t.TempDir() + `"}]}`:                                                        "sends no reply",
 	} {
