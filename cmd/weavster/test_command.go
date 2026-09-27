@@ -61,8 +61,12 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 	filter := fs.String("filter", "", "run fixtures whose name contains this substring")
 	format := fs.String("format", "junit", "output format: junit|json")
 	output := fs.String("output", "", "output directory")
-	if err := fs.Parse(args); err != nil {
-		return 2
+	if code, ok := parseFlags(fs, args, stderr); !ok {
+		if code == 0 {
+			fs.SetOutput(stdout)
+			fs.Usage()
+		}
+		return code
 	}
 
 	var results []testResult

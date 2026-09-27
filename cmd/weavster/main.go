@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -18,6 +19,25 @@ var (
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+// parseFlags parses args into fs. On failure it reports false and the exit
+// code: 0 for -help/--help (the caller prints usage), otherwise 2 after
+// printing "Error: <problem>" and the flag list (#107 D-45).
+func parseFlags(fs *flag.FlagSet, args []string, stderr io.Writer) (int, bool) {
+	out := fs.Output()
+	fs.SetOutput(io.Discard)
+	err := fs.Parse(args)
+	fs.SetOutput(out)
+	switch {
+	case err == nil:
+		return 0, true
+	case errors.Is(err, flag.ErrHelp):
+		return 0, false
+	}
+	_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+	fs.Usage()
+	return 2, false
 }
 
 // run is the composition-root entrypoint, separated from main for testability.
@@ -43,8 +63,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		help     = fs.Bool("h", false, "print usage and exit")
 		debug    = fs.Bool("d", false, "debug mode (print the cause chain of errors)")
 	)
-	if err := fs.Parse(args); err != nil {
-		return 2
+	if code, ok := parseFlags(fs, args, stderr); !ok {
+		if code == 0 {
+			printUsage(stdout)
+		}
+		return code
 	}
 	if *help {
 		printUsage(stdout)

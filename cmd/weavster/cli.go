@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -100,8 +101,12 @@ func (c *httpClient) Version(context.Context) string { return version }
 // the §3.3 exit code.
 func runScript(script []byte, client Client, stdout, stderr io.Writer, debug bool) int {
 	sc := bufio.NewScanner(bytes.NewReader(script))
+	sc.Buffer(make([]byte, 0, 64<<10), maxShellLine+2) // the shell's line limit
 	rc := 0
 	for sc.Scan() {
+		if len(sc.Bytes()) > maxShellLine { // the buffer has room for CRLF only
+			return shellError(stderr, debug, fmt.Errorf("reading the script: %w", bufio.ErrTooLong))
+		}
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -109,6 +114,9 @@ func runScript(script []byte, client Client, stdout, stderr io.Writer, debug boo
 		if code := dispatch(context.Background(), client, line, stdout, stderr, debug); code == 2 {
 			rc = 2
 		}
+	}
+	if err := sc.Err(); err != nil { // a line over the limit ends the script
+		return shellError(stderr, debug, fmt.Errorf("reading the script: %w", err))
 	}
 	return rc
 }

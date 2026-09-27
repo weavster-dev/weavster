@@ -30,6 +30,12 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 	if len(fields) == 0 {
 		return 0
 	}
+	// Spec §11: deprecated names still run, with a warning naming the
+	// replacement.
+	if repl, ok := deprecatedCommands[fields[0]]; ok {
+		_, _ = fmt.Fprintf(stderr, "Warning: %q is deprecated; use %q\n", fields[0], repl)
+		fields[0] = repl
+	}
 	switch fields[0] {
 	case "help":
 		printShellHelp(stdout)
@@ -105,6 +111,10 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return 2
 	}
 }
+
+// deprecatedCommands maps legacy command names to their replacements
+// (spec §3 renamings: channel → flow, code template → snippet).
+var deprecatedCommands = map[string]string{"channel": "flow", "codetemplate": "snippet"}
 
 // shellError prints err; in debug mode it adds each wrapped cause with its
 // type. It returns exit code 2.
