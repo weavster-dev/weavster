@@ -76,12 +76,17 @@ func runtimeFieldError(doc map[string]any) string {
 	return ""
 }
 
-// decodeFlow reads a flow definition from the request body. Clients never
+// decodeFlow reads a flow definition of at most maxImportBytes. Clients never
 // send status (lifecycle operations own it); pathID, when set, must match
 // any id in the body.
 func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, map[string]any, bool) {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxImportBytes))
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeStatusError(w, http.StatusRequestEntityTooLarge, "document larger than 50 MiB")
+			return Flow{}, nil, false
+		}
 		writeStatusError(w, http.StatusBadRequest, "could not read request body")
 		return Flow{}, nil, false
 	}
@@ -332,7 +337,7 @@ func (s *Server) handleActionAll(action string) http.HandlerFunc {
 // FlowBundleVersion is the export/import document version.
 const FlowBundleVersion = 1
 
-// maxImportBytes caps an import document.
+// maxImportBytes caps flow definition and import documents.
 const maxImportBytes = 50 << 20
 
 func (s *Server) handleFlowsExport(w http.ResponseWriter, r *http.Request) {
