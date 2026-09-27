@@ -98,7 +98,7 @@ func checkAlertAction(act AlertAction) error {
 	switch act.Type {
 	case "email":
 		if len(act.To) == 0 || act.URL != "" {
-			return errors.New("an email action needs to (a list of addresses) and no url")
+			return errors.New(`an email action needs "to" with at least one address, and no "url"`)
 		}
 		for _, addr := range act.To {
 			// A bare address only: no display name ("Ops <ops@example.com>").
@@ -109,7 +109,7 @@ func checkAlertAction(act AlertAction) error {
 	case "webhook":
 		u, err := url.Parse(act.URL)
 		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || len(act.To) != 0 {
-			return errors.New("a webhook action needs url (http or https) and no to")
+			return errors.New(`a webhook action needs "url" (an http or https URL), and no "to"`)
 		}
 		if u.User != nil {
 			return errors.New("a webhook url must not contain a user name or password; they would be shown to everyone who can read alerts")
