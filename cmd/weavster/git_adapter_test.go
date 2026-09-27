@@ -6,10 +6,14 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/gitstore"
 )
+
+var gitstoreAuthor = gitstore.Author{Name: "test"}
 
 func TestGitAdapterCommit(t *testing.T) {
 	dir := t.TempDir()
@@ -105,5 +109,82 @@ func TestManagedFile(t *testing.T) {
 		if got := managedFile(f); got != want {
 			t.Errorf("%s = %v, want %v", f, got, want)
 		}
+	}
+}
+
+func TestGitAdapterDocument(t *testing.T) {
+	a, err := newGitAdapter(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	if _, _, err := a.GitDocument(ctx, "HEAD"); !errors.Is(err, gateway.ErrGitNotFound) {
+		t.Errorf("empty repository = %v", err)
+	}
+	for _, tt := range []struct {
+		name, file, content, want string
+	}{
+		{"several artifacts in one file", "flows/many.yaml", "version: \"1\"\nscripts:\n  a: x\n  b: \"1\"\nsettings:\n  n: 9007199254740993\n",
+			"version: \"1\"\nflows: {}\nalerts: {}\nsnippets: {}\nsnippetLibraries: {}\nscripts:\n    a: x\n    b: \"1\"\nsettings:\n    n: 9007199254740993\n"},
+		{"unmanaged files ignored", "flows/examples/x.yaml", "not yaml: [", "scripts:\n    a: x"},
+		{"bad file", "alerts/bad.yaml", "version: \"1\"\nalerts:\n  x: [", "alerts/bad.yaml"},
+		{"unknown field", "settings/bad.yaml", "version: \"1\"\nbogus: 1\n", "settings/bad.yaml"},
+		{"config map refused", "settings/map.yaml", "version: \"1\"\nconfigmap:\n  region: eu\n", "the config map is not read from the repository"},
+		{"schema error names the file", "flows/bad.yaml", "version: \"1\"\nflows:\n  bad:\n    id: bad\n    destinations: [{name: out, type: nope}]\n", "flows/bad.yaml: "},
+		{"broken reference names the file", "snippets/pid.yaml", "version: \"1\"\nsnippets:\n  pid: {name: pid, library: none, code: x}\n", "snippets/pid.yaml: "},
+		{"aliases refused", "scripts/alias.yaml", "version: \"1\"\nscripts:\n  b: &x foo\n  c: *x\n", "scripts/alias.yaml: YAML anchors and aliases are not supported"},
+		{"merge keys refused", "settings/merge.yaml", "version: \"1\"\nsettings:\n  m:\n    <<: {a: 1}\n", "settings/merge.yaml: YAML anchors and aliases"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if err := a.store.WriteFile(tt.file, []byte(tt.content)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.store.Commit(tt.name, gitstoreAuthor); err != nil {
+				t.Fatal(err)
+			}
+			doc, commit, err := a.GitDocument(ctx, "HEAD")
+			got := string(doc)
+			if head, _, _ := a.store.Head(); err == nil && commit != head {
+				t.Errorf("commit = %s, want %s", commit, head)
+			}
+			if err != nil {
+				got = err.Error()
+			}
+			if !strings.Contains(got, tt.want) {
+				t.Errorf("got %q, want %q", got, tt.want)
+			}
+			if err != nil { // leave the repository valid for the next case
+				if err := a.store.RemoveFile(tt.file); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := a.store.Commit("undo", gitstoreAuthor); err != nil {
+					t.Fatal(err)
+				}
+			}
+		})
+	}
+}
+
+// TestGitAdapterDocumentNamesOnlyTheBadFile: a problem with flows.adt
+// names adt's file, not the file of flows.ad.
+func TestGitAdapterDocumentNamesOnlyTheBadFile(t *testing.T) {
+	a, err := newGitAdapter(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for f, content := range map[string]string{
+		"flows/ad.yaml":  "version: \"1\"\nflows:\n  ad: {id: ad}\n",
+		"flows/adt.yaml": "version: \"1\"\nflows:\n  adt:\n    id: adt\n    destinations: [{name: out, type: nope}]\n",
+	} {
+		if err := a.store.WriteFile(f, []byte(content)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := a.store.Commit("two flows", gitstoreAuthor); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err = a.GitDocument(context.Background(), "HEAD")
+	if err == nil || !strings.Contains(err.Error(), "flows/adt.yaml: ") || strings.Contains(err.Error(), "flows/ad.yaml") {
+		t.Errorf("err = %v", err)
 	}
 }

@@ -2,7 +2,8 @@
 
 The server can keep its configuration in a Git repository: every commit records the flows,
 alerts, snippets, snippet libraries, global scripts, and settings as they are live on the server,
-so you can see what changed, when, and by whom, and read any earlier version.
+so you can see what changed, when, and by whom, read any earlier version, check whether the
+server has drifted from it, and apply it back.
 
 ## Turn it on
 
@@ -109,11 +110,85 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 
 An unknown revision, or a file that did not exist at it, returns `404`.
 
+## Check for drift
+
+Drift is a difference between the live configuration and the repository: someone changed the
+server after the last commit, or the repository was edited. `GET /api/v1/git/drift` compares the
+two without changing anything (`rev` defaults to `HEAD`):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/git/drift?rev=HEAD'
+```
+
+```json
+{"rev":"HEAD","commit":"5f0c1e9a8d...","drifted":true,"plan":{"fingerprint":"9c1d...","added":["settings/retention"],"updated":["script/deploy"],"removed":["flow/tmp"],"unchanged":4,"changes":[...],"text":"..."}}
+```
+
+`commit` is the commit `rev` resolved to. `plan` is what applying the repository would do:
+`added` exists only in the repository, `removed` only on the server; its `fingerprint` is the one
+`config/apply?gitRev=` needs.
+
+From the CLI, `config drift [revision]` prints the differences:
+
+```text
+weavster> config drift
+~ script/deploy
+    value: "log(2)" → "log()"
+...
+Error: the live configuration differs from the repository at HEAD (5f0c1e9a8d12): 3 changes
+```
+
+With no drift it prints `no drift: the live configuration matches the repository at HEAD (5f0c1e9a8d12)`.
+In a script (`weavster -s`), drift makes the exit code `1` and a failed check (unknown revision,
+server unreachable) `2`, so a CI job can tell them apart:
+
+```bash
+weavster -a https://weavster.example.com -u ci -p "$PASSWORD" -s <(echo 'config drift')
+case $? in 0) echo "in sync";; 1) echo "drift";; *) echo "check failed"; exit 2;; esac
+```
+
+Drift is only checked when you ask. Checking on a schedule and repairing drift automatically is
+an Enterprise feature.
+
+## Plan and apply from the repository
+
+The [config plan and apply](config-as-code.md#see-what-would-change) endpoints take the
+repository as their document when you pass `gitRev` (a revision; empty means `HEAD`) instead of
+a body. This also needs `git:view`.
+
+```bash
+# What applying the repository at HEAD would change
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST 'http://127.0.0.1:8080/api/v1/config/plan?gitRev='
+# Apply exactly that plan
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
+  'http://127.0.0.1:8080/api/v1/config/apply?gitRev=&fingerprint=9c1d...&reason=restore%20from%20git'
+```
+
+Rolling back to an earlier version is applying an earlier revision, for example `gitRev=HEAD~1`
+or a commit hash.
+
+How the repository becomes one document:
+
+- Every `.yaml` file directly in `flows/`, `alerts/`, `snippets/`, `snippetLibraries/`,
+  `scripts/`, and `settings/` is read and merged. A file may hold several artifacts, of any of
+  these sections; other files are ignored.
+- All six sections are managed: an artifact on the server that the repository lacks is removed
+  by an apply.
+- The config map is never read from the repository and is left as it is. A file with a
+  `configmap` section is refused.
+- A file that is not a valid config document, uses YAML anchors, aliases, or merge keys
+  (`&x`, `*x`, `<<:`), or defines an artifact another file also defines returns `400` naming the
+  file. An unknown revision returns `404`.
+- The audit record of a plan or apply from the repository names the revision and the commit it
+  resolved to (`git.rev`, `git.commit`).
+
 ## Permissions
 
 | Operation | Permissions |
 |---|---|
 | `GET /api/v1/git`, `GET /api/v1/git/log` | `git:view` |
+| `GET /api/v1/git/drift` | `git:view` and the [config plan](config-as-code.md#see-what-would-change) permissions |
+| `POST /api/v1/config/plan?gitRev=`, `POST /api/v1/config/apply?gitRev=` | `git:view` and that endpoint's own permissions |
 | `GET /api/v1/git/content` | `git:view`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
 | `POST /api/v1/git/commit` | `git:commit`, `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit` |
 

@@ -42,6 +42,11 @@ type GitRepository interface {
 	// GitContent returns path at rev (ErrGitNotFound when either does not
 	// exist).
 	GitContent(ctx context.Context, path, rev string) ([]byte, error)
+	// GitDocument returns the repository's configuration at rev as one
+	// config document, with the commit hash it was read from
+	// (ErrGitNotFound for an unknown revision, ErrInvalidConfig naming a
+	// bad file).
+	GitDocument(ctx context.Context, rev string) (doc []byte, commit string, err error)
 }
 
 // ErrGitNotFound: the revision or file is not in the repository.
@@ -178,4 +183,85 @@ func (s *Server) handleGitContent(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", ctype)
 	_, _ = w.Write(content)
+}
+
+// configDocument returns the config document a plan or apply works on: the
+// repository's at gitRev when that parameter is present (empty = HEAD,
+// #107 D-52), otherwise the request body. It answers the error and returns
+// false on failure.
+func (s *Server) configDocument(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	q := r.URL.Query()
+	if !q.Has("gitRev") {
+		return readConfigBody(w, r)
+	}
+	doc, rev, commit, ok := s.gitDocument(w, r, q.Get("gitRev"))
+	if ok { // the audit record names what was planned or applied
+		info := auditInfoFrom(r.Context())
+		if info.detail == nil {
+			info.detail = map[string]string{}
+		}
+		info.detail["git.rev"], info.detail["git.commit"] = rev, commit
+	}
+	return doc, ok
+}
+
+// gitDocument reads the repository's document at rev (empty = HEAD),
+// returning the revision and the commit it resolved to.
+func (s *Server) gitDocument(w http.ResponseWriter, r *http.Request, rev string) (doc []byte, _, commit string, ok bool) {
+	if !s.gitAvailable(w) {
+		return nil, "", "", false
+	}
+	if rev == "" {
+		rev = "HEAD"
+	}
+	doc, commit, err := s.cfg.Git.GitDocument(r.Context(), rev)
+	if errors.Is(err, ErrInvalidConfig) {
+		writeStatusError(w, http.StatusBadRequest, err.Error())
+		return nil, "", "", false
+	}
+	if err != nil {
+		writeGitError(w, err)
+		return nil, "", "", false
+	}
+	return doc, rev, commit, true
+}
+
+// GitDrift reports whether the live configuration differs from the
+// repository at Rev, and how.
+type GitDrift struct {
+	Rev     string     `json:"rev"`
+	Commit  string     `json:"commit"` // the commit Rev resolved to
+	Drifted bool       `json:"drifted"`
+	Plan    ConfigPlan `json:"plan"`
+}
+
+// handleGitDrift plans the repository's configuration against the live one
+// without changing anything (on-demand drift detection, #107 D-52).
+func (s *Server) handleGitDrift(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.ConfigPlanner == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "configuration planning unavailable")
+		return
+	}
+	if !s.configPorts(w, false, false) {
+		return
+	}
+	doc, rev, commit, ok := s.gitDocument(w, r, r.URL.Query().Get("rev"))
+	if !ok {
+		return
+	}
+	live, err := s.liveConfig(r.Context(), true)
+	if err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	plan, err := s.cfg.ConfigPlanner.PlanConfig(doc, live)
+	if errors.Is(err, ErrInvalidConfig) {
+		writeStatusError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, GitDrift{Rev: rev, Commit: commit, Drifted: len(plan.Changes) > 0, Plan: plan})
 }

@@ -469,6 +469,27 @@ paths:
         "200": {description: "The file as stored: application/yaml for .yaml files, otherwise the type of its content", content: {application/yaml: {schema: {type: string}}, application/octet-stream: {schema: {type: string, format: binary}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: Missing path, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: "Unknown revision, or no such file at it", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/git/drift:
+    get:
+      summary: "Whether the live configuration differs from the repository at a revision, and how; nothing changes (requires git:view, flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit, configmap:edit)"
+      parameters:
+        - {name: rev, in: query, schema: {type: string, default: HEAD}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: "drifted is true when the plan has changes; plan is what POST /api/v1/config/apply?gitRev=REV would apply"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rev: {type: string}
+                  commit: {type: string, description: The commit rev resolved to}
+                  drifted: {type: boolean}
+                  plan: {$ref: "#/components/schemas/ConfigPlan"}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "400": {description: "A repository file is invalid or uses YAML anchors/aliases, or an artifact is defined twice", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown revision, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/stats/series:
     get:
       summary: "Sampled lifetime statistics of every flow (or one), oldest first (requires flows:view)"
@@ -831,14 +852,17 @@ paths:
         - {name: fingerprint, in: query, required: true, schema: {type: string}, description: The fingerprint of the plan you reviewed}
         - {name: dryRun, in: query, schema: {type: boolean}, description: Check that the plan is current without changing anything}
         - {name: reason, in: query, schema: {type: string, maxLength: 500}, description: Recorded in the audit log}
+        - {name: gitRev, in: query, schema: {type: string}, description: "Take the document from the server's Git repository at this revision (empty = HEAD) instead of the body; also requires git:view"}
       requestBody:
-        required: true
+        required: false
+        description: The config-as-code document (ignored with gitRev)
         content:
           application/yaml: {schema: {type: string}}
           application/json: {schema: {type: object}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{applied, plan}", content: {application/json: {schema: {type: object, properties: {applied: {type: boolean}, plan: {$ref: "#/components/schemas/ConfigPlan"}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "gitRev names no revision of the repository", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "Missing fingerprint, a bad parameter, or an invalid document", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: "The plan is stale, or a change failed because of the configuration (every applied change was rolled back)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -846,14 +870,18 @@ paths:
   /api/v1/config/plan:
     post:
       summary: "What applying a config-as-code document (YAML or JSON) would change on the server; nothing is written. Sections the document leaves out are not managed (requires flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit, configmap:edit)"
+      parameters:
+        - {name: gitRev, in: query, schema: {type: string}, description: "Take the document from the server's Git repository at this revision (empty = HEAD) instead of the body; also requires git:view"}
       requestBody:
-        required: true
+        required: false
+        description: The config-as-code document (ignored with gitRev)
         content:
           application/yaml: {schema: {type: string}}
           application/json: {schema: {type: object}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "The plan", content: {application/json: {schema: {$ref: "#/components/schemas/ConfigPlan"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "gitRev names no revision of the repository", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "Invalid document: the message names every problem", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/config/export:

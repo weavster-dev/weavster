@@ -102,3 +102,28 @@ func (s *Store) Unstage() error {
 	}
 	return s.wt.Reset(&git.ResetOptions{Mode: git.MixedReset})
 }
+
+// ReadAt resolves rev once and returns its commit hash and the contents of
+// every file keep accepts; ErrNotFound when there is no such revision.
+func (s *Store) ReadAt(rev string, keep func(path string) bool) (string, map[string][]byte, error) {
+	c, err := s.resolve(rev)
+	if err != nil {
+		return "", nil, err
+	}
+	tree, err := c.Tree()
+	if err != nil {
+		return "", nil, err
+	}
+	out := map[string][]byte{}
+	if err := tree.Files().ForEach(func(f *object.File) error {
+		if !keep(f.Name) {
+			return nil
+		}
+		content, err := f.Contents()
+		out[f.Name] = []byte(content)
+		return err
+	}); err != nil {
+		return "", nil, err
+	}
+	return c.Hash.String(), out, nil
+}
