@@ -154,9 +154,8 @@ func (s *Server) handleItemGet(k itemKind) http.HandlerFunc {
 		if !s.itemsAvailable(w) {
 			return
 		}
-		name := r.PathValue("name")
-		if err := checkName(name); err != nil {
-			writeStatusError(w, http.StatusBadRequest, err.Error())
+		name, ok := pathName(w, r)
+		if !ok {
 			return
 		}
 		v, err := s.cfg.Items.GetItem(r.Context(), k.kind, name)
@@ -201,9 +200,8 @@ func (s *Server) handleItemDelete(k itemKind) http.HandlerFunc {
 		if !s.itemsAvailable(w) {
 			return
 		}
-		name := r.PathValue("name")
-		if err := checkName(name); err != nil {
-			writeStatusError(w, http.StatusBadRequest, err.Error())
+		name, ok := pathName(w, r)
+		if !ok {
 			return
 		}
 		if err := s.cfg.Items.DeleteItem(r.Context(), k.kind, name); err != nil {

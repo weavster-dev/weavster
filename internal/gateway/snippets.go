@@ -67,39 +67,77 @@ func writeSnippetError(w http.ResponseWriter, err error) {
 	}
 }
 
-// checkSnippets validates snippets and rejects repeated names.
-func checkSnippets(list []Snippet) error {
+// nameRef lets saveNamed set and read a document's name.
+func (sn *Snippet) nameRef() *string       { return &sn.Name }
+func (l *SnippetLibrary) nameRef() *string { return &l.Name }
+
+// namedDoc is a pointer to a document with a name.
+type namedDoc[T any] interface {
+	*T
+	nameRef() *string
+}
+
+// checkNames validates each name and rejects repeated names.
+func checkNames[T any, P namedDoc[T]](list []T, noun string) error {
 	seen := map[string]bool{}
-	for _, sn := range list {
-		if err := checkName(sn.Name); err != nil {
+	for i := range list {
+		name := *P(&list[i]).nameRef()
+		if err := checkName(name); err != nil {
 			return err
 		}
-		if sn.Library != "" {
-			if err := checkName(sn.Library); err != nil {
-				return fmt.Errorf("library: %w", err)
-			}
+		if seen[name] {
+			return fmt.Errorf("%s %q appears more than once", noun, name)
 		}
-		if seen[sn.Name] {
-			return fmt.Errorf("snippet %q appears more than once", sn.Name)
-		}
-		seen[sn.Name] = true
+		seen[name] = true
 	}
 	return nil
 }
 
-// checkLibraries validates libraries and rejects repeated names.
-func checkLibraries(list []SnippetLibrary) error {
-	seen := map[string]bool{}
-	for _, l := range list {
-		if err := checkName(l.Name); err != nil {
-			return err
+// saveNamed serves POST (create one, 201), PUT on the collection (create or
+// replace many), and PUT on one document ({name} in the path). check adds
+// per-document validation; save writes the list.
+func saveNamed[T any, P namedDoc[T]](w http.ResponseWriter, r *http.Request, noun string, check func(T) error, save func(context.Context, []T, bool) error) {
+	var list []T
+	status, create, one := http.StatusOK, r.Method == http.MethodPost, r.Method == http.MethodPost
+	if name := r.PathValue("name"); name != "" || create {
+		var doc T
+		if !readItemsBody(w, r, &doc) {
+			return
 		}
-		if seen[l.Name] {
-			return fmt.Errorf("library %q appears more than once", l.Name)
+		if ref := P(&doc).nameRef(); name != "" {
+			if *ref != "" && *ref != name {
+				writeStatusError(w, http.StatusBadRequest, "the name in the body does not match the path")
+				return
+			}
+			*ref, one = name, true
+		} else {
+			status = http.StatusCreated
 		}
-		seen[l.Name] = true
+		list = []T{doc}
+	} else if !readItemsBody(w, r, &list) {
+		return
 	}
-	return nil
+	if list == nil {
+		writeStatusError(w, http.StatusBadRequest, "body must be a JSON array of "+noun+" objects")
+		return
+	}
+	err := checkNames[T, P](list, noun)
+	for i := 0; err == nil && i < len(list); i++ {
+		err = check(list[i])
+	}
+	if err != nil {
+		writeStatusError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err := save(r.Context(), list, create); err != nil {
+		writeSnippetError(w, err)
+		return
+	}
+	if one {
+		writeJSON(w, status, list[0])
+		return
+	}
+	writeJSON(w, status, list)
 }
 
 // pathName returns the {name} path value, answering 400 when it is invalid.
@@ -138,51 +176,19 @@ func (s *Server) handleSnippetsList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, append([]Snippet{}, list...))
 }
 
-// handleSnippetsSave serves POST (create one), PUT on the collection (create
-// or replace many), and PUT on one snippet.
 func (s *Server) handleSnippetsSave(w http.ResponseWriter, r *http.Request) {
 	if !s.snippetsAvailable(w) {
 		return
 	}
-	var list []Snippet
-	status, create, one := http.StatusOK, r.Method == http.MethodPost, r.Method == http.MethodPost
-	if name := r.PathValue("name"); name != "" {
-		var sn Snippet
-		if !readItemsBody(w, r, &sn) {
-			return
+	saveNamed(w, r, "snippet", func(sn Snippet) error {
+		if sn.Library == "" {
+			return nil
 		}
-		if sn.Name != "" && sn.Name != name {
-			writeStatusError(w, http.StatusBadRequest, "the name in the body does not match the path")
-			return
+		if err := checkName(sn.Library); err != nil {
+			return fmt.Errorf("library: %w", err)
 		}
-		sn.Name, one = name, true
-		list = []Snippet{sn}
-	} else if create {
-		var sn Snippet
-		if !readItemsBody(w, r, &sn) {
-			return
-		}
-		list, status = []Snippet{sn}, http.StatusCreated
-	} else if !readItemsBody(w, r, &list) {
-		return
-	}
-	if list == nil {
-		writeStatusError(w, http.StatusBadRequest, "body must be a JSON array of snippets")
-		return
-	}
-	if err := checkSnippets(list); err != nil {
-		writeStatusError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := s.cfg.Snippets.SaveSnippets(r.Context(), list, create); err != nil {
-		writeSnippetError(w, err)
-		return
-	}
-	if one {
-		writeJSON(w, status, list[0])
-		return
-	}
-	writeJSON(w, status, list)
+		return nil
+	}, s.cfg.Snippets.SaveSnippets)
 }
 
 func (s *Server) handleSnippetGet(w http.ResponseWriter, r *http.Request) {
@@ -229,50 +235,11 @@ func (s *Server) handleLibrariesList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, append([]SnippetLibrary{}, list...))
 }
 
-// handleLibrariesSave mirrors handleSnippetsSave for libraries.
 func (s *Server) handleLibrariesSave(w http.ResponseWriter, r *http.Request) {
 	if !s.snippetsAvailable(w) {
 		return
 	}
-	var list []SnippetLibrary
-	status, create, one := http.StatusOK, r.Method == http.MethodPost, r.Method == http.MethodPost
-	if name := r.PathValue("name"); name != "" {
-		var l SnippetLibrary
-		if !readItemsBody(w, r, &l) {
-			return
-		}
-		if l.Name != "" && l.Name != name {
-			writeStatusError(w, http.StatusBadRequest, "the name in the body does not match the path")
-			return
-		}
-		l.Name, one = name, true
-		list = []SnippetLibrary{l}
-	} else if create {
-		var l SnippetLibrary
-		if !readItemsBody(w, r, &l) {
-			return
-		}
-		list, status = []SnippetLibrary{l}, http.StatusCreated
-	} else if !readItemsBody(w, r, &list) {
-		return
-	}
-	if list == nil {
-		writeStatusError(w, http.StatusBadRequest, "body must be a JSON array of libraries")
-		return
-	}
-	if err := checkLibraries(list); err != nil {
-		writeStatusError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := s.cfg.Snippets.SaveLibraries(r.Context(), list, create); err != nil {
-		writeSnippetError(w, err)
-		return
-	}
-	if one {
-		writeJSON(w, status, list[0])
-		return
-	}
-	writeJSON(w, status, list)
+	saveNamed(w, r, "library", func(SnippetLibrary) error { return nil }, s.cfg.Snippets.SaveLibraries)
 }
 
 func (s *Server) handleLibraryGet(w http.ResponseWriter, r *http.Request) {

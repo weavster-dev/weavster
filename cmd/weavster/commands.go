@@ -420,16 +420,21 @@ func snippetCommand(ctx context.Context, client Client, args []string, stdout, s
 	var err error
 	switch args[0] {
 	case "list":
-		var out []byte
-		var list []gateway.Snippet // a library decodes as a snippet without library and code
-		if out, err = client.Call(ctx, http.MethodGet, path+"?summary=true", nil); err == nil {
-			err = json.Unmarshal(out, &list)
-		}
-		for _, sn := range list {
-			cols := []string{sn.Name, sn.Library, sn.Description}
-			if noun != "snippets" {
-				cols = []string{sn.Name, sn.Description}
+		var rows [][]string
+		if noun == "snippets" {
+			var list []gateway.Snippet
+			err = callJSON(ctx, client, path+"?summary=true", &list)
+			for _, sn := range list {
+				rows = append(rows, []string{sn.Name, sn.Library, sn.Description})
 			}
+		} else {
+			var list []gateway.SnippetLibrary
+			err = callJSON(ctx, client, path, &list)
+			for _, l := range list {
+				rows = append(rows, []string{l.Name, l.Description})
+			}
+		}
+		for _, cols := range rows {
 			_, _ = fmt.Fprintln(stdout, strings.TrimRight(strings.Join(cols, "\t"), "\t"))
 		}
 	case "import":
@@ -460,6 +465,15 @@ func snippetCommand(ctx context.Context, client Client, args []string, stdout, s
 		return shellError(stderr, debug, err)
 	}
 	return 0
+}
+
+// callJSON GETs path and decodes the reply into v.
+func callJSON(ctx context.Context, client Client, path string, v any) error {
+	out, err := client.Call(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(out, v)
 }
 
 // jsonArrayLen counts the elements of a JSON array (0 if it is not one).

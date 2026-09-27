@@ -17,8 +17,9 @@ const (
 )
 
 // snippetsAdapter serves gateway.SnippetStore from the item store. mu makes
-// the library checks and the writes one step, so a snippet never names a
-// deleted library.
+// the existence checks and the writes one step, so a snippet never names a
+// deleted library and create never overwrites. The lock is per process: one
+// server per database (D-41).
 type snippetsAdapter struct {
 	repo itemRepository
 	mu   *sync.Mutex
@@ -94,13 +95,15 @@ func (a snippetsAdapter) GetSnippet(ctx context.Context, name string) (gateway.S
 func (a snippetsAdapter) SaveSnippets(ctx context.Context, list []gateway.Snippet, create bool) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	checked := map[string]bool{"": true}
 	for _, sn := range list {
-		if sn.Library == "" {
+		if checked[sn.Library] {
 			continue
 		}
 		if _, err := a.GetLibrary(ctx, sn.Library); err != nil {
 			return err
 		}
+		checked[sn.Library] = true
 	}
 	return saveDocs(ctx, a.repo, snippetKind, list, func(s gateway.Snippet) string { return s.Name }, create, gateway.ErrSnippetExists)
 }
@@ -126,7 +129,13 @@ func (a snippetsAdapter) SaveLibraries(ctx context.Context, list []gateway.Snipp
 func (a snippetsAdapter) DeleteLibrary(ctx context.Context, name string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	snippets, err := a.ListSnippets(ctx)
+	if _, err := a.GetLibrary(ctx, name); err != nil {
+		return err
+	}
+	// Decode only the library of each snippet, not its code.
+	snippets, err := listDocs[struct {
+		Library string `json:"library"`
+	}](ctx, a.repo, snippetKind)
 	if err != nil {
 		return err
 	}
