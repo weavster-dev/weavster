@@ -32,6 +32,14 @@ type Config struct {
 	Delivery Delivery `yaml:"delivery"`
 	Flows    Flows    `yaml:"flows"`
 	Stats    Stats    `yaml:"stats"`
+	Git      Git      `yaml:"git"`
+}
+
+// Git configures the server's configuration repository (#107 D-51).
+type Git struct {
+	// Path is the repository directory, created when missing; empty
+	// disables Git.
+	Path string `yaml:"path"`
 }
 
 // Stats configures time-series statistics (spec §2.11.37): every flow's

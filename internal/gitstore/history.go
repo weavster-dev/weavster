@@ -1,7 +1,10 @@
 package gitstore
 
 import (
+	"errors"
 	"time"
+
+	"github.com/go-git/go-git/v5/plumbing/storer"
 
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
@@ -17,32 +20,32 @@ type Revision struct {
 }
 
 // Log returns the repository commit log (newest first).
-func (s *Store) Log() ([]Revision, error) {
-	iter, err := s.repo.Log(&git.LogOptions{})
-	if err != nil {
-		if err == plumbing.ErrReferenceNotFound {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return revisions(iter)
-}
+func (s *Store) Log() ([]Revision, error) { return s.Revisions("", 0) }
 
 // History returns commits that touched path (newest first).
-func (s *Store) History(path string) ([]Revision, error) {
-	iter, err := s.repo.Log(&git.LogOptions{FileName: &path})
+func (s *Store) History(path string) ([]Revision, error) { return s.Revisions(path, 0) }
+
+// Revisions returns the newest limit commits (0 = all), newest first; with
+// path only those that touched it. The walk stops at limit.
+func (s *Store) Revisions(path string, limit int) ([]Revision, error) {
+	opts := &git.LogOptions{}
+	if path != "" {
+		opts.FileName = &path
+	}
+	iter, err := s.repo.Log(opts)
 	if err != nil {
 		if err == plumbing.ErrReferenceNotFound {
 			return nil, nil
 		}
 		return nil, err
 	}
-	return revisions(iter)
+	return revisions(iter, limit)
 }
 
-// ContentAtRevision returns the content of path at the given revision.
+// ContentAtRevision returns the content of path at the given revision (any
+// revision Git understands); ErrNotFound when either does not exist.
 func (s *Store) ContentAtRevision(path, rev string) ([]byte, error) {
-	c, err := s.repo.CommitObject(plumbing.NewHash(rev))
+	c, err := s.resolve(rev)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +54,9 @@ func (s *Store) ContentAtRevision(path, rev string) ([]byte, error) {
 		return nil, err
 	}
 	f, err := tree.File(path)
+	if errors.Is(err, object.ErrFileNotFound) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -61,9 +67,12 @@ func (s *Store) ContentAtRevision(path, rev string) ([]byte, error) {
 	return []byte(content), nil
 }
 
-func revisions(iter object.CommitIter) ([]Revision, error) {
+func revisions(iter object.CommitIter, limit int) ([]Revision, error) {
 	var out []Revision
 	err := iter.ForEach(func(c *object.Commit) error {
+		if limit > 0 && len(out) == limit {
+			return storer.ErrStop
+		}
 		out = append(out, Revision{
 			Hash:    c.Hash.String(),
 			Message: c.Message,

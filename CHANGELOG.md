@@ -77,6 +77,7 @@ All notable changes to this project are documented here, following
 - Message trends (#251): `GET /api/v1/messages/trends?from=&to=&interval=hour|day[&flowId=]` counts the stored messages per bucket and status, empty buckets included.
 - XML responses (#253): API responses, errors included, are sent as XML when the client explicitly asks for it (`Accept: application/xml` ranked above JSON and everything else), with a documented mapping; browsers still get JSON, message content is never converted, and request bodies stay JSON.
 - Statistics over time (#255): the server samples every flow's lifetime statistics (`stats.sampleIntervalMs`, default one minute; kept for `stats.retentionHours`, default 24) and `GET /api/v1/stats/series[?flowId=&from=&to=&limit=]` returns the newest matching samples (default 1000), oldest first.
+- Git repository (#262): server config `git.path`; `POST /api/v1/git/commit` commits the live configuration (one config-as-code document per artifact under `flows/`, `alerts/`, `snippets/`, `snippetLibraries/`, `scripts/`, `settings/`; never the config map); `GET /api/v1/git`, `/git/log[?path=&limit=]`, `/git/content?path=[&rev=]`; permissions `git:view` and `git:commit` (reading files and committing also need the configuration-export permissions).
 
 ### Changed
 

@@ -183,6 +183,14 @@ func (s *Server) Router() http.Handler {
 				s.require("scripts", "edit"), s.require("settings", "edit"),
 				s.requireWhen(func(r *http.Request) bool { return !queryTrue("nodeploy")(r) }, "flows", "deploy"),
 				s.requireWhen(queryTrue("overwriteConfigMap"), "configmap", "edit")).Post("/config/import", s.handleConfigImport)
+			// Committing and reading files expose the whole configuration:
+			// they also need the export permissions.
+			exportPerms := []func(http.Handler) http.Handler{s.require("flows", "view"), s.require("alerts", "edit"),
+				s.require("snippets", "edit"), s.require("scripts", "edit"), s.require("settings", "edit")}
+			r.With(s.require("git", "view")).Get("/git", s.handleGitInfo)
+			r.With(s.require("git", "view")).Get("/git/log", s.handleGitLog)
+			r.With(append([]func(http.Handler) http.Handler{s.require("git", "view")}, exportPerms...)...).Get("/git/content", s.handleGitContent)
+			r.With(append([]func(http.Handler) http.Handler{s.require("git", "commit")}, exportPerms...)...).Post("/git/commit", s.handleGitCommit)
 			lookupsView, lookupsEdit := s.require("lookups", "view"), s.require("lookups", "edit")
 			r.With(lookupsView).Get("/lookups", s.handleLookupGroups)
 			r.With(lookupsView).Get("/lookups/{group}", s.handleLookupMatching)
