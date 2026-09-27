@@ -264,8 +264,9 @@ func NewTimeSeries(retention time.Duration, maxPoints int) *TimeSeries {
 	return &TimeSeries{retention: retention, maxPoints: maxPoints}
 }
 
-// RecordAll appends one snapshot per flow, all taken at at (wall clock), and
-// drops snapshots older than the retention before at and any past maxPoints.
+// RecordAll appends one snapshot per flow, all stamped with the same
+// wall-clock time, and drops snapshots older than the retention before that
+// time and any past maxPoints.
 func (ts *TimeSeries) RecordAll(at time.Time, stats map[string]FlowStats) {
 	at = at.Round(0) // wall clock only, as reported and filtered
 	flows := make([]string, 0, len(stats))
@@ -292,8 +293,8 @@ func (ts *TimeSeries) Forget(flow string) {
 	ts.points = slices.DeleteFunc(ts.points, func(p TimeSeriesPoint) bool { return p.Flow == flow })
 }
 
-// Series returns the newest limit (0 = all) snapshots of the flows keep
-// accepts, taken at or after from and at or before to (zero = open), in
+// Series returns the newest limit (0 = all) snapshots whose flow satisfies
+// keep, taken at or after from and at or before to (zero = open), in
 // recording order.
 func (ts *TimeSeries) Series(keep func(flow string) bool, from, to time.Time, limit int) []TimeSeriesPoint {
 	ts.mu.Lock()

@@ -1654,7 +1654,7 @@ func (o processingObserver) Processed(m state.Message) {
 }
 
 type statsAdapter struct {
-	flows  gateway.FlowStore
+	flows  flowAdapter
 	stats  *observability.StatsRegistry
 	series *observability.TimeSeries
 }
@@ -1714,7 +1714,10 @@ func (a statsAdapter) sampleLoop(ctx context.Context, interval time.Duration, lo
 }
 
 // sample records every flow's lifetime statistics, taken at one instant.
+// It holds the definitions lock, so a flow deleted meanwhile cannot have a
+// sample recorded after Delete forgot its series.
 func (a statsAdapter) sample(ctx context.Context, now time.Time) error {
+	defer a.flows.definitions()()
 	flows, err := a.flows.List(ctx)
 	if err != nil {
 		return err

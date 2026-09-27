@@ -216,7 +216,7 @@ func (c Config) Validate() error {
 	}
 	if st := c.Stats; st.RetentionHours < 1 || st.RetentionHours > 8760 {
 		return errors.New("config: stats.retentionHours must be between 1 and 8760 (one year)")
-	} else if int64(st.RetentionHours)*3600000/int64(st.SampleIntervalMs) > MaxStatsSamples {
+	} else if int64(st.RetentionHours)*3600000/int64(st.SampleIntervalMs)+1 > MaxStatsSamples { // +1: the sample at the start of the window
 		return fmt.Errorf("config: stats.retentionHours / stats.sampleIntervalMs keeps more than %d samples per flow", MaxStatsSamples)
 	}
 	p := c.Auth.PasswordPolicy

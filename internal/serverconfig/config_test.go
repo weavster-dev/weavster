@@ -64,6 +64,12 @@ auth:
 		{name: "fast stats sampling", yaml: "stats: {sampleIntervalMs: 99}\n", wantErr: "stats.sampleIntervalMs must be between"},
 		{name: "zero stats retention", yaml: "stats: {retentionHours: 0}\n", wantErr: "stats.retentionHours must be between"},
 		{name: "too many stats samples", yaml: "stats: {sampleIntervalMs: 1000, retentionHours: 28}\n", wantErr: "more than 100000 samples"},
+		{name: "one stats sample too many", yaml: "stats: {sampleIntervalMs: 864, retentionHours: 24}\n" /* 100000 intervals + the first sample */, wantErr: "more than 100000 samples"},
+		{name: "stats just under the sample limit", yaml: "stats: {sampleIntervalMs: 865, retentionHours: 24}\n", check: func(t *testing.T, c Config) {
+			if c.Stats.SampleIntervalMs != 865 { // 99884 intervals + the first sample
+				t.Errorf("stats = %+v", c.Stats)
+			}
+		}},
 		{name: "stats at the sample limit", yaml: "stats: {sampleIntervalMs: 1000, retentionHours: 27}\n", check: func(t *testing.T, c Config) {
 			if c.Stats.RetentionHours != 27 {
 				t.Errorf("stats = %+v", c.Stats)
