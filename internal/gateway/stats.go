@@ -262,6 +262,10 @@ func (s *Server) handleEventExport(w http.ResponseWriter, r *http.Request) {
 		writeBackendError(w, err)
 		return
 	}
-	w.Header().Set("Content-Disposition", `attachment; filename="events.json"`)
+	name := "events.json"
+	if wantsXML(w) {
+		name = "events.xml"
+	}
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	writeJSON(w, http.StatusOK, events)
 }

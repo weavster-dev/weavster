@@ -80,6 +80,7 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(apiVersion)
 	r.Use(SecurityHeaders)
+	r.Use(negotiateXML)
 	// BlockTrace refuses TRACE before routing; say which methods the path
 	// does allow (RFC 9110 requires Allow on 405).
 	r.Use(func(next http.Handler) http.Handler {
@@ -234,6 +235,9 @@ func (s *Server) Router() http.Handler {
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
+	if wantsXML(w) && writeXML(w, status, v) {
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)

@@ -5,6 +5,9 @@ info:
   description: >
     REST API for the Weavster message-oriented integration platform.
     Errors use the JSON error envelope (components.schemas.Error).
+    API responses (not message content) are also available as XML: send Accept
+    application/xml, ranked above JSON and every other listed type. The mapping is described in the user docs (JSON and
+    XML); request bodies are JSON only.
     Every /api/v1 path is also served unversioned (/api/flows), resolving to
     the latest version; replies carry Weavster-API-Version.
 paths:
@@ -488,7 +491,7 @@ paths:
         "200": {description: "{maxId}", content: {application/json: {schema: {type: object, properties: {maxId: {type: integer}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/events/export:
     get:
-      summary: "Every matching event (no limit) as a JSON file download, oldest first (requires events:view)"
+      summary: "Every matching event (no limit) as a JSON (or, when XML is asked for, XML) file download, oldest first (requires events:view)"
       parameters:
         - {name: type, in: query, schema: {type: string}}
         - {name: flowId, in: query, schema: {type: string}}
@@ -497,7 +500,7 @@ paths:
         - {name: afterId, in: query, schema: {type: integer, minimum: 0}, description: Only events with a larger id}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "Events (Content-Disposition: attachment; filename=events.json)", content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Event"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "Events (Content-Disposition: attachment; filename=events.json, or events.xml when served as XML)", content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Event"}}}, application/xml: {schema: {type: object, description: "The same events in the documented JSON-to-XML mapping"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "A bad time or afterId", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/events/{id}:
     parameters:
