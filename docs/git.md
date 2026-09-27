@@ -121,22 +121,31 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v
 ```
 
 ```json
-{"rev":"HEAD","drifted":true,"plan":{"fingerprint":"9c1d...","added":["settings/retention"],"updated":["script/deploy"],"removed":["flow/tmp"],"unchanged":4,"changes":[...],"text":"..."}}
+{"rev":"HEAD","commit":"5f0c1e9a8d...","drifted":true,"plan":{"fingerprint":"9c1d...","added":["settings/retention"],"updated":["script/deploy"],"removed":["flow/tmp"],"unchanged":4,"changes":[...],"text":"..."}}
 ```
 
-`plan` is what applying the repository would do: `added` exists only in the repository,
-`removed` only on the server. From the CLI, `config drift [revision]` prints the differences and
-fails when there are any, so a CI job can gate on it:
+`commit` is the commit `rev` resolved to. `plan` is what applying the repository would do:
+`added` exists only in the repository, `removed` only on the server; its `fingerprint` is the one
+`config/apply?gitRev=` needs.
+
+From the CLI, `config drift [revision]` prints the differences:
 
 ```text
 weavster> config drift
 ~ script/deploy
     value: "log(2)" → "log()"
 ...
-Error: the live configuration differs from the repository at HEAD (3 changes)
+Error: the live configuration differs from the repository at HEAD (5f0c1e9a8d12): 3 changes
 ```
 
-With no drift it prints `no drift: the live configuration matches the repository at HEAD`.
+With no drift it prints `no drift: the live configuration matches the repository at HEAD (5f0c1e9a8d12)`.
+In a script (`weavster -s`), drift makes the exit code `1` and a failed check (unknown revision,
+server unreachable) `2`, so a CI job can tell them apart:
+
+```bash
+weavster -a https://weavster.example.com -u ci -p "$PASSWORD" -s <(echo 'config drift')
+case $? in 0) echo "in sync";; 1) echo "drift";; *) echo "check failed"; exit 2;; esac
+```
 
 Drift is only checked when you ask. Checking on a schedule and repairing drift automatically is
 an Enterprise feature.
@@ -167,8 +176,11 @@ How the repository becomes one document:
   by an apply.
 - The config map is never read from the repository and is left as it is. A file with a
   `configmap` section is refused.
-- A file that is not a valid config document, or an artifact defined in two files, returns `400`
-  naming the file. An unknown revision returns `404`.
+- A file that is not a valid config document, uses YAML anchors, aliases, or merge keys
+  (`&x`, `*x`, `<<:`), or defines an artifact another file also defines returns `400` naming the
+  file. An unknown revision returns `404`.
+- The audit record of a plan or apply from the repository names the revision and the commit it
+  resolved to (`git.rev`, `git.commit`).
 
 ## Permissions
 

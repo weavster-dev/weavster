@@ -38,6 +38,7 @@ func TestGitPlanApplyDrift(t *testing.T) {
 	}
 	type drift struct {
 		Rev     string
+		Commit  string
 		Drifted bool
 		Plan    struct {
 			Fingerprint             string
@@ -66,10 +67,13 @@ func TestGitPlanApplyDrift(t *testing.T) {
 
 	// Right after the commit there is no drift; the config map (never
 	// committed) does not count.
-	if d := getDrift(""); d.Drifted || d.Rev != "HEAD" {
-		t.Errorf("after commit = %+v", d)
+	_, info, _ := c.do(http.MethodGet, "/api/v1/git", "", admin)
+	var repoInfo struct{ Head string }
+	_ = json.Unmarshal([]byte(info), &repoInfo)
+	if d := getDrift(""); d.Drifted || d.Rev != "HEAD" || d.Commit != repoInfo.Head {
+		t.Errorf("after commit = %+v (head %s)", d, repoInfo.Head)
 	}
-	if code, out, _ := cli("config drift"); code != 0 || out != "no drift: the live configuration matches the repository at HEAD\n" {
+	if code, out, _ := cli("config drift"); code != 0 || out != "no drift: the live configuration matches the repository at HEAD ("+repoInfo.Head[:12]+")\n" {
 		t.Errorf("cli no drift: %d %q", code, out)
 	}
 
@@ -81,9 +85,13 @@ func TestGitPlanApplyDrift(t *testing.T) {
 	if !d.Drifted || strings.Join(d.Plan.Added, ",") != "settings/retention" || strings.Join(d.Plan.Updated, ",") != "script/deploy" || strings.Join(d.Plan.Removed, ",") != "flow/tmp" {
 		t.Errorf("drift = %+v", d)
 	}
-	if code, out, errOut := cli("config drift HEAD"); code == 0 || !strings.Contains(out, "~ script/deploy") ||
-		!strings.Contains(errOut, "differs from the repository at HEAD (3 changes)") {
+	// The CLI exits 1 for drift and 2 when the check itself fails.
+	if code, out, errOut := cli("config drift HEAD"); code != 1 || !strings.Contains(out, "~ script/deploy") ||
+		!strings.Contains(errOut, "differs from the repository at HEAD ("+repoInfo.Head[:12]+"): 3 changes") {
 		t.Errorf("cli drift: %d %q %q", code, out, errOut)
+	}
+	if code, _, errOut := cli("config drift nope"); code != 2 || !strings.Contains(errOut, "404") {
+		t.Errorf("cli drift unknown rev: %d %q", code, errOut)
 	}
 
 	// Plan from the repository, then apply that plan.

@@ -110,7 +110,7 @@ Commands that change a flow print the server's reply (the flow, or the import/up
 | `snippet list`, `snippet import "path"`, `snippet export "path"`, `snippet remove <name>` | Manages code snippets; `snippet library …` does the same for libraries. See [Code snippets and libraries](snippets.md). |
 | `config validate "path"` | Checks a config-as-code document (YAML or JSON) on the server without changing anything. See [Config-as-code documents](config-as-code.md). |
 | `config diff "path"`, `config plan "path"` | Shows what applying the document would change: `diff` as text (`+`, `~` with changed values, `-`), `plan` as JSON. Nothing changes. |
-| `config drift [revision]` | Compares the live configuration with the server's [Git repository](git.md#check-for-drift) at `revision` (default `HEAD`): prints `no drift: …`, or the differences and fails. |
+| `config drift [revision]` | Compares the live configuration with the server's [Git repository](git.md#check-for-drift) at `revision` (default `HEAD`): prints `no drift: …`, or the differences; in a script, drift makes the exit code `1`. |
 | `config apply "path" [--dry-run] [reason…]` | Plans the document, prints the plan, and applies it; refused if the server changed meanwhile, undone completely if a change fails. See [Apply](config-as-code.md#apply). |
 | `exportcfg "path" [overwriteconfigmap]`, `importcfg "path" [nodeploy] [overwriteconfigmap] [force]` | Exports or imports the whole configuration (flows, alerts, snippets, scripts, settings, and optionally the config map). See [Export and import the whole configuration](config-transfer.md). |
 | `importalert "path" [force]`, `exportalert <id, "name", or *> "path"` | Imports alerts from a JSON file (`force` replaces existing ids), or exports one alert or all of them. See [Alerts](alerts.md). |
@@ -163,7 +163,7 @@ Update your scripts to the new names; the old ones may be removed in a later rel
 
 | Command | `0` | `1` | `2` |
 |---|---|---|---|
-| `weavster -s script` (batch) | Every command succeeded | — | Any command failed (the script still runs to the end), a line longer than 1 MiB (the script stops there), an unknown flag, or a missing connection file |
+| `weavster -s script` (batch) | Every command succeeded | A `config drift` found drift, and no command failed | Any command failed (the script still runs to the end), a line longer than 1 MiB (the script stops there), an unknown flag, or a missing connection file |
 | `weavster` (interactive shell) | `quit`, `exit`, or end of input, even after failed commands (their errors are shown) | — | A line longer than 1 MiB, a read error, an unknown flag, or a missing connection file |
 | `weavster server` | `-h`, or a clean stop on SIGINT/SIGTERM | The configuration is invalid, the server could not start (store, TLS, bootstrap), or it runs as a privileged user without `WEAVSTER_ALLOW_ROOT=1` | An unknown flag or extra arguments |
 | `weavster test` | Every fixture passed, or `-h` | A fixture failed | An unknown flag, or the results could not be written |

@@ -219,36 +219,40 @@ func blockStyle(n *yaml.Node) {
 // order; the config map is never read from it (#107 D-52).
 var repoSections = []string{"flows", "alerts", "snippets", "snippetLibraries", "scripts", "settings"}
 
-// GitDocument merges every managed file at rev into one config document.
-// Each file must be a valid config document; an artifact defined in two
-// files, or a configmap section, makes the document invalid.
-func (a gitAdapter) GitDocument(_ context.Context, rev string) ([]byte, error) {
+// GitDocument merges every managed file at rev into one config document
+// and returns it with the commit it was read from. Each file must be a
+// valid config document without YAML anchors or aliases (they would not
+// survive the merge); an artifact defined in two files, or a configmap
+// section, makes the document invalid.
+func (a gitAdapter) GitDocument(_ context.Context, rev string) ([]byte, string, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	files, err := a.store.FilesAt(rev)
+	commit, contents, err := a.store.ReadAt(rev, managedFile)
 	if errors.Is(err, gitstore.ErrNotFound) {
-		return nil, gateway.ErrGitNotFound
+		return nil, "", gateway.ErrGitNotFound
 	}
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
+	files := make([]string, 0, len(contents))
+	for f := range contents {
+		files = append(files, f)
+	}
+	sort.Strings(files)
 	merged := map[string]map[string]*yaml.Node{}
 	from := map[string]string{} // section/name -> file
 	for _, f := range files {
-		if !managedFile(f) {
-			continue
-		}
-		content, err := a.store.ContentAtRevision(f, rev)
-		if err != nil {
-			return nil, err
-		}
+		content := contents[f]
 		invalid := func(err error) error { return fmt.Errorf("%w: %s: %w", gateway.ErrInvalidConfig, f, err) }
 		if _, err := config.Parse(content); err != nil {
-			return nil, invalid(err)
+			return nil, "", invalid(err)
 		}
 		var doc yaml.Node
 		if err := yaml.Unmarshal(content, &doc); err != nil || len(doc.Content) == 0 {
-			return nil, invalid(errors.New("not a YAML document"))
+			return nil, "", invalid(errors.New("not a YAML document"))
+		}
+		if hasAnchors(&doc) {
+			return nil, "", invalid(errors.New("YAML anchors and aliases are not supported in repository files"))
 		}
 		root := doc.Content[0]
 		for i := 0; i+1 < len(root.Content); i += 2 {
@@ -257,7 +261,7 @@ func (a gitAdapter) GitDocument(_ context.Context, rev string) ([]byte, error) {
 			case "version":
 				continue
 			case "configmap":
-				return nil, invalid(errors.New("the config map is not read from the repository"))
+				return nil, "", invalid(errors.New("the config map is not read from the repository"))
 			}
 			if merged[section] == nil {
 				merged[section] = map[string]*yaml.Node{}
@@ -265,7 +269,7 @@ func (a gitAdapter) GitDocument(_ context.Context, rev string) ([]byte, error) {
 			for j := 0; j+1 < len(entries.Content); j += 2 {
 				name := entries.Content[j].Value
 				if other, dup := from[section+"/"+name]; dup {
-					return nil, invalid(fmt.Errorf("%s.%s is also defined in %s", section, name, other))
+					return nil, "", invalid(fmt.Errorf("%s.%s is also defined in %s", section, name, other))
 				}
 				from[section+"/"+name] = f
 				merged[section][name] = entries.Content[j+1]
@@ -286,5 +290,19 @@ func (a gitAdapter) GitDocument(_ context.Context, rev string) ([]byte, error) {
 		}
 		root.Content = append(root.Content, str(section), m)
 	}
-	return yaml.Marshal(root)
+	doc, err := yaml.Marshal(root)
+	return doc, commit, err
+}
+
+// hasAnchors reports whether n uses YAML anchors, aliases, or merge keys.
+func hasAnchors(n *yaml.Node) bool {
+	if n.Anchor != "" || n.Kind == yaml.AliasNode || (n.Kind == yaml.ScalarNode && n.Tag == "!!merge") {
+		return true
+	}
+	for _, c := range n.Content {
+		if hasAnchors(c) {
+			return true
+		}
+	}
+	return false
 }

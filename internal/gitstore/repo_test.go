@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -52,17 +53,25 @@ func TestOpenOrInitFilesHeadRevisions(t *testing.T) {
 	if files, err := s.Files(); err != nil || strings.Join(files, ",") != "flows/a.yaml" {
 		t.Errorf("files = %v %v", files, err)
 	}
+	notB := func(p string) bool { return p != "flows/b.yaml" }
 	for _, tt := range []struct {
-		rev, want string
-		err       error
+		rev, hash, want string
+		keep            func(string) bool
+		err             error
 	}{
-		{"HEAD", "flows/a.yaml", nil},
-		{"HEAD~1", "flows/a.yaml,flows/b.yaml", nil},
-		{"nope", "", ErrNotFound},
+		{"HEAD", second, "flows/a.yaml=flows/a.yaml", notB, nil},
+		{"HEAD~1", first, "flows/a.yaml=flows/a.yaml", notB, nil},
+		{"HEAD~1", first, "flows/a.yaml=flows/a.yaml,flows/b.yaml=flows/b.yaml", func(string) bool { return true }, nil},
+		{"nope", "", "", notB, ErrNotFound},
 	} {
-		files, err := s.FilesAt(tt.rev)
-		if strings.Join(files, ",") != tt.want || !errors.Is(err, tt.err) {
-			t.Errorf("FilesAt(%s) = %v %v", tt.rev, files, err)
+		hash, files, err := s.ReadAt(tt.rev, tt.keep)
+		var got []string
+		for f, c := range files {
+			got = append(got, f+"="+string(c))
+		}
+		sort.Strings(got)
+		if hash != tt.hash || strings.Join(got, ",") != tt.want || !errors.Is(err, tt.err) {
+			t.Errorf("ReadAt(%s) = %s %v %v", tt.rev, hash, got, err)
 		}
 	}
 	for _, tt := range []struct {

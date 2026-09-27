@@ -484,10 +484,11 @@ paths:
                 type: object
                 properties:
                   rev: {type: string}
+                  commit: {type: string, description: The commit rev resolved to}
                   drifted: {type: boolean}
                   plan: {$ref: "#/components/schemas/ConfigPlan"}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
-        "400": {description: "A repository file is invalid, or an artifact is defined twice", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A repository file is invalid or uses YAML anchors/aliases, or an artifact is defined twice", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown revision, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/stats/series:
     get:

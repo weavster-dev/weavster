@@ -43,18 +43,18 @@ func (f fakeGit) GitContent(_ context.Context, path, rev string) ([]byte, error)
 
 // GitDocument maps revisions to fakePlanner documents: HEAD plans with
 // changes, "same" without, "bad" is rejected by the planner.
-func (f fakeGit) GitDocument(_ context.Context, rev string) ([]byte, error) {
+func (f fakeGit) GitDocument(_ context.Context, rev string) ([]byte, string, error) {
 	switch rev {
 	case "HEAD":
-		return []byte("changed"), f.err
+		return []byte("changed"), "c0ffee", f.err
 	case "same":
-		return []byte("ok"), f.err
+		return []byte("ok"), "5a3e", f.err
 	case "invalid":
-		return nil, fmt.Errorf("%w: flows/a.yaml: bad", ErrInvalidConfig)
+		return nil, "", fmt.Errorf("%w: flows/a.yaml: bad", ErrInvalidConfig)
 	case "missing":
-		return nil, ErrGitNotFound
+		return nil, "", ErrGitNotFound
 	}
-	return []byte(rev), f.err
+	return []byte(rev), "0ther", f.err
 }
 
 func TestGitHandlers(t *testing.T) {
@@ -130,15 +130,15 @@ func TestGitPlanApplyDrift(t *testing.T) {
 		status                   int
 		want                     string
 	}{
-		{"drift", http.MethodGet, "/api/v1/git/drift", "", ports(nil), http.StatusOK, `{"rev":"HEAD","drifted":true,"plan":{"fingerprint":"c"`},
-		{"no drift", http.MethodGet, "/api/v1/git/drift?rev=same", "", ports(nil), http.StatusOK, `{"rev":"same","drifted":false`},
+		{"drift", http.MethodGet, "/api/v1/git/drift", "", ports(nil), http.StatusOK, `{"rev":"HEAD","commit":"c0ffee","drifted":true,"plan":{"fingerprint":"c"`},
+		{"no drift", http.MethodGet, "/api/v1/git/drift?rev=same", "", ports(nil), http.StatusOK, `{"rev":"same","commit":"5a3e","drifted":false`},
 		{"drift unknown rev", http.MethodGet, "/api/v1/git/drift?rev=missing", "", ports(nil), http.StatusNotFound, "not found in the repository"},
 		{"drift invalid repository", http.MethodGet, "/api/v1/git/drift?rev=invalid", "", ports(nil), http.StatusBadRequest, "flows/a.yaml: bad"},
 		{"drift planner rejects", http.MethodGet, "/api/v1/git/drift?rev=bad", "", ports(nil), http.StatusBadRequest, "flows.a: bad"},
 		{"drift planner fails", http.MethodGet, "/api/v1/git/drift?rev=other", "", ports(nil), http.StatusInternalServerError, "internal error"},
 		{"drift read fails", http.MethodGet, "/api/v1/git/drift", "", ports(errDisk), http.StatusInternalServerError, "internal error"},
 		{"drift without planner", http.MethodGet, "/api/v1/git/drift", "", Config{Git: fakeGit{}}, http.StatusServiceUnavailable, "planning unavailable"},
-		{"drift without git", http.MethodGet, "/api/v1/git/drift", "", Config{ConfigPlanner: fakePlanner{}}, http.StatusServiceUnavailable, "git.path"},
+		{"drift without git", http.MethodGet, "/api/v1/git/drift", "", func() Config { c := ports(nil); c.Git = nil; return c }(), http.StatusServiceUnavailable, "git.path"},
 		{"drift without stores", http.MethodGet, "/api/v1/git/drift", "", Config{Git: fakeGit{}, ConfigPlanner: fakePlanner{}}, http.StatusServiceUnavailable, "export and import unavailable"},
 		{"plan from git", http.MethodPost, "/api/v1/config/plan?gitRev=", "ignored", ports(nil), http.StatusOK, `"fingerprint":"c"`},
 		{"plan from git rev", http.MethodPost, "/api/v1/config/plan?gitRev=same", "", ports(nil), http.StatusOK, `"fingerprint":"f"`},

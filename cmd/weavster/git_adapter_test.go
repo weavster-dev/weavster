@@ -118,7 +118,7 @@ func TestGitAdapterDocument(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, err := a.GitDocument(ctx, "HEAD"); !errors.Is(err, gateway.ErrGitNotFound) {
+	if _, _, err := a.GitDocument(ctx, "HEAD"); !errors.Is(err, gateway.ErrGitNotFound) {
 		t.Errorf("empty repository = %v", err)
 	}
 	for _, tt := range []struct {
@@ -130,6 +130,8 @@ func TestGitAdapterDocument(t *testing.T) {
 		{"bad file", "alerts/bad.yaml", "version: \"1\"\nalerts:\n  x: [", "alerts/bad.yaml"},
 		{"unknown field", "settings/bad.yaml", "version: \"1\"\nbogus: 1\n", "settings/bad.yaml"},
 		{"config map refused", "settings/map.yaml", "version: \"1\"\nconfigmap:\n  region: eu\n", "the config map is not read from the repository"},
+		{"aliases refused", "scripts/alias.yaml", "version: \"1\"\nscripts:\n  b: &x foo\n  c: *x\n", "scripts/alias.yaml: YAML anchors and aliases are not supported"},
+		{"merge keys refused", "settings/merge.yaml", "version: \"1\"\nsettings:\n  m:\n    <<: {a: 1}\n", "settings/merge.yaml: YAML anchors and aliases"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			if err := a.store.WriteFile(tt.file, []byte(tt.content)); err != nil {
@@ -138,8 +140,11 @@ func TestGitAdapterDocument(t *testing.T) {
 			if _, err := a.store.Commit(tt.name, gitstoreAuthor); err != nil {
 				t.Fatal(err)
 			}
-			doc, err := a.GitDocument(ctx, "HEAD")
+			doc, commit, err := a.GitDocument(ctx, "HEAD")
 			got := string(doc)
+			if head, _, _ := a.store.Head(); err == nil && commit != head {
+				t.Errorf("commit = %s, want %s", commit, head)
+			}
 			if err != nil {
 				got = err.Error()
 			}
