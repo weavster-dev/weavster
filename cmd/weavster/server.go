@@ -1795,17 +1795,7 @@ func (m messageAdapter) Export(ctx context.Context, q gateway.MessageQuery, key 
 // MessageTrends counts the store's messages per bucket and status.
 func (m messageAdapter) MessageTrends(ctx context.Context, q gateway.MessageTrendQuery) (map[int]map[string]int, error) {
 	counts, err := m.store.MessageTrends(ctx, state.TrendQuery{FlowID: q.FlowID, From: q.From, To: q.To, Bucket: q.Interval})
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[int]map[string]int, len(counts))
-	for i, byStatus := range counts {
-		out[i] = map[string]int{}
-		for st, n := range byStatus {
-			out[i][string(st)] = n
-		}
-	}
-	return out, nil
+	return counts, err
 }
 
 // deletePage is how many matches DeleteMatching reads at a time (a

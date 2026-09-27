@@ -15,7 +15,7 @@ type TrendQuery struct {
 
 // TrendCounts maps a bucket index to the number of messages in each status
 // (spec §5 message trends). Only buckets with messages appear.
-type TrendCounts map[int]map[Status]int
+type TrendCounts map[int]map[string]int
 
 // MessageTrends counts the matching messages per bucket and status, in the
 // database.
@@ -41,9 +41,9 @@ func (s *sqlStore) MessageTrends(ctx context.Context, q TrendQuery) (TrendCounts
 			return nil, err
 		}
 		if out[i] == nil {
-			out[i] = map[Status]int{}
+			out[i] = map[string]int{}
 		}
-		out[i][Status(st)] = n
+		out[i][st] = n
 	}
 	return out, rows.Err()
 }
@@ -61,9 +61,9 @@ func (s *MemStore) MessageTrends(_ context.Context, q TrendQuery) (TrendCounts, 
 		}
 		i := int((at - from) / q.Bucket.Milliseconds())
 		if out[i] == nil {
-			out[i] = map[Status]int{}
+			out[i] = map[string]int{}
 		}
-		out[i][m.Status]++
+		out[i][string(m.Status)]++
 	}
 	return out, nil
 }

@@ -32,8 +32,8 @@ func TestMessageTrends(t *testing.T) {
 				flow string
 				want TrendCounts
 			}{
-				{"", TrendCounts{0: {StatusSent: 1, StatusErrored: 1}, 1: {StatusSent: 1}}},
-				{"a", TrendCounts{0: {StatusSent: 1, StatusErrored: 1}}},
+				{"", TrendCounts{0: {"sent": 1, "errored": 1}, 1: {"sent": 1}}},
+				{"a", TrendCounts{0: {"sent": 1, "errored": 1}}},
 				{"none", TrendCounts{}},
 			} {
 				got, err := tr.MessageTrends(ctx, TrendQuery{FlowID: tt.flow, From: base, To: base.Add(3 * time.Hour), Bucket: time.Hour})
@@ -42,5 +42,16 @@ func TestMessageTrends(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestMessageTrendsClosedDB(t *testing.T) {
+	s, err := OpenSQLite(context.Background(), ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = s.Close()
+	if _, err := s.MessageTrends(context.Background(), TrendQuery{Bucket: time.Hour}); err == nil {
+		t.Error("closed store: no error")
 	}
 }

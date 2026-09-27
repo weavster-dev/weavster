@@ -315,9 +315,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 
 | Parameter | What it does |
 |---|---|
-| `from`, `to` | Required (RFC 3339). Buckets start at `from`; `to` is not included, so the last bucket may be shorter. |
+| `from`, `to` | Required (RFC 3339, to the millisecond). Buckets start at `from`; `to` is not included (unlike the message search), so ranges that meet, such as one day and the next, never count a message twice. The last bucket may be shorter. |
 | `interval` | `hour` (default) or `day`: the bucket length. |
-| `flowId` | Only that flow's messages. |
+| `flowId` | Only that flow's messages; an unknown flow returns `404`. |
 
 Every bucket and every status is listed, zeros included, so you can chart the result as it is.
 A range of more than 1000 buckets is refused with `400`; use `interval=day` or a shorter range.

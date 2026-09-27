@@ -28,7 +28,8 @@ type TrendBucket struct {
 	Statuses map[string]int `json:"statuses"`
 }
 
-// messageStatuses are the statuses every bucket lists (zero when none).
+// messageStatuses are listed in every bucket (zero when none); any other
+// status the store reports is listed and counted too.
 var messageStatuses = []string{"received", "transformed", "queued", "sent", "filtered", "errored", "dead-lettered"}
 
 // trendIntervals are the bucket sizes; maxTrendBuckets bounds a request.
@@ -47,6 +48,8 @@ func (s *Server) handleMessageTrends(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusBadRequest, msg)
 		return
 	}
+	// The store keeps receive times in milliseconds.
+	q.From, q.To = q.From.Truncate(time.Millisecond), q.To.Truncate(time.Millisecond)
 	if q.From.IsZero() || q.To.IsZero() || !q.To.After(q.From) {
 		writeStatusError(w, http.StatusBadRequest, "from and to are required, and to must be after from")
 		return
@@ -60,10 +63,17 @@ func (s *Server) handleMessageTrends(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusBadRequest, "interval must be hour or day")
 		return
 	}
-	n := int((q.To.Sub(q.From) + q.Interval - 1) / q.Interval) // buckets, the last one may be shorter
-	if n > maxTrendBuckets {
-		writeStatusError(w, http.StatusBadRequest, fmt.Sprintf("the range holds %d buckets; at most %d (use a larger interval or a shorter range)", n, maxTrendBuckets))
+	// Compare before dividing: a range of centuries overflows a Duration sum.
+	if span := q.To.Sub(q.From); span > time.Duration(maxTrendBuckets)*q.Interval {
+		writeStatusError(w, http.StatusBadRequest, fmt.Sprintf("the range holds more than %d buckets (use a larger interval or a shorter range)", maxTrendBuckets))
 		return
+	}
+	n := int((q.To.Sub(q.From) + q.Interval - 1) / q.Interval) // buckets, the last one may be shorter
+	if q.FlowID != "" && s.cfg.Flows != nil {
+		if _, err := s.cfg.Flows.Get(r.Context(), q.FlowID); err != nil {
+			writeFlowError(w, err)
+			return
+		}
 	}
 	counts, err := s.cfg.Trends.MessageTrends(r.Context(), q)
 	if err != nil {
@@ -74,8 +84,11 @@ func (s *Server) handleMessageTrends(w http.ResponseWriter, r *http.Request) {
 	for i := range out {
 		b := TrendBucket{Start: q.From.Add(time.Duration(i) * q.Interval).UTC(), Statuses: map[string]int{}}
 		for _, st := range messageStatuses {
-			b.Statuses[st] = counts[i][st]
-			b.Total += counts[i][st]
+			b.Statuses[st] = 0
+		}
+		for st, c := range counts[i] {
+			b.Statuses[st] = c
+			b.Total += c
 		}
 		out[i] = b
 	}
