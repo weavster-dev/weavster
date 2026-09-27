@@ -45,11 +45,7 @@ func (s *Store) Revisions(path string, limit int) ([]Revision, error) {
 // ContentAtRevision returns the content of path at the given revision (any
 // revision Git understands); ErrNotFound when either does not exist.
 func (s *Store) ContentAtRevision(path, rev string) ([]byte, error) {
-	c, err := s.resolve(rev)
-	if err != nil {
-		return nil, err
-	}
-	tree, err := c.Tree()
+	tree, err := s.treeAt(rev)
 	if err != nil {
 		return nil, err
 	}

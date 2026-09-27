@@ -44,6 +44,8 @@ var protectedRoutes = []struct {
 	{http.MethodGet, "/api/v1/git", "git:view"},
 	{http.MethodGet, "/api/v1/git/log", "git:view"},
 	{http.MethodGet, "/api/v1/git/remote", "git:view"},
+	{http.MethodGet, "/api/v1/git/diff", "git:view,flows:view,alerts:edit,snippets:edit,scripts:edit,settings:edit"},
+	{http.MethodPost, "/api/v1/git/restore", "git:commit,flows:view,alerts:edit,snippets:edit,scripts:edit,settings:edit"},
 	{http.MethodPost, "/api/v1/git/push", "git:commit"},
 	{http.MethodPost, "/api/v1/git/pull", "git:commit"},
 	{http.MethodGet, "/api/v1/git/drift", "git:view,flows:view,alerts:edit,snippets:edit,scripts:edit,settings:edit,configmap:edit"},

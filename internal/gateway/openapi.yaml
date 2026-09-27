@@ -549,6 +549,66 @@ paths:
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
         "409": {description: "No remote configured, or the remote has no such branch", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "502": {description: "The remote could not be reached or refused the request", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/git/diff:
+    get:
+      summary: "Files changed between two revisions with a unified patch, or (without from) the working-tree changes against HEAD (requires git:view, flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit)"
+      parameters:
+        - {name: from, in: query, schema: {type: string}, description: "A revision; without it the working tree is compared with HEAD (reported as from HEAD, to empty)"}
+        - {name: to, in: query, schema: {type: string, default: HEAD}, description: Needs from}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: The comparison
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  from: {type: string}
+                  to: {type: string}
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: {type: string}
+                        status: {type: string, enum: [added, modified, deleted]}
+                  patch: {type: string, description: "Unified diff (a moved file is a deletion and an addition); empty for the working tree"}
+                  truncated: {type: boolean, description: The patch was cut at 5 MiB}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "400": {description: to without from, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown revision, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/git/restore:
+    post:
+      summary: "Make the repository (or one file) match a revision and commit that as a new commit; the live configuration changes only when you apply (requires git:commit, flows:view, alerts:edit, snippets:edit, scripts:edit, settings:edit)"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rev, message]
+              additionalProperties: false
+              properties:
+                rev: {type: string}
+                path: {type: string, description: One file; without it every file}
+                message: {type: string, minLength: 1}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: "committed is false when the repository already matched"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  committed: {type: boolean}
+                  head: {type: string}
+                  changed: {type: array, items: {type: string}}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "400": {description: Missing rev or message, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown revision, or the file did not exist at it", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "The repository has uncommitted changes, or the restore would overwrite an ignored local file", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/stats/series:
     get:
       summary: "Sampled lifetime statistics of every flow (or one), oldest first (requires flows:view)"

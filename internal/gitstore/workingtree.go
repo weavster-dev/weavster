@@ -1,26 +1,14 @@
 package gitstore
 
-import (
-	"sort"
-
-	git "github.com/go-git/go-git/v5"
-)
-
 // WorkingTreeDiff returns the paths changed in the working tree relative to
-// HEAD (spec §2.12.40).
+// HEAD (spec §2.12.40), as WorkingChanges lists them.
 func (s *Store) WorkingTreeDiff() ([]string, error) {
-	st, err := s.wt.Status()
-	if err != nil {
-		return nil, err
+	changes, err := s.WorkingChanges()
+	out := make([]string, len(changes))
+	for i, c := range changes {
+		out[i] = c.Path
 	}
-	out := make([]string, 0)
-	for p, sc := range st {
-		if sc.Staging != git.Unmodified || sc.Worktree != git.Unmodified {
-			out = append(out, p)
-		}
-	}
-	sort.Strings(out)
-	return out, nil
+	return out, err
 }
 
 // Restore restores path to its content at the given revision (spec §2.12.40).

@@ -80,6 +80,7 @@ All notable changes to this project are documented here, following
 - Git repository (#262): server config `git.path`; `POST /api/v1/git/commit` commits the live configuration (one config-as-code document per artifact under `flows/`, `alerts/`, `snippets/`, `snippetLibraries/`, `scripts/`, `settings/`; never the config map); `GET /api/v1/git`, `/git/log[?path=&limit=]`, `/git/content?path=[&rev=]`; permissions `git:view` and `git:commit` (reading files and committing also need the configuration-export permissions).
 - Git plan/apply and drift (#264): `gitRev=REV` on `POST /api/v1/config/plan` and `/config/apply` uses the repository (every managed file merged; config map unmanaged) as the document; `GET /api/v1/git/drift[?rev=]` and CLI `config drift [revision]` (fails on drift) compare it with the live configuration.
 - Git remote (#266): server config `git.remote` (`url`, `username`, `passwordEnv`); `GET /api/v1/git/remote` (fetch, ahead/behind), `POST /api/v1/git/push` (409 when the remote moved on), `POST /api/v1/git/pull` (remote wins; dropped local commits reported).
+- Git diff and restore (#268): `GET /api/v1/git/diff?from=&to=` (files and unified patch; working-tree changes without `from`); `POST /api/v1/git/restore` (`rev`, optional `path`, `message`) records a revision's content as a new commit.
 
 ### Changed
 

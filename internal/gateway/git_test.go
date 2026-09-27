@@ -72,6 +72,20 @@ func (f fakeGit) GitPull(context.Context) (GitPullResult, error) {
 	return GitPullResult{Head: "abc", Dropped: []string{"def"}}, f.err
 }
 
+func (f fakeGit) GitDiff(_ context.Context, from, to string) (GitDiff, error) {
+	if from == "missing" {
+		return GitDiff{}, ErrGitNotFound
+	}
+	return GitDiff{From: from, To: to, Files: []GitFileChange{{Path: "flows/a.yaml", Status: "modified"}}}, f.err
+}
+
+func (f fakeGit) GitRestore(_ context.Context, rev, path, _, author string) (GitCommitResult, error) {
+	if rev == "dirty" {
+		return GitCommitResult{}, fmt.Errorf("%w: uncommitted changes", ErrGitConflict)
+	}
+	return GitCommitResult{Committed: true, Head: rev + ":" + path + ":" + author, Changed: []string{"flows/a.yaml"}}, f.err
+}
+
 func TestGitHandlers(t *testing.T) {
 	var committed ConfigBundle
 	var author string
@@ -194,6 +208,38 @@ func TestGitRemoteHandlers(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, nil))
+			if rec.Code != tt.status || !strings.Contains(rec.Body.String(), tt.want) {
+				t.Errorf("got %d %.300s; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.want)
+			}
+		})
+	}
+}
+
+func TestGitDiffRestoreHandlers(t *testing.T) {
+	with := func(err error) Config { return Config{Git: fakeGit{err: err}} }
+	for _, tt := range []struct {
+		name, method, path, body string
+		cfg                      Config
+		status                   int
+		want                     string
+	}{
+		{"diff revisions", http.MethodGet, "/api/v1/git/diff?from=HEAD~1", "", with(nil), http.StatusOK, `{"from":"HEAD~1","to":"HEAD","files":[{"path":"flows/a.yaml","status":"modified"}]`},
+		{"diff working tree", http.MethodGet, "/api/v1/git/diff", "", with(nil), http.StatusOK, `{"from":"","to":"","files"`},
+		{"diff to without from", http.MethodGet, "/api/v1/git/diff?to=HEAD", "", with(nil), http.StatusBadRequest, "to needs from"},
+		{"diff unknown revision", http.MethodGet, "/api/v1/git/diff?from=missing", "", with(nil), http.StatusNotFound, "not found"},
+		{"diff fails", http.MethodGet, "/api/v1/git/diff?from=a", "", with(errDisk), http.StatusInternalServerError, "internal error"},
+		{"restore", http.MethodPost, "/api/v1/git/restore", `{"rev":"HEAD~2","path":"flows/a.yaml","message":"back"}`, with(nil), http.StatusOK, `"head":"HEAD~2:flows/a.yaml:weavster"`},
+		{"restore needs rev", http.MethodPost, "/api/v1/git/restore", `{"message":"back"}`, with(nil), http.StatusBadRequest, "rev and message are required"},
+		{"restore needs message", http.MethodPost, "/api/v1/git/restore", `{"rev":"HEAD~1"}`, with(nil), http.StatusBadRequest, "rev and message are required"},
+		{"restore bad body", http.MethodPost, "/api/v1/git/restore", `{"revision":"x"}`, with(nil), http.StatusBadRequest, "invalid JSON body"},
+		{"restore over changes", http.MethodPost, "/api/v1/git/restore", `{"rev":"dirty","message":"x"}`, with(nil), http.StatusConflict, "uncommitted"},
+		{"restore fails", http.MethodPost, "/api/v1/git/restore", `{"rev":"a","message":"x"}`, with(errDisk), http.StatusInternalServerError, "internal error"},
+		{"diff not configured", http.MethodGet, "/api/v1/git/diff", "", Config{}, http.StatusServiceUnavailable, "git.path"},
+		{"restore not configured", http.MethodPost, "/api/v1/git/restore", `{}`, Config{}, http.StatusServiceUnavailable, "git.path"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			New(tt.cfg).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))
 			if rec.Code != tt.status || !strings.Contains(rec.Body.String(), tt.want) {
 				t.Errorf("got %d %.300s; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.want)
 			}
