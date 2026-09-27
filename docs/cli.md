@@ -135,3 +135,44 @@ import "backups/all flows.json" force
 | `user changepw <name> <password>` | Sets an account's password; the user must change it at the next login. |
 | `help` | Lists the commands. |
 | `quit`, `exit` | End the interactive shell; ignored in batch mode. |
+
+## Deprecated command names
+
+Scripts written for older tools can keep their command names. A deprecated name prints a warning
+on stderr and then runs its replacement with the same arguments; the warning does not change the
+exit code.
+
+| Deprecated | Runs |
+|---|---|
+| `channel …` | `flow …` |
+| `codetemplate …` | `snippet …` |
+
+```text
+weavster> channel list
+Warning: "channel" is deprecated; use "flow"
+adt	started	ADT Inbound
+```
+
+Update your scripts to the new names; the old ones may be removed in a later release.
+
+## Exit codes and errors
+
+| Command | `0` | `1` | `2` |
+|---|---|---|---|
+| `weavster` (shell or `-s` script) | Every command succeeded, `-h`, or `quit`/end of input | — | A usage error, an unknown flag, a missing connection file, or any failed command (the script still runs to the end) |
+| `weavster server` | `-h`, or a clean stop on SIGINT/SIGTERM | The configuration is invalid or the server could not start (store, TLS, bootstrap) | An unknown flag or extra arguments |
+| `weavster test` | Every fixture passed | A fixture failed | An unknown flag, or the results could not be written |
+
+Errors go to stderr and start with `Error:`. A reply from the server shows its status and
+message, for example `Error: server returned 404 Not Found: snippet not found`. With `-d`, the
+client also prints each underlying cause:
+
+```text
+Error: Get "http://127.0.0.1:8080/api/v1/flows": dial tcp 127.0.0.1:8080: connect: connection refused
+  caused by *net.OpError: dial tcp 127.0.0.1:8080: connect: connection refused
+  caused by *os.SyscallError: connect: connection refused
+  caused by syscall.Errno: connection refused
+```
+
+A failed login prints `Could not log in to server.` and continues (the prompt or the script);
+the commands that follow then fail with the server's `401` reply.

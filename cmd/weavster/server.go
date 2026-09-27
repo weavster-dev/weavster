@@ -188,7 +188,8 @@ func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config
 }
 
 // runServer enforces the privileged-run guard (spec §11), loads the
-// configuration, and serves until SIGINT/SIGTERM.
+// configuration, and serves until SIGINT/SIGTERM. It exits 0 on help or a
+// clean shutdown, 2 on a usage error, and 1 on any other failure (D-16).
 func runServer(args []string, stderr io.Writer) int {
 	fail := func(err error) int {
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
@@ -206,10 +207,11 @@ func runServer(args []string, stderr io.Writer) int {
 		if errors.Is(err, flag.ErrHelp) {
 			return 0
 		}
-		return 1
+		return 2
 	}
 	if fs.NArg() > 1 {
-		return fail(fmt.Errorf("unexpected arguments %q; put flags before the address", fs.Args()[1:]))
+		_, _ = fmt.Fprintf(stderr, "Error: unexpected arguments %q; put flags before the address\n", fs.Args()[1:])
+		return 2
 	}
 
 	cfg := serverconfig.Default()

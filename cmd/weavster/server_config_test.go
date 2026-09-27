@@ -144,6 +144,7 @@ func TestServerConfigErrors(t *testing.T) {
 		name string
 		args func(t *testing.T) []string
 		want string
+		code int // 0 means the default, 1
 	}{
 		{name: "missing-file", args: func(t *testing.T) []string {
 			return []string{"server", "--config", filepath.Join(t.TempDir(), "absent.yaml")}
@@ -156,7 +157,7 @@ func TestServerConfigErrors(t *testing.T) {
 		}, want: "store.dialect must be"},
 		{name: "unknown-flag", args: func(*testing.T) []string {
 			return []string{"server", "--nope"}
-		}, want: "flag provided but not defined"},
+		}, want: "flag provided but not defined", code: 2},
 		{name: "retry-exhausted", args: func(t *testing.T) []string {
 			return []string{"server", "--config", writeConfig(t,
 				"store: {dialect: postgres, dsn: \"postgres://u:p@127.0.0.1:1/db?connect_timeout=1\", maxRetry: 2, retryWaitMs: 10}\n")}
@@ -169,7 +170,7 @@ func TestServerConfigErrors(t *testing.T) {
 		}, want: "Error: store: sqlite:"},
 		{name: "extra-arguments", args: func(*testing.T) []string {
 			return []string{"server", "127.0.0.1:0", "--config", "weavster.yaml"}
-		}, want: "unexpected arguments"},
+		}, want: "unexpected arguments", code: 2},
 		{name: "unreadable-tls-cert", args: func(t *testing.T) []string {
 			dir := t.TempDir()
 			return []string{"server", "--config", writeConfig(t, "listen: {tlsAddress: \"127.0.0.1:8443\"}\ntls: {certFile: \""+
@@ -179,8 +180,12 @@ func TestServerConfigErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			var out, errb bytes.Buffer
-			if code := run(tt.args(t), strings.NewReader(""), &out, &errb); code != 1 {
-				t.Fatalf("exit = %d, want 1 (stderr %q)", code, errb.String())
+			want := 1 // a configuration or startup failure
+			if tt.code != 0 {
+				want = tt.code // a usage error
+			}
+			if code := run(tt.args(t), strings.NewReader(""), &out, &errb); code != want {
+				t.Fatalf("exit = %d, want %d (stderr %q)", code, want, errb.String())
 			}
 			if !strings.Contains(errb.String(), tt.want) {
 				t.Errorf("stderr %q does not contain %q", errb.String(), tt.want)
