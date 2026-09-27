@@ -18,20 +18,26 @@ type Event struct {
 
 // EventFilter narrows Search/Count/Export.
 type EventFilter struct {
-	Type  string
-	Flow  string
-	Since time.Time
-	Limit int // newest N matches; 0 = all
+	Type    string
+	Flow    string
+	Since   time.Time // at or after; zero = open
+	Until   time.Time // at or before; zero = open
+	AfterID int64     // only ids above this (polling for new events)
+	// Cursor marks a poll from AfterID (even 0): Limit then keeps the
+	// oldest N after it, so polling never skips events.
+	Cursor bool
+	// Limit keeps N matches, 0 = all: the newest N, or the oldest N with
+	// Cursor.
+	Limit int
 }
 
 func (f EventFilter) matches(e Event) bool {
-	if f.Type != "" && e.Type != f.Type {
-		return false
-	}
-	if f.Flow != "" && e.Flow != f.Flow {
-		return false
-	}
-	if !f.Since.IsZero() && e.At.Before(f.Since) {
+	switch {
+	case f.Type != "" && e.Type != f.Type,
+		f.Flow != "" && e.Flow != f.Flow,
+		!f.Since.IsZero() && e.At.Before(f.Since),
+		!f.Until.IsZero() && e.At.After(f.Until),
+		e.ID <= f.AfterID:
 		return false
 	}
 	return true
@@ -78,13 +84,46 @@ func (l *EventLog) Search(f EventFilter) []Event {
 		}
 	}
 	if f.Limit > 0 && len(out) > f.Limit {
+		if f.Cursor {
+			return out[:f.Limit] // the oldest Limit after the cursor
+		}
 		out = out[len(out)-f.Limit:] // the newest Limit, oldest first
 	}
 	return out
 }
 
-// Count returns the number of events matching the filter.
-func (l *EventLog) Count(f EventFilter) int { return len(l.Search(f)) }
+// Get returns the event with id, if it is still kept. Ids are consecutive,
+// so the event's place in the ring follows from the oldest id kept.
+func (l *EventLog) Get(id int64) (Event, bool) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	oldest := l.seq - int64(len(l.events)) + 1
+	if len(l.events) == 0 || id < oldest || id > l.seq {
+		return Event{}, false
+	}
+	return l.events[(int64(l.next)+id-oldest)%int64(len(l.events))], true
+}
+
+// MaxID returns the id of the newest event (0 when none was recorded).
+func (l *EventLog) MaxID() int64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.seq
+}
+
+// Count returns the number of events matching the filter (Limit is
+// ignored).
+func (l *EventLog) Count(f EventFilter) int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	n := 0
+	for _, e := range l.events {
+		if f.matches(e) {
+			n++
+		}
+	}
+	return n
+}
 
 // Export returns events matching the filter (same as Search; the export path
 // serializes to a file at the API layer).

@@ -146,6 +146,10 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("flows", "deploy")).Post("/flows/{id}/destinations/{dest}/{action}", s.handleDestinationAction)
 			r.With(s.require("flows", "view")).Get("/flows/{id}/stats", s.handleFlowStats)
 			r.With(s.require("events", "view")).Get("/events", s.handleEvents)
+			r.With(s.require("events", "view")).Get("/events/count", s.handleEventCount)
+			r.With(s.require("events", "view")).Get("/events/max-id", s.handleEventMaxID)
+			r.With(s.require("events", "view")).Get("/events/export", s.handleEventExport)
+			r.With(s.require("events", "view")).Get("/events/{id}", s.handleEventGet)
 			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "view")).Get("/messages", s.handleMessagesSearch)
 			for _, k := range itemKinds {
 				edit := s.require(k.resource, "edit")

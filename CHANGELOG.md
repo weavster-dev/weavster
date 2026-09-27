@@ -71,9 +71,11 @@ All notable changes to this project are documented here, following
 - Config-as-code documents (#237): typed `alerts`, `snippets`, `snippetLibraries`, `scripts`, `configmap`, `settings` sections sharing the API shapes; unknown fields rejected everywhere; cross-artifact checks; JSON Schemas `alert`, `snippet`, `snippet-library` published in `agent-docs/schemas/`; `POST /api/v1/config/validate` and CLI `config validate "path"`.
 - Config-as-code plan (#239): `POST /api/v1/config/plan` and CLI `config diff` / `config plan` compare a document with the live configuration (adds, field-level updates, removals only in sections the document includes) without changing anything; the plan carries a fingerprint of the live state.
 - Config-as-code apply (#241): `POST /api/v1/config/apply?fingerprint=…` and CLI `config apply "path" [--dry-run] [reason]` apply a reviewed plan, refuse stale plans, roll back every applied change when one fails, and audit the plan, reason, and result.
+- Events API (#243): `from`, `to`, and `afterId` filters on `GET /api/v1/events`; `GET /api/v1/events/{id}`, `/count`, `/max-id`, and `/export` (JSON download).
 
 ### Changed
 
+- `GET /api/v1/messages` (and export) refuses `from` later than `to` with `400` instead of returning nothing (#243).
 - Config-as-code document: the config map section is `configmap` (was `map`), and alerts use the API shape (`name`, `trigger.events`, `actions`) instead of `trigger`/`recipients`/`scope` (#237).
 - `weavster server` exits `2` (not `1`) on a usage error: an unknown flag or extra arguments (#231).
 - OpenAPI (#204): `agent-docs/openapi.yaml` is now exactly the contract the server serves at `GET /api/openapi.yaml` (one embedded source, `internal/gateway/openapi.yaml`, published with `go generate`). The contract documents `GET /api/openapi.yaml` itself, names the destination path parameter `{dest}` as the router does, and quotes descriptions that previously parsed as extra YAML keys. It is validated with kin-openapi (which applies OpenAPI 3.0 rules, so the document keeps to constructs valid in both 3.0 and 3.1), and every documented operation is contract-tested against the running server: it must reach its handler and answer a status it documents.

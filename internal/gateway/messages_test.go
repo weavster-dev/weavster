@@ -94,6 +94,7 @@ func TestMessageHandlers(t *testing.T) {
 		{"search defaults", http.MethodGet, "/api/v1/messages", cfg, http.StatusOK, "[]"},
 		{"search filters", http.MethodGet, "/api/v1/messages?flowId=f&status=sent&from=2026-09-26T00:00:00Z&to=2026-09-27T00:00:00Z&limit=5&offset=10&sort=id", cfg, http.StatusOK, "[]"},
 		{"bad from", http.MethodGet, "/api/v1/messages?from=yesterday", cfg, http.StatusBadRequest, "RFC 3339"},
+		{"from after to", http.MethodGet, "/api/v1/messages?from=2026-09-27T00:00:00Z&to=2026-09-26T00:00:00Z", cfg, http.StatusBadRequest, "from must not be after to"},
 		{"unencoded plus in offset", http.MethodGet, "/api/v1/messages?from=2026-09-26T12:00:00+02:00", cfg, http.StatusOK, "[]"},
 		{"bad limit", http.MethodGet, "/api/v1/messages?limit=5000", cfg, http.StatusBadRequest, "between 1 and 1000"},
 		{"bad offset", http.MethodGet, "/api/v1/messages?offset=-1", cfg, http.StatusBadRequest, "0 or more"},

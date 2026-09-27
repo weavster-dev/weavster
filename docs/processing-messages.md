@@ -289,7 +289,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 | Parameter | Meaning |
 |---|---|
 | `flowId`, `status` | Only messages of this flow / with this status. |
-| `from`, `to` | Received at or after / at or before this time (RFC 3339, for example `2026-09-26T12:00:00Z`). |
+| `from`, `to` | Received at or after / at or before this time (RFC 3339, for example `2026-09-26T12:00:00Z`); `from` must not be after `to`. |
 | `limit` | Messages per page, 1–1000 (default 100). |
 | `offset` | Messages to skip, for the next pages. |
 | `sort` | `-receivedAt` (newest first, default), `receivedAt`, `id`, or `-id`. |
@@ -445,9 +445,36 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 [{"id":7,"at":"2026-09-26T12:00:00Z","type":"message.errored","flowId":"adt","data":{"messageId":"6f1c…"}}]
 ```
 
-Both filters are optional. `limit` (1–10000, default 1000) returns the newest matches; results
-are oldest first. Events never contain message content or transform error text, because both
-can hold patient data. The error is stored with the message instead.
+Every filter is optional:
+
+| Parameter | What it does |
+|---|---|
+| `type`, `flowId` | Only events of that type or flow. |
+| `from`, `to` | Only events at or after / at or before that time (RFC 3339); `from` must not be after `to`. |
+| `afterId` | Only events with a larger id. |
+| `limit` | How many matches, 1–10000 (default 1000): the newest ones, or with `afterId` the oldest ones after it. |
+
+Results are oldest first. Events never contain message content or transform error text, because
+both can hold patient data. The error is stored with the message instead.
+
+| Request | What it returns |
+|---|---|
+| `GET /api/v1/events/{id}` | One event; `404` if unknown or no longer kept. |
+| `GET /api/v1/events/count` | `{"count": n}` for the same filters (no limit). |
+| `GET /api/v1/events/max-id` | `{"maxId": n}`: the newest event's id, `0` when there is none. |
+| `GET /api/v1/events/export` | Every match (no limit) as a JSON file download (`events.json`). |
+
+To follow new events, remember the last id you saw (or start from `max-id`) and ask for the ones
+after it. With `afterId`, the reply holds the oldest events after that id, so when more than
+`limit` arrived, ask again with the last id of the reply until it comes back short; nothing is
+skipped:
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/events?afterId=41'
+```
+
+The server keeps the newest 10,000 events in memory: older ones are dropped, and the log starts
+empty when the server restarts.
 
 To save statistics or events to a file from the command-line client, use `dump stats "path"` or
 `dump events "path"` (the newest 10,000 events).

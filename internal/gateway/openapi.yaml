@@ -430,14 +430,59 @@ paths:
         - name: flowId
           in: query
           schema: {type: string}
+        - {name: from, in: query, schema: {type: string, format: date-time}, description: At or after (RFC 3339)}
+        - {name: to, in: query, schema: {type: string, format: date-time}, description: At or before (RFC 3339)}
+        - {name: afterId, in: query, schema: {type: integer, minimum: 0}, description: "Only events with a larger id: poll with the last id you saw"}
         - name: limit
           in: query
           description: Newest N matching events (1-10000, default 1000)
           schema: {type: integer, minimum: 1, maximum: 10000}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "Events, oldest first: id, at, type, flowId, data", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
-        "400": {description: Invalid limit, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "Events, oldest first", content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Event"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad time, afterId, or limit", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/events/count:
+    get:
+      summary: Count the matching events (requires events:view)
+      parameters:
+        - {name: type, in: query, schema: {type: string}}
+        - {name: flowId, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}, description: At or after (RFC 3339)}
+        - {name: to, in: query, schema: {type: string, format: date-time}, description: At or before (RFC 3339)}
+        - {name: afterId, in: query, schema: {type: integer, minimum: 0}, description: Only events with a larger id}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{count}", content: {application/json: {schema: {type: object, properties: {count: {type: integer}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad time or afterId", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/events/max-id:
+    get:
+      summary: The id of the newest event, 0 when there is none (requires events:view)
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "{maxId}", content: {application/json: {schema: {type: object, properties: {maxId: {type: integer}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/events/export:
+    get:
+      summary: "Every matching event (no limit) as a JSON file download, oldest first (requires events:view)"
+      parameters:
+        - {name: type, in: query, schema: {type: string}}
+        - {name: flowId, in: query, schema: {type: string}}
+        - {name: from, in: query, schema: {type: string, format: date-time}, description: At or after (RFC 3339)}
+        - {name: to, in: query, schema: {type: string, format: date-time}, description: At or before (RFC 3339)}
+        - {name: afterId, in: query, schema: {type: integer, minimum: 0}, description: Only events with a larger id}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "Events (Content-Disposition: attachment; filename=events.json)", content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Event"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "A bad time or afterId", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/events/{id}:
+    parameters:
+      - {name: id, in: path, required: true, schema: {type: string}, description: The event id (a positive number)}
+    get:
+      summary: One event (requires events:view)
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: The event, content: {application/json: {schema: {$ref: "#/components/schemas/Event"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: The id is not a positive number, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown, or older than the events kept", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/messages:
     get:
       summary: Search stored messages, newest first by default (requires messages:view; audited)
@@ -1030,6 +1075,15 @@ components:
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
+    Event:
+      type: object
+      required: [id, at, type]
+      properties:
+        id: {type: integer}
+        at: {type: string, format: date-time}
+        type: {type: string, description: "For example message.sent, message.errored, flow.deployed"}
+        flowId: {type: string}
+        data: {type: object, additionalProperties: {type: string}}
     ConfigPlan:
       type: object
       required: [fingerprint, added, updated, removed, unchanged, changes, text]
