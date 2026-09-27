@@ -132,12 +132,8 @@ func deployedStatus(ctx context.Context, client Client, stdout, stderr io.Writer
 // printFlows prints the flows that keep selects, one line each: id, status,
 // and name, tab-separated. It returns how many it printed.
 func printFlows(ctx context.Context, client Client, stdout io.Writer, keep func(gateway.Flow) bool) (int, error) {
-	out, err := client.Call(ctx, http.MethodGet, "/api/v1/flows", nil)
+	flows, err := listFlows(ctx, client)
 	if err != nil {
-		return 0, err
-	}
-	var flows []gateway.Flow
-	if err := json.Unmarshal(out, &flows); err != nil {
 		return 0, err
 	}
 	n := 0

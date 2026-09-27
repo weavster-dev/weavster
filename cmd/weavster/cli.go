@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -63,10 +62,19 @@ func (c *httpClient) Call(ctx context.Context, method, path string, body []byte)
 		return nil, err
 	}
 	if resp.StatusCode/100 != 2 {
-		return nil, fmt.Errorf("server returned %s: %s", resp.Status, strings.TrimSpace(string(out)))
+		return nil, &serverError{Code: resp.StatusCode, Status: resp.Status, Body: strings.TrimSpace(string(out))}
 	}
 	return out, nil
 }
+
+// serverError is a reply that is not 2xx.
+type serverError struct {
+	Code   int
+	Status string // e.g. "404 Not Found"
+	Body   string
+}
+
+func (e *serverError) Error() string { return "server returned " + e.Status + ": " + e.Body }
 
 func (c *httpClient) UserList(ctx context.Context) ([]string, error) {
 	// MVP: user listing is not exposed over REST yet; return empty.

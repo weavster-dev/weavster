@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/weavster-dev/weavster/internal/gateway"
 )
@@ -126,5 +127,65 @@ func TestEscapeControl(t *testing.T) {
 		if got := escapeControl(in); got != want {
 			t.Errorf("escapeControl(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestSplitArgs(t *testing.T) {
+	tests := []struct {
+		line    string
+		want    []string
+		wantErr bool
+	}{
+		{"flow list", []string{"flow", "list"}, false},
+		{"  flow \t get   adt ", []string{"flow", "get", "adt"}, false},
+		{`flow rename adt "ADT Inbound"`, []string{"flow", "rename", "adt", "ADT Inbound"}, false},
+		{`export * "My Flows/all.json"`, []string{"export", "*", "My Flows/all.json"}, false},
+		{`flow get ""`, []string{"flow", "get", ""}, false},
+		{`a "say \"hi\" \\ ok"`, []string{"a", `say "hi" \ ok`}, false},
+		{`a pre"fix"`, []string{"a", "prefix"}, false},
+		{`a \n`, []string{"a", `\n`}, false},
+		{"flow get\u00a0adt\v x", []string{"flow", "get", "adt", "x"}, false},
+		{`a "é ü"`, []string{"a", "é ü"}, false},
+		{`a "open`, nil, true},
+	}
+	for _, tt := range tests {
+		got, err := splitArgs(tt.line)
+		if (err != nil) != tt.wantErr || strings.Join(got, "|") != strings.Join(tt.want, "|") || len(got) != len(tt.want) {
+			t.Errorf("splitArgs(%q) = %q, %v; want %q", tt.line, got, err, tt.want)
+		}
+	}
+}
+
+// slowDeployClient lists two enabled, undeployed flows and takes delay to
+// answer each deploy.
+type slowDeployClient struct{ delay time.Duration }
+
+func (slowDeployClient) UserList(context.Context) ([]string, error) { return nil, nil }
+func (slowDeployClient) Version(context.Context) string             { return version }
+func (c slowDeployClient) Call(_ context.Context, method, path string, _ []byte) ([]byte, error) {
+	switch {
+	case path == "/api/v1/flows":
+		return []byte(`[{"id":"a","status":"undeployed","enabled":true},{"id":"b","status":"undeployed","enabled":true}]`), nil
+	case method == http.MethodPost:
+		time.Sleep(c.delay)
+		return []byte(`{}`), nil
+	}
+	return []byte(`{"status":"undeployed"}`), nil
+}
+
+func TestFlowUsageCheckedFirst(t *testing.T) {
+	var out, errb bytes.Buffer
+	// The erroring client fails every request: a usage error must not
+	// reach it.
+	if code := flowCommand(context.Background(), erroringClient{}, []string{"get", "export", "extra"}, &out, &errb, false); code != 2 || !strings.Contains(errb.String(), "usage:") || strings.Contains(errb.String(), "unavailable") {
+		t.Errorf("exit %d, stderr %q", code, errb.String())
+	}
+}
+
+func TestDeployTimeoutStopsNewDeploys(t *testing.T) {
+	var out, errb bytes.Buffer
+	code := deployAll(context.Background(), slowDeployClient{delay: 1100 * time.Millisecond}, []string{"1"}, &out, &errb, false)
+	if code != 2 || !strings.Contains(out.String(), "deployed a\ndeployed 1 flows") || !strings.Contains(errb.String(), "timeout: deploy stopped before b") {
+		t.Errorf("exit %d, stdout %q, stderr %q", code, out.String(), errb.String())
 	}
 }
