@@ -271,7 +271,7 @@ Import again with <code>?overwrite=true</code> to finish.</p>
 <p>Creates, updates, imports, and deletes of flow definitions run one at a time, so a dependency
 check always sees the flows it is written against.</p>
 <h2 id="reserved-ids">Reserved ids</h2>
-<p><code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, and <code>ports-in-use</code> cannot be used as flow ids, because they name these
+<p><code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, <code>ports-in-use</code>, <code>stats</code>, and <code>deploy-all</code>, <code>undeploy-all</code>, <code>start-all</code>, <code>stop-all</code>, <code>pause-all</code>, <code>halt-all</code>, <code>resume-all</code> cannot be used as flow ids, because they name these
 endpoints. A flow created with one of these ids before this rule existed can still be deleted
 (<code>DELETE /api/v1/flows/export</code>). To keep it, export all flows, change its id in the file,
 delete it, and import the file.</p></div>

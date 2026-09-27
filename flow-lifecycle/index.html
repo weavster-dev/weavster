@@ -126,6 +126,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#act-on-all-flows-at-once" class="nav-link">Act on all flows at once</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#what-each-status-means-for-messages" class="nav-link">What each status means for messages</a>
               <ul class="nav flex-column">
               </ul>
@@ -257,6 +261,26 @@ of them ends <strong><code>deployed</code></strong>, so start the ones that shou
 response lists the redeployed flows. If it fails part-way, it returns
 <code>500 {"error":{"code":"REDEPLOY_INCOMPLETE",…},"redeployed":[…]}</code>, listing the flows already
 redeployed. The rest keep their status.</p>
+<h2 id="act-on-all-flows-at-once">Act on all flows at once</h2>
+<p><code>POST /api/v1/flows/{action}-all</code> runs one action on every flow it applies to (permission
+<code>flows:deploy</code>). The actions are <code>deploy</code>, <code>undeploy</code>, <code>start</code>, <code>stop</code>, <code>pause</code>, <code>halt</code>, and <code>resume</code>:</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/start-all
+</code></pre>
+<pre><code class="language-json">{&quot;changed&quot;:[&quot;adt&quot;,&quot;orm&quot;],&quot;skipped&quot;:[{&quot;id&quot;:&quot;legacy&quot;,&quot;reason&quot;:&quot;invalid lifecycle transition: cannot start a flow that is undeployed&quot;}]}
+</code></pre>
+<ul>
+<li>Flows are handled in dependency order: dependencies first for <code>deploy</code>, <code>start</code>, and <code>resume</code>;
+  dependents first for the others.</li>
+<li>A flow the action does not apply to (for example <code>start</code> on an <code>undeployed</code> flow) is listed in
+  <code>skipped</code> with the reason; the others still change.</li>
+<li><code>deploy-all</code> skips disabled flows (<code>"reason":"disabled"</code>), as automatic deployment at startup
+  does. An enabled flow's deploy still deploys its undeployed dependencies, disabled or not, as a
+  single <code>deploy</code> does; such a dependency is then listed in <code>changed</code>.</li>
+<li><code>changed</code> lists every flow whose status the call changed.</li>
+<li>If the store fails part-way, the reply is
+  <code>500 {"error":{"code":"TRANSITION_INCOMPLETE",…},"changed":[…],"skipped":[…]}</code>: the flow that
+  failed is skipped with reason <code>failed</code>, and the flows not reached with <code>not attempted</code>.</li>
+</ul>
 <h2 id="what-each-status-means-for-messages">What each status means for messages</h2>
 <table>
 <thead>

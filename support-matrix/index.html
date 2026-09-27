@@ -229,7 +229,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>GET/POST /api/v1/flows</code>, <code>GET/PUT/DELETE /api/v1/flows/{id}</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixWired/flows-*</code>, <code>TestFlowUpdateAndEnable</code>. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. A flow processes messages once it is <code>started</code> (see Flow lifecycle below). A flow <code>id</code> must be 1–128 characters from <code>A-Z a-z 0-9 . _ -</code> and not <code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, or <code>ports-in-use</code>; anything else returns <code>400</code>. <code>POST</code> with an existing <code>id</code> returns <code>409</code>. <code>GET</code>/<code>DELETE</code> of an unknown ID returns <code>404</code>.</td>
+<td><code>TestSupportMatrixWired/flows-*</code>, <code>TestFlowUpdateAndEnable</code>. Flows are saved in the configured store (see Durable flow definitions below). A new server starts with no flows. A flow processes messages once it is <code>started</code> (see Flow lifecycle below). A flow <code>id</code> must be 1–128 characters from <code>A-Z a-z 0-9 . _ -</code> and not a reserved route word (<code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, <code>ports-in-use</code>, <code>stats</code>, or <code>&lt;action&gt;-all</code>); anything else returns <code>400</code>. <code>POST</code> with an existing <code>id</code> returns <code>409</code>. <code>GET</code>/<code>DELETE</code> of an unknown ID returns <code>404</code>.</td>
 </tr>
 <tr>
 <td><code>GET /api/v1/topology</code>, <code>GET /api/v1/topology/flows/{flowId}</code></td>
@@ -382,6 +382,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Flow lifecycle: deploy, undeploy, start, stop, pause, halt, resume, redeploy-all, with transitions enforced</td>
 <td>Implemented (wired)</td>
 <td><code>TestFlowLifecycle</code>. API only. Deploy also deploys undeployed dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
+</tr>
+<tr>
+<td>All-flows actions (<code>POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all</code>), statistics for all flows (<code>GET /api/v1/flows/stats</code>), statistics reset (<code>POST /api/v1/flows/stats/reset</code>, <code>POST /api/v1/flows/{id}/stats/reset</code>, <code>lifetime</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestAllFlowsLifecycleAndStats</code>, <code>TestFlowCLI</code>. CLI: <code>resetstats [lifetime]</code>, <code>flow reset-stats</code>. See <a href="../flow-lifecycle/#act-on-all-flows-at-once">Flow lifecycle</a>.</td>
 </tr>
 <tr>
 <td>Message intake: <code>POST /api/v1/flows/{id}/messages</code></td>

@@ -294,6 +294,11 @@ flow list
 <td><code>POST /api/v1/flows/{id}/{action}</code></td>
 </tr>
 <tr>
+<td><code>flow deploy-all</code>, and likewise <code>undeploy-all</code>, <code>start-all</code>, <code>stop-all</code>, <code>pause-all</code>, <code>halt-all</code>, <code>resume-all</code></td>
+<td>Runs the action on every flow it applies to and prints <code>changed</code> and <code>skipped</code> (see <a href="../flow-lifecycle/#act-on-all-flows-at-once">Flow lifecycle</a>).</td>
+<td><code>POST /api/v1/flows/{action}-all</code></td>
+</tr>
+<tr>
 <td><code>flow redeploy-all</code></td>
 <td>Undeploys and redeploys every flow that is not <code>undeployed</code>; each ends <code>deployed</code>.</td>
 <td><code>POST /api/v1/flows/redeploy-all</code></td>
@@ -312,6 +317,11 @@ flow list
 <td><code>flow ports</code></td>
 <td>The ports the server listens on.</td>
 <td><code>GET /api/v1/flows/ports-in-use</code></td>
+</tr>
+<tr>
+<td><code>flow reset-stats &lt;id&gt; [lifetime]</code></td>
+<td>Clears the flow's current statistics; <code>lifetime</code> also clears its lifetime totals.</td>
+<td><code>POST /api/v1/flows/{id}/stats/reset</code></td>
 </tr>
 <tr>
 <td><code>flow stats [&lt;id&gt;]</code></td>
@@ -340,6 +350,10 @@ name, or a name several flows share, is an error that lists their ids.</p>
 </tr>
 </thead>
 <tbody>
+<tr>
+<td><code>resetstats [lifetime]</code></td>
+<td>Clears every flow's current statistics; <code>lifetime</code> also clears the lifetime totals.</td>
+</tr>
 <tr>
 <td><code>deploy [timeout]</code></td>
 <td>Deploys every flow that is <code>enabled</code> and <code>undeployed</code> (dependencies first, as <code>flow deploy</code> does); disabled flows are skipped, as at server start. Prints <code>deployed &lt;id&gt;</code> for each and <code>deployed N flows</code>. After <code>timeout</code> seconds no further flow is started (a deploy already sent finishes) and the command exits <code>2</code>. A flow that fails is reported, the others still deploy, and the command exits <code>2</code>.</td>

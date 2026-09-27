@@ -287,11 +287,11 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>messages:send</code></td>
 </tr>
 <tr>
-<td><code>POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}</code>, <code>POST /api/v1/flows/redeploy-all</code>, <code>POST /api/v1/flows/{id}/destinations/{name}/{start,stop}</code></td>
+<td><code>POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}</code>, <code>POST /api/v1/flows/redeploy-all</code>, <code>POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all</code>, <code>POST /api/v1/flows/{id}/destinations/{name}/{start,stop}</code>, <code>POST /api/v1/flows/stats/reset</code>, <code>POST /api/v1/flows/{id}/stats/reset</code></td>
 <td><code>flows:deploy</code></td>
 </tr>
 <tr>
-<td><code>GET /api/v1/flows/{id}/stats</code></td>
+<td><code>GET /api/v1/flows/{id}/stats</code>, <code>GET /api/v1/flows/stats</code></td>
 <td><code>flows:view</code></td>
 </tr>
 <tr>

@@ -234,7 +234,7 @@ below, in order, on the message as a JSON object.</p>
 <tbody>
 <tr>
 <td><code>id</code></td>
-<td>Required. 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>. <code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, and <code>ports-in-use</code> are reserved.</td>
+<td>Required. 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>. <code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, <code>ports-in-use</code>, <code>stats</code>, and <code>deploy-all</code>, <code>undeploy-all</code>, <code>start-all</code>, <code>stop-all</code>, <code>pause-all</code>, <code>halt-all</code>, <code>resume-all</code> are reserved.</td>
 </tr>
 <tr>
 <td><code>name</code>, <code>sourceType</code></td>
@@ -494,8 +494,18 @@ statuses above.</p>
 <li><code>destinations</code> counts successful and failed deliveries per destination.</li>
 <li><code>lastMessageAt</code> is the arrival time of the newest message, <code>null</code> until the first one.</li>
 <li>Deleting a flow clears its counters, so a new flow with the same <code>id</code> starts at zero.</li>
-<li>Add <code>?lifetime=true</code> for lifetime totals. Today both views are identical because no reset exists yet.</li>
+<li>Add <code>?lifetime=true</code> for lifetime totals, which are kept when you reset the current counters.</li>
+<li><code>GET /api/v1/flows/stats</code> returns every flow's statistics at once, keyed by flow id (also with
+  <code>?lifetime=true</code>).</li>
 </ul>
+<p>Reset statistics (permission <code>flows:deploy</code>):</p>
+<pre><code class="language-bash"># One flow's current counters
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/stats/reset
+# Every flow's current counters and lifetime totals
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST 'http://127.0.0.1:8080/api/v1/flows/stats/reset?lifetime=true'
+</code></pre>
+<p>Both return <code>204</code>. Without <code>lifetime=true</code> only the current counters are cleared; the lifetime
+totals keep counting. An unknown flow returns <code>404</code>.</p>
 <p>Events (permission <code>events:view</code>). Each processed message adds one event of type
 <code>message.sent</code>, <code>message.queued</code>, <code>message.filtered</code>, or <code>message.errored</code>:</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
