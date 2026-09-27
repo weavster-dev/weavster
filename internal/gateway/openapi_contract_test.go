@@ -166,3 +166,91 @@ func TestOpenAPIFlowSchemaMatchesFlowdef(t *testing.T) {
 		}
 	}
 }
+
+// hasExample reports whether a JSON body is illustrated: an example on the
+// media type, on its schema, or (for a list) on the item schema.
+func hasExample(mt *openapi3.MediaType) bool {
+	if mt.Example != nil || len(mt.Examples) > 0 {
+		return true
+	}
+	if mt.Schema == nil || mt.Schema.Value == nil {
+		return false
+	}
+	s := mt.Schema.Value
+	return s.Example != nil || (s.Items != nil && s.Items.Value != nil && s.Items.Value.Example != nil)
+}
+
+// TestOpenAPIExamples: every operation that returns a JSON body shows an
+// example of it, and the error response has one.
+func TestOpenAPIExamples(t *testing.T) {
+	doc := loadSpec(t)
+	var missing []string
+	for path, item := range doc.Paths.Map() {
+		for method, op := range item.Operations() {
+			for code, r := range op.Responses.Map() {
+				if code[0] != '2' || r.Value == nil {
+					continue
+				}
+				if mt := r.Value.Content.Get("application/json"); mt != nil && !hasExample(mt) {
+					missing = append(missing, method+" "+path+" "+code)
+				}
+			}
+		}
+	}
+	sort.Strings(missing)
+	for _, m := range missing {
+		t.Errorf("%s: JSON response without an example", m)
+	}
+	if mt := doc.Components.Responses["Error"].Value.Content.Get("application/json"); mt == nil || !hasExample(mt) {
+		t.Error("the Error response has no example")
+	}
+}
+
+// TestOpenAPIExamplesMatchSchemas: every example is valid for its schema.
+func TestOpenAPIExamplesMatchSchemas(t *testing.T) {
+	doc := loadSpec(t)
+	for name, s := range doc.Components.Schemas {
+		if ex := s.Value.Example; ex != nil {
+			if err := s.Value.VisitJSON(ex); err != nil {
+				t.Errorf("schema %s: example does not match: %v", name, err)
+			}
+		}
+	}
+	check := func(where string, mt *openapi3.MediaType) {
+		if mt == nil || mt.Example == nil || mt.Schema == nil || mt.Schema.Value == nil {
+			return
+		}
+		if err := mt.Schema.Value.VisitJSON(mt.Example); err != nil {
+			t.Errorf("%s: example does not match: %v", where, err)
+		}
+	}
+	for path, item := range doc.Paths.Map() {
+		for method, op := range item.Operations() {
+			if op.RequestBody != nil && op.RequestBody.Value != nil {
+				check(method+" "+path+" request", op.RequestBody.Value.Content.Get("application/json"))
+			}
+			for code, r := range op.Responses.Map() {
+				if r.Value != nil {
+					check(method+" "+path+" "+code, r.Value.Content.Get("application/json"))
+				}
+			}
+		}
+	}
+	check("Error response", doc.Components.Responses["Error"].Value.Content.Get("application/json"))
+}
+
+// TestOpenAPIRequestExamples: the main JSON request bodies show an example.
+func TestOpenAPIRequestExamples(t *testing.T) {
+	doc := loadSpec(t)
+	for _, key := range []string{
+		"POST /api/v1/auth/login", "POST /api/v1/flows", "PUT /api/v1/flows", "PUT /api/v1/flows/{id}",
+		"POST /api/v1/flows/{id}/messages", "POST /api/v1/users", "PUT /api/v1/configmap", "PUT /api/v1/configmap/{name}",
+		"PUT /api/v1/scripts/{name}", "PUT /api/v1/settings/{name}", "PUT /api/v1/lookups/{group}/{key}",
+	} {
+		method, path, _ := strings.Cut(key, " ")
+		op := doc.Paths.Find(path).GetOperation(method)
+		if op == nil || op.RequestBody == nil || !hasExample(op.RequestBody.Value.Content.Get("application/json")) {
+			t.Errorf("%s: request body without an example", key)
+		}
+	}
+}

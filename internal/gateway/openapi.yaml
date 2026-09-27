@@ -31,6 +31,7 @@ paths:
         required: true
         content:
           application/json:
+            example: {"username": "admin", "password": "A-Strong-Passw0rd"}
             schema:
               type: object
               required: [username, password]
@@ -104,7 +105,7 @@ paths:
       summary: "A new random (version 4) UUID (any signed-in user)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{guid}", content: {application/json: {schema: {type: object, properties: {guid: {type: string, format: uuid}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{guid}", content: {application/json: {schema: {type: object, properties: {guid: {type: string, format: uuid}}}, example: {"guid": "2f1c6b0e-5c2a-4b7e-9a41-7d3b1f0e8c55"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/topology:
     get:
       summary: Flow topology overview graph (read-only)
@@ -144,6 +145,7 @@ paths:
         required: true
         content:
           application/json:
+            example: {"id": "adt", "name": "ADT inbound", "enabled": true, "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}, {"name": "archive", "type": "file", "dir": "/var/lib/weavster/out/adt"}]}
             schema: {type: object, description: "A flow definition (agent-docs/schemas/flow.schema.json)"}
       responses:
         default: {$ref: "#/components/responses/Error"}
@@ -163,6 +165,7 @@ paths:
         required: true
         content:
           application/json:
+            example: {"flows": [{"id": "adt", "name": "ADT inbound", "enabled": true, "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}, {"name": "archive", "type": "file", "dir": "/var/lib/weavster/out/adt"}]}]}
             schema:
               type: object
               description: "{flows: [flow definitions]}; no other top-level field"
@@ -211,6 +214,7 @@ paths:
         required: true
         content:
           application/json:
+            example: {"id": "adt", "name": "ADT inbound", "enabled": true, "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}, {"name": "archive", "type": "file", "dir": "/var/lib/weavster/out/adt"}]}
             schema: {type: object}
       responses:
         default: {$ref: "#/components/responses/Error"}
@@ -414,6 +418,7 @@ paths:
           description: The samples, oldest first
           content:
             application/json:
+              example: [{"at": "2026-09-27T10:00:30Z", "flowId": "adt", "stats": {"received": 42, "filtered": 2, "transformed": 40, "sent": 39, "errored": 1, "queued": 0, "destinations": {"ehr": {"sent": 39, "errored": 1}}, "lastMessageAt": "2026-09-27T10:00:00Z"}}]
               schema:
                 type: array
                 items:
@@ -461,6 +466,7 @@ paths:
         required: true
         content:
           application/json:
+            example: {"patientId": "12345", "event": "A01"}
             schema: {type: object}
           application/octet-stream:
             schema: {type: string, format: binary}
@@ -519,14 +525,14 @@ paths:
         - {name: afterId, in: query, schema: {type: integer, minimum: 0}, description: Only events with a larger id}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{count}", content: {application/json: {schema: {type: object, properties: {count: {type: integer}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{count}", content: {application/json: {schema: {type: object, properties: {count: {type: integer}}}, example: {"count": 1287}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "A bad time or afterId", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/events/max-id:
     get:
       summary: The id of the newest event, 0 when there is none (requires events:view)
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{maxId}", content: {application/json: {schema: {type: object, properties: {maxId: {type: integer}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{maxId}", content: {application/json: {schema: {type: object, properties: {maxId: {type: integer}}}, example: {"maxId": 1287}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/events/export:
     get:
       summary: "Every matching event (no limit) as a JSON (or, when XML is asked for, XML) file download, oldest first (requires events:view)"
@@ -594,6 +600,7 @@ paths:
           description: One bucket per interval from from to to (at most 1000)
           content:
             application/json:
+              example: [{"start": "2026-09-27T10:00:00Z", "total": 40, "statuses": {"received": 0, "transformed": 0, "queued": 0, "sent": 38, "filtered": 1, "errored": 1, "dead-lettered": 0}}, {"start": "2026-09-27T11:00:00Z", "total": 2, "statuses": {"received": 0, "transformed": 0, "queued": 0, "sent": 2, "filtered": 0, "errored": 0, "dead-lettered": 0}}]
               schema:
                 type: array
                 items:
@@ -616,7 +623,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object}}
+          application/json: {schema: {type: object}, example: {"region": "eu"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: The new set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/ItemMap"}}}}
@@ -637,7 +644,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, required: [value], properties: {value: {}}}}
+          application/json: {schema: {type: object, required: [value], properties: {value: {}}}, example: {"value": "eu"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Item"}}}}
@@ -681,7 +688,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, required: [value], properties: {value: {}}}}
+          application/json: {schema: {type: object, required: [value], properties: {value: {}}}, example: {"value": "log()"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Item"}}}}
@@ -725,7 +732,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, required: [value], properties: {value: {}}}}
+          application/json: {schema: {type: object, required: [value], properties: {value: {}}}, example: {"value": {"days": 30}}}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{name, value}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Item"}}}}
@@ -764,7 +771,7 @@ paths:
           application/json: {schema: {type: object}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{applied, plan}", content: {application/json: {schema: {type: object, properties: {applied: {type: boolean}, plan: {$ref: "#/components/schemas/ConfigPlan"}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{applied, plan}", content: {application/json: {schema: {type: object, properties: {applied: {type: boolean}, plan: {$ref: "#/components/schemas/ConfigPlan"}}}, example: {"applied": true, "plan": {"fingerprint": "9c1d4e2a", "added": ["script/deploy"], "updated": [], "removed": [], "unchanged": 7, "changes": [{"key": "script/deploy", "action": "add", "after": "log()"}], "text": "+ script/deploy\n1 to add, 0 to change, 0 to remove\n"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "Missing fingerprint, a bad parameter, or an invalid document", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: "The plan is stale, or a change failed because of the configuration (every applied change was rolled back)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
@@ -814,7 +821,7 @@ paths:
       summary: "Every lookup group with its number of entries (requires lookups:view)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "Groups sorted by name", content: {application/json: {schema: {type: array, items: {type: object, properties: {name: {type: string}, entries: {type: integer}}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "Groups sorted by name", content: {application/json: {schema: {type: array, items: {type: object, properties: {name: {type: string}, entries: {type: integer}}}}, example: [{"name": "icd10", "entries": 72184}, {"name": "sites", "entries": 12}]}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/lookups/{group}:
     parameters:
       - {name: group, in: path, required: true, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
@@ -825,7 +832,7 @@ paths:
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 10000, default: 1000}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{key: value}", content: {application/json: {schema: {type: object, additionalProperties: {type: string}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{key: value}", content: {application/json: {schema: {type: object, additionalProperties: {type: string}}, example: {"A00": "Cholera", "A00.0": "Cholera due to Vibrio cholerae 01, biovar cholerae"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "A bad group name or limit", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     delete:
       summary: "Delete every entry of the group (requires lookups:edit)"
@@ -847,7 +854,7 @@ paths:
           application/json: {schema: {type: object, additionalProperties: {type: string}}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{imported}", content: {application/json: {schema: {type: object, properties: {imported: {type: integer}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{imported}", content: {application/json: {schema: {type: object, properties: {imported: {type: integer}}}, example: {"imported": 72184}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "A bad key or value, or not a JSON object of text", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: "Body larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/lookups/{group}/batch:
@@ -861,7 +868,7 @@ paths:
           application/json: {schema: {type: object, required: [keys], properties: {keys: {type: array, minItems: 1, maxItems: 1000, items: {type: string}}}}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{found, missing}", content: {application/json: {schema: {type: object, properties: {found: {type: object, additionalProperties: {type: string}}, missing: {type: array, items: {type: string}}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{found, missing}", content: {application/json: {schema: {type: object, properties: {found: {type: object, additionalProperties: {type: string}}, missing: {type: array, items: {type: string}}}}, example: {"found": {"A00": "Cholera"}, "missing": ["Z99.9"]}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "No keys or too many", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/lookups/{group}/{key}:
     parameters:
@@ -871,7 +878,7 @@ paths:
       summary: "One entry (requires lookups:view)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{key, value}", content: {application/json: {schema: {type: object, properties: {key: {type: string}, value: {type: string}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{key, value}", content: {application/json: {schema: {type: object, properties: {key: {type: string}, value: {type: string}}}, example: {"key": "A00", "value": "Cholera"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "A bad group name or key", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: "Unknown key", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     put:
@@ -879,10 +886,10 @@ paths:
       requestBody:
         required: true
         content:
-          application/json: {schema: {type: object, required: [value], properties: {value: {type: string, description: "UTF-8 text of at most 64 KiB (65536 bytes)"}}}}
+          application/json: {schema: {type: object, required: [value], properties: {value: {type: string, description: "UTF-8 text of at most 64 KiB (65536 bytes)"}}}, example: {"value": "Cholera"}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{key, value}", content: {application/json: {schema: {type: object, properties: {key: {type: string}, value: {type: string}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{key, value}", content: {application/json: {schema: {type: object, properties: {key: {type: string}, value: {type: string}}}, example: {"key": "A00", "value": "Cholera"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "A bad group name, key, or value", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     delete:
       summary: "Delete one entry (requires lookups:edit)"
@@ -899,7 +906,7 @@ paths:
       summary: "Whether the key exists: {exists: true|false} (requires lookups:view)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{exists}", content: {application/json: {schema: {type: object, properties: {exists: {type: boolean}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{exists}", content: {application/json: {schema: {type: object, properties: {exists: {type: boolean}}}, example: {"exists": true}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "A bad group name or key", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/alerts:
     get:
@@ -938,7 +945,7 @@ paths:
       summary: "The trigger events and action types an alert can use (requires alerts:edit)"
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "{events, actionTypes}", content: {application/json: {schema: {type: object, properties: {events: {type: array, items: {type: string}}, actionTypes: {type: array, items: {type: string}}}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "200": {description: "{events, actionTypes}", content: {application/json: {schema: {type: object, properties: {events: {type: array, items: {type: string}}, actionTypes: {type: array, items: {type: string}}}}, example: {"events": ["message.errored", "message.queued", "message.dead-lettered"], "actionTypes": ["email", "webhook"]}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/alerts/{name}:
     parameters:
       - {name: name, in: path, required: true, description: The alert id, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
@@ -1236,7 +1243,7 @@ paths:
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           content:
             application/octet-stream: {schema: {type: string, format: binary}}
-            application/json: {schema: {type: object}}
+            application/json: {schema: {type: object}, example: {"patientId": "12345", "event": "A01"}}
         "400": {description: part is not raw or transformed, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown message, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/messages/{id}/requeue:
@@ -1255,6 +1262,7 @@ paths:
           description: The requeued message and the attempts it had
           content:
             application/json:
+              example: {"message": {"id": "7f3c9a1e", "flowId": "adt", "status": "queued", "contentType": "json", "receivedAt": "2026-09-27T10:00:00Z", "updatedAt": "2026-09-27T11:00:00Z", "attempts": {"archive": {"attempts": 1}}, "metadata": {"requeues": "1"}}, "previous": {"archive": {"attempts": 1}, "ehr": {"attempts": 5, "lastError": "Service Unavailable"}}}
               schema:
                 type: object
                 properties:
@@ -1274,6 +1282,7 @@ paths:
           description: "The ids requeued, and those skipped with the reason (in flight, flow deleted)"
           content:
             application/json:
+              example: {"requeued": ["7f3c9a1e", "8a01b2c3"], "skipped": [{"id": "9b12c4d5", "reason": "message is being processed; try again"}]}
               schema:
                 type: object
                 properties:
@@ -1304,6 +1313,7 @@ components:
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:
     Identity:
+      example: {"username": "admin", "permissions": ["admin"], "mustChangePassword": false}
       type: object
       required: [username, permissions, mustChangePassword]
       properties:
@@ -1311,6 +1321,7 @@ components:
         permissions: {type: array, items: {type: string}}
         mustChangePassword: {type: boolean}
     LoginResponse:
+      example: {"token": "wv_3q2v9k1m...", "expiresAt": "2026-09-27T18:00:00Z", "user": {"username": "admin", "permissions": ["admin"], "mustChangePassword": false}}
       type: object
       required: [token, expiresAt, user]
       properties:
@@ -1318,16 +1329,19 @@ components:
         expiresAt: {type: string, format: date-time}
         user: {$ref: "#/components/schemas/Identity"}
     ItemMap:
+      example: {"region": "eu", "ehr-host": "ehr.example.com"}
       type: object
       description: "Name -> value. Config map entries and scripts are strings; settings are any JSON."
       additionalProperties: {}
     Item:
+      example: {"name": "region", "value": "eu"}
       type: object
       required: [name, value]
       properties:
         name: {type: string}
         value: {description: "A string for config map entries and scripts; any JSON for settings"}
     FlowDestination:
+      example: {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}
       type: object
       required: [name, type]
       properties:
@@ -1338,6 +1352,7 @@ components:
         transform: {description: A destination transform}
         responseTransform: {description: A response transform}
     Flow:
+      example: {"id": "adt", "name": "ADT inbound", "sourceType": "http", "status": "started", "enabled": true, "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}, {"name": "archive", "type": "file", "dir": "/var/lib/weavster/out/adt"}]}
       type: object
       description: "A flow definition (agent-docs/schemas/flow.schema.json) with its runtime status."
       required: [id, name, sourceType, enabled]
@@ -1354,11 +1369,13 @@ components:
         destinations: {type: array, items: {$ref: "#/components/schemas/FlowDestination"}}
         responseSelector: {type: string}
     UpdatedList:
+      example: {"updated": ["adt", "lab"]}
       type: object
       required: [updated]
       properties:
         updated: {type: array, items: {type: string}}
     ConnectorNames:
+      example: {"id": "adt", "name": "ADT inbound", "sourceType": "http", "destinations": ["ehr", "archive"]}
       type: object
       required: [id, name, sourceType, destinations]
       properties:
@@ -1367,30 +1384,35 @@ components:
         sourceType: {type: string}
         destinations: {type: array, items: {type: string}}
     FlowBundle:
+      example: {"version": 1, "flows": [{"id": "adt", "name": "ADT inbound", "sourceType": "http", "enabled": true, "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}, {"name": "archive", "type": "file", "dir": "/var/lib/weavster/out/adt"}]}]}
       type: object
       required: [version, flows]
       properties:
         version: {type: integer}
         flows: {type: array, items: {$ref: "#/components/schemas/Flow"}}
     FlowImportResult:
+      example: {"created": ["lab"], "updated": ["adt"]}
       type: object
       required: [created, updated]
       properties:
         created: {type: array, items: {type: string}}
         updated: {type: array, items: {type: string}}
     SkippedFlow:
+      example: {"id": "lab", "reason": "already started"}
       type: object
       required: [id, reason]
       properties:
         id: {type: string}
         reason: {type: string}
     TransitionAllResult:
+      example: {"changed": ["adt"], "skipped": [{"id": "lab", "reason": "already started"}]}
       type: object
       required: [changed, skipped]
       properties:
         changed: {type: array, items: {type: string}}
         skipped: {type: array, items: {$ref: "#/components/schemas/SkippedFlow"}}
     PortInUse:
+      example: {"address": "127.0.0.1:8080", "port": 8080, "usedBy": "api"}
       type: object
       required: [address, port, usedBy]
       properties:
@@ -1398,12 +1420,14 @@ components:
         port: {type: integer}
         usedBy: {type: string}
     ConnectorStats:
+      example: {"sent": 39, "errored": 1}
       type: object
       required: [sent, errored]
       properties:
         sent: {type: integer}
         errored: {type: integer}
     FlowStats:
+      example: {"received": 42, "filtered": 2, "transformed": 40, "sent": 39, "errored": 1, "queued": 0, "destinations": {"ehr": {"sent": 39, "errored": 1}, "archive": {"sent": 40, "errored": 0}}, "lastMessageAt": "2026-09-27T10:00:00Z"}
       type: object
       required: [received, filtered, transformed, sent, errored, queued, destinations]
       properties:
@@ -1416,10 +1440,12 @@ components:
         destinations: {type: object, additionalProperties: {$ref: "#/components/schemas/ConnectorStats"}}
         lastMessageAt: {type: string, format: date-time, description: Absent until the first message}
     FlowStatsMap:
+      example: {"adt": {"received": 42, "filtered": 2, "transformed": 40, "sent": 39, "errored": 1, "queued": 0, "destinations": {"ehr": {"sent": 39, "errored": 1}, "archive": {"sent": 40, "errored": 0}}, "lastMessageAt": "2026-09-27T10:00:00Z"}}
       type: object
       description: Flow id -> statistics
       additionalProperties: {$ref: "#/components/schemas/FlowStats"}
     MessageAttempt:
+      example: {"attempts": 3, "lastError": "Service Unavailable", "nextAttemptAt": "2026-09-27T10:00:04Z"}
       type: object
       required: [attempts]
       properties:
@@ -1427,6 +1453,7 @@ components:
         lastError: {type: string}
         nextAttemptAt: {type: string, format: date-time}
     Message:
+      example: {"id": "7f3c9a1e", "flowId": "adt", "status": "sent", "contentType": "json", "receivedAt": "2026-09-27T10:00:00Z", "updatedAt": "2026-09-27T10:00:01Z", "attempts": {"ehr": {"attempts": 1}, "archive": {"attempts": 1}}, "metadata": {"source": "lab"}}
       type: object
       required: [id, flowId, status, contentType, receivedAt, updatedAt]
       properties:
@@ -1439,6 +1466,7 @@ components:
         attempts: {type: object, additionalProperties: {$ref: "#/components/schemas/MessageAttempt"}, description: Destination name -> attempts}
         metadata: {type: object, additionalProperties: {type: string}}
     MessageImportResult:
+      example: {"imported": 120, "skipped": 3, "busy": 0}
       type: object
       required: [imported, skipped, busy]
       properties:
@@ -1446,6 +1474,7 @@ components:
         skipped: {type: integer}
         busy: {type: integer}
     IngestResult:
+      example: {"id": "7f3c9a1e", "status": "sent"}
       type: object
       required: [id, status]
       properties:
@@ -1453,6 +1482,7 @@ components:
         status: {type: string, enum: [received, transformed, queued, sent, filtered, errored, dead-lettered]}
         response: {description: "The selected destination's reply, when the flow has a response selector and the reply is not empty or null"}
     TopologyActivity:
+      example: {"received": 42, "sent": 39, "errored": 1, "queued": 0, "lastMessageAt": "2026-09-27T10:00:00Z"}
       type: object
       required: [received, sent, errored, queued]
       properties:
@@ -1462,6 +1492,7 @@ components:
         queued: {type: integer}
         lastMessageAt: {type: string, format: date-time}
     TopologyNode:
+      example: {"id": "flow:adt", "kind": "flow", "label": "ADT inbound", "status": "started", "activity": {"received": 42, "sent": 39, "errored": 1, "queued": 0, "lastMessageAt": "2026-09-27T10:00:00Z"}}
       type: object
       required: [id, kind, label]
       properties:
@@ -1472,6 +1503,7 @@ components:
         activity: {$ref: "#/components/schemas/TopologyActivity"}
         meta: {type: object, additionalProperties: {type: string}}
     TopologyEdge:
+      example: {"id": "edge:flow:adt:dep:flow:lab", "from": "flow:adt", "to": "flow:lab", "kind": "dependency"}
       type: object
       required: [id, from, to, kind]
       properties:
@@ -1483,6 +1515,7 @@ components:
         status: {type: string}
         activity: {$ref: "#/components/schemas/TopologyActivity"}
     TopologyGraph:
+      example: {"schemaVersion": "1", "generatedAt": "2026-09-27T10:00:00Z", "nodes": [{"id": "flow:adt", "kind": "flow", "label": "ADT inbound", "status": "started", "activity": {"received": 42, "sent": 39, "errored": 1, "queued": 0, "lastMessageAt": "2026-09-27T10:00:00Z"}}, {"id": "flow:lab", "kind": "flow", "label": "Lab results", "status": "started", "activity": {"received": 0, "sent": 0, "errored": 0, "queued": 0}}], "edges": [{"id": "edge:flow:adt:dep:flow:lab", "from": "flow:adt", "to": "flow:lab", "kind": "dependency"}]}
       type: object
       required: [schemaVersion, generatedAt, nodes, edges]
       properties:
@@ -1494,6 +1527,7 @@ components:
         nodes: {type: array, items: {$ref: "#/components/schemas/TopologyNode"}}
         edges: {type: array, items: {$ref: "#/components/schemas/TopologyEdge"}}
     SystemStatus:
+      example: {"id": "weavster-1", "status": "running", "version": "0.1.0", "time": "2026-09-27T10:00:00Z", "timezone": "UTC", "uptimeSeconds": 3600, "runtime": "go1.22", "tls": {"enabled": true, "address": "0.0.0.0:8443", "minVersion": "1.2", "protocols": ["TLSv1.2", "TLSv1.3"], "ciphers": ["TLS_AES_128_GCM_SHA256"]}}
       type: object
       required: [id, status, version, time, uptimeSeconds, tls]
       properties:
@@ -1517,6 +1551,7 @@ components:
             ciphers: {type: array, items: {type: string}}
         license: {type: string}
     SystemAbout:
+      example: {"name": "Weavster", "version": "0.1.0", "runtime": "go1.22", "os": "linux", "arch": "amd64"}
       type: object
       properties:
         name: {type: string}
@@ -1527,6 +1562,7 @@ components:
         arch: {type: string}
         license: {type: string}
     PasswordRequirements:
+      example: {"minLength": 8, "minUpper": 1, "minLower": 1, "minNumeric": 1, "minSpecial": 0, "rules": ["at least 8 characters", "at least 1 uppercase letter", "at least 1 lowercase letter", "at least 1 digit"]}
       type: object
       properties:
         minLength: {type: integer}
@@ -1536,6 +1572,7 @@ components:
         minSpecial: {type: integer}
         rules: {type: array, items: {type: string}}
     SystemResources:
+      example: {"cpus": 4, "goroutines": 42, "memoryAllocBytes": 18874368, "memorySysBytes": 33554432, "uptimeSeconds": 3600}
       type: object
       properties:
         cpus: {type: integer}
@@ -1544,6 +1581,7 @@ components:
         memorySysBytes: {type: integer}
         uptimeSeconds: {type: integer}
     Event:
+      example: {"id": 1287, "at": "2026-09-27T10:00:00Z", "type": "message.sent", "flowId": "adt", "data": {"messageId": "7f3c9a1e"}}
       type: object
       required: [id, at, type]
       properties:
@@ -1553,6 +1591,7 @@ components:
         flowId: {type: string}
         data: {type: object, additionalProperties: {type: string}}
     ConfigPlan:
+      example: {"fingerprint": "9c1d4e2a", "added": ["script/deploy"], "updated": ["flow/adt"], "removed": [], "unchanged": 7, "changes": [{"key": "script/deploy", "action": "add", "after": "log()"}, {"key": "flow/adt", "action": "update", "fields": [{"path": "destinations[0].url", "before": "https://old.example.com/in", "after": "https://ehr.example.com/in"}]}], "text": "+ script/deploy\n~ flow/adt\n    destinations[0].url: \"https://old.example.com/in\" → \"https://ehr.example.com/in\"\n1 to add, 1 to change, 0 to remove\n"}
       type: object
       required: [fingerprint, added, updated, removed, unchanged, changes, text]
       properties:
@@ -1582,6 +1621,7 @@ components:
                     after: {}
         text: {type: string, description: "The plan for people: + add, ~ change (with one line per field), - remove"}
     ConfigValidation:
+      example: {"valid": true, "counts": {"flows": 1, "alerts": 1, "snippets": 0, "snippetLibraries": 0, "scripts": 1, "configmap": 0, "settings": 1}}
       type: object
       required: [valid, counts]
       properties:
@@ -1597,6 +1637,7 @@ components:
             configmap: {type: integer}
             settings: {type: integer}
     ConfigBundle:
+      example: {"format": "weavster-config-v1", "flows": [{"id": "adt", "name": "ADT inbound", "sourceType": "http", "enabled": true, "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}, {"name": "archive", "type": "file", "dir": "/var/lib/weavster/out/adt"}]}], "alerts": [{"id": "errors", "name": "Errors on ADT", "enabled": true, "trigger": {"events": ["message.errored", "message.dead-lettered"], "flows": ["adt"]}, "actions": [{"type": "email", "to": ["ops@example.com"]}]}], "snippets": [], "snippetLibraries": [], "scripts": {"deploy": "log()"}, "settings": {"retention": {"days": 30}}}
       type: object
       additionalProperties: false
       required: [format]
@@ -1610,6 +1651,7 @@ components:
         settings: {type: object}
         configmap: {type: object, additionalProperties: {type: string}}
     ConfigImportResult:
+      example: {"flows": {"created": ["adt"], "updated": []}, "alerts": 1, "snippets": 0, "snippetLibraries": 0, "scripts": 1, "settings": 1, "configMapReplaced": false, "deployed": ["adt"]}
       type: object
       properties:
         flows: {type: object, properties: {created: {type: array, items: {type: string}}, updated: {type: array, items: {type: string}}}}
@@ -1621,6 +1663,7 @@ components:
         configMapReplaced: {type: boolean}
         deployed: {type: array, items: {type: string}}
     AlertTrigger:
+      example: {"events": ["message.errored", "message.dead-lettered"], "flows": ["adt"]}
       type: object
       additionalProperties: false
       required: [events]
@@ -1632,6 +1675,7 @@ components:
         - {$ref: "#/components/schemas/AlertEmailAction"}
         - {$ref: "#/components/schemas/AlertWebhookAction"}
     AlertEmailAction:
+      example: {"type": "email", "to": ["ops@example.com"]}
       type: object
       additionalProperties: false
       required: [type, to]
@@ -1639,6 +1683,7 @@ components:
         type: {type: string, enum: [email]}
         to: {type: array, minItems: 1, items: {type: string, format: email}, description: "Plain email addresses, no display names"}
     AlertWebhookAction:
+      example: {"type": "webhook", "url": "https://hooks.example.com/weavster"}
       type: object
       additionalProperties: false
       required: [type, url]
@@ -1646,6 +1691,7 @@ components:
         type: {type: string, enum: [webhook]}
         url: {type: string, format: uri, description: "http or https URL without a user name or password"}
     Alert:
+      example: {"id": "errors", "name": "Errors on ADT", "enabled": true, "trigger": {"events": ["message.errored", "message.dead-lettered"], "flows": ["adt"]}, "actions": [{"type": "email", "to": ["ops@example.com"]}]}
       type: object
       additionalProperties: false
       required: [id, name, trigger, actions]
@@ -1656,6 +1702,7 @@ components:
         trigger: {$ref: "#/components/schemas/AlertTrigger"}
         actions: {type: array, minItems: 1, items: {$ref: "#/components/schemas/AlertAction"}}
     AlertUpdate:
+      example: {"name": "Errors on ADT", "enabled": true, "trigger": {"events": ["message.errored", "message.dead-lettered"], "flows": ["adt"]}, "actions": [{"type": "email", "to": ["ops@example.com"]}]}
       type: object
       additionalProperties: false
       description: "An alert for PUT on /api/v1/alerts/{name}: id is optional and must match the path"
@@ -1667,6 +1714,7 @@ components:
         trigger: {$ref: "#/components/schemas/AlertTrigger"}
         actions: {type: array, minItems: 1, items: {$ref: "#/components/schemas/AlertAction"}}
     MessagesDeleted:
+      example: {"deleted": 250, "busy": 1, "restarted": ["adt"]}
       type: object
       required: [deleted, busy, restarted]
       properties:
@@ -1674,6 +1722,7 @@ components:
         busy: {type: integer, description: Matches left alone because they were being processed}
         restarted: {type: array, items: {type: string}, description: Flows stopped for the removal and started again}
     SnippetUpdate:
+      example: {"code": "pid.3 = upper(pid.3)"}
       type: object
       additionalProperties: false
       description: "A snippet for PUT on /api/v1/snippets/{name}: name is optional and must match the path"
@@ -1683,6 +1732,7 @@ components:
         description: {type: string}
         code: {type: string}
     SnippetLibraryUpdate:
+      example: {"name": "hl7"}
       type: object
       additionalProperties: false
       description: "A library for PUT on /api/v1/snippet-libraries/{name}: name is optional and must match the path"
@@ -1690,6 +1740,7 @@ components:
         name: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}
         description: {type: string}
     Snippet:
+      example: {"name": "pid", "library": "hl7", "code": "pid.3 = upper(pid.3)"}
       type: object
       additionalProperties: false
       required: [name]
@@ -1699,6 +1750,7 @@ components:
         description: {type: string}
         code: {type: string}
     SnippetLibrary:
+      example: {"name": "hl7"}
       type: object
       additionalProperties: false
       required: [name]
@@ -1706,6 +1758,7 @@ components:
         name: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}
         description: {type: string}
     UserInfo:
+      example: {"username": "ops", "email": "ops@example.com", "org": "Integration", "permissions": ["flows:view", "messages:view"], "mustChangePassword": false, "locked": false}
       type: object
       required: [username, permissions, mustChangePassword, locked]
       properties:
@@ -1716,6 +1769,7 @@ components:
         mustChangePassword: {type: boolean}
         locked: {type: boolean}
     NewUser:
+      example: {"username": "ops", "password": "A-Strong-Passw0rd", "email": "ops@example.com", "permissions": ["flows:view", "messages:view"]}
       type: object
       additionalProperties: false
       required: [username, password]
@@ -1727,6 +1781,7 @@ components:
         permissions: {type: array, items: {type: string}, description: "From the documented permission set; default none"}
         mustChangePassword: {type: boolean, default: true}
     UserUpdate:
+      example: {"permissions": ["flows:view", "messages:view", "messages:send"], "org": "Integration"}
       type: object
       additionalProperties: false
       required: [permissions]
@@ -1735,12 +1790,14 @@ components:
         email: {type: string, description: Kept when omitted}
         org: {type: string, description: Kept when omitted}
     PasswordSet:
+      example: {"password": "A-New-Passw0rd"}
       type: object
       additionalProperties: false
       required: [password]
       properties:
         password: {type: string, writeOnly: true}
     Error:
+      example: {"error": {"code": "NOT_FOUND", "message": "flow not found"}}
       type: object
       description: "Every error reply (see docs/api-errors.md)."
       required: [error]
