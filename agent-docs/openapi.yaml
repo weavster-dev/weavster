@@ -1345,6 +1345,14 @@ components:
       type: object
       description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs, and moveTo; an http source takes address, path, and method."
       required: [type]
+      additionalProperties: false
+      oneOf:
+        - required: [dir]
+          properties: {type: {enum: [file]}}
+          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}]}
+        - required: [address]
+          properties: {type: {enum: [http]}}
+          not: {anyOf: [{required: [dir]}, {required: [pattern]}, {required: [pollIntervalMs]}, {required: [moveTo]}]}
       properties:
         type: {type: string, enum: [file, http]}
         dir: {type: string, description: "file: absolute directory to poll"}

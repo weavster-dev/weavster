@@ -317,3 +317,29 @@ func TestOpenAPIRequestExamples(t *testing.T) {
 		}
 	}
 }
+
+// TestOpenAPIFlowSourceVariants: the FlowSource component accepts a file or
+// an http source with its own required fields, like flow.schema.json.
+func TestOpenAPIFlowSourceVariants(t *testing.T) {
+	schema := loadSpec(t).Components.Schemas["FlowSource"].Value
+	for _, tt := range []struct {
+		doc string
+		ok  bool
+	}{
+		{`{"type":"file","dir":"/in","pattern":"*.json"}`, true},
+		{`{"type":"http","address":":9001","path":"/adt","method":"PUT"}`, true},
+		{`{"type":"file"}`, false},
+		{`{"type":"http"}`, false},
+		{`{"type":"http","address":":9001","dir":"/in"}`, false},
+		{`{"type":"file","dir":"/in","method":"POST"}`, false},
+		{`{"type":"file","dir":"/in","recursive":true}`, false},
+	} {
+		var v any
+		if err := json.Unmarshal([]byte(tt.doc), &v); err != nil {
+			t.Fatal(err)
+		}
+		if err := schema.VisitJSON(v); (err == nil) != tt.ok {
+			t.Errorf("%s: %v", tt.doc, err)
+		}
+	}
+}
