@@ -68,6 +68,9 @@
                                 <a href="../flow-export-import/" class="nav-link">Flow Dependencies, Export, Import</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../config-items/" class="nav-link">Config Map, Scripts, Settings</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -275,6 +278,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>User administration (<code>/api/v1/users</code>, CLI <code>user list/add/remove/changepw</code>)</td>
 <td>Implemented (wired)</td>
 <td><code>TestUserAdministration</code>, <code>TestPermissionMatrix</code>. Permission <code>users:admin</code>. See <a href="../authentication/#manage-users">Authentication</a>.</td>
+</tr>
+<tr>
+<td>Config map, global scripts, settings (<code>/api/v1/configmap</code>, <code>/scripts</code>, <code>/settings</code>; CLI <code>importmap</code>, <code>exportmap</code>, <code>importscripts</code>, <code>exportscripts</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestConfigItems</code>. Stored and managed only: flows do not use the config map and scripts are not run yet. See <a href="../config-items/">Config map, scripts, and settings</a>.</td>
 </tr>
 <tr>
 <td>Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction</td>

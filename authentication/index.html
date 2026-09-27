@@ -68,6 +68,9 @@
                                 <a href="../flow-export-import/" class="nav-link">Flow Dependencies, Export, Import</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../config-items/" class="nav-link">Config Map, Scripts, Settings</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -317,6 +320,18 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <tr>
 <td><code>GET/POST /api/v1/users</code>, <code>GET/PUT/DELETE /api/v1/users/{name}</code>, <code>POST /api/v1/users/{name}/password</code></td>
 <td><code>users:admin</code></td>
+</tr>
+<tr>
+<td><code>/api/v1/configmap</code>, <code>/api/v1/configmap/{name}</code> (all methods)</td>
+<td><code>configmap:edit</code></td>
+</tr>
+<tr>
+<td><code>/api/v1/scripts</code>, <code>/api/v1/scripts/{name}</code> (all methods)</td>
+<td><code>scripts:edit</code></td>
+</tr>
+<tr>
+<td><code>/api/v1/settings</code>, <code>/api/v1/settings/{name}</code> (all methods)</td>
+<td><code>settings:edit</code></td>
 </tr>
 </tbody>
 </table>

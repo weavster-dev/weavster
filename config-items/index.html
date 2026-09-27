@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/flow-export-import/">
+        <link rel="canonical" href="https://docs.weavster.dev/config-items/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Flow Dependencies, Export, Import - Weavster</title>
+        <title>Config Map, Scripts, Settings - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -65,10 +65,10 @@
                                 <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Flow Dependencies, Export, Import</a>
+                                <a href="../flow-export-import/" class="nav-link">Flow Dependencies, Export, Import</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../config-items/" class="nav-link">Config Map, Scripts, Settings</a>
+                                <a href="./" class="nav-link active" aria-current="page">Config Map, Scripts, Settings</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
@@ -88,17 +88,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../flow-lifecycle/" class="nav-link">
+                                <a rel="prev" href="../flow-export-import/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../config-items/" class="nav-link">
+                                <a rel="next" href="../documentation/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/flow-export-import.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/config-items.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -119,21 +119,13 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#flow-dependencies-export-and-import" class="nav-link">Flow dependencies, export, and import</a>
+            <li class="nav-item" data-bs-level="1"><a href="#config-map-scripts-and-settings" class="nav-link">Config map, scripts, and settings</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#dependencies" class="nav-link">Dependencies</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#export" class="nav-link">Export</a>
+            <li class="nav-item" data-bs-level="2"><a href="#api" class="nav-link">API</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#import" class="nav-link">Import</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#reserved-ids" class="nav-link">Reserved ids</a>
+            <li class="nav-item" data-bs-level="2"><a href="#command-line-client" class="nav-link">Command-line client</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -144,140 +136,109 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="flow-dependencies-export-and-import">Flow dependencies, export, and import</h1>
-<h2 id="dependencies">Dependencies</h2>
-<p>A flow can declare the flows it needs with <code>dependsOn</code> (a list of flow ids):</p>
-<pre><code class="language-json">{&quot;id&quot;: &quot;adt-archive&quot;, &quot;name&quot;: &quot;ADT archive&quot;, &quot;dependsOn&quot;: [&quot;adt&quot;]}
-</code></pre>
-<p>The server checks dependencies on create, update, and import. It returns <code>400</code> when:</p>
+<h1 id="config-map-scripts-and-settings">Config map, scripts, and settings</h1>
+<p>The server keeps three sets of named values for you: the <strong>config map</strong> (text values, for example
+hostnames per environment), <strong>global scripts</strong> (script sources), and <strong>settings</strong> (any JSON
+value). They are stored with the flows (durable with <code>store.dialect: sqlite</code>) and managed over the
+API and the command-line client.</p>
+<p>!!! note "Stored, not used yet"
+    Flows do not read the config map, and global scripts are not run. Today these endpoints store
+    and return the values, so you can keep them next to your flows and move them between servers.</p>
+<h2 id="api">API</h2>
+<p>Each set has the same five operations. Names are 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>.</p>
 <table>
 <thead>
 <tr>
-<th>Problem</th>
-<th>Example message</th>
+<th>Request</th>
+<th>What it does</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>A listed flow does not exist</td>
-<td><code>flow adt-archive depends on unknown flow adt</code></td>
+<td><code>GET /api/v1/configmap</code></td>
+<td>Every entry, as a JSON object of <code>name: value</code>.</td>
 </tr>
 <tr>
-<td>A flow lists itself</td>
-<td><code>flow adt cannot depend on itself</code></td>
+<td><code>PUT /api/v1/configmap</code></td>
+<td>Replaces the whole set with the body (a JSON object of <code>name: value</code>).</td>
 </tr>
 <tr>
-<td>The dependencies form a loop</td>
-<td><code>dependency cycle: a -&gt; b -&gt; a</code></td>
+<td><code>GET /api/v1/configmap/{name}</code></td>
+<td>One entry: <code>{"name":…,"value":…}</code> (<code>404</code> if unknown).</td>
+</tr>
+<tr>
+<td><code>PUT /api/v1/configmap/{name}</code></td>
+<td>Creates or replaces one entry; the body is <code>{"value": …}</code>.</td>
+</tr>
+<tr>
+<td><code>DELETE /api/v1/configmap/{name}</code></td>
+<td>Deletes one entry (<code>204</code>; <code>404</code> if unknown).</td>
 </tr>
 </tbody>
 </table>
-<p>You cannot delete a flow that another flow depends on:</p>
-<pre><code class="language-text">409 {&quot;error&quot;:{&quot;code&quot;:&quot;CONFLICT&quot;,&quot;message&quot;:&quot;flow is a dependency of other flows: adt depended on by adt-archive&quot;}}
-</code></pre>
-<p>To prove nothing depends on it, the server must be able to read every other flow. If one is
-unreadable, the delete returns <code>500</code> naming that flow; delete the unreadable flow first (a flow
-can always delete itself).</p>
-<p>Deploying a flow, manually or through startup auto-deploy, also deploys every <code>undeployed</code> flow
-it depends on, dependencies first. Dependencies in any other status are left as they are, so
-deploying a dependent never interrupts a running dependency. Starting a flow does not start its
-dependencies. See <a href="../flow-lifecycle/">Flow lifecycle</a>.</p>
-<h2 id="export">Export</h2>
-<p><code>GET /api/v1/flows/export</code> (permission <code>flows:view</code>) returns flow definitions:</p>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
-  'http://127.0.0.1:8080/api/v1/flows/export?ids=adt-archive' &gt; flows.json
-</code></pre>
-<pre><code class="language-json">{&quot;version&quot;:1,&quot;flows&quot;:[
-  {&quot;id&quot;:&quot;adt&quot;,&quot;name&quot;:&quot;ADT normalize&quot;,&quot;sourceType&quot;:&quot;http&quot;,&quot;enabled&quot;:true,&quot;transform&quot;:{…},&quot;destinations&quot;:[…]},
-  {&quot;id&quot;:&quot;adt-archive&quot;,&quot;name&quot;:&quot;ADT archive&quot;,&quot;sourceType&quot;:&quot;&quot;,&quot;enabled&quot;:false,&quot;dependsOn&quot;:[&quot;adt&quot;]}
-]}
-</code></pre>
-<ul>
-<li><code>ids</code> is a comma-separated list. The export also includes every flow those flows depend on,
-  directly or indirectly. Leave <code>ids</code> out to export all flows.</li>
-<li>Flows are sorted by id and have no <code>status</code>: an export holds definitions, not runtime state.</li>
-<li>An unknown id returns <code>404</code>.</li>
-</ul>
-<h2 id="import">Import</h2>
-<p><code>POST /api/v1/flows/import</code> (permission <code>flows:edit</code>) takes an export document:</p>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
-  http://127.0.0.1:8080/api/v1/flows/import --data @flows.json
-</code></pre>
-<pre><code class="language-json">{&quot;created&quot;:[&quot;adt&quot;,&quot;adt-archive&quot;],&quot;updated&quot;:[]}
-</code></pre>
-<p>The whole document is checked before anything is written. Every flow must be valid, the ids
-must be unique, and dependencies must resolve against the document plus the existing flows,
-without cycles. Otherwise the import returns <code>400</code> and changes nothing. Flows are then written
-dependencies first. Each flow in the document is a full definition: a flow without <code>enabled</code>
-is imported disabled. Exports always include <code>enabled</code>.</p>
+<p>The same requests work on <code>/api/v1/scripts</code> and <code>/api/v1/settings</code>.</p>
 <table>
 <thead>
 <tr>
-<th>Flow in the document</th>
-<th>Result</th>
+<th>Set</th>
+<th>Values</th>
+<th>Permission</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>New id</td>
-<td>Created <code>undeployed</code>. Deploy and start it to process messages.</td>
+<td><code>configmap</code></td>
+<td>strings</td>
+<td><code>configmap:edit</code></td>
 </tr>
 <tr>
-<td>Existing id, without <code>?overwrite=true</code></td>
-<td>Nothing is written: <code>409 flows already exist: adt (use overwrite=true to replace them)</code>. Checked after the document is validated, so an invalid document returns <code>400</code> even when it also conflicts.</td>
+<td><code>scripts</code></td>
+<td>strings (the script source)</td>
+<td><code>scripts:edit</code></td>
 </tr>
 <tr>
-<td>Existing id, with <code>?overwrite=true</code></td>
-<td>Definition replaced; the flow keeps its current status.</td>
+<td><code>settings</code></td>
+<td>any JSON value</td>
+<td><code>settings:edit</code></td>
 </tr>
 </tbody>
 </table>
-<p>Other errors:</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080/api/v1/configmap \
+  -d '{&quot;ehr.host&quot;:&quot;ehr.example.com&quot;,&quot;region&quot;:&quot;eu&quot;}'
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080/api/v1/settings/retention \
+  -d '{&quot;value&quot;:{&quot;days&quot;:30}}'
+</code></pre>
+<p>A value of the wrong type (a number in the config map, for example), a <code>null</code> value, an unknown
+field in the body, or a bad name returns <code>400</code> and changes nothing. Bodies may be up to 10 MiB.</p>
+<h2 id="command-line-client">Command-line client</h2>
 <table>
 <thead>
 <tr>
-<th>Response</th>
-<th>Cause</th>
+<th>Command</th>
+<th>What it does</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>400 unsupported export version 2; expected 1</code></td>
-<td>Missing or unknown <code>version</code>.</td>
+<td><code>exportmap "path"</code></td>
+<td>Writes the config map to a JSON file.</td>
 </tr>
 <tr>
-<td><code>400 flows[0]: status is managed by lifecycle operations …; omit it</code></td>
-<td>A flow in the document has a <code>status</code> field.</td>
+<td><code>importmap "path"</code></td>
+<td>Replaces the config map with the file's entries.</td>
 </tr>
 <tr>
-<td><code>400 flows[0]: stoppedDestinations is managed by …; omit it</code></td>
-<td>A flow in the document has a <code>stoppedDestinations</code> field.</td>
+<td><code>exportscripts "path"</code></td>
+<td>Writes the global scripts to a JSON file.</td>
 </tr>
 <tr>
-<td><code>400 … appears twice</code></td>
-<td>The same id is listed twice.</td>
-</tr>
-<tr>
-<td><code>400 body must be an export document</code></td>
-<td>Not a JSON object, no <code>flows</code> array, a top-level field other than <code>version</code> and <code>flows</code>, or extra data after the document.</td>
-</tr>
-<tr>
-<td><code>413</code></td>
-<td>The document is larger than 50 MiB.</td>
+<td><code>importscripts "path"</code></td>
+<td>Replaces the global scripts with the file's entries.</td>
 </tr>
 </tbody>
 </table>
-<p>If writing fails part-way (for example, a store error), the import stops and returns
-<code>500 {"error":{"code":"IMPORT_INCOMPLETE",…},"created":[…],"updated":[…]}</code>, listing what was
-written. Because flows are written dependencies first, every written flow's dependencies exist.
-Import again with <code>?overwrite=true</code> to finish.</p>
-<p>Creates, updates, imports, and deletes of flow definitions run one at a time, so a dependency
-check always sees the flows it is written against.</p>
-<h2 id="reserved-ids">Reserved ids</h2>
-<p><code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, <code>ports-in-use</code>, <code>stats</code>, and <code>deploy-all</code>, <code>undeploy-all</code>, <code>start-all</code>, <code>stop-all</code>, <code>pause-all</code>, <code>halt-all</code>, <code>resume-all</code> cannot be used as flow ids, because they name these
-endpoints. A flow created with one of these ids before this rule existed can still be deleted
-(<code>DELETE /api/v1/flows/export</code>). To keep it, export all flows, change its id in the file,
-delete it, and import the file.</p></div>
+<p>The files are the same JSON object as <code>GET</code> returns, so you can move a config map between servers
+with <code>exportmap</code> on one and <code>importmap</code> on the other.</p></div>
             </div>
         </div>
 

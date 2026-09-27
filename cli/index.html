@@ -68,6 +68,9 @@
                                 <a href="../flow-export-import/" class="nav-link">Flow Dependencies, Export, Import</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../config-items/" class="nav-link">Config Map, Scripts, Settings</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -353,6 +356,14 @@ name, or a name several flows share, is an error that lists their ids.</p>
 <tr>
 <td><code>importmessages "path" &lt;flow&gt;</code></td>
 <td>Imports an archive file into the flow (existing message ids are skipped).</td>
+</tr>
+<tr>
+<td><code>exportmap "path"</code>, <code>importmap "path"</code></td>
+<td>Writes the config map to a JSON file, or replaces it with one. See <a href="../config-items/">Config map, scripts, and settings</a>.</td>
+</tr>
+<tr>
+<td><code>exportscripts "path"</code>, <code>importscripts "path"</code></td>
+<td>The same for the global scripts.</td>
 </tr>
 <tr>
 <td><code>resetstats [lifetime]</code></td>
