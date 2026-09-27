@@ -79,6 +79,9 @@ var ErrNothingToPush = errors.New("nothing to push: the repository has no commit
 // pull.
 var ErrDetached = errors.New("HEAD is not on a branch; check out a branch in the repository")
 
+// ErrUncommitted: the working tree has changes a pull would overwrite.
+var ErrUncommitted = errors.New("the repository has uncommitted changes; commit them (or remove them) before pulling")
+
 // ErrRemote marks a failure talking to the remote (unreachable, refused,
 // timed out), as opposed to a local repository error.
 var ErrRemote = errors.New("remote")
@@ -231,9 +234,17 @@ func (s *Store) PushTo(ctx context.Context, r Remote) error {
 // PullRemoteWins fetches from r and resets the current branch, the index,
 // and the working tree to the remote branch: the remote wins (spec
 // §2.12.40). It returns the local commits that were dropped, newest first;
-// ErrNotFound when the remote has no such branch. If the reset fails, the
-// branch and working tree are put back.
+// ErrNotFound when the remote has no such branch. It refuses to run over
+// uncommitted changes (ErrUncommitted), so if the reset fails the branch
+// and working tree can be put back exactly as committed.
 func (s *Store) PullRemoteWins(ctx context.Context, r Remote) (dropped []string, err error) {
+	changed, err := s.WorkingTreeDiff()
+	if err != nil {
+		return nil, err
+	}
+	if len(changed) > 0 {
+		return nil, fmt.Errorf("%w: %s", ErrUncommitted, strings.Join(changed, ", "))
+	}
 	if err := s.fetch(ctx, r); err != nil {
 		return nil, err
 	}
@@ -250,13 +261,23 @@ func (s *Store) PullRemoteWins(ctx context.Context, r Remote) (dropped []string,
 		return nil, err
 	}
 	if err := s.wt.Reset(&git.ResetOptions{Commit: target, Mode: git.HardReset}); err != nil {
-		if st.Head == "" {
-			_ = s.repo.Storer.RemoveReference(branch)
-		} else {
-			_ = s.repo.Storer.SetReference(plumbing.NewHashReference(branch, plumbing.NewHash(st.Head)))
-			_ = s.wt.Reset(&git.ResetOptions{Commit: plumbing.NewHash(st.Head), Mode: git.HardReset})
+		if rbErr := s.restore(branch, st.Head); rbErr != nil {
+			return nil, fmt.Errorf("pull: %w; putting the repository back also failed: %w", err, rbErr)
 		}
 		return nil, err
 	}
 	return st.Ahead, nil
+}
+
+// restore points branch back at head ("" = no commit yet) and resets the
+// index and working tree to it.
+func (s *Store) restore(branch plumbing.ReferenceName, head string) error {
+	if head == "" {
+		return s.repo.Storer.RemoveReference(branch)
+	}
+	h := plumbing.NewHash(head)
+	if err := s.repo.Storer.SetReference(plumbing.NewHashReference(branch, h)); err != nil {
+		return err
+	}
+	return s.wt.Reset(&git.ResetOptions{Commit: h, Mode: git.HardReset})
 }

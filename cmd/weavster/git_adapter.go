@@ -59,7 +59,7 @@ func remoteError(r gitstore.Remote, branch string, err error) error {
 	switch {
 	case errors.Is(err, gitstore.ErrRejected):
 		return fmt.Errorf("%w: %w; pull first", gateway.ErrGitConflict, err)
-	case errors.Is(err, gitstore.ErrNothingToPush), errors.Is(err, gitstore.ErrDetached):
+	case errors.Is(err, gitstore.ErrNothingToPush), errors.Is(err, gitstore.ErrDetached), errors.Is(err, gitstore.ErrUncommitted):
 		return fmt.Errorf("%w: %w", gateway.ErrGitConflict, err)
 	case errors.Is(err, gitstore.ErrNotFound):
 		return fmt.Errorf("%w: the remote has no branch %s; push first", gateway.ErrGitConflict, branch)

@@ -240,7 +240,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
   credentials, or does not answer within a minute gives `502` with the reason; the password or
   token is never shown.
 - A branch deleted on the remote stops being reported at the next status, push, or pull.
-- If a pull fails part way, the branch and files are put back as they were.
+- A pull is refused with `409` while the repository has uncommitted files (they would be
+  overwritten); commit or remove them first. If a pull fails part way, the branch and files are
+  put back as they were committed.
 - Checking the status fetches from the remote with the server's credentials; like `git fetch`,
   it updates only the repository's record of the remote.
 

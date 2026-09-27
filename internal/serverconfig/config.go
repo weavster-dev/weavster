@@ -248,10 +248,12 @@ func (c Config) Validate() error {
 		if (hasScheme && scheme != "https" && scheme != "file") || (!hasScheme && strings.Contains(beforeSlash, ":")) {
 			return errors.New("config: git.remote.url must be an https:// or file:// URL or a local path (SSH and plain http:// are not supported)")
 		}
-		if u, err := url.Parse(r.URL); err == nil {
-			if _, hasPassword := u.User.Password(); hasPassword {
-				return errors.New("config: git.remote.url must not contain a password; use git.remote.passwordEnv")
-			}
+		u, err := url.Parse(r.URL)
+		if err != nil {
+			return fmt.Errorf("config: git.remote.url: %w", err)
+		}
+		if _, hasPassword := u.User.Password(); hasPassword {
+			return errors.New("config: git.remote.url must not contain a password; use git.remote.passwordEnv")
 		}
 	}
 	p := c.Auth.PasswordPolicy

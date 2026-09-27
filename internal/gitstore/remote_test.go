@@ -80,6 +80,17 @@ func TestRemotePushPullRemoteWins(t *testing.T) {
 		t.Errorf("divergent status = %+v %v", st, err)
 	}
 
+	// Uncommitted changes block a pull, which would overwrite them.
+	if err := a.WriteFile("notes.txt", []byte("draft")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := a.PullRemoteWins(ctx, remote); !errors.Is(err, ErrUncommitted) || !strings.Contains(err.Error(), "notes.txt") {
+		t.Errorf("pull over uncommitted = %v", err)
+	}
+	if err := a.RemoveFile("notes.txt"); err != nil {
+		t.Fatal(err)
+	}
+
 	// Pull: the remote wins; ours is dropped and reported.
 	dropped, err := a.PullRemoteWins(ctx, remote)
 	if err != nil || len(dropped) != 1 || dropped[0] != ours {
@@ -281,5 +292,24 @@ func TestRemoteEmptyAndFailedPull(t *testing.T) {
 	}
 	if head, _, _ := s.Head(); head != ours {
 		t.Errorf("head after failed pull = %s, want %s", head, ours)
+	}
+}
+
+// TestRestoreUnbornBranch: putting back a branch that had no commit
+// removes it again.
+func TestRestoreUnbornBranch(t *testing.T) {
+	s, err := OpenOrInit(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch := plumbing.NewBranchReferenceName("main")
+	if err := s.repo.Storer.SetReference(plumbing.NewHashReference(branch, plumbing.NewHash(strings.Repeat("ab", 20)))); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.restore(branch, ""); err != nil {
+		t.Fatal(err)
+	}
+	if head, _, err := s.Head(); err != nil || head != "" {
+		t.Errorf("head = %q %v", head, err)
 	}
 }
