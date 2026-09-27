@@ -157,6 +157,14 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#compare-revisions" class="nav-link">Compare revisions</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#restore-a-revision" class="nav-link">Restore a revision</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#check-for-drift" class="nav-link">Check for drift</a>
               <ul class="nav flex-column">
               </ul>
@@ -285,6 +293,47 @@ back as stored: <code>application/yaml</code> for <code>.yaml</code> files, othe
   'http://127.0.0.1:8080/api/v1/git/content?path=flows/adt.yaml&amp;rev=HEAD~1'
 </code></pre>
 <p>An unknown revision, or a file that did not exist at it, returns <code>404</code>.</p>
+<h2 id="compare-revisions">Compare revisions</h2>
+<p><code>GET /api/v1/git/diff?from=REV[&amp;to=REV]</code> lists the files changed between two revisions (<code>to</code>
+defaults to <code>HEAD</code>) and the unified patch:</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/git/diff?from=HEAD~2'
+</code></pre>
+<pre><code class="language-json">{&quot;from&quot;:&quot;HEAD~2&quot;,&quot;to&quot;:&quot;HEAD&quot;,&quot;truncated&quot;:false,&quot;files&quot;:[{&quot;path&quot;:&quot;scripts/deploy.yaml&quot;,&quot;status&quot;:&quot;modified&quot;},{&quot;path&quot;:&quot;settings/retention.yaml&quot;,&quot;status&quot;:&quot;deleted&quot;}],
+ &quot;patch&quot;:&quot;diff --git a/scripts/deploy.yaml b/scripts/deploy.yaml\n...\n-    deploy: log()\n+    deploy: log(2)\n...&quot;}
+</code></pre>
+<ul>
+<li>A moved or renamed file shows as <code>deleted</code> at the old path and <code>added</code> at the new one.</li>
+<li>A patch over 5 MiB is cut there and <code>truncated</code> is <code>true</code>; the file list is always complete.</li>
+<li>Without <code>from</code>, it lists the files in the repository directory that differ from <code>HEAD</code> but are
+  not committed (<code>added</code>, <code>modified</code>, <code>deleted</code>; ignored files are not listed), with <code>from</code>
+  <code>HEAD</code>, <code>to</code> empty, and no patch. Changes made through the API are always committed, so this
+  shows only files edited on disk.</li>
+</ul>
+<h2 id="restore-a-revision">Restore a revision</h2>
+<p><code>POST /api/v1/git/restore</code> makes the repository match a revision and records that as a <strong>new
+commit</strong>, so the history is kept. With <code>path</code>, only that file is restored:</p>
+<pre><code class="language-bash"># One file, as it was two commits ago
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Content-Type: application/json' \
+  -X POST http://127.0.0.1:8080/api/v1/git/restore \
+  -d '{&quot;rev&quot;:&quot;HEAD~2&quot;,&quot;path&quot;:&quot;scripts/deploy.yaml&quot;,&quot;message&quot;:&quot;Put the deploy script back&quot;}'
+# Everything, as it was at a commit
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Content-Type: application/json' \
+  -X POST http://127.0.0.1:8080/api/v1/git/restore -d '{&quot;rev&quot;:&quot;5f0c1e9a8d&quot;,&quot;message&quot;:&quot;Back to Monday&quot;}'
+</code></pre>
+<pre><code class="language-json">{&quot;committed&quot;:true,&quot;head&quot;:&quot;9d4b7a0c2f...&quot;,&quot;changed&quot;:[&quot;scripts/deploy.yaml&quot;]}
+</code></pre>
+<ul>
+<li>A restore changes only the repository. To bring the server back to it,
+  <a href="#check-for-drift">check the drift</a> and <a href="#plan-and-apply-from-the-repository">apply from the repository</a>:
+  every live change still goes through a plan you can review.</li>
+<li>Nothing to change: <code>committed</code> is <code>false</code> and no commit is made.</li>
+<li>An unknown revision, or a file that did not exist at it, returns <code>404</code>. Uncommitted files in the
+  repository directory block a restore with <code>409</code>; commit or remove them first.</li>
+<li>A restore writes only the files that differ. Restoring the whole repository removes committed
+  files the revision did not have (including ones outside the configuration directories); files
+  that were never committed, and ignored files, are not touched. If the revision has a file where
+  an ignored local file now sits, the restore is refused with <code>409</code> naming it; move it away first.</li>
+</ul>
 <h2 id="check-for-drift">Check for drift</h2>
 <p>Drift is a difference between the live configuration and the repository: someone changed the
 server after the last commit, or the repository was edited. <code>GET /api/v1/git/drift</code> compares the
@@ -409,8 +458,12 @@ become exactly the remote's; your commits that are not on the remote are dropped
 <td><code>git:view</code> and that endpoint's own permissions</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/git/content</code></td>
+<td><code>GET /api/v1/git/content</code>, <code>GET /api/v1/git/diff</code></td>
 <td><code>git:view</code>, <code>flows:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>settings:edit</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/git/restore</code></td>
+<td><code>git:commit</code>, <code>flows:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>settings:edit</code></td>
 </tr>
 <tr>
 <td><code>POST /api/v1/git/commit</code></td>
