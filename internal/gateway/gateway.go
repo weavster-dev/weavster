@@ -263,10 +263,12 @@ type TopologyProvider interface {
 
 // Config wires the gateway's ports.
 type Config struct {
-	Auth        AuthProvider // nil disables authentication and authorization
-	Passwords   PasswordChanger
-	Users       UserAdmin
-	Items       ItemStore
+	Auth      AuthProvider // nil disables authentication and authorization
+	Passwords PasswordChanger
+	Users     UserAdmin
+	Items     ItemStore
+	// Snippets keeps code snippets and snippet libraries.
+	Snippets    SnippetStore
 	Authorizer  Authorizer
 	Audit       AuditSink
 	Flows       FlowStore

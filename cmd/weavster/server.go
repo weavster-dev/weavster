@@ -125,6 +125,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Passwords:   passwordAdapter{provider},
 		Users:       userAdminAdapter{p: provider, mu: &sync.Mutex{}},
 		Items:       itemsAdapter{repo: items},
+		Snippets:    snippetsAdapter{repo: items, mu: &sync.Mutex{}},
 		Authorizer:  authorizerAdapter{},
 		Audit:       auditAdapter{sink},
 		Flows:       flows,

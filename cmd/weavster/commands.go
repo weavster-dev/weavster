@@ -86,6 +86,8 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return flowCommand(ctx, client, args, stdout, stderr, debug)
 	case "user":
 		return userCommand(ctx, client, fields[1:], stdout, stderr, debug)
+	case "snippet": // spec §3.2: snippet [library] list|import|export|remove
+		return snippetCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	default:
 		_, _ = fmt.Fprintf(stderr, "Error: unknown command %q\n", fields[0])
 		return 2
@@ -105,7 +107,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, importmap|exportmap|importscripts|exportscripts "path", quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -397,4 +399,72 @@ func itemsFileCommand(ctx context.Context, client Client, cmd string, args []str
 		return shellError(stderr, debug, err)
 	}
 	return 0
+}
+
+// snippetCommand manages code snippets, or with a leading "library" the
+// snippet libraries. import creates or replaces the file's entries and keeps
+// the others.
+func snippetCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	path, noun := "/api/v1/snippets", "snippets"
+	if len(args) > 0 && args[0] == "library" {
+		path, noun, args = "/api/v1/snippet-libraries", "snippet libraries", args[1:]
+	}
+	want := 2
+	if len(args) > 0 && args[0] == "list" {
+		want = 1
+	}
+	if len(args) != want {
+		_, _ = fmt.Fprintln(stderr, "Error: usage: snippet [library] list | import \"path\" | export \"path\" | remove <name>")
+		return 2
+	}
+	var err error
+	switch args[0] {
+	case "list":
+		var out []byte
+		var list []gateway.Snippet // a library decodes as a snippet without library and code
+		if out, err = client.Call(ctx, http.MethodGet, path+"?summary=true", nil); err == nil {
+			err = json.Unmarshal(out, &list)
+		}
+		for _, sn := range list {
+			cols := []string{sn.Name, sn.Library, sn.Description}
+			if noun != "snippets" {
+				cols = []string{sn.Name, sn.Description}
+			}
+			_, _ = fmt.Fprintln(stdout, strings.TrimRight(strings.Join(cols, "\t"), "\t"))
+		}
+	case "import":
+		var doc []byte
+		if doc, err = os.ReadFile(args[1]); err == nil {
+			doc, err = client.Call(ctx, http.MethodPut, path, doc)
+		}
+		if err == nil {
+			_, _ = fmt.Fprintf(stdout, "imported %d %s from %s\n", jsonArrayLen(doc), noun, args[1])
+		}
+	case "export":
+		var out []byte
+		if out, err = client.Call(ctx, http.MethodGet, path, nil); err == nil {
+			err = os.WriteFile(args[1], out, 0o600)
+		}
+		if err == nil {
+			_, _ = fmt.Fprintf(stdout, "exported %d %s to %s\n", jsonArrayLen(out), noun, args[1])
+		}
+	case "remove":
+		if _, err = client.Call(ctx, http.MethodDelete, path+"/"+url.PathEscape(args[1]), nil); err == nil {
+			_, _ = fmt.Fprintf(stdout, "removed %s\n", args[1])
+		}
+	default:
+		_, _ = fmt.Fprintf(stderr, "Error: unknown snippet subcommand %q\n", args[0])
+		return 2
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	return 0
+}
+
+// jsonArrayLen counts the elements of a JSON array (0 if it is not one).
+func jsonArrayLen(doc []byte) int {
+	var list []json.RawMessage
+	_ = json.Unmarshal(doc, &list)
+	return len(list)
 }

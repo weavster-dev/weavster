@@ -21,6 +21,7 @@ nav:
   - Flow Lifecycle: flow-lifecycle.md
   - Flow Dependencies, Export, Import: flow-export-import.md
   - Config Map, Scripts, Settings: config-items.md
+  - Code Snippets: snippets.md
   - Docs Site Guide: documentation.md
   - MVP Project Plan: mvp-project-plan.md
   - Agent Onboarding: agent-onboarding.md

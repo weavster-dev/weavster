@@ -38,6 +38,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | Durable local users (password changes and lockout state included) | Implemented (wired) | `TestUsersSurviveRestart`. Durable with `store.dialect: sqlite`; the first-run `admin` is created once per database. |
 | User administration (`/api/v1/users`, CLI `user list/add/remove/changepw`) | Implemented (wired) | `TestUserAdministration`, `TestPermissionMatrix`. Permission `users:admin`. See [Authentication](authentication.md#manage-users). |
 | Config map, global scripts, settings (`/api/v1/configmap`, `/scripts`, `/settings`; CLI `importmap`, `exportmap`, `importscripts`, `exportscripts`) | Implemented (wired) | `TestConfigItems`. Stored and managed only: flows do not use the config map and scripts are not run yet. See [Config map, scripts, and settings](config-items.md). |
+| Code snippets and snippet libraries (`/api/v1/snippets`, `/api/v1/snippet-libraries`; CLI `snippet [library]` with `list`, `import`, `export`, `remove`) | Implemented (wired) | `TestSnippets`. Stored and managed only: flows do not run snippets yet. See [Code snippets and libraries](snippets.md). |
 | Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction | Implemented (wired) | `TestAuditLog`. Written to stderr only; not stored or searchable. See [Audit log](audit-log.md). |
 | HTTPS listener (`listen.tlsAddress`, `tls.certFile/keyFile/minVersion`) | Implemented (wired) | `TestServerConfigTLS` |
 | mTLS | Unsupported | |
