@@ -22,6 +22,6 @@ Enterprise-deferred, or unsupported.
 
 ## Contracts
 
-- `agent-docs/openapi.yaml` — REST + OpenAPI 3.1 contract
+- `agent-docs/openapi.yaml` — REST + OpenAPI 3.1 contract, identical to the one the server serves at `GET /api/openapi.yaml`
 - `agent-docs/schemas/config.schema.json` — config-as-code JSON Schema (its flows refer to `flow.schema.json`)
 - `agent-docs/schemas/transform.schema.json` — transform DSL JSON Schema

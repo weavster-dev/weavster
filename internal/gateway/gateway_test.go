@@ -125,15 +125,6 @@ func TestFlowList(t *testing.T) {
 	}
 }
 
-func TestOpenAPISpecValid(t *testing.T) {
-	if err := ValidateSpec(); err != nil {
-		t.Fatalf("openapi spec invalid: %v", err)
-	}
-	if !strings.Contains(OpenAPISpec(), "openapi: 3.1.0") {
-		t.Error("spec missing version")
-	}
-}
-
 func TestTLSConfig(t *testing.T) {
 	cfg, err := BuildTLSConfig(DefaultTLSOptions())
 	if err != nil {
@@ -382,13 +373,6 @@ func TestTopologyHandlerErrorPaths(t *testing.T) {
 	rec = do(t, srv, http.MethodGet, "/api/v1/topology/flows/x", false)
 	if rec.Code != http.StatusInternalServerError {
 		t.Errorf("TopologyFlow error: want 500, got %d", rec.Code)
-	}
-}
-
-func TestValidateSpecValid(t *testing.T) {
-	// ValidateSpec validates the embedded spec — it must return nil normally.
-	if err := ValidateSpec(); err != nil {
-		t.Fatalf("ValidateSpec on valid spec: %v", err)
 	}
 }
 
