@@ -24,7 +24,7 @@ func writeFlowError(w http.ResponseWriter, err error) {
 		writeStatusError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrNoContent):
 		writeStatusError(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, ErrMessageBusy):
+	case errors.Is(err, ErrMessageBusy), errors.Is(err, ErrNotDeadLettered):
 		writeStatusError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrUnknownAction), errors.Is(err, ErrDestinationNotFound):
 		writeStatusError(w, http.StatusNotFound, err.Error())

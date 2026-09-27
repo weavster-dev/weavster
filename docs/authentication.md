@@ -125,7 +125,8 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `GET /api/v1/messages/{id}/content`, `GET /api/v1/messages/export` | `messages:content` |
 | `POST /api/v1/messages/import` | `messages:import` |
 | `DELETE /api/v1/messages/{id}`, `DELETE /api/v1/messages` | `messages:delete` |
-| `POST /api/v1/flows/{id}/messages`, `POST /api/v1/messages/{id}/reprocess` | `messages:send` |
+| `POST /api/v1/flows/{id}/messages`, `POST /api/v1/messages/{id}/reprocess`, `POST /api/v1/messages/requeue` | `messages:send` |
+| `POST /api/v1/messages/{id}/requeue` | `messages:view`, `messages:send` |
 | `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all`, `POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all`, `POST /api/v1/flows/{id}/destinations/{name}/{start,stop}`, `POST /api/v1/flows/stats/reset`, `POST /api/v1/flows/{id}/stats/reset` | `flows:deploy` |
 | `GET /api/v1/flows/{id}/stats`, `GET /api/v1/flows/stats`, `GET /api/v1/stats/series` | `flows:view` |
 | `GET /api/v1/events`, `/api/v1/events/{id}`, `/count`, `/max-id`, `/export` | `events:view` |

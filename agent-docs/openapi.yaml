@@ -1208,11 +1208,13 @@ paths:
       summary: Remove a stored message (requires messages:delete)
       parameters:
         - {name: id, in: path, required: true, schema: {type: string}}
+        - {name: status, in: query, schema: {type: string, enum: [dead-lettered]}, description: "Remove only if the message is dead-lettered (checked while it is held; 409 otherwise)"}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "204": {description: Removed, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown message, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
-        "409": {description: The message is being processed or retried, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "The message is being processed or retried, or (with status=dead-lettered) is not dead-lettered", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: status other than dead-lettered, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/messages/{id}/content:
     get:
       summary: A stored part of a message, as bytes (requires messages:content; every access is audited)
@@ -1229,6 +1231,48 @@ paths:
             application/json: {schema: {type: object}}
         "400": {description: part is not raw or transformed, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown message, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/messages/{id}/requeue:
+    post:
+      summary: "Give a dead-lettered message another round of delivery attempts (requires messages:view and messages:send; audited as PHI access)"
+      description: >
+        Destinations that did not deliver start again with no attempts; destinations that delivered
+        are never sent again. The message becomes queued (received, if it was never transformed) and
+        the retry loop delivers it. The attempts it had are returned; their counts (not the error
+        texts) are recorded in the audit log and a message.requeued event.
+      parameters:
+        - {name: id, in: path, required: true, schema: {type: string}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: The requeued message and the attempts it had
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: {type: object, description: "As GET /api/v1/messages/{id}"}
+                  previous: {type: object, additionalProperties: {type: object, properties: {attempts: {type: integer}, lastError: {type: string}}}}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "404": {description: "Unknown message, or its flow was deleted", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "The message is not dead-lettered, or it is being processed", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/messages/requeue:
+    post:
+      summary: "Requeue every dead-lettered message, or those of one flow (requires messages:send)"
+      parameters:
+        - {name: flowId, in: query, schema: {type: string}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: "The ids requeued, and those skipped with the reason (in flight, flow deleted)"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requeued: {type: array, items: {type: string}}
+                  skipped: {type: array, items: {type: object, properties: {id: {type: string}, reason: {type: string}}}}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "404": {description: flowId names no flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/messages/{id}/reprocess:
     post:
       summary: Run the message's original content through its flow again, as a new message with metadata reprocessedFrom (requires messages:send)

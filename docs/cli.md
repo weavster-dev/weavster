@@ -115,6 +115,9 @@ Commands that change a flow print the server's reply (the flow, or the import/up
 | `config apply "path" [--dry-run] [reason…]` | Plans the document, prints the plan, and applies it; refused if the server changed meanwhile, undone completely if a change fails. See [Apply](config-as-code.md#apply). |
 | `exportcfg "path" [overwriteconfigmap]`, `importcfg "path" [nodeploy] [overwriteconfigmap] [force]` | Exports or imports the whole configuration (flows, alerts, snippets, scripts, settings, and optionally the config map). See [Export and import the whole configuration](config-transfer.md). |
 | `importalert "path" [force]`, `exportalert <id, "name", or *> "path"` | Imports alerts from a JSON file (`force` replaces existing ids), or exports one alert or all of them. See [Alerts](alerts.md). |
+| `deadletter list [flow]`, `deadletter show <id>` | Lists dead-lettered messages (each destination's attempts and last error), or shows one as JSON. |
+| `deadletter requeue <id>`, `deadletter requeue all [flow]` | Gives dead-lettered messages another round of delivery attempts; delivered destinations are not sent again. See [Dead-lettered messages](processing-messages.md#dead-lettered-messages). |
+| `deadletter remove <id>` | Deletes a dead-lettered message (refuses any other status). |
 | `clearallmessages` | Removes every message. Started flows are stopped first and started again afterwards; the output names them, and counts messages kept because they were being processed. |
 | `dump stats "path"`, `dump events "path"` | Writes every flow's statistics, or the newest 10,000 events, to a JSON file. |
 | `resetstats [lifetime]` | Clears every flow's current statistics; `lifetime` also clears the lifetime totals. |

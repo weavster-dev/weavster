@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -52,6 +53,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	}
 	closeStore := func() error { return nil }
 	var messages gateway.MessageStore
+	var deadLetters gateway.DeadLetterRequeuer
 	var trends gateway.MessageTrendReader
 	if store != nil {
 		closeStore = store.Close
@@ -119,7 +121,8 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		})
 		ia := ingestAdapter{flows: flows, pipe: pipe}
 		ingest = ia
-		messages = messageAdapter{store: store, pipe: pipe, ingest: ia}
+		ma := messageAdapter{store: store, pipe: pipe, ingest: ia}
+		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
 		retry = func(ctx context.Context) {
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
@@ -156,6 +159,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		FlowUpdates:     flows,
 		Transfer:        flows,
 		Stats:           statsPort,
+		DeadLetters:     deadLetters,
 		StatsHistory:    statsPort,
 		Events:          eventsAdapter{events},
 		Topology:        topologyAdapter{flows: flows, stats: stats},
@@ -2040,6 +2044,120 @@ func (m messageAdapter) Reprocess(ctx context.Context, id string) (gateway.Inges
 	}
 	md["reprocessedFrom"] = id
 	return m.ingest.ingest(ctx, msg.FlowID, body, md)
+}
+
+// Requeue gives a dead-lettered message another round of delivery attempts
+// through the pipeline (so never while it is in flight) and records how
+// many attempts each destination had in a message.requeued event (never the
+// error texts: they can quote message content). A message whose flow was
+// deleted cannot be requeued.
+func (m messageAdapter) Requeue(ctx context.Context, id string) (gateway.RequeueResult, error) {
+	msg, err := m.store.Get(ctx, id)
+	if err != nil {
+		return gateway.RequeueResult{}, messageErr(err)
+	}
+	before, err := m.requeue(ctx, msg.ID, msg.FlowID, nil)
+	if err != nil {
+		return gateway.RequeueResult{}, err
+	}
+	after, err := m.store.Get(ctx, id)
+	if err != nil {
+		return gateway.RequeueResult{}, messageErr(err)
+	}
+	res := gateway.RequeueResult{Message: toGatewayMessage(after), Previous: toGatewayMessage(before).Attempts}
+	if res.Previous == nil {
+		res.Previous = map[string]gateway.MessageAttempt{}
+	}
+	return res, nil
+}
+
+// requeue requeues one message of flowID while holding the flow's gate, so
+// a flow delete cannot slip between the check and the requeue. deleted
+// remembers flows found deleted during a bulk requeue (nil: none); a flow
+// that exists is checked again for every message, as it could be deleted
+// between two of them. It returns the message as it was.
+func (m messageAdapter) requeue(ctx context.Context, id, flowID string, deleted map[string]bool) (state.Message, error) {
+	if gate := m.ingest.flows.locks; gate != nil {
+		defer gate.ProcessFlow(flowID)()
+	}
+	gone := deleted[flowID]
+	if !gone {
+		_, err := m.ingest.flows.Get(ctx, flowID)
+		if err != nil && !errors.Is(err, gateway.ErrFlowNotFound) {
+			return state.Message{}, err
+		}
+		gone = err != nil
+		if gone && deleted != nil {
+			deleted[flowID] = true
+		}
+	}
+	if gone {
+		return state.Message{}, fmt.Errorf("%w: flow %s of message %s was deleted", gateway.ErrFlowNotFound, flowID, id)
+	}
+	before, err := m.pipe.Requeue(ctx, id)
+	switch {
+	case errors.Is(err, pipeline.ErrInFlight):
+		return state.Message{}, gateway.ErrMessageBusy
+	case errors.Is(err, pipeline.ErrNotDeadLettered): // keep the current status it reports
+		return state.Message{}, fmt.Errorf("%w%s", gateway.ErrNotDeadLettered, strings.TrimPrefix(err.Error(), pipeline.ErrNotDeadLettered.Error()))
+	case err != nil:
+		return state.Message{}, messageErr(err)
+	}
+	if events := m.ingest.flows.events; events != nil {
+		data := map[string]string{"messageId": id}
+		for dest, a := range before.Attempts {
+			data["previous."+dest+".attempts"] = strconv.Itoa(a.Attempts)
+		}
+		events.Add("message.requeued", "", flowID, data)
+	}
+	return before, nil
+}
+
+// RequeueAll requeues every dead-lettered message (of flowID when set),
+// skipping those that are in flight or whose flow was deleted.
+func (m messageAdapter) RequeueAll(ctx context.Context, flowID string) (gateway.RequeueAllResult, error) {
+	if flowID != "" {
+		if _, err := m.ingest.flows.Get(ctx, flowID); err != nil {
+			return gateway.RequeueAllResult{}, err
+		}
+	}
+	res := gateway.RequeueAllResult{Requeued: []string{}, Skipped: []gateway.RequeueSkip{}}
+	deleted := map[string]bool{}
+	cursor := ""
+	for {
+		page, err := m.store.Search(ctx, state.Query{Status: state.StatusDeadLettered, FlowID: flowID, IDFrom: cursor, Sort: "id", Limit: 500})
+		if err != nil {
+			return res, err
+		}
+		for _, msg := range page {
+			_, err := m.requeue(ctx, msg.ID, msg.FlowID, deleted)
+			switch {
+			case err == nil:
+				res.Requeued = append(res.Requeued, msg.ID)
+			case errors.Is(err, gateway.ErrMessageBusy), errors.Is(err, gateway.ErrFlowNotFound),
+				errors.Is(err, gateway.ErrNotDeadLettered), errors.Is(err, gateway.ErrMessageNotFound):
+				res.Skipped = append(res.Skipped, gateway.RequeueSkip{ID: msg.ID, Reason: err.Error()})
+			default:
+				return res, err
+			}
+		}
+		if len(page) < 500 {
+			return res, nil
+		}
+		cursor = page[len(page)-1].ID + "\x00" // IDFrom is inclusive
+	}
+}
+
+// Remove deletes a message only if it is dead-lettered.
+func (m messageAdapter) Remove(ctx context.Context, id string) error {
+	err := m.pipe.RemoveDeadLettered(ctx, id)
+	switch {
+	case errors.Is(err, pipeline.ErrInFlight):
+		return gateway.ErrMessageBusy
+	case errors.Is(err, pipeline.ErrNotDeadLettered):
+		return fmt.Errorf("%w%s", gateway.ErrNotDeadLettered, strings.TrimPrefix(err.Error(), pipeline.ErrNotDeadLettered.Error()))
+	}
+	return messageErr(err)
 }
 
 // messageErr translates the store's not-found error.

@@ -230,6 +230,10 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("messages", "delete")).Delete("/messages", s.handleMessagesDelete)
 			r.With(s.require("messages", "delete")).Delete("/messages/{id}", s.handleMessageDelete)
 			r.With(s.require("messages", "send")).Post("/messages/{id}/reprocess", s.handleMessageReprocess)
+			// The reply shows the previous attempts' errors, which can quote
+			// message content: viewing messages is needed too, as a PHI access.
+			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "view"), s.require("messages", "send")).Post("/messages/{id}/requeue", s.handleMessageRequeue)
+			r.With(s.require("messages", "send")).Post("/messages/requeue", s.handleMessagesRequeue)
 		})
 	})
 	return r

@@ -234,7 +234,19 @@ func (s *Server) handleMessageDelete(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusServiceUnavailable, "messages unavailable")
 		return
 	}
-	if err := s.cfg.Messages.Delete(r.Context(), r.PathValue("id")); err != nil {
+	id, err := r.PathValue("id"), error(nil)
+	switch status, ok := r.URL.Query()["status"]; {
+	case !ok:
+		err = s.cfg.Messages.Delete(r.Context(), id)
+	case len(status) != 1 || status[0] != "dead-lettered":
+		writeStatusError(w, http.StatusBadRequest, "status can only be dead-lettered")
+		return
+	case !s.deadLettersAvailable(w):
+		return
+	default: // delete only if still dead-lettered, checked atomically
+		err = s.cfg.DeadLetters.Remove(r.Context(), id)
+	}
+	if err != nil {
 		writeFlowError(w, err)
 		return
 	}
