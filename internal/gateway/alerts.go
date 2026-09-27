@@ -3,38 +3,20 @@ package gateway
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"net/mail"
-	"net/url"
 	"sort"
 	"strconv"
-	"unicode/utf8"
+
+	"github.com/weavster-dev/weavster/internal/artifact"
 )
 
-// Alert is an alert definition (spec §2.7): which processing events of which
-// flows trigger it, and whom it notifies.
-type Alert struct {
-	ID      string        `json:"id"`
-	Name    string        `json:"name"`
-	Enabled bool          `json:"enabled"`
-	Trigger AlertTrigger  `json:"trigger"`
-	Actions []AlertAction `json:"actions"`
-}
-
-// AlertTrigger selects the events an alert reacts to; no flows means every
-// flow.
-type AlertTrigger struct {
-	Events []string `json:"events"`
-	Flows  []string `json:"flows,omitempty"`
-}
-
-// AlertAction is one notification: email (to) or webhook (url).
-type AlertAction struct {
-	Type string   `json:"type"`
-	To   []string `json:"to,omitempty"`
-	URL  string   `json:"url,omitempty"`
-}
+// Alert definitions (spec §2.7) are artifact.Alert, shared with the
+// config-as-code document.
+type (
+	Alert        = artifact.Alert
+	AlertTrigger = artifact.AlertTrigger
+	AlertAction  = artifact.AlertAction
+)
 
 // AlertStore keeps alert definitions. Save writes every alert or none; with
 // create it fails with ErrAlertExists when one already exists, otherwise it
@@ -56,78 +38,12 @@ var (
 
 // Alert options: the events an alert can trigger on and its action types.
 var (
-	alertEvents      = []string{"message.errored", "message.queued", "message.dead-lettered"}
-	alertActionTypes = []string{"email", "webhook"}
+	alertEvents      = artifact.AlertEvents
+	alertActionTypes = artifact.AlertActionTypes
 )
 
-func (a *Alert) key() (*string, string) { return &a.ID, "id" }
-
 // checkAlert validates one alert definition; the error is safe to show.
-func checkAlert(a Alert) error {
-	if a.ID == "import" || a.ID == "options" {
-		return fmt.Errorf("id %q is reserved", a.ID)
-	}
-	if n := utf8.RuneCountInString(a.Name); n == 0 || n > 200 {
-		return fmt.Errorf("alert %s: name must be 1-200 characters", a.ID)
-	}
-	if len(a.Trigger.Events) == 0 {
-		return fmt.Errorf("alert %s: trigger.events needs at least one of %v", a.ID, alertEvents)
-	}
-	for _, e := range a.Trigger.Events {
-		if !contains(alertEvents, e) {
-			return fmt.Errorf("alert %s: unknown trigger event %q; use %v", a.ID, e, alertEvents)
-		}
-	}
-	for _, f := range a.Trigger.Flows {
-		if err := checkName(f); err != nil {
-			return fmt.Errorf("alert %s: trigger.flows: %w", a.ID, err)
-		}
-	}
-	if len(a.Actions) == 0 {
-		return fmt.Errorf("alert %s: actions needs at least one action", a.ID)
-	}
-	for i, act := range a.Actions {
-		if err := checkAlertAction(act); err != nil {
-			return fmt.Errorf("alert %s: actions[%d]: %w", a.ID, i, err)
-		}
-	}
-	return nil
-}
-
-func checkAlertAction(act AlertAction) error {
-	switch act.Type {
-	case "email":
-		if len(act.To) == 0 || act.URL != "" {
-			return errors.New(`an email action needs "to" with at least one address, and no "url"`)
-		}
-		for _, addr := range act.To {
-			// A bare address only: no display name ("Ops <ops@example.com>").
-			if parsed, err := mail.ParseAddress(addr); err != nil || parsed.Name != "" || parsed.Address != addr {
-				return fmt.Errorf("%q is not a plain email address (like ops@example.com)", addr)
-			}
-		}
-	case "webhook":
-		u, err := url.Parse(act.URL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || len(act.To) != 0 {
-			return errors.New(`a webhook action needs "url" (an http or https URL), and no "to"`)
-		}
-		if u.User != nil {
-			return errors.New("a webhook url must not contain a user name or password; they would be shown to everyone who can read alerts")
-		}
-	default:
-		return fmt.Errorf("type must be one of %v", alertActionTypes)
-	}
-	return nil
-}
-
-func contains(list []string, v string) bool {
-	for _, x := range list {
-		if x == v {
-			return true
-		}
-	}
-	return false
-}
+var checkAlert = artifact.CheckAlert
 
 func (s *Server) alertsAvailable(w http.ResponseWriter) bool {
 	if s.cfg.Alerts == nil {

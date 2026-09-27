@@ -108,6 +108,7 @@ Commands that change a flow print the server's reply (the flow, or the import/up
 | `exportmap "path"`, `importmap "path"` | Writes the config map to a JSON file, or replaces it with one. See [Config map, scripts, and settings](config-items.md). |
 | `exportscripts "path"`, `importscripts "path"` | The same for the global scripts. |
 | `snippet list`, `snippet import "path"`, `snippet export "path"`, `snippet remove <name>` | Manages code snippets; `snippet library …` does the same for libraries. See [Code snippets and libraries](snippets.md). |
+| `config validate "path"` | Checks a config-as-code document (YAML or JSON) on the server without changing anything. See [Config-as-code documents](config-as-code.md). |
 | `exportcfg "path" [overwriteconfigmap]`, `importcfg "path" [nodeploy] [overwriteconfigmap] [force]` | Exports or imports the whole configuration (flows, alerts, snippets, scripts, settings, and optionally the config map). See [Export and import the whole configuration](config-transfer.md). |
 | `importalert "path" [force]`, `exportalert <id, "name", or *> "path"` | Imports alerts from a JSON file (`force` replaces existing ids), or exports one alert or all of them. See [Alerts](alerts.md). |
 | `clearallmessages` | Removes every message. Started flows are stopped first and started again afterwards; the output names them, and counts messages kept because they were being processed. |

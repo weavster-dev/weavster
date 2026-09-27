@@ -7,21 +7,16 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+
+	"github.com/weavster-dev/weavster/internal/artifact"
 )
 
-// Snippet is a reusable piece of code (spec §5 code snippets).
-type Snippet struct {
-	Name        string `json:"name"`
-	Library     string `json:"library,omitempty"`
-	Description string `json:"description,omitempty"`
-	Code        string `json:"code,omitempty"`
-}
-
-// SnippetLibrary groups snippets.
-type SnippetLibrary struct {
-	Name        string `json:"name"`
-	Description string `json:"description,omitempty"`
-}
+// Snippets and libraries (spec §5) are artifact types, shared with the
+// config-as-code document.
+type (
+	Snippet        = artifact.Snippet
+	SnippetLibrary = artifact.SnippetLibrary
+)
 
 // SnippetStore keeps snippets and snippet libraries. Save writes every
 // entry or none: with create it fails with ErrSnippetExists (ErrLibraryExists)
@@ -67,21 +62,17 @@ func writeSnippetError(w http.ResponseWriter, err error) {
 	}
 }
 
-// key lets saveNamed set and read a document's key, and name its field.
-func (sn *Snippet) key() (*string, string)       { return &sn.Name, "name" }
-func (l *SnippetLibrary) key() (*string, string) { return &l.Name, "name" }
-
 // namedDoc is a pointer to a document with a key (its name or id).
 type namedDoc[T any] interface {
 	*T
-	key() (ref *string, field string)
+	Key() (ref *string, field string)
 }
 
 // checkNames validates each name and rejects repeated names.
 func checkNames[T any, P namedDoc[T]](list []T, noun string) error {
 	seen := map[string]bool{}
 	for i := range list {
-		ref, field := P(&list[i]).key()
+		ref, field := P(&list[i]).Key()
 		name := *ref
 		if !validItemName.MatchString(name) {
 			return fmt.Errorf("%s %s %q must be 1-128 characters from A-Z a-z 0-9 . _ -", noun, field, name)
@@ -113,7 +104,7 @@ func saveNamed[T any, P namedDoc[T]](w http.ResponseWriter, r *http.Request, nou
 			return
 		}
 		doc := *ptr
-		if ref, field := P(&doc).key(); name != "" {
+		if ref, field := P(&doc).Key(); name != "" {
 			if *ref != "" && *ref != name {
 				writeStatusError(w, http.StatusBadRequest, "the "+field+" in the body does not match the path")
 				return

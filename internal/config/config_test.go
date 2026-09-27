@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"flag"
 	"os"
 	"strings"
 	"testing"
 
+	"github.com/weavster-dev/weavster/internal/artifact"
 	"github.com/weavster-dev/weavster/internal/flowdef"
 )
 
@@ -38,10 +40,20 @@ flows:
             - filter: {when: "patient.lastName == ''", action: reject}
 alerts:
   on-error:
-    trigger: processing-error
-    recipients: [ops@example.com]
-    scope: flow:admit
+    name: Admit errors
     enabled: true
+    trigger: {events: [message.errored], flows: [admit]}
+    actions: [{type: email, to: [ops@example.com]}]
+snippetLibraries:
+  hl7: {description: HL7 helpers}
+snippets:
+  pid: {library: hl7, code: "get('PID.3')"}
+scripts:
+  deploy: log('deployed')
+configmap:
+  region: eu
+settings:
+  retention: {days: 30}
 `
 
 func TestParseYAMLAndJSON(t *testing.T) {
@@ -83,23 +95,25 @@ func TestArtifactsFlattensAllConfigKinds(t *testing.T) {
 		Flows: map[string]flowdef.Flow{
 			"admit": {ID: "admit", Name: "Admit", SourceType: "file"},
 		},
-		Alerts: map[string]Alert{
-			"on-error": {Trigger: "processing-error", Recipients: []string{"ops@example.com"}, Enabled: true},
+		Alerts: map[string]artifact.Alert{
+			"on-error": {ID: "on-error", Name: "Errors", Enabled: true},
 		},
-		Snippets: map[string]string{"patient-name": "PID.5"},
-		Scripts:  map[string]string{"transform": "return input"},
-		Map:      map[string]string{"facility": "central"},
-		Settings: map[string]any{"retries": 3},
+		Snippets:         map[string]artifact.Snippet{"patient-name": {Name: "patient-name", Code: "PID.5"}},
+		SnippetLibraries: map[string]artifact.SnippetLibrary{"hl7": {Name: "hl7"}},
+		Scripts:          map[string]string{"transform": "return input"},
+		ConfigMap:        map[string]string{"facility": "central"},
+		Settings:         map[string]any{"retries": 3},
 	}
 
 	artifacts := c.Artifacts()
-	if len(artifacts) != 6 {
-		t.Fatalf("artifact count = %d, want 6", len(artifacts))
+	if len(artifacts) != 7 {
+		t.Fatalf("artifact count = %d, want 7", len(artifacts))
 	}
 	for key, want := range map[string]string{
-		"snippet/patient-name": "PID.5",
+		"snippet/patient-name": `{"name":"patient-name","code":"PID.5"}`,
+		"library/hl7":          `{"name":"hl7"}`,
 		"script/transform":     "return input",
-		"map/facility":         "central",
+		"configmap/facility":   "central",
 		"settings/retries":     "3",
 	} {
 		if got := string(artifacts[key]); got != want {
@@ -114,11 +128,11 @@ func TestArtifactsFlattensAllConfigKinds(t *testing.T) {
 	if flow.Name != "Admit" || flow.SourceType != "file" {
 		t.Errorf("flow artifact = %+v", flow)
 	}
-	var alert Alert
+	var alert artifact.Alert
 	if err := json.Unmarshal(artifacts["alert/on-error"], &alert); err != nil {
 		t.Fatalf("unmarshal alert artifact: %v", err)
 	}
-	if alert.Trigger != "processing-error" || !alert.Enabled {
+	if alert.Name != "Errors" || !alert.Enabled {
 		t.Errorf("alert artifact = %+v", alert)
 	}
 }
@@ -134,7 +148,20 @@ func TestValidate(t *testing.T) {
 		{"unknown field", "flows:\n  a: {colour: red}\n", "flows.a: flow does not match flow.schema.json"},
 		{"bad destination type", "flows:\n  a: {destinations: [{name: d, type: smtp}]}\n", "/destinations/0/type"},
 		{"reserved id", "flows:\n  import: {}\n", "is reserved"},
-		{"bad alert", `{"alerts": {"x": {"trigger": "t"}}}`, "recipients"},
+		{"old alert shape", `{"alerts": {"x": {"trigger": "t"}}}`, "config: parse"},
+		{"unknown top-level field", "map: {a: b}\n", "field map not found"},
+		{"unknown alert field", "alerts:\n  x: {name: X, recipients: [a]}\n", "field recipients not found"},
+		{"alert id differs from key", "alerts:\n  x: {id: y}\n", `alerts.x: id "y" must match the key`},
+		{"snippet name differs from key", "snippets:\n  x: {name: y}\n", `snippets.x: name "y" must match the key`},
+		{"library name differs from key", "snippetLibraries:\n  x: {name: y}\n", `snippetLibraries.x: name "y" must match the key`},
+		{"invalid alert", "alerts:\n  x: {name: X, trigger: {events: [message.sent]}, actions: [{type: webhook, url: \"https://h/x\"}]}\n", `alerts.x: alert x: unknown trigger event "message.sent"`},
+		{"snippet library missing", "snippets:\n  s: {library: nope}\n", `snippets.s: library "nope" is not in snippetLibraries`},
+		{"bad script name", "scripts:\n  \"a b\": x\n", "scripts.a b: name"},
+		{"bad library name", "snippetLibraries:\n  \"a b\": {}\n", "snippetLibraries.a b: name"},
+		{"bad snippet name", "snippets:\n  \"a b\": {}\n", "snippets.a b: name"},
+		{"null setting", "settings:\n  s: null\n", "settings.s: value must not be null"},
+		{"setting with a number key", "settings:\n  s: {1: x}\n", "settings.s: not JSON-compatible"},
+		{"config map needs text", "configmap:\n  a: [1]\n", "config: parse"},
 		{"flow that is not JSON-compatible", "flows:\n  a: {name: {1: x}}\n", "not JSON-compatible"},
 	}
 	for _, tt := range tests {
@@ -144,22 +171,33 @@ func TestValidate(t *testing.T) {
 	}
 }
 
-// TestConfigSchemaPublished keeps the published config schema identical
-// to the generated one.
-func TestConfigSchemaPublished(t *testing.T) {
-	published, err := os.ReadFile("../../agent-docs/schemas/config.schema.json")
+// updateSchemas rewrites the published schemas:
+//
+//	go test ./internal/config -run TestSchemasPublished -update
+var updateSchemas = flag.Bool("update", false, "rewrite agent-docs/schemas from the Go types")
+
+// TestSchemasPublished keeps agent-docs/schemas identical to the schemas
+// generated from the Go types.
+func TestSchemasPublished(t *testing.T) {
+	schemas, err := PublishedSchemas()
 	if err != nil {
 		t.Fatal(err)
 	}
-	generated, err := SchemaJSON()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(bytes.TrimSpace(published), generated) {
-		t.Error("agent-docs/schemas/config.schema.json is stale; regenerate it from config.SchemaJSON")
-	}
-	if !strings.Contains(string(generated), `"$ref":"`+flowdef.SchemaID+`"`) {
-		t.Errorf("flows do not refer to flow.schema.json: %s", generated)
+	for name, generated := range schemas {
+		path := "../../agent-docs/schemas/" + name
+		if *updateSchemas {
+			if err := os.WriteFile(path, append(generated, '\n'), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		published, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("%v (run with -update)", err)
+		}
+		if !bytes.Equal(bytes.TrimSpace(published), generated) {
+			t.Errorf("%s is stale; run go test ./internal/config -run TestSchemasPublished -update", path)
+		}
 	}
 }
 
@@ -172,8 +210,9 @@ flows:
     sourceType: file
 alerts:
   stale:
-    trigger: x
-    recipients: [a@b.c]
+    name: Stale
+    trigger: {events: [message.errored]}
+    actions: [{type: email, to: [a@b.c]}]
 `))
 	desired, _ := Parse([]byte(`
 version: "1"
@@ -228,8 +267,9 @@ flows:
 version: "1"
 alerts:
   gone:
-    trigger: x
-    recipients: [a@b.c]
+    name: Gone
+    trigger: {events: [message.errored]}
+    actions: [{type: email, to: [a@b.c]}]
 `))
 
 	store := NewMemStore()
@@ -282,11 +322,11 @@ func TestDetectDrift(t *testing.T) {
 // TestParseKeepsYAMLRules: only flows go through JSON; the rest of the
 // document keeps YAML scalar rules and exact numbers.
 func TestParseKeepsYAMLRules(t *testing.T) {
-	c, err := Parse([]byte("version: 1\nmap: {port: 8080}\nflows:\n  123: {sourceType: http}\nsettings: {big: 9007199254740993}\n"))
+	c, err := Parse([]byte("version: 1\nconfigmap: {port: 8080}\nflows:\n  123: {sourceType: http}\nsettings: {big: 9007199254740993}\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if c.Version != "1" || c.Map["port"] != "8080" || c.Flows["123"].ID != "123" {
+	if c.Version != "1" || c.ConfigMap["port"] != "8080" || c.Flows["123"].ID != "123" {
 		t.Errorf("config = %+v", c)
 	}
 	if got := string(c.Artifacts()["settings/big"]); got != "9007199254740993" {

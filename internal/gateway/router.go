@@ -155,6 +155,8 @@ func (s *Server) Router() http.Handler {
 				r.With(edit).Put("/"+k.kind+"/{name}", s.handleItemPut(k))
 				r.With(edit).Delete("/"+k.kind+"/{name}", s.handleItemDelete(k))
 			}
+			// Validation reads nothing from the server: any signed-in user.
+			r.Post("/config/validate", s.handleConfigValidate)
 			// The config map and deploying need their permissions only when
 			// the request touches them.
 			r.With(s.require("flows", "view"), s.require("alerts", "edit"), s.require("snippets", "edit"),

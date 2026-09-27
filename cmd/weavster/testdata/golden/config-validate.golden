@@ -1,0 +1,11 @@
+# config-validate
+config validate "$DIR/config.yaml"
+config validate "$DIR/map.json"
+config validate
+--- stdout
+$DIR/config.yaml is valid: 1 flows, 0 alerts, 0 snippets, 0 snippet libraries, 0 scripts, 1 config map entries, 0 settings
+--- stderr
+Error: server returned 400 Bad Request: config: parse: yaml: unmarshal errors:
+  line 1: field region not found
+Error: usage: config validate "path"
+--- exit 2
