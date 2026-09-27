@@ -66,9 +66,21 @@ GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build ./cmd/weavster
    scripts/check-coverage.sh  # MUST pass (every package >= 90%)
    ```
 
-5. Add a `CHANGELOG.md` entry under `[Unreleased]` (Added/Changed/Fixed/Removed).
-6. Ensure `README.md` reflects what exists now — never aspirational.
-7. Open a pull request using the PR template and reference the issue (`Closes #N`).
+5. Published contracts are generated from their embedded sources. Edit the source, then run
+   `go generate ./...` to refresh the copy in `agent-docs/`; tests fail when the two differ:
+
+   | Contract | Edit | Published copy |
+   |---|---|---|
+   | REST API | `internal/gateway/openapi.yaml` | `agent-docs/openapi.yaml` |
+   | Flow definition schema | `internal/flowdef/flow.schema.json` | `agent-docs/schemas/flow.schema.json` |
+
+   A new API route must be added to `openapi.yaml`: tests check that every route is documented,
+   that the document validates with kin-openapi (OpenAPI 3.0 rules; keep to constructs valid in
+   both 3.0 and 3.1, for example no `type` lists), and that every documented operation reaches its
+   handler and answers only statuses it documents.
+6. Add a `CHANGELOG.md` entry under `[Unreleased]` (Added/Changed/Fixed/Removed).
+7. Ensure `README.md` reflects what exists now — never aspirational.
+8. Open a pull request using the PR template and reference the issue (`Closes #N`).
 
 ## Commit style
 

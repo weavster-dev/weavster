@@ -8,6 +8,9 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+// RouteNotFoundMessage is the error message for a path no route serves.
+const RouteNotFoundMessage = "no such endpoint"
+
 // Router builds the chi router with middleware and routes.
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
@@ -23,7 +26,7 @@ func (s *Server) Router() http.Handler {
 		})
 	})
 	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
-		writeStatusError(w, http.StatusNotFound, "no such endpoint")
+		writeStatusError(w, http.StatusNotFound, RouteNotFoundMessage)
 	})
 	r.MethodNotAllowed(func(w http.ResponseWriter, req *http.Request) {
 		// A custom handler replaces chi's, which set Allow (RFC 9110).
