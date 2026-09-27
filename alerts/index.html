@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/config-items/">
+        <link rel="canonical" href="https://docs.weavster.dev/alerts/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Config Map, Scripts, Settings - Weavster</title>
+        <title>Alerts - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -68,13 +68,13 @@
                                 <a href="../flow-export-import/" class="nav-link">Flow Dependencies, Export, Import</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Config Map, Scripts, Settings</a>
+                                <a href="../config-items/" class="nav-link">Config Map, Scripts, Settings</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../snippets/" class="nav-link">Code Snippets</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../alerts/" class="nav-link">Alerts</a>
+                                <a href="./" class="nav-link active" aria-current="page">Alerts</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
@@ -94,17 +94,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../flow-export-import/" class="nav-link">
+                                <a rel="prev" href="../snippets/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../snippets/" class="nav-link">
+                                <a rel="next" href="../documentation/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/config-items.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/alerts.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -125,8 +125,12 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#config-map-scripts-and-settings" class="nav-link">Config map, scripts, and settings</a>
+            <li class="nav-item" data-bs-level="1"><a href="#alerts" class="nav-link">Alerts</a>
               <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#an-alert" class="nav-link">An alert</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#api" class="nav-link">API</a>
               <ul class="nav flex-column">
               </ul>
@@ -142,16 +146,62 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="config-map-scripts-and-settings">Config map, scripts, and settings</h1>
-<p>The server keeps three sets of named values for you: the <strong>config map</strong> (text values, for example
-hostnames per environment), <strong>global scripts</strong> (script sources), and <strong>settings</strong> (any JSON
-value). They are stored with the flows (durable with <code>store.dialect: sqlite</code>) and managed over the
-API and the command-line client.</p>
-<p>!!! note "Stored, not used yet"
-    Flows do not read the config map, and global scripts are not run. Today these endpoints store
-    and return the values, so you can keep them next to your flows and move them between servers.</p>
+<h1 id="alerts">Alerts</h1>
+<p>An <strong>alert</strong> says which processing events of which flows should notify whom. Alert definitions
+are stored with the flows (durable with <code>store.dialect: sqlite</code>) and managed over the API and
+the command-line client. Every request needs the <code>alerts:edit</code> permission.</p>
+<p>!!! note "Stored, not sent yet"
+    Alerts do not fire yet: no email or webhook is sent. Today these endpoints store, validate,
+    and return the definitions, so you can set them up and move them between servers.</p>
+<h2 id="an-alert">An alert</h2>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;adt-errors&quot;,
+  &quot;name&quot;: &quot;ADT errors&quot;,
+  &quot;enabled&quot;: true,
+  &quot;trigger&quot;: {&quot;events&quot;: [&quot;message.errored&quot;, &quot;message.dead-lettered&quot;], &quot;flows&quot;: [&quot;adt&quot;]},
+  &quot;actions&quot;: [
+    {&quot;type&quot;: &quot;email&quot;, &quot;to&quot;: [&quot;ops@example.com&quot;]},
+    {&quot;type&quot;: &quot;webhook&quot;, &quot;url&quot;: &quot;https://hooks.example.com/weavster&quot;}
+  ]
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Rules</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>Required. 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>; not <code>import</code> or <code>options</code>.</td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>Required, 1–200 characters.</td>
+</tr>
+<tr>
+<td><code>enabled</code></td>
+<td><code>true</code> or <code>false</code> (default <code>false</code>).</td>
+</tr>
+<tr>
+<td><code>trigger.events</code></td>
+<td>At least one of <code>message.errored</code> (the transform failed), <code>message.queued</code> (a delivery failed and will be retried), <code>message.dead-lettered</code> (retries ran out).</td>
+</tr>
+<tr>
+<td><code>trigger.flows</code></td>
+<td>Flow ids. Leave it out for every flow.</td>
+</tr>
+<tr>
+<td><code>actions</code></td>
+<td>At least one. <code>{"type":"email","to":[addresses]}</code> with plain addresses (<code>ops@example.com</code>, not <code>Ops &lt;ops@example.com&gt;</code>), or <code>{"type":"webhook","url":"http(s)://…"}</code>. A webhook URL may not contain a user name or password, because everyone who can read alerts sees it; put a token in the path or query only if that is acceptable.</td>
+</tr>
+</tbody>
+</table>
+<p>Unknown fields and invalid values are rejected with <code>400</code> and a message naming the problem.
+<code>GET /api/v1/alerts/options</code> lists the allowed trigger events and action types.</p>
 <h2 id="api">API</h2>
-<p>Each set has the same five operations. Names are 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>.</p>
 <table>
 <thead>
 <tr>
@@ -161,61 +211,43 @@ API and the command-line client.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>GET /api/v1/configmap</code></td>
-<td>Every entry, as a JSON object of <code>name: value</code>.</td>
+<td><code>GET /api/v1/alerts</code></td>
+<td>Every alert, sorted by id.</td>
 </tr>
 <tr>
-<td><code>PUT /api/v1/configmap</code></td>
-<td>Replaces the whole set with the body (a JSON object of <code>name: value</code>).</td>
+<td><code>POST /api/v1/alerts</code></td>
+<td>Creates one alert (<code>201</code>; <code>409</code> if the id is taken).</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/configmap/{name}</code></td>
-<td>One entry: <code>{"name":…,"value":…}</code> (<code>404</code> if unknown).</td>
+<td><code>GET /api/v1/alerts/{id}</code></td>
+<td>One alert (<code>404</code> if unknown).</td>
 </tr>
 <tr>
-<td><code>PUT /api/v1/configmap/{name}</code></td>
-<td>Creates or replaces one entry; the body is <code>{"value": …}</code>.</td>
+<td><code>PUT /api/v1/alerts/{id}</code></td>
+<td>Creates or replaces one alert. <code>id</code> in the body is optional and must match the path.</td>
 </tr>
 <tr>
-<td><code>DELETE /api/v1/configmap/{name}</code></td>
-<td>Deletes one entry (<code>204</code>; <code>404</code> if unknown).</td>
+<td><code>DELETE /api/v1/alerts/{id}</code></td>
+<td>Deletes one alert (<code>204</code>).</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/alerts/{id}/enable</code>, <code>/disable</code></td>
+<td>Turns an alert on or off and returns it.</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/alerts/import</code></td>
+<td>Saves a JSON array of alerts, all or nothing. An id that already exists is <code>409</code> and nothing is saved; add <code>?force=true</code> to replace existing alerts.</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/alerts/options</code></td>
+<td><code>{"events": [...], "actionTypes": [...]}</code>.</td>
 </tr>
 </tbody>
 </table>
-<p>The same requests work on <code>/api/v1/scripts</code> and <code>/api/v1/settings</code>.</p>
-<table>
-<thead>
-<tr>
-<th>Set</th>
-<th>Values</th>
-<th>Permission</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>configmap</code></td>
-<td>strings</td>
-<td><code>configmap:edit</code></td>
-</tr>
-<tr>
-<td><code>scripts</code></td>
-<td>strings (the script source)</td>
-<td><code>scripts:edit</code></td>
-</tr>
-<tr>
-<td><code>settings</code></td>
-<td>any JSON value</td>
-<td><code>settings:edit</code></td>
-</tr>
-</tbody>
-</table>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080/api/v1/configmap \
-  -d '{&quot;ehr.host&quot;:&quot;ehr.example.com&quot;,&quot;region&quot;:&quot;eu&quot;}'
-curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080/api/v1/settings/retention \
-  -d '{&quot;value&quot;:{&quot;days&quot;:30}}'
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/alerts \
+  -d '{&quot;id&quot;:&quot;adt-errors&quot;,&quot;name&quot;:&quot;ADT errors&quot;,&quot;enabled&quot;:true,&quot;trigger&quot;:{&quot;events&quot;:[&quot;message.errored&quot;],&quot;flows&quot;:[&quot;adt&quot;]},&quot;actions&quot;:[{&quot;type&quot;:&quot;email&quot;,&quot;to&quot;:[&quot;ops@example.com&quot;]}]}'
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/alerts/adt-errors/disable
 </code></pre>
-<p>A value of the wrong type (a number in the config map, for example), a <code>null</code> value, an unknown
-field in the body, or a bad name returns <code>400</code> and changes nothing. Bodies may be up to 10 MiB.</p>
 <h2 id="command-line-client">Command-line client</h2>
 <table>
 <thead>
@@ -226,25 +258,26 @@ field in the body, or a bad name returns <code>400</code> and changes nothing. B
 </thead>
 <tbody>
 <tr>
-<td><code>exportmap "path"</code></td>
-<td>Writes the config map to a JSON file.</td>
+<td><code>exportalert id "path"</code></td>
+<td>Writes one alert, chosen by id or name (quote a name with spaces), to a JSON file. An id match wins; a name that several alerts share is refused, so export those by id.</td>
 </tr>
 <tr>
-<td><code>importmap "path"</code></td>
-<td>Replaces the config map with the file's entries.</td>
+<td><code>exportalert * "path"</code></td>
+<td>Writes every alert.</td>
 </tr>
 <tr>
-<td><code>exportscripts "path"</code></td>
-<td>Writes the global scripts to a JSON file.</td>
-</tr>
-<tr>
-<td><code>importscripts "path"</code></td>
-<td>Replaces the global scripts with the file's entries.</td>
+<td><code>importalert "path" [force]</code></td>
+<td>Saves the alerts in the file. Without <code>force</code>, an alert whose id already exists stops the import and nothing is saved.</td>
 </tr>
 </tbody>
 </table>
-<p>The files are the same JSON object as <code>GET</code> returns, so you can move a config map between servers
-with <code>exportmap</code> on one and <code>importmap</code> on the other.</p></div>
+<pre><code class="language-text">weavster&gt; exportalert * &quot;alerts.json&quot;
+exported 2 alerts to alerts.json
+weavster&gt; importalert &quot;alerts.json&quot; force
+imported 2 alerts from alerts.json
+</code></pre>
+<p>The file is a JSON array of alerts, the same shape the API uses, so you can edit it before
+importing it on another server.</p></div>
             </div>
         </div>
 

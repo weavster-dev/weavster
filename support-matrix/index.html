@@ -74,6 +74,9 @@
                                 <a href="../snippets/" class="nav-link">Code Snippets</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../alerts/" class="nav-link">Alerts</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
                             <li class="nav-item">
@@ -296,6 +299,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Bulk message removal (<code>DELETE /api/v1/messages</code> by <code>flowId</code>/<code>status</code>/<code>from</code>/<code>to</code>, <code>all=true</code>, <code>restart=true</code>); CLI <code>clearallmessages</code>, <code>dump stats</code>, <code>dump events</code></td>
 <td>Implemented (wired)</td>
 <td><code>TestBulkMessageRemoval</code>. Messages being processed are kept and counted as <code>busy</code>. See <a href="../processing-messages/#remove-many-messages">Processing messages</a>.</td>
+</tr>
+<tr>
+<td>Alert definitions (<code>/api/v1/alerts</code>: create, get, update, delete, enable/disable, import with <code>force</code>, options); CLI <code>importalert</code>, <code>exportalert</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestAlerts</code>. Definitions are stored and validated only: alerts do not fire yet. See <a href="../alerts/">Alerts</a>.</td>
 </tr>
 <tr>
 <td>Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction</td>
