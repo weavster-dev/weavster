@@ -86,9 +86,6 @@
                                 <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../git/" class="nav-link">Git Repository</a>
-                            </li>
-                            <li class="nav-item">
                                 <a href="../ci-cd/" class="nav-link">CI/CD</a>
                             </li>
                             <li class="nav-item">
@@ -413,10 +410,6 @@ name, or a name several flows share, is an error that lists their ids.</p>
 <td>Shows what applying the document would change: <code>diff</code> as text (<code>+</code>, <code>~</code> with changed values, <code>-</code>), <code>plan</code> as JSON. Nothing changes.</td>
 </tr>
 <tr>
-<td><code>config drift [revision]</code></td>
-<td>Compares the live configuration with the server's <a href="../git/#check-for-drift">Git repository</a> at <code>revision</code> (default <code>HEAD</code>): prints <code>no drift: …</code>, or the differences; in a script, drift makes the exit code <code>1</code>.</td>
-</tr>
-<tr>
 <td><code>config apply "path" [--dry-run] [reason…]</code></td>
 <td>Plans the document, prints the plan, and applies it; refused if the server changed meanwhile, undone completely if a change fails. See <a href="../config-as-code/#apply">Apply</a>.</td>
 </tr>
@@ -542,7 +535,7 @@ adt started ADT Inbound
 <tr>
 <td><code>weavster -s script</code> (batch)</td>
 <td>Every command succeeded</td>
-<td>A <code>config drift</code> found drift, and no command failed</td>
+<td>—</td>
 <td>Any command failed (the script still runs to the end), a line longer than 1 MiB (the script stops there), an unknown flag, or a missing connection file</td>
 </tr>
 <tr>

@@ -86,9 +86,6 @@
                                 <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../git/" class="nav-link">Git Repository</a>
-                            </li>
-                            <li class="nav-item">
                                 <a href="../ci-cd/" class="nav-link">CI/CD</a>
                             </li>
                             <li class="nav-item">
@@ -237,8 +234,8 @@
 <td>REST + OpenAPI 3.1 (JSON-first)</td>
 </tr>
 <tr>
-<td>Config &amp; IaC</td>
-<td>YAML/JSON config-as-code + Terraform/OpenTofu/Pulumi samples</td>
+<td>Config &amp; automation</td>
+<td>YAML/JSON config-as-code files driven by the CLI; Git, CI, Terraform, and Pulumi are automation around the CLI and files (#107 D-55)</td>
 </tr>
 <tr>
 <td>Docs</td>
@@ -252,7 +249,11 @@
 </table>
 <p><strong>Architecture principle:</strong> hexagonal (ports &amp; adapters). Every component depends only on a <strong>Go interface (port)</strong>, never another component's concrete type. This is what allows the monolith to be split per-component on Kubernetes later without a rewrite.</p>
 <h2 id="3-mvp-scope-in-vs-out">3. MVP scope — in vs out</h2>
-<p><strong>In scope (MVP):</strong> single Go binary/container; Postgres + SQLite/in-memory via the <code>Store</code> port; TLS + mTLS; local auth (password policy, lockout, anti-enumeration); built-in RBAC permission set; YAML DSL (executed by an embedded, prebuilt WASM interpreter — #107 D-03) + WASI transforms; internal scheduler with Postgres <code>SKIP LOCKED</code> job claiming; <code>weavster test</code>; Git-backed config-as-code + IaC samples; REST API + OpenAPI; <strong>read-only</strong> flow-topology web UI; Prometheus metrics + structured logs + events; and the <strong>three critical gap closures</strong> below.</p>
+<blockquote>
+<p><strong>Rescoped by #107 D-55 (2026-09-27):</strong> the MVP is a usable, locally running foundation driven by the CLI and config-as-code files. Where this plan and D-55 differ, D-55 wins; deferred work is listed under "Deferred from the MVP" in #107.</p>
+</blockquote>
+<p><strong>In scope (MVP):</strong> single Go binary/container; PostgreSQL as the server's durable store (Docker Compose for local development) and an in-memory store for tests, via the <code>Store</code> port; a CLI that needs no database (<code>config validate</code> and <code>weavster test</code> run offline from files); config-as-code files planned and applied through the CLI (Git and CI are automation around it, with GitHub Actions/GitLab samples); file, HTTP, TCP/MLLP, and database sources/destinations with HL7 v2/JSON/XML/delimited codecs; the YAML DSL run in-process; retries and dead-letter; local auth (password policy, lockout) and HTTPS; built-in RBAC permission set; <code>weavster test</code>; REST API + OpenAPI; <strong>read-only</strong> flow-topology web UI; Prometheus metrics + structured logs + events; static binaries with checksums.</p>
+<p><strong>Deferred from the MVP (#107 D-55):</strong> the in-server Git integration (Enterprise); SQLite as a server store; custom WASM/WASI transforms and the module registry; legacy import and data seeding; multi-node job leasing; exactly-once delivery; mTLS, cipher tuning, anti-enumeration timing, MFA/external-auth hooks; alert delivery, OTel; Terraform/Pulumi samples, release signing, and the installer.</p>
 <p><strong>Explicitly out (Enterprise, port exists but implementation excluded):</strong> SSO (OIDC/SAML), complex RBAC/ABAC (OPA/Cedar), immutable/SIEM audit, K8s horizontal scaling, Redis/NATS queue + leader election, distributed tracing + transform replay, multi-tenancy, DICOM service-class provider, message-queue broker (queue/topic) adapters, KMS/Vault secret rotation, object/blob storage. <em>Leave the interface, stub the rest.</em></p>
 <h2 id="4-critical-gaps-folded-into-the-mvp-from-the-viability-analysis">4. Critical gaps folded into the MVP (from the viability analysis)</h2>
 <table>
@@ -358,7 +359,7 @@
 <tr>
 <td>Git Store</td>
 <td><code>internal/gitstore</code></td>
-<td>native Git-backed config (commit/push/pull/history/restore)</td>
+<td>native Git-backed config (commit/push/pull/history/restore) — library only; Enterprise, not wired into the MVP binary (#107 D-55)</td>
 </tr>
 <tr>
 <td>Legacy Import ETL</td>

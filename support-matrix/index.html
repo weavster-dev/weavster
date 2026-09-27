@@ -86,9 +86,6 @@
                                 <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../git/" class="nav-link">Git Repository</a>
-                            </li>
-                            <li class="nav-item">
                                 <a href="../ci-cd/" class="nav-link">CI/CD</a>
                             </li>
                             <li class="nav-item">
@@ -337,26 +334,6 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestStatsSeries</code>. Samples are held in memory and restart empty. See <a href="../processing-messages/#statistics-over-time">Processing messages</a>.</td>
 </tr>
 <tr>
-<td>Git repository of configuration (server config <code>git.path</code>; <code>POST /api/v1/git/commit</code>, <code>GET /api/v1/git</code>, <code>/git/log</code>, <code>/git/content</code>)</td>
-<td>Implemented (wired)</td>
-<td><code>TestGitRepository</code>. Commit, log, file history, content at any revision, repository info. See <a href="../git/">Git repository</a>.</td>
-</tr>
-<tr>
-<td>Plan/apply from the Git repository (<code>gitRev</code> on <code>POST /api/v1/config/plan</code> and <code>/config/apply</code>) and on-demand drift (<code>GET /api/v1/git/drift</code>; CLI <code>config drift [revision]</code>)</td>
-<td>Implemented (wired)</td>
-<td><code>TestGitPlanApplyDrift</code>. Automatic (scheduled) remediation is Enterprise. See <a href="../git/#check-for-drift">Git repository</a>.</td>
-</tr>
-<tr>
-<td>Git remote: push, pull (remote wins), remote status (server config <code>git.remote</code>; <code>POST /api/v1/git/push</code>, <code>POST /api/v1/git/pull</code>, <code>GET /api/v1/git/remote</code>)</td>
-<td>Implemented (wired)</td>
-<td><code>TestGitRemote</code> (bare remote on disk, divergent history). HTTPS with user name + token from an environment variable, or local/<code>file://</code> paths (served in process, no <code>git</code> executable needed). SSH and plain <code>http://</code> remotes are refused. Each remote conversation times out after a minute. See <a href="../git/#share-through-a-remote">Git repository</a>.</td>
-</tr>
-<tr>
-<td>Git diff and restore (<code>GET /api/v1/git/diff?from=&amp;to=</code>, working-tree changes without <code>from</code>; <code>POST /api/v1/git/restore</code> as a new commit)</td>
-<td>Implemented (wired)</td>
-<td><code>TestGitDiffRestore</code>. Restoring changes the repository only; apply from Git brings the server to it. See <a href="../git/#restore-a-revision">Git repository</a>.</td>
-</tr>
-<tr>
 <td>CI/CD samples: GitHub Actions and GitLab CI, plan on pull/merge request and apply on merge to <code>main</code> (<code>docs/examples/ci/</code>)</td>
 <td>Implemented (samples)</td>
 <td><code>TestCISamples</code> runs each sample's <code>weavster</code> commands against a server and checks the page shows the files. Install is <code>go install</code> until release binaries exist. See <a href="../ci-cd/">CI/CD</a>.</td>
@@ -579,9 +556,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td></td>
 </tr>
 <tr>
-<td>Scheduled drift remediation</td>
-<td>Enterprise</td>
-<td>Automatic drift remediation is Enterprise. Validate, plan, apply, the Git repository (commit, log, content, diff, restore, remote), plan/apply from Git, and on-demand drift are wired (rows above). Flows in a config document (<code>flows.&lt;id&gt;</code>) use the same definition as the flow API and are validated against <code>flow.schema.json</code> (<code>TestConfigFlowIsAPIFlow</code>).</td>
+<td>In-server Git integration (repository, commit/log/diff/restore, push/pull, drift, plan/apply from a revision) and scheduled drift remediation</td>
+<td>Enterprise (removed from the MVP, D-55)</td>
+<td>Git is automation around the CLI and config files: keep <code>weavster.yaml</code> in your own repository and plan/apply it from CI (see <a href="../ci-cd/">CI/CD</a>). <code>internal/gitstore</code> remains a library that the binary does not use. Flows in a config document (<code>flows.&lt;id&gt;</code>) use the same definition as the flow API and are validated against <code>flow.schema.json</code> (<code>TestConfigFlowIsAPIFlow</code>).</td>
 </tr>
 <tr>
 <td>Legacy import</td>
