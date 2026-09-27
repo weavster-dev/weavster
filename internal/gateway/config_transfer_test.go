@@ -45,6 +45,12 @@ func TestConfigTransferHandlers(t *testing.T) {
 		{"bad setting name", http.MethodPost, "/api/v1/config/import", `{"format":"weavster-config-v1","settings":{"a b":1}}`, ports, http.StatusBadRequest, "settings: name"},
 		{"map needs strings", http.MethodPost, "/api/v1/config/import?overwriteConfigMap=true", `{"format":"weavster-config-v1","configmap":{"a":1}}`, ports, http.StatusBadRequest, "configmap"},
 		{"overwrite with an empty map", http.MethodPost, "/api/v1/config/import?overwriteConfigMap=true", `{"format":"weavster-config-v1","configmap":{}}`, ports, http.StatusOK, `"configMapReplaced":true`},
+		{"overwrite without a map", http.MethodPost, "/api/v1/config/import?overwriteConfigMap=true", `{"format":"weavster-config-v1"}`, ports, http.StatusBadRequest, "needs a configmap object"},
+		{"overwrite with null", http.MethodPost, "/api/v1/config/import?overwriteConfigMap=true", `{"format":"weavster-config-v1","configmap":null}`, ports, http.StatusBadRequest, "needs a configmap object"},
+		{"overwrite with an array", http.MethodPost, "/api/v1/config/import?overwriteConfigMap=true", `{"format":"weavster-config-v1","configmap":[]}`, ports, http.StatusBadRequest, "needs a configmap object"},
+		{"nodeploy needs no lifecycle", http.MethodPost, "/api/v1/config/import?nodeploy=true", doc, func() Config { c := ports(); c.Lifecycle = nil; return c }, http.StatusOK, `"deployed":[]`},
+		{"deploy needs the lifecycle", http.MethodPost, "/api/v1/config/import", doc, func() Config { c := ports(); c.Lifecycle = nil; return c }, http.StatusServiceUnavailable, "unavailable"},
+		{"export needs no flows", http.MethodGet, "/api/v1/config/export", ``, func() Config { c := ports(); c.Flows, c.Lifecycle = nil, nil; return c }, http.StatusOK, `"format"`},
 		{"map ignored without overwrite", http.MethodPost, "/api/v1/config/import", `{"format":"weavster-config-v1","configmap":{"a":1}}`, ports, http.StatusOK, `"configMapReplaced":false`},
 		{"empty map exported", http.MethodGet, "/api/v1/config/export?includeConfigMap=true", ``, ports, http.StatusOK, `"configmap":{}`},
 		{"created meanwhile", http.MethodPost, "/api/v1/config/import", `{"format":"weavster-config-v1","alerts":[` + validAlert + `]}`,
@@ -123,6 +129,33 @@ func TestConfigImportReportsDependencies(t *testing.T) {
 		strings.NewReader(`{"format":"weavster-config-v1","flows":[{"id":"a"},{"id":"b"}]}`)))
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"deployed":["a","b"]`) {
 		t.Errorf("got %d %s; want a and b deployed", rec.Code, rec.Body.String())
+	}
+}
+
+// flakyFlows fails reads after the first len(flows)*2 (the deploy pass).
+type flakyFlows struct {
+	fakeFlows
+	reads *int
+}
+
+func (f *flakyFlows) Get(ctx context.Context, id string) (Flow, error) {
+	*f.reads++
+	if *f.reads > 2 {
+		return Flow{}, errDisk
+	}
+	return f.fakeFlows.Get(ctx, id)
+}
+
+func TestConfigImportFinalReadFails(t *testing.T) {
+	reads := 0
+	flows := &flakyFlows{fakeFlows{flows: []Flow{{ID: "a", Status: "undeployed", Enabled: true}}}, &reads}
+	cfg := Config{Transfer: fakeTransfer{}, Flows: flows, Lifecycle: fakeLifecycle{},
+		Alerts: &memAlerts{alerts: map[string]Alert{}}, Snippets: &memSnippets{snippets: map[string]Snippet{}, libraries: map[string]SnippetLibrary{}}, Items: memItems{}}
+	rec := httptest.NewRecorder()
+	New(cfg).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/v1/config/import?force=true",
+		strings.NewReader(`{"format":"weavster-config-v1","flows":[{"id":"a"}]}`)))
+	if rec.Code != http.StatusInternalServerError || !strings.Contains(rec.Body.String(), "could not be read after deploying") {
+		t.Errorf("got %d %s", rec.Code, rec.Body.String())
 	}
 }
 

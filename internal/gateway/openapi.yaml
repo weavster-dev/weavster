@@ -623,7 +623,7 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "What was imported", content: {application/json: {schema: {$ref: "#/components/schemas/ConfigImportResult"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
-        "400": {description: "An invalid document, or snippets naming missing libraries", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: "An invalid document, snippets naming missing libraries, or overwriteConfigMap without a configmap object", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: "Items that already exist (without force; the message lists them), or were created or deleted by others during the import", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: "Document larger than 50 MiB", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "500": {description: "Import stopped part-way, or a flow did not deploy (the message says which)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}

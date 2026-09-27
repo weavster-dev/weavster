@@ -41,10 +41,13 @@ type ConfigImportResult struct {
 	Deployed         []string     `json:"deployed"`
 }
 
-// configPorts reports whether every port a configuration transfer uses is
-// wired, answering 503 when one is not.
-func (s *Server) configPorts(w http.ResponseWriter) bool {
-	if s.cfg.Transfer == nil || s.cfg.Flows == nil || s.cfg.Lifecycle == nil || s.cfg.Alerts == nil || s.cfg.Snippets == nil || s.cfg.Items == nil {
+// configPorts reports whether the ports a configuration export uses are
+// wired (an import also needs Flows, and Lifecycle when it deploys),
+// answering 503 when one is not.
+func (s *Server) configPorts(w http.ResponseWriter, forImport, deploy bool) bool {
+	missing := s.cfg.Transfer == nil || s.cfg.Alerts == nil || s.cfg.Snippets == nil || s.cfg.Items == nil ||
+		(forImport && s.cfg.Flows == nil) || (deploy && s.cfg.Lifecycle == nil)
+	if missing {
 		writeStatusError(w, http.StatusServiceUnavailable, "configuration export and import unavailable")
 		return false
 	}
@@ -69,7 +72,7 @@ func boolParams(w http.ResponseWriter, r *http.Request, names ...string) (map[st
 }
 
 func (s *Server) handleConfigExport(w http.ResponseWriter, r *http.Request) {
-	if !s.configPorts(w) {
+	if !s.configPorts(w, false, false) {
 		return
 	}
 	opts, ok := boolParams(w, r, "includeConfigMap")
@@ -125,7 +128,9 @@ type configDocument struct {
 	SnippetLibraries []SnippetLibrary           `json:"snippetLibraries"`
 	Scripts          map[string]json.RawMessage `json:"scripts"`
 	Settings         map[string]json.RawMessage `json:"settings"`
-	ConfigMap        map[string]json.RawMessage `json:"configmap"`
+	// ConfigMap stays raw so an explicit null or a missing config map can
+	// be told apart from an empty one.
+	ConfigMap json.RawMessage `json:"configmap"`
 }
 
 // readConfigDocument decodes a configuration document of at most
@@ -172,7 +177,11 @@ func checkConfigDocument(doc configDocument, withConfigMap bool) error {
 	}
 	parts := map[string]map[string]json.RawMessage{"scripts": doc.Scripts, "settings": doc.Settings}
 	if withConfigMap {
-		parts["configmap"] = doc.ConfigMap
+		m, err := configMapOf(doc)
+		if err != nil {
+			return err
+		}
+		parts["configmap"] = m
 	}
 	for _, k := range itemKinds {
 		for name, v := range parts[k.kind] {
@@ -244,11 +253,8 @@ func (s *Server) configConflicts(ctx context.Context, doc configDocument, flows 
 // (overwriteConfigMap only) are written, and imported flows are deployed
 // unless nodeploy.
 func (s *Server) handleConfigImport(w http.ResponseWriter, r *http.Request) {
-	if !s.configPorts(w) {
-		return
-	}
 	opts, ok := boolParams(w, r, "force", "nodeploy", "overwriteConfigMap")
-	if !ok {
+	if !ok || !s.configPorts(w, true, !opts["nodeploy"]) {
 		return
 	}
 	doc, ok := readConfigDocument(w, r)
@@ -313,8 +319,9 @@ func (s *Server) handleConfigImport(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		err = s.putItems(ctx, "settings", doc.Settings, &res.Settings)
 	}
-	if err == nil && opts["overwriteConfigMap"] && doc.ConfigMap != nil {
-		if err = s.cfg.Items.ReplaceItems(ctx, "configmap", doc.ConfigMap); err == nil {
+	if err == nil && opts["overwriteConfigMap"] {
+		m, _ := configMapOf(doc) // checked above
+		if err = s.cfg.Items.ReplaceItems(ctx, "configmap", m); err == nil {
 			res.ConfigMap = true
 		}
 	}
@@ -361,11 +368,25 @@ func (s *Server) deployImported(ctx context.Context, flows []Flow) ([]string, er
 		if !wasUndeployed[f.ID] {
 			continue
 		}
-		if cur, err := s.cfg.Flows.Get(ctx, f.ID); err == nil && cur.Status != "undeployed" {
+		cur, err := s.cfg.Flows.Get(ctx, f.ID)
+		if err != nil {
+			return deployed, fmt.Errorf("flow %s could not be read after deploying: %w", f.ID, err)
+		}
+		if cur.Status != "undeployed" {
 			deployed = append(deployed, f.ID)
 		}
 	}
 	return deployed, nil
+}
+
+// configMapOf returns the document's config map for overwriteConfigMap: it
+// must be present and an object ({} empties the config map).
+func configMapOf(doc configDocument) (map[string]json.RawMessage, error) {
+	var m map[string]json.RawMessage
+	if len(doc.ConfigMap) == 0 || json.Unmarshal(doc.ConfigMap, &m) != nil || m == nil {
+		return nil, errors.New("overwriteConfigMap needs a configmap object in the document (export it with includeConfigMap=true)")
+	}
+	return m, nil
 }
 
 // missingLibraries lists the libraries doc's snippets name that neither doc

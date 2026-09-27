@@ -41,7 +41,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
 |---|---|
 | `force=true` | Replaces flows, alerts, snippets, and libraries that already exist. Without it, any that exist stop the import with `409` naming them, and nothing is written. |
 | `nodeploy=true` | Leaves the imported flows undeployed. Without it, every imported flow that is enabled and undeployed is deployed afterwards. Deploying a flow also deploys the flows it depends on (even disabled ones, as `POST /api/v1/flows/{id}/deploy` does); `deployed` lists every imported flow that was deployed. |
-| `overwriteConfigMap=true` | Replaces the config map with the document's. Without it, the server keeps its own config map and the document's is ignored (not even checked). |
+| `overwriteConfigMap=true` | Replaces the config map with the document's, which must be there (export with `includeConfigMap=true`; `{}` empties the config map). A document without one returns `400`. Without this parameter, the server keeps its own config map and the document's is ignored (not even checked). |
 
 - Everything is checked before anything is written: the format, every flow, alert, snippet, and
   value, and that each snippet's library is in the document or already on the server. Problems
