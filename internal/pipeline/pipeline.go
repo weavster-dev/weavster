@@ -14,6 +14,7 @@ import (
 	"io"
 	"mime"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -284,6 +285,52 @@ func (p *Pipeline) Remove(ctx context.Context, id string) error {
 		return err
 	}
 	return p.store.Delete(ctx, id)
+}
+
+// ErrNotDeadLettered is returned by Requeue for a message that is not
+// dead-lettered.
+var ErrNotDeadLettered = errors.New("pipeline: message is not dead-lettered")
+
+// Requeue gives a dead-lettered message another round of delivery
+// attempts: every destination that has not delivered starts again with no
+// attempts, delivered destinations keep their record (they are never sent
+// again), the processing error is cleared, the "requeues" metadata counts
+// the requeue, and the message is queued for the next retry pass. It
+// returns the message as it was before (ErrInFlight while the message is
+// busy, ErrNotDeadLettered for any other status).
+func (p *Pipeline) Requeue(ctx context.Context, id string) (state.Message, error) {
+	if _, busy := p.inflight.LoadOrStore(id, struct{}{}); busy {
+		return state.Message{}, ErrInFlight
+	}
+	defer p.inflight.Delete(id)
+	m, err := p.store.Get(ctx, id)
+	if err != nil {
+		return state.Message{}, err
+	}
+	if m.Status != state.StatusDeadLettered {
+		return state.Message{}, fmt.Errorf("%w (status %s)", ErrNotDeadLettered, m.Status)
+	}
+	before := m
+	before.Attempts = make(map[string]state.DestinationAttempt, len(m.Attempts))
+	before.Metadata = make(map[string]string, len(m.Metadata))
+	attempts := make(map[string]state.DestinationAttempt, len(m.Attempts))
+	for dest, a := range m.Attempts {
+		before.Attempts[dest] = a
+		if a.Attempts > 0 && a.LastError == "" {
+			attempts[dest] = a // delivered
+		}
+	}
+	md := make(map[string]string, len(m.Metadata)+1)
+	for k, v := range m.Metadata {
+		before.Metadata[k] = v
+		if k != "error" {
+			md[k] = v
+		}
+	}
+	n, _ := strconv.Atoi(md["requeues"])
+	md["requeues"] = strconv.Itoa(n + 1)
+	m.Attempts, m.Metadata, m.Status = attempts, md, state.StatusQueued
+	return before, p.store.Put(ctx, m)
 }
 
 // decodeObject decodes body as a single JSON object, keeping numbers exact

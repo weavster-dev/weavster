@@ -108,6 +108,8 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return clearAllMessages(ctx, client, fields[1:], stdout, stderr, debug)
 	case "dump": // spec §3.2: dump stats|events "path"
 		return dumpCommand(ctx, client, fields[1:], stdout, stderr, debug)
+	case "deadletter": // #107 §8: list, show, requeue, remove dead-lettered messages
+		return deadLetterCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	default:
 		_, _ = fmt.Fprintf(stderr, "Error: unknown command %q\n", fields[0])
 		return 2
@@ -131,7 +133,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate|diff|plan "path", config apply "path" [--dry-run] [reason], exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate|diff|plan "path", config apply "path" [--dry-run] [reason], exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", deadletter list [flow]|show <id>|requeue <id>|requeue all [flow]|remove <id>, importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words

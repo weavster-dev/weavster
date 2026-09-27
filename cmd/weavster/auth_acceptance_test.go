@@ -66,6 +66,8 @@ var protectedRoutes = []struct {
 	{http.MethodGet, "/api/v1/messages/m1/content", "messages:content"},
 	{http.MethodDelete, "/api/v1/messages/m1", "messages:delete"},
 	{http.MethodPost, "/api/v1/messages/m1/reprocess", "messages:send"},
+	{http.MethodPost, "/api/v1/messages/m1/requeue", "messages:send"},
+	{http.MethodPost, "/api/v1/messages/requeue", "messages:send"},
 	{http.MethodGet, "/api/v1/messages/export", "messages:content"},
 	{http.MethodPost, "/api/v1/messages/import", "messages:import"},
 	{http.MethodGet, "/api/v1/configmap", "configmap:edit"},

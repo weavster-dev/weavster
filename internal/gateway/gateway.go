@@ -301,6 +301,8 @@ type Config struct {
 	FlowUpdates FlowUpdater
 	Transfer    FlowTransfer
 	Stats       StatsProvider
+	// DeadLetters requeues dead-lettered messages.
+	DeadLetters DeadLetterRequeuer
 	// StatsHistory reads the sampled statistics time series.
 	StatsHistory StatsHistory
 	Events       EventSearcher

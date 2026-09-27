@@ -330,6 +330,7 @@ counts once, in its current status.
 |---|---|---|
 | `GET /api/v1/messages/{id}` | `messages:view` | The message as in the search results. |
 | `GET /api/v1/messages/{id}/content?part=raw` | `messages:content` | The content as received (`part=transformed`: after the flow transform), as bytes. A message with no transformed content (for example one that errored in its transform) returns `404` for `part=transformed`. |
+| `POST /api/v1/messages/{id}/requeue` | `messages:send` | Gives a dead-lettered message another round of delivery attempts; see [Dead-lettered messages](#dead-lettered-messages). |
 | `POST /api/v1/messages/{id}/reprocess` | `messages:send` | Sends the original content through the message's flow again. The new message (`202`, same reply as sending) keeps the old message's metadata (except its `error`) and adds `reprocessedFrom` with the old id. The flow must be `started` (`409` otherwise). |
 | `DELETE /api/v1/messages/{id}` | `messages:delete` | Removes the message (`204`). A message that is being processed or retried right now returns `409`; try again. |
 
@@ -567,12 +568,73 @@ Messages of a flow that is not `started` are not retried; they stay `queued`.
 A retried message that later succeeds changes to `sent`. The statistics then count it once as
 `queued` and once as `sent`.
 
+## Dead-lettered messages
+
+A message is `dead-lettered` when a destination still failed after `delivery.maxAttempts`
+attempts (see [Retries](#retries)). It is kept, with each destination's attempts and last error,
+until you requeue or remove it.
+
+From the [command-line client](cli.md):
+
+```text
+weavster> deadletter list adt
+7f3c9a1e	adt	2026-09-27T10:00:00Z	archive: delivered; ehr: 5 attempts, POST https://ehr.example.com/in: 503 Service Unavailable
+1 dead-lettered messages
+weavster> deadletter show 7f3c9a1e
+{ "id": "7f3c9a1e", "flowId": "adt", "status": "dead-lettered", "attempts": { ... }, ... }
+weavster> deadletter requeue 7f3c9a1e
+requeued 7f3c9a1e (before: archive: delivered; ehr: 5 attempts, POST https://ehr.example.com/in: 503 Service Unavailable)
+weavster> deadletter requeue all adt
+requeued 12 messages, skipped 0
+weavster> deadletter remove 7f3c9a1e
+removed 7f3c9a1e
+```
+
+`deadletter list` without a flow lists every flow's dead letters (up to 1000, newest first);
+`requeue all` without a flow requeues every dead letter.
+
+**Requeue** gives the message another round of attempts:
+
+- Every destination that did not deliver starts again with no attempts; destinations that
+  delivered keep their record and are **not sent again**. The message becomes `queued`, and the
+  retry loop delivers it with the usual backoff, so fix the destination first.
+- The attempts the message had are kept: in the reply, in the [audit log](audit-log.md), and in a
+  `message.requeued` [event](#5-statistics-and-events) (`previous.<destination>.attempts`,
+  `previous.<destination>.lastError`). The message's `requeues` metadata counts its requeues.
+- Only a dead-lettered message can be requeued (`409` otherwise, and while it is being
+  processed). A message whose flow was deleted cannot be requeued (`404`); send its content again
+  to another flow instead.
+- `requeue all` skips messages it cannot requeue and lists them with the reason.
+
+With the API (permission `messages:send`):
+
+```bash
+# One message
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/messages/7f3c9a1e/requeue
+# Every dead letter of a flow (omit flowId for all flows)
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST 'http://127.0.0.1:8080/api/v1/messages/requeue?flowId=adt'
+```
+
+```json
+{"message":{"id":"7f3c9a1e","flowId":"adt","status":"queued","metadata":{"requeues":"1"},"attempts":{"archive":{"attempts":1}}},
+ "previous":{"archive":{"attempts":1},"ehr":{"attempts":5,"lastError":"POST https://ehr.example.com/in: 503 Service Unavailable"}}}
+```
+
+```json
+{"requeued":["7f3c9a1e","8a01b2c3"],"skipped":[]}
+```
+
+Listing, inspecting, and removing use the message endpoints: `GET /api/v1/messages?status=dead-lettered`,
+`GET /api/v1/messages/{id}`, and `DELETE /api/v1/messages/{id}` (see
+[Work with one message](#work-with-one-message)). `deadletter remove` refuses a message that is
+not dead-lettered, so a mistyped id cannot remove one still being delivered. To send the original
+content again as a new message instead, use `reprocess`.
+
 ## Limits today
 
 - Statistics and events are kept in memory: they restart from zero when the server restarts,
   and only the newest 10,000 events are kept.
 - The first delivery attempt runs while your request waits; retries run in the background.
-- Dead-lettered messages cannot be listed, inspected, or requeued through the API yet.
 - Only `http` and `file` destinations are available.
 - Messages enter only through this API; flows do not listen on their own ports or read files yet.
 - A `file` destination writes wherever `dir` points, with the server's permissions, and an

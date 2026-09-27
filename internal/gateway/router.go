@@ -230,6 +230,8 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("messages", "delete")).Delete("/messages", s.handleMessagesDelete)
 			r.With(s.require("messages", "delete")).Delete("/messages/{id}", s.handleMessageDelete)
 			r.With(s.require("messages", "send")).Post("/messages/{id}/reprocess", s.handleMessageReprocess)
+			r.With(s.require("messages", "send")).Post("/messages/{id}/requeue", s.handleMessageRequeue)
+			r.With(s.require("messages", "send")).Post("/messages/requeue", s.handleMessagesRequeue)
 		})
 	})
 	return r
