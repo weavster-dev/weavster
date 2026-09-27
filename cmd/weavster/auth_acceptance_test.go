@@ -28,6 +28,10 @@ var protectedRoutes = []struct {
 }{
 	{http.MethodGet, "/api/v1/system", ""},
 	{http.MethodGet, "/api/v1/auth/me", ""},
+	{http.MethodGet, "/api/v1/system/about", ""},
+	{http.MethodGet, "/api/v1/system/password-requirements", ""},
+	{http.MethodGet, "/api/v1/system/resources", ""},
+	{http.MethodGet, "/api/v1/system/guid", ""},
 	{http.MethodGet, "/api/v1/topology", "flows:view"},
 	{http.MethodGet, "/api/v1/topology/flows/admit", "flows:view"},
 	{http.MethodGet, "/api/v1/flows", "flows:view"},

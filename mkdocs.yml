@@ -25,6 +25,7 @@ nav:
   - Alerts: alerts.md
   - Configuration Export and Import: config-transfer.md
   - Config-as-Code Documents: config-as-code.md
+  - System Information: system-info.md
   - Docs Site Guide: documentation.md
   - MVP Project Plan: mvp-project-plan.md
   - Agent Onboarding: agent-onboarding.md

@@ -44,6 +44,7 @@ func newAuthServer(passwords PasswordChanger) *Server {
 		}},
 		Authorizer: fakeAuthz{},
 		Passwords:  passwords,
+		System:     fakeSystem{},
 		Flows:      &stubFlows{},
 	})
 }

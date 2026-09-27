@@ -140,7 +140,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Stats:           statsAdapter{flows: flows, stats: stats},
 		Events:          eventsAdapter{events},
 		Topology:        topologyAdapter{flows: flows, stats: stats},
-		System:          observability.SystemStatus("weavster", version, buildDate),
+		System:          newSystemAdapter(cfg, policy),
 		Listeners:       listeners(cfg.Listen),
 		RequireCSRF:     cfg.Listen.RequireMarkerHeader,
 	})
@@ -344,11 +344,7 @@ func listen(cfg serverconfig.Config, handler http.Handler) ([]*http.Server, erro
 		servers = append(servers, &http.Server{Addr: cfg.Listen.Address, Handler: handler, ReadHeaderTimeout: 10 * time.Second})
 	}
 	if cfg.Listen.TLSAddress != "" {
-		opts := gateway.DefaultTLSOptions()
-		if cfg.TLS.MinVersion == "1.3" {
-			opts.MinVersion = tls.VersionTLS13
-		}
-		tlsCfg, err := gateway.BuildTLSConfig(opts)
+		tlsCfg, err := gateway.BuildTLSConfig(tlsOptions(cfg))
 		if err != nil {
 			return nil, err
 		}
@@ -360,6 +356,16 @@ func listen(cfg serverconfig.Config, handler http.Handler) ([]*http.Server, erro
 		servers = append(servers, &http.Server{Addr: cfg.Listen.TLSAddress, Handler: handler, TLSConfig: tlsCfg, ReadHeaderTimeout: 10 * time.Second})
 	}
 	return servers, nil
+}
+
+// tlsOptions are the HTTPS listener's settings: the listener and
+// /api/v1/system both use them, so what is reported is what is served.
+func tlsOptions(cfg serverconfig.Config) gateway.TLSOptions {
+	opts := gateway.DefaultTLSOptions()
+	if cfg.TLS.MinVersion == "1.3" {
+		opts.MinVersion = tls.VersionTLS13
+	}
+	return opts
 }
 
 // isPrivileged reports whether the process runs under a privileged OS account.

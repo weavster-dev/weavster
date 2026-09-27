@@ -72,9 +72,11 @@ All notable changes to this project are documented here, following
 - Config-as-code plan (#239): `POST /api/v1/config/plan` and CLI `config diff` / `config plan` compare a document with the live configuration (adds, field-level updates, removals only in sections the document includes) without changing anything; the plan carries a fingerprint of the live state.
 - Config-as-code apply (#241): `POST /api/v1/config/apply?fingerprint=…` and CLI `config apply "path" [--dry-run] [reason]` apply a reviewed plan, refuse stale plans, roll back every applied change when one fails, and audit the plan, reason, and result.
 - Events API (#243): `from`, `to`, and `afterId` filters on `GET /api/v1/events`; `GET /api/v1/events/{id}`, `/count`, `/max-id`, and `/export` (JSON download).
+- System information (#245): `GET /api/v1/system/about`, `/password-requirements`, `/resources`, and `/guid`.
 
 ### Changed
 
+- `GET /api/v1/system` is computed per request (`time`, new `uptimeSeconds`, `status`) and reports TLS as configured under `tls` (`enabled`, `address`, `minVersion`, `protocols`, `ciphers`) instead of fixed top-level `protocols`/`ciphers` (#245).
 - `GET /api/v1/messages` (and export) refuses `from` later than `to` with `400` instead of returning nothing (#243).
 - Config-as-code document: the config map section is `configmap` (was `map`), and alerts use the API shape (`name`, `trigger.events`, `actions`) instead of `trigger`/`recipients`/`scope` (#237).
 - `weavster server` exits `2` (not `1`) on a usage error: an unknown flag or extra arguments (#231).
@@ -101,6 +103,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- `auth.passwordPolicy.minLength` counts characters, not bytes, so a password with accented letters is not accepted as longer than it is (#245).
 - `GET /api/v1/messages?flowId=…` filters in the store before the page limit (#212); before, it filtered the first page afterwards and could miss that flow's messages. With `store.dialect: memory`, messages now get their receive and update times.
 - With `store.dialect: sqlite`, a restart could fail writes with `database is locked (SQLITE_BUSY)` when the previous run had stopped during a store query. SQLite statements now run to completion instead of being cancelled.
 - Flow API status codes (#151):
