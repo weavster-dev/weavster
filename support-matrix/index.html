@@ -336,7 +336,12 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Git repository of configuration (server config <code>git.path</code>; <code>POST /api/v1/git/commit</code>, <code>GET /api/v1/git</code>, <code>/git/log</code>, <code>/git/content</code>)</td>
 <td>Implemented (wired)</td>
-<td><code>TestGitRepository</code>. Commit, log, file history, content at any revision, repository info. Push/pull/remotes, working-tree diff/restore, and plan/apply/drift from the repository are not available yet. See <a href="../git/">Git repository</a>.</td>
+<td><code>TestGitRepository</code>. Commit, log, file history, content at any revision, repository info. Push/pull/remotes and working-tree diff/restore are not available yet. See <a href="../git/">Git repository</a>.</td>
+</tr>
+<tr>
+<td>Plan/apply from the Git repository (<code>gitRev</code> on <code>POST /api/v1/config/plan</code> and <code>/config/apply</code>) and on-demand drift (<code>GET /api/v1/git/drift</code>; CLI <code>config drift [revision]</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestGitPlanApplyDrift</code>. Automatic (scheduled) remediation is Enterprise. See <a href="../git/#check-for-drift">Git repository</a>.</td>
 </tr>
 <tr>
 <td>Alert definitions (<code>/api/v1/alerts</code>: create, get, update, delete, enable/disable, import with <code>force</code>, options); CLI <code>importalert</code>, <code>exportalert</code></td>
@@ -556,9 +561,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td></td>
 </tr>
 <tr>
-<td>Config-as-code drift detection; Git push/pull, working-tree diff/restore</td>
-<td>Library-only</td>
-<td>No CLI command or API endpoint exposes them yet. Validate, plan, apply, and Git commit/log/content are wired (rows above). Flows in a config document (<code>flows.&lt;id&gt;</code>) use the same definition as the flow API and are validated against <code>flow.schema.json</code> (<code>TestConfigFlowIsAPIFlow</code>).</td>
+<td>Git push/pull, working-tree diff/restore; scheduled drift remediation</td>
+<td>Library-only / Enterprise</td>
+<td>Push/pull and diff/restore are not exposed yet; automatic drift remediation is Enterprise. Validate, plan, apply, Git commit/log/content, plan/apply from Git, and on-demand drift are wired (rows above). Flows in a config document (<code>flows.&lt;id&gt;</code>) use the same definition as the flow API and are validated against <code>flow.schema.json</code> (<code>TestConfigFlowIsAPIFlow</code>).</td>
 </tr>
 <tr>
 <td>Legacy import</td>

@@ -157,6 +157,14 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#check-for-drift" class="nav-link">Check for drift</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#plan-and-apply-from-the-repository" class="nav-link">Plan and apply from the repository</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#permissions" class="nav-link">Permissions</a>
               <ul class="nav flex-column">
               </ul>
@@ -171,7 +179,8 @@
 <h1 id="git-repository">Git repository</h1>
 <p>The server can keep its configuration in a Git repository: every commit records the flows,
 alerts, snippets, snippet libraries, global scripts, and settings as they are live on the server,
-so you can see what changed, when, and by whom, and read any earlier version.</p>
+so you can see what changed, when, and by whom, read any earlier version, check whether the
+server has drifted from it, and apply it back.</p>
 <h2 id="turn-it-on">Turn it on</h2>
 <p>Set <code>git.path</code> in the <a href="../server-config/#git">server configuration</a>:</p>
 <pre><code class="language-yaml">git:
@@ -272,6 +281,59 @@ back as stored: <code>application/yaml</code> for <code>.yaml</code> files, othe
   'http://127.0.0.1:8080/api/v1/git/content?path=flows/adt.yaml&amp;rev=HEAD~1'
 </code></pre>
 <p>An unknown revision, or a file that did not exist at it, returns <code>404</code>.</p>
+<h2 id="check-for-drift">Check for drift</h2>
+<p>Drift is a difference between the live configuration and the repository: someone changed the
+server after the last commit, or the repository was edited. <code>GET /api/v1/git/drift</code> compares the
+two without changing anything (<code>rev</code> defaults to <code>HEAD</code>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/git/drift?rev=HEAD'
+</code></pre>
+<pre><code class="language-json">{&quot;rev&quot;:&quot;HEAD&quot;,&quot;commit&quot;:&quot;5f0c1e9a8d...&quot;,&quot;drifted&quot;:true,&quot;plan&quot;:{&quot;fingerprint&quot;:&quot;9c1d...&quot;,&quot;added&quot;:[&quot;settings/retention&quot;],&quot;updated&quot;:[&quot;script/deploy&quot;],&quot;removed&quot;:[&quot;flow/tmp&quot;],&quot;unchanged&quot;:4,&quot;changes&quot;:[...],&quot;text&quot;:&quot;...&quot;}}
+</code></pre>
+<p><code>commit</code> is the commit <code>rev</code> resolved to. <code>plan</code> is what applying the repository would do:
+<code>added</code> exists only in the repository, <code>removed</code> only on the server; its <code>fingerprint</code> is the one
+<code>config/apply?gitRev=</code> needs.</p>
+<p>From the CLI, <code>config drift [revision]</code> prints the differences:</p>
+<pre><code class="language-text">weavster&gt; config drift
+~ script/deploy
+    value: &quot;log(2)&quot; → &quot;log()&quot;
+...
+Error: the live configuration differs from the repository at HEAD (5f0c1e9a8d12): 3 changes
+</code></pre>
+<p>With no drift it prints <code>no drift: the live configuration matches the repository at HEAD (5f0c1e9a8d12)</code>.
+In a script (<code>weavster -s</code>), drift makes the exit code <code>1</code> and a failed check (unknown revision,
+server unreachable) <code>2</code>, so a CI job can tell them apart:</p>
+<pre><code class="language-bash">weavster -a https://weavster.example.com -u ci -p &quot;$PASSWORD&quot; -s &lt;(echo 'config drift')
+case $? in 0) echo &quot;in sync&quot;;; 1) echo &quot;drift&quot;;; *) echo &quot;check failed&quot;; exit 2;; esac
+</code></pre>
+<p>Drift is only checked when you ask. Checking on a schedule and repairing drift automatically is
+an Enterprise feature.</p>
+<h2 id="plan-and-apply-from-the-repository">Plan and apply from the repository</h2>
+<p>The <a href="../config-as-code/#see-what-would-change">config plan and apply</a> endpoints take the
+repository as their document when you pass <code>gitRev</code> (a revision; empty means <code>HEAD</code>) instead of
+a body. This also needs <code>git:view</code>.</p>
+<pre><code class="language-bash"># What applying the repository at HEAD would change
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST 'http://127.0.0.1:8080/api/v1/config/plan?gitRev='
+# Apply exactly that plan
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
+  'http://127.0.0.1:8080/api/v1/config/apply?gitRev=&amp;fingerprint=9c1d...&amp;reason=restore%20from%20git'
+</code></pre>
+<p>Rolling back to an earlier version is applying an earlier revision, for example <code>gitRev=HEAD~1</code>
+or a commit hash.</p>
+<p>How the repository becomes one document:</p>
+<ul>
+<li>Every <code>.yaml</code> file directly in <code>flows/</code>, <code>alerts/</code>, <code>snippets/</code>, <code>snippetLibraries/</code>,
+  <code>scripts/</code>, and <code>settings/</code> is read and merged. A file may hold several artifacts, of any of
+  these sections; other files are ignored.</li>
+<li>All six sections are managed: an artifact on the server that the repository lacks is removed
+  by an apply.</li>
+<li>The config map is never read from the repository and is left as it is. A file with a
+  <code>configmap</code> section is refused.</li>
+<li>A file that is not a valid config document, uses YAML anchors, aliases, or merge keys
+  (<code>&amp;x</code>, <code>*x</code>, <code>&lt;&lt;:</code>), or defines an artifact another file also defines returns <code>400</code> naming the
+  file. An unknown revision returns <code>404</code>.</li>
+<li>The audit record of a plan or apply from the repository names the revision and the commit it
+  resolved to (<code>git.rev</code>, <code>git.commit</code>).</li>
+</ul>
 <h2 id="permissions">Permissions</h2>
 <table>
 <thead>
@@ -284,6 +346,14 @@ back as stored: <code>application/yaml</code> for <code>.yaml</code> files, othe
 <tr>
 <td><code>GET /api/v1/git</code>, <code>GET /api/v1/git/log</code></td>
 <td><code>git:view</code></td>
+</tr>
+<tr>
+<td><code>GET /api/v1/git/drift</code></td>
+<td><code>git:view</code> and the <a href="../config-as-code/#see-what-would-change">config plan</a> permissions</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/config/plan?gitRev=</code>, <code>POST /api/v1/config/apply?gitRev=</code></td>
+<td><code>git:view</code> and that endpoint's own permissions</td>
 </tr>
 <tr>
 <td><code>GET /api/v1/git/content</code></td>

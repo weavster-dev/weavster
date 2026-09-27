@@ -382,6 +382,14 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>git:view</code></td>
 </tr>
 <tr>
+<td><code>GET /api/v1/git/drift</code></td>
+<td><code>git:view</code>, <code>flows:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>settings:edit</code>, <code>configmap:edit</code></td>
+</tr>
+<tr>
+<td><code>POST /api/v1/config/plan?gitRev=…</code>, <code>POST /api/v1/config/apply?gitRev=…</code></td>
+<td><code>git:view</code> plus the endpoint's permissions</td>
+</tr>
+<tr>
 <td><code>GET /api/v1/git/content</code></td>
 <td><code>git:view</code>, <code>flows:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>settings:edit</code></td>
 </tr>
