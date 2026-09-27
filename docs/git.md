@@ -120,13 +120,16 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v
 ```
 
 ```json
-{"from":"HEAD~2","to":"HEAD","files":[{"path":"scripts/deploy.yaml","status":"modified"},{"path":"settings/retention.yaml","status":"deleted"}],
+{"from":"HEAD~2","to":"HEAD","truncated":false,"files":[{"path":"scripts/deploy.yaml","status":"modified"},{"path":"settings/retention.yaml","status":"deleted"}],
  "patch":"diff --git a/scripts/deploy.yaml b/scripts/deploy.yaml\n...\n-    deploy: log()\n+    deploy: log(2)\n..."}
 ```
 
-Without `from`, it lists the files changed in the repository directory but not committed
-(`added`, `modified`, `deleted`) and no patch. Changes made through the API are always committed,
-so this shows only files edited on disk.
+- A moved or renamed file shows as `deleted` at the old path and `added` at the new one.
+- A patch over 5 MiB is cut there and `truncated` is `true`; the file list is always complete.
+- Without `from`, it lists the files in the repository directory that differ from `HEAD` but are
+  not committed (`added`, `modified`, `deleted`; ignored files are not listed), with `from`
+  `HEAD`, `to` empty, and no patch. Changes made through the API are always committed, so this
+  shows only files edited on disk.
 
 ## Restore a revision
 
@@ -153,8 +156,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Content-Type: applicatio
 - Nothing to change: `committed` is `false` and no commit is made.
 - An unknown revision, or a file that did not exist at it, returns `404`. Uncommitted files in the
   repository directory block a restore with `409`; commit or remove them first.
-- A restore of the whole repository also removes files that did not exist at the revision
-  (including ones outside the configuration directories).
+- A restore writes only the files that differ. Restoring the whole repository removes committed
+  files the revision did not have (including ones outside the configuration directories); files
+  that were never committed, and ignored files, are not touched.
 
 ## Check for drift
 

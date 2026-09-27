@@ -429,16 +429,19 @@ func hasAnchors(n *yaml.Node) bool {
 	return false
 }
 
-func (a gitAdapter) GitDiff(_ context.Context, from, to string) (gateway.GitDiff, error) {
+// GitDiff compares revisions, or with from "" the working tree (reported
+// as from HEAD to "").
+func (a gitAdapter) GitDiff(ctx context.Context, from, to string) (gateway.GitDiff, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	d := gateway.GitDiff{From: from, To: to}
 	var changes []gitstore.FileChange
 	var err error
 	if from == "" {
+		d.From = "HEAD"
 		changes, err = a.store.WorkingChanges()
 	} else {
-		changes, d.Patch, err = a.store.Diff(from, to)
+		changes, d.Patch, d.Truncated, err = a.store.Diff(ctx, from, to)
 	}
 	if errors.Is(err, gitstore.ErrNotFound) {
 		return gateway.GitDiff{}, gateway.ErrGitNotFound
@@ -453,10 +456,10 @@ func (a gitAdapter) GitDiff(_ context.Context, from, to string) (gateway.GitDiff
 	return d, nil
 }
 
-func (a gitAdapter) GitRestore(_ context.Context, rev, path, message, author string) (gateway.GitCommitResult, error) {
+func (a gitAdapter) GitRestore(ctx context.Context, rev, path, message, author string) (gateway.GitCommitResult, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	head, changed, err := a.store.RestoreTo(rev, path, message, gitstore.Author{Name: author})
+	head, changed, err := a.store.RestoreTo(ctx, rev, path, message, gitstore.Author{Name: author})
 	switch {
 	case errors.Is(err, gitstore.ErrNotFound):
 		return gateway.GitCommitResult{}, gateway.ErrGitNotFound

@@ -224,7 +224,7 @@ func TestGitDiffRestoreHandlers(t *testing.T) {
 		want                     string
 	}{
 		{"diff revisions", http.MethodGet, "/api/v1/git/diff?from=HEAD~1", "", with(nil), http.StatusOK, `{"from":"HEAD~1","to":"HEAD","files":[{"path":"flows/a.yaml","status":"modified"}]`},
-		{"diff working tree", http.MethodGet, "/api/v1/git/diff", "", with(nil), http.StatusOK, `{"from":"","to":""`},
+		{"diff working tree", http.MethodGet, "/api/v1/git/diff", "", with(nil), http.StatusOK, `{"from":"","to":"","files"`},
 		{"diff to without from", http.MethodGet, "/api/v1/git/diff?to=HEAD", "", with(nil), http.StatusBadRequest, "to needs from"},
 		{"diff unknown revision", http.MethodGet, "/api/v1/git/diff?from=missing", "", with(nil), http.StatusNotFound, "not found"},
 		{"diff fails", http.MethodGet, "/api/v1/git/diff?from=a", "", with(errDisk), http.StatusInternalServerError, "internal error"},

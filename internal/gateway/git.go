@@ -68,13 +68,14 @@ type GitFileChange struct {
 	Status string `json:"status"`
 }
 
-// GitDiff is a comparison of two revisions, or of the working tree with
-// HEAD (From and Patch empty).
+// GitDiff is a comparison of two revisions, or of HEAD with the working
+// tree (To and Patch empty). A move is a deletion and an addition.
 type GitDiff struct {
-	From  string          `json:"from"`
-	To    string          `json:"to"`
-	Files []GitFileChange `json:"files"`
-	Patch string          `json:"patch"`
+	From      string          `json:"from"`
+	To        string          `json:"to"`
+	Files     []GitFileChange `json:"files"`
+	Patch     string          `json:"patch"`
+	Truncated bool            `json:"truncated"` // the patch was cut at 5 MiB
 }
 
 // GitRemoteStatus compares the repository's branch with the remote's.

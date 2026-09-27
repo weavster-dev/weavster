@@ -57,7 +57,7 @@ func TestGitDiffRestore(t *testing.T) {
 		t.Errorf("diff = %+v", d)
 	}
 	_ = json.Unmarshal([]byte(call(http.MethodGet, "/api/v1/git/diff", "", http.StatusOK)), &d)
-	if len(d.Files) != 0 || d.Patch != "" {
+	if len(d.Files) != 0 || d.Patch != "" || d.From != "HEAD" || d.To != "" {
 		t.Errorf("working tree diff = %+v", d)
 	}
 
