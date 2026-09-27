@@ -264,6 +264,15 @@ func needsObject(f Flow) bool {
 	return false
 }
 
+// Hold reserves a message id as in flight, so no processing or retry starts
+// on it until release is called; ok is false while it is already busy.
+func (p *Pipeline) Hold(id string) (release func(), ok bool) {
+	if _, busy := p.inflight.LoadOrStore(id, struct{}{}); busy {
+		return nil, false
+	}
+	return func() { p.inflight.Delete(id) }, true
+}
+
 // Remove deletes a stored message unless it is being processed or retried
 // (ErrInFlight); while it is removed, no retry can start on it.
 func (p *Pipeline) Remove(ctx context.Context, id string) error {

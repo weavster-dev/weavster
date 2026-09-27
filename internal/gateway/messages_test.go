@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -45,6 +46,22 @@ func (messageOps) Reprocess(_ context.Context, id string) (IngestResult, error) 
 	return IngestResult{ID: "m2", Status: "sent"}, nil
 }
 
+func (messageOps) Export(_ context.Context, q MessageQuery, key []byte) ([]byte, int, error) {
+	return []byte(fmt.Sprintf("archive:%d:%t", q.Limit, key != nil)), 2, nil
+}
+
+func (messageOps) Import(_ context.Context, archive []byte, opts MessageImport) (MessageImportResult, error) {
+	switch string(archive) {
+	case "bad":
+		return MessageImportResult{}, ErrInvalidArchive
+	case "unknown-flow":
+		return MessageImportResult{}, fmt.Errorf("%w: flowId zz", ErrFlowNotFound)
+	case "fails":
+		return MessageImportResult{Imported: 4}, ErrMessageImportIncomplete
+	}
+	return MessageImportResult{Imported: 1}, nil
+}
+
 // queryRecorder keeps the last search query.
 type queryRecorder struct {
 	messageOps
@@ -83,6 +100,12 @@ func TestMessageHandlers(t *testing.T) {
 		{"reprocess", http.MethodPost, "/api/v1/messages/m/reprocess", cfg, http.StatusAccepted, `"id":"m2"`},
 		{"reprocess unknown", http.MethodPost, "/api/v1/messages/zz/reprocess", cfg, http.StatusNotFound, "message not found"},
 		{"get unavailable", http.MethodGet, "/api/v1/messages/m", Config{}, http.StatusServiceUnavailable, "messages unavailable"},
+		{"export takes the whole archive limit by default", http.MethodGet, "/api/v1/messages/export", cfg, http.StatusOK, "archive:10000:false"},
+		{"export with a limit", http.MethodGet, "/api/v1/messages/export?limit=50", cfg, http.StatusOK, "archive:50:false"},
+		{"export limit too high", http.MethodGet, "/api/v1/messages/export?limit=10001", cfg, http.StatusBadRequest, "between 1 and 10000"},
+		{"export unavailable", http.MethodGet, "/api/v1/messages/export", Config{}, http.StatusServiceUnavailable, "messages unavailable"},
+		{"import unavailable", http.MethodPost, "/api/v1/messages/import", Config{}, http.StatusServiceUnavailable, "messages unavailable"},
+		{"import bad overwrite", http.MethodPost, "/api/v1/messages/import?overwrite=x", cfg, http.StatusBadRequest, "overwrite must be"},
 		{"content unavailable", http.MethodGet, "/api/v1/messages/m/content", Config{}, http.StatusServiceUnavailable, "messages unavailable"},
 		{"delete unavailable", http.MethodDelete, "/api/v1/messages/m", Config{}, http.StatusServiceUnavailable, "messages unavailable"},
 		{"reprocess unavailable", http.MethodPost, "/api/v1/messages/m/reprocess", Config{}, http.StatusServiceUnavailable, "messages unavailable"},
@@ -102,5 +125,37 @@ func TestMessageHandlers(t *testing.T) {
 	want := MessageQuery{FlowID: "f", Status: "sent", From: time.Date(2026, 9, 26, 0, 0, 0, 0, time.UTC), Limit: 5, Offset: 10, Sort: "id"}
 	if !got.From.Equal(want.From) || got.FlowID != want.FlowID || got.Status != want.Status || got.Limit != 5 || got.Offset != 10 || got.Sort != "id" {
 		t.Errorf("query = %+v", got)
+	}
+}
+
+func TestMessageArchiveHandlers(t *testing.T) {
+	cfg := Config{Messages: queryRecorder{got: &MessageQuery{}}}
+	key := "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=" // base64 of 32 bytes
+	tests := []struct {
+		name, method, path, body, key string
+		status                        int
+		want                          string
+	}{
+		{"import", http.MethodPost, "/api/v1/messages/import?flowId=f&overwrite=true", "ok", key, http.StatusOK, `"imported":1`},
+		{"import bad archive", http.MethodPost, "/api/v1/messages/import", "bad", "", http.StatusBadRequest, "invalid message archive"},
+		{"import unknown flow", http.MethodPost, "/api/v1/messages/import?flowId=zz", "unknown-flow", "", http.StatusNotFound, "flowId zz"},
+		{"import incomplete", http.MethodPost, "/api/v1/messages/import", "fails", "", http.StatusInternalServerError, `"imported":4`},
+		{"bad key", http.MethodPost, "/api/v1/messages/import", "ok", "c2hvcnQ=", http.StatusBadRequest, "base64 of 32 bytes"},
+		{"bad key on export", http.MethodGet, "/api/v1/messages/export", "", "!!", http.StatusBadRequest, "base64 of 32 bytes"},
+		{"export with key", http.MethodGet, "/api/v1/messages/export", "", key, http.StatusOK, "archive:10000:true"},
+		{"import too large", http.MethodPost, "/api/v1/messages/import", strings.Repeat("x", maxArchiveBytes+1), "", http.StatusRequestEntityTooLarge, "larger than 100 MiB"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body))
+			if tt.key != "" {
+				req.Header.Set(archiveKeyHeader, tt.key)
+			}
+			rec := httptest.NewRecorder()
+			New(cfg).Router().ServeHTTP(rec, req)
+			if rec.Code != tt.status || !strings.Contains(rec.Body.String(), tt.want) {
+				t.Errorf("got %d %q; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.want)
+			}
+		})
 	}
 }

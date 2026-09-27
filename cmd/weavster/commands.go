@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
@@ -8,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -42,6 +45,10 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return flowCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	case "deploy":
 		return deployAll(ctx, client, fields[1:], stdout, stderr, debug)
+	case "exportmessages": // spec §3.2: exportmessages "path" <flow id|name|*>
+		return exportMessages(ctx, client, fields[1:], stdout, stderr, debug)
+	case "importmessages": // spec §3.2: importmessages "path" <flow id|name>
+		return importMessages(ctx, client, fields[1:], stdout, stderr, debug)
 	case "resetstats": // spec §3.2: resetstats [lifetime]
 		path := "/api/v1/flows/stats/reset"
 		switch {
@@ -107,7 +114,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list, quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list, quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -193,4 +200,109 @@ func deployAll(ctx context.Context, client Client, args []string, stdout, stderr
 	}
 	_, _ = fmt.Fprintf(stdout, "deployed %d flows\n", n)
 	return code
+}
+
+// maxExportMessages is the most messages one exportmessages writes (the
+// API's limit for one archive).
+const maxExportMessages = 10000
+
+// exportMessages writes an archive of a flow's messages (every flow's for
+// "*") to a file.
+func exportMessages(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	if len(args) != 2 {
+		_, _ = fmt.Fprintln(stderr, `Error: usage: exportmessages "path" <flow id|name|*>`)
+		return 2
+	}
+	var archive []byte
+	var err error
+	if args[1] == "*" {
+		archive, err = client.Call(ctx, http.MethodGet, "/api/v1/messages/export", nil)
+	} else {
+		archive, err = exportFlowMessages(ctx, client, args[1])
+	}
+	if err == nil {
+		err = os.WriteFile(args[0], archive, 0o600)
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	n := archiveCount(archive)
+	_, _ = fmt.Fprintf(stdout, "exported %d messages to %s\n", n, args[0])
+	if n == maxExportMessages {
+		_, _ = fmt.Fprintf(stderr, "Warning: the archive holds the %d newest messages; export older ones with the API (offset)\n", maxExportMessages)
+	}
+	return 0
+}
+
+// exportFlowMessages exports one flow's messages. arg is used as the flow
+// id; only an empty archive leads to a lookup by name (which needs
+// flows:view), so an id never needs that permission.
+func exportFlowMessages(ctx context.Context, client Client, arg string) ([]byte, error) {
+	get := func(id string) ([]byte, error) {
+		return client.Call(ctx, http.MethodGet, "/api/v1/messages/export?flowId="+url.QueryEscape(id), nil)
+	}
+	archive, err := get(arg)
+	if err != nil || archiveCount(archive) > 0 {
+		return archive, err
+	}
+	flows, err := listFlows(ctx, client)
+	var se *serverError
+	if errors.As(err, &se) && se.Code == http.StatusForbidden {
+		return archive, nil // no flows:view to check names: arg was an id with no messages
+	}
+	if err != nil {
+		return nil, err
+	}
+	id, err := flowByName(flows, arg)
+	if err != nil || id == arg {
+		return archive, err
+	}
+	return get(id)
+}
+
+// importMessages restores an archive file into a flow. arg is used as the
+// flow id; only when the server knows no such flow is it looked up by name.
+func importMessages(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
+	if len(args) != 2 {
+		_, _ = fmt.Fprintln(stderr, `Error: usage: importmessages "path" <flow id|name>`)
+		return 2
+	}
+	archive, err := os.ReadFile(args[0])
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	post := func(id string) ([]byte, error) {
+		return client.Call(ctx, http.MethodPost, "/api/v1/messages/import?flowId="+url.QueryEscape(id), archive)
+	}
+	out, err := post(args[1])
+	var se *serverError
+	if errors.As(err, &se) && se.Code == http.StatusNotFound {
+		if flows, lerr := listFlows(ctx, client); lerr == nil {
+			if id, nerr := flowByName(flows, args[1]); nerr == nil && id != args[1] {
+				out, err = post(id)
+			} else if nerr != nil {
+				err = nerr
+			}
+		}
+	}
+	if err != nil {
+		return shellError(stderr, debug, err)
+	}
+	_, _ = fmt.Fprintln(stdout, strings.TrimSpace(string(out)))
+	return 0
+}
+
+// archiveCount counts the messages in an export archive (0 if unreadable).
+func archiveCount(archive []byte) int {
+	zr, err := gzip.NewReader(bytes.NewReader(archive))
+	if err != nil {
+		return 0
+	}
+	var doc struct {
+		Items []json.RawMessage `json:"items"`
+	}
+	if json.NewDecoder(zr).Decode(&doc) != nil {
+		return 0
+	}
+	return len(doc.Items)
 }

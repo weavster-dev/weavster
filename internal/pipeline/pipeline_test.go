@@ -289,3 +289,20 @@ func TestProcessWithMetadataAndRemove(t *testing.T) {
 		t.Errorf("Remove of a missing message = %v, want state.ErrNotFound", err)
 	}
 }
+
+func TestHold(t *testing.T) {
+	p := New(state.NewMemStore(), nil, nil, Options{})
+	release, ok := p.Hold("m")
+	if !ok {
+		t.Fatal("first hold refused")
+	}
+	if _, again := p.Hold("m"); again {
+		t.Error("second hold of a held id granted")
+	}
+	release()
+	if release2, ok := p.Hold("m"); !ok {
+		t.Error("hold after release refused")
+	} else {
+		release2()
+	}
+}

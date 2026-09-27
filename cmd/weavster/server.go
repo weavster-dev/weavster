@@ -1726,7 +1726,8 @@ type messageAdapter struct {
 	ingest ingestAdapter
 }
 
-func (m messageAdapter) Search(ctx context.Context, q gateway.MessageQuery) ([]gateway.Message, error) {
+// toStateQuery maps an API search onto the store's query.
+func toStateQuery(q gateway.MessageQuery) state.Query {
 	sort := "-received_at"
 	switch q.Sort {
 	case "receivedAt":
@@ -1734,10 +1735,55 @@ func (m messageAdapter) Search(ctx context.Context, q gateway.MessageQuery) ([]g
 	case "id", "-id":
 		sort = q.Sort
 	}
-	msgs, err := m.store.Search(ctx, state.Query{
+	return state.Query{
 		FlowID: q.FlowID, Status: state.Status(q.Status), From: q.From, To: q.To,
 		Limit: q.Limit, Offset: q.Offset, Sort: sort,
+	}
+}
+
+// Export writes an archive of the messages matching q.
+func (m messageAdapter) Export(ctx context.Context, q gateway.MessageQuery, key []byte) ([]byte, int, error) {
+	return state.ExportArchive(ctx, m.store, state.ExportOptions{Query: toStateQuery(q), Key: key})
+}
+
+// Import restores an archive. Every flow its messages will belong to must
+// exist (checked before anything is written), and each message is written
+// while the pipeline holds its id, so it never replaces one being processed.
+func (m messageAdapter) Import(ctx context.Context, archive []byte, opts gateway.MessageImport) (gateway.MessageImportResult, error) {
+	if opts.FlowID != "" { // checked even when the archive is empty
+		if _, err := m.ingest.flows.Get(ctx, opts.FlowID); errors.Is(err, gateway.ErrFlowNotFound) {
+			return gateway.MessageImportResult{}, fmt.Errorf("%w: flowId %s", gateway.ErrFlowNotFound, opts.FlowID)
+		} else if err != nil {
+			return gateway.MessageImportResult{}, err
+		}
+	}
+	res, err := state.ImportArchive(ctx, m.store, archive, state.ImportOptions{
+		FlowID: opts.FlowID, Overwrite: opts.Overwrite, Key: opts.Key,
+		CheckFlow: func(flowID string) error {
+			if _, err := m.ingest.flows.Get(ctx, flowID); err != nil {
+				if errors.Is(err, gateway.ErrFlowNotFound) && opts.FlowID == "" {
+					return fmt.Errorf("%w: the archive has messages of flow %s, which does not exist here; import with flowId", gateway.ErrFlowNotFound, flowID)
+				}
+				if errors.Is(err, gateway.ErrFlowNotFound) {
+					return fmt.Errorf("%w: flowId %s", gateway.ErrFlowNotFound, flowID)
+				}
+				return err
+			}
+			return nil
+		},
+		Hold: m.pipe.Hold,
 	})
+	switch {
+	case errors.Is(err, state.ErrBadArchive):
+		err = fmt.Errorf("%w: %w", gateway.ErrInvalidArchive, err)
+	case errors.Is(err, state.ErrImportIncomplete):
+		err = fmt.Errorf("%w: %w", gateway.ErrMessageImportIncomplete, err)
+	}
+	return gateway.MessageImportResult{Imported: res.Imported, Skipped: res.Skipped, Busy: res.Busy}, err
+}
+
+func (m messageAdapter) Search(ctx context.Context, q gateway.MessageQuery) ([]gateway.Message, error) {
+	msgs, err := m.store.Search(ctx, toStateQuery(q))
 	if err != nil {
 		return nil, err
 	}

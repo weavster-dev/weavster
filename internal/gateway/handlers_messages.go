@@ -1,7 +1,10 @@
 package gateway
 
 import (
+	"encoding/base64"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -19,9 +22,27 @@ func (s *Server) handleMessagesSearch(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusServiceUnavailable, "messages unavailable")
 		return
 	}
+	q, ok := messageQuery(w, r, maxMessageLimit)
+	if !ok {
+		return
+	}
+	msgs, err := s.cfg.Messages.Search(r.Context(), q)
+	if err != nil {
+		writeBackendError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, msgs)
+}
+
+// messageQuery reads the search parameters (limit up to maxLimit); on a bad
+// value it answers 400 and returns false.
+func messageQuery(w http.ResponseWriter, r *http.Request, maxLimit int) (MessageQuery, bool) {
 	v := r.URL.Query()
 	q := MessageQuery{Status: v.Get("status"), FlowID: v.Get("flowId"), Limit: defaultMessageLimit, Sort: "-receivedAt"}
-	bad := func(msg string) { writeStatusError(w, http.StatusBadRequest, msg) }
+	bad := func(msg string) (MessageQuery, bool) {
+		writeStatusError(w, http.StatusBadRequest, msg)
+		return q, false
+	}
 	for _, p := range []struct {
 		name string
 		t    *time.Time
@@ -30,25 +51,22 @@ func (s *Server) handleMessagesSearch(w http.ResponseWriter, r *http.Request) {
 			// An unencoded "+" in an offset arrives as a space.
 			parsed, err := time.Parse(time.RFC3339, strings.ReplaceAll(raw, " ", "+"))
 			if err != nil {
-				bad(p.name + " must be an RFC 3339 time, for example 2026-09-26T12:00:00Z")
-				return
+				return bad(p.name + " must be an RFC 3339 time, for example 2026-09-26T12:00:00Z")
 			}
 			*p.t = parsed
 		}
 	}
 	if raw := v.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
-		if err != nil || n < 1 || n > maxMessageLimit {
-			bad(fmt.Sprintf("limit must be between 1 and %d", maxMessageLimit))
-			return
+		if err != nil || n < 1 || n > maxLimit {
+			return bad(fmt.Sprintf("limit must be between 1 and %d", maxLimit))
 		}
 		q.Limit = n
 	}
 	if raw := v.Get("offset"); raw != "" {
 		n, err := strconv.Atoi(raw)
 		if err != nil || n < 0 {
-			bad("offset must be 0 or more")
-			return
+			return bad("offset must be 0 or more")
 		}
 		q.Offset = n
 	}
@@ -57,16 +75,107 @@ func (s *Server) handleMessagesSearch(w http.ResponseWriter, r *http.Request) {
 		case "receivedAt", "-receivedAt", "id", "-id":
 			q.Sort = raw
 		default:
-			bad("sort must be receivedAt, -receivedAt, id, or -id")
-			return
+			return bad("sort must be receivedAt, -receivedAt, id, or -id")
 		}
 	}
-	msgs, err := s.cfg.Messages.Search(r.Context(), q)
+	return q, true
+}
+
+// Archive limits and header.
+const (
+	maxExportLimit   = 10000
+	maxArchiveBytes  = 100 << 20
+	archiveKeyHeader = "Weavster-Archive-Key"
+)
+
+// archiveKey reads the optional encryption key: base64 of 32 bytes. On a
+// bad value it answers 400 and returns false.
+func archiveKey(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	raw := r.Header.Get(archiveKeyHeader)
+	if raw == "" {
+		return nil, true
+	}
+	key, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil || len(key) != 32 {
+		writeStatusError(w, http.StatusBadRequest, archiveKeyHeader+" must be base64 of 32 bytes (openssl rand -base64 32)")
+		return nil, false
+	}
+	return key, true
+}
+
+func (s *Server) handleMessagesExport(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Messages == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "messages unavailable")
+		return
+	}
+	q, ok := messageQuery(w, r, maxExportLimit)
+	if !ok {
+		return
+	}
+	if r.URL.Query().Get("limit") == "" {
+		q.Limit = maxExportLimit // an export takes as many as one archive holds
+	}
+	key, ok := archiveKey(w, r)
+	if !ok {
+		return
+	}
+	archive, count, err := s.cfg.Messages.Export(r.Context(), q, key)
 	if err != nil {
 		writeBackendError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, msgs)
+	if key != nil {
+		w.Header().Set("Content-Type", "application/octet-stream") // encrypted
+		w.Header().Set("Content-Disposition", `attachment; filename="messages.json.gz.enc"`)
+	} else {
+		w.Header().Set("Content-Type", "application/gzip")
+		w.Header().Set("Content-Disposition", `attachment; filename="messages.json.gz"`)
+	}
+	w.Header().Set("Weavster-Message-Count", strconv.Itoa(count))
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(archive)
+}
+
+func (s *Server) handleMessagesImport(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Messages == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "messages unavailable")
+		return
+	}
+	opts := MessageImport{FlowID: r.URL.Query().Get("flowId")}
+	if v := r.URL.Query().Get("overwrite"); v != "" {
+		var err error
+		if opts.Overwrite, err = strconv.ParseBool(v); err != nil {
+			writeStatusError(w, http.StatusBadRequest, "overwrite must be true or false")
+			return
+		}
+	}
+	var ok bool
+	if opts.Key, ok = archiveKey(w, r); !ok {
+		return
+	}
+	archive, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxArchiveBytes))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeStatusError(w, http.StatusRequestEntityTooLarge, "archive larger than 100 MiB")
+			return
+		}
+		writeStatusError(w, http.StatusBadRequest, "could not read the archive")
+		return
+	}
+	res, err := s.cfg.Messages.Import(r.Context(), archive, opts)
+	switch {
+	case errors.Is(err, ErrMessageImportIncomplete):
+		writeErrorWith(w, http.StatusInternalServerError, "IMPORT_INCOMPLETE", "message import stopped part-way; imported, skipped, and busy count what was done", map[string]any{
+			"imported": res.Imported, "skipped": res.Skipped, "busy": res.Busy,
+		})
+	case errors.Is(err, ErrFlowNotFound):
+		writeStatusError(w, http.StatusNotFound, err.Error()) // names the flow
+	case err != nil:
+		writeFlowError(w, err)
+	default:
+		writeJSON(w, http.StatusOK, res)
+	}
 }
 
 func (s *Server) handleMessageGet(w http.ResponseWriter, r *http.Request) {

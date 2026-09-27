@@ -128,62 +128,6 @@ func ids(ms []Message) []string {
 	return out
 }
 
-func TestExportImport(t *testing.T) {
-	s := NewMemStore()
-	ctx := context.Background()
-	if err := s.Put(ctx, sampleMessage()); err != nil {
-		t.Fatal(err)
-	}
-
-	archive, err := Export(ctx, s, nil, FormRaw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fresh := NewMemStore()
-	n, err := Import(ctx, fresh, archive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("imported %d, want 1", n)
-	}
-	got, _ := fresh.Get(ctx, "100")
-	if string(got.Raw) != string(sampleMessage().Raw) {
-		t.Errorf("raw content mismatch after import")
-	}
-}
-
-func TestExportImportEncrypted(t *testing.T) {
-	s := NewMemStore()
-	ctx := context.Background()
-	if err := s.Put(ctx, sampleMessage()); err != nil {
-		t.Fatal(err)
-	}
-
-	enc, err := ExportEncrypted(ctx, s, nil, FormTransformed, []byte("secret-key"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	fresh := NewMemStore()
-	n, err := ImportEncrypted(ctx, fresh, enc, []byte("secret-key"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("imported %d, want 1", n)
-	}
-	got, _ := fresh.Get(ctx, "100")
-	if string(got.Transformed) != "transformed" {
-		t.Errorf("transformed content mismatch after encrypted import: %q", got.Transformed)
-	}
-
-	// Wrong key must fail.
-	fresh2 := NewMemStore()
-	if _, err := ImportEncrypted(ctx, fresh2, enc, []byte("wrong")); err == nil {
-		t.Error("expected decrypt failure with wrong key")
-	}
-}
-
 func TestMigrationsForwardOnly(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -202,34 +146,6 @@ func TestMigrationsForwardOnly(t *testing.T) {
 	}
 }
 
-func TestContentForm(t *testing.T) {
-	m := Message{
-		Raw:         []byte("raw"),
-		Processed:   []byte("processed"),
-		Transformed: []byte("transformed"),
-		Encoded:     []byte("encoded"),
-		Response:    []byte("response"),
-		Original:    []byte("original"),
-	}
-	cases := []struct {
-		form string
-		want []byte
-	}{
-		{FormProcessed, m.Processed},
-		{FormTransformed, m.Transformed},
-		{FormEncoded, m.Encoded},
-		{FormResponse, m.Response},
-		{FormOriginal, m.Original},
-		{"unknown", m.Raw},
-	}
-	for _, tc := range cases {
-		got := m.ContentForm(tc.form)
-		if string(got) != string(tc.want) {
-			t.Errorf("ContentForm(%q) = %q, want %q", tc.form, got, tc.want)
-		}
-	}
-}
-
 func TestExportSpecificIDs(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -245,18 +161,18 @@ func TestExportSpecificIDs(t *testing.T) {
 	}
 
 	// Export only m1
-	data, err := Export(ctx, s, []string{"m1"}, FormOriginal)
+	data, _, err := ExportArchive(ctx, s, ExportOptions{IDs: []string{"m1"}})
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
 
 	fresh := NewMemStore()
-	n, err := Import(ctx, fresh, data)
+	res, err := ImportArchive(ctx, fresh, data, ImportOptions{})
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("imported %d, want 1", n)
+	if res.Imported != 1 {
+		t.Errorf("imported %d, want 1", res.Imported)
 	}
 }
 

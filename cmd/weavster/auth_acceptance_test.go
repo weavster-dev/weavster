@@ -56,6 +56,8 @@ var protectedRoutes = []struct {
 	{http.MethodGet, "/api/v1/messages/m1/content", "messages:content"},
 	{http.MethodDelete, "/api/v1/messages/m1", "messages:delete"},
 	{http.MethodPost, "/api/v1/messages/m1/reprocess", "messages:send"},
+	{http.MethodGet, "/api/v1/messages/export", "messages:content"},
+	{http.MethodPost, "/api/v1/messages/import", "messages:import"},
 }
 
 type apiClient struct {
@@ -182,7 +184,8 @@ func TestPermissionMatrix(t *testing.T) {
 	// usernames cannot contain a colon.
 	users := map[string][]string{"none": nil, "flows-view": {auth.PermFlowsView}, "flows-edit": {auth.PermFlowsEdit},
 		"messages-view": {auth.PermMessagesView}, "messages-content": {auth.PermMessagesContent},
-		"messages-delete": {auth.PermMessagesDelete}, "messages-send": {auth.PermMessagesSend}}
+		"messages-delete": {auth.PermMessagesDelete}, "messages-send": {auth.PermMessagesSend},
+		"messages-import": {auth.PermMessagesImport}}
 	for name, perms := range users {
 		if err := provider.CreateUser(context.Background(), auth.User{Username: name, PasswordHash: "pw", Permissions: perms}); err != nil {
 			t.Fatal(err)
