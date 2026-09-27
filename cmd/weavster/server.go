@@ -1680,7 +1680,7 @@ func toGatewayStats(s observability.FlowStats) gateway.FlowStats {
 type eventsAdapter struct{ log *observability.EventLog }
 
 func eventFilter(q gateway.EventQuery) observability.EventFilter {
-	return observability.EventFilter{Type: q.Type, Flow: q.FlowID, Since: q.From, Until: q.To, AfterID: q.AfterID, Limit: q.Limit}
+	return observability.EventFilter{Type: q.Type, Flow: q.FlowID, Since: q.From, Until: q.To, AfterID: q.AfterID, Cursor: q.Cursor, Limit: q.Limit}
 }
 
 func toGatewayEvent(e observability.Event) gateway.Event {

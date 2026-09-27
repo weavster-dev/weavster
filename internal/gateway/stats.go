@@ -51,6 +51,7 @@ type EventQuery struct {
 	FlowID   string
 	From, To time.Time // at or after / at or before; zero = open
 	AfterID  int64     // only events with a larger id
+	Cursor   bool      // afterId was given (even 0): the limit keeps the oldest
 	Limit    int       // newest N matches; 0 = all
 }
 
@@ -167,7 +168,7 @@ func eventQuery(w http.ResponseWriter, r *http.Request, withLimit bool) (EventQu
 		if err != nil || n < 0 {
 			return bad("afterId must be a whole number from 0 to 9223372036854775807")
 		}
-		q.AfterID = n
+		q.AfterID, q.Cursor = n, true
 	}
 	if withLimit {
 		q.Limit = DefaultEventLimit

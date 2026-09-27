@@ -72,7 +72,7 @@ func TestEventLogCursorAndRing(t *testing.T) {
 	for i := 0; i < MaxEvents+5; i++ {
 		l.Add("e", "", "", nil)
 	}
-	got := l.Search(EventFilter{AfterID: 100, Limit: 3})
+	got := l.Search(EventFilter{AfterID: 100, Cursor: true, Limit: 3})
 	if len(got) != 3 || got[0].ID != 101 || got[2].ID != 103 {
 		t.Errorf("cursor page = %v", got)
 	}
@@ -89,5 +89,17 @@ func TestEventLogCursorAndRing(t *testing.T) {
 	}
 	if l.Count(EventFilter{AfterID: int64(MaxEvents)}) != 5 {
 		t.Error("count after cursor")
+	}
+}
+
+// TestEventLogCursorFromZero: a poll that starts at 0 (max-id of an empty
+// log) gets the oldest events, not the newest.
+func TestEventLogCursorFromZero(t *testing.T) {
+	l := NewEventLog()
+	for i := 0; i < 5; i++ {
+		l.Add("e", "", "", nil)
+	}
+	if got := l.Search(EventFilter{Cursor: true, Limit: 2}); got[0].ID != 1 || got[1].ID != 2 {
+		t.Errorf("from 0 = %v", got)
 	}
 }

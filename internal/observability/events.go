@@ -23,8 +23,11 @@ type EventFilter struct {
 	Since   time.Time // at or after; zero = open
 	Until   time.Time // at or before; zero = open
 	AfterID int64     // only ids above this (polling for new events)
-	// Limit keeps N matches, 0 = all: the newest N, or with AfterID the
-	// oldest N after it, so polling from a cursor never skips events.
+	// Cursor marks a poll from AfterID (even 0): Limit then keeps the
+	// oldest N after it, so polling never skips events.
+	Cursor bool
+	// Limit keeps N matches, 0 = all: the newest N, or the oldest N with
+	// Cursor.
 	Limit int
 }
 
@@ -81,7 +84,7 @@ func (l *EventLog) Search(f EventFilter) []Event {
 		}
 	}
 	if f.Limit > 0 && len(out) > f.Limit {
-		if f.AfterID > 0 {
+		if f.Cursor {
 			return out[:f.Limit] // the oldest Limit after the cursor
 		}
 		out = out[len(out)-f.Limit:] // the newest Limit, oldest first

@@ -77,7 +77,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | `http` and `file` destinations | Implemented (wired) | `TestPipelineEndToEnd` |
 | Other sources and destinations (file/HTTP/TCP-MLLP listeners, database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Flows do not listen on their own ports or poll anything. |
 | Per-flow and per-destination statistics (`GET /api/v1/flows/{id}/stats`) | Implemented (wired) | `TestStatsEventsTopology`. In memory; reset, dump, and time series are not available. |
-| Event log (`GET /api/v1/events`, `type`/`flowId`/`limit`) with processing events | Implemented (wired) | `TestStatsEventsTopology`. In memory, newest 10,000; no count, export, or max-ID operations. |
+| Event log with processing events (`GET /api/v1/events`) | Implemented (wired) | `TestStatsEventsTopology`. In memory, newest 10,000. Filters, get, count, max id, and export: see the Events row above. |
 | Topology flow-node `activity` from real counters, zeros included | Implemented (wired) | `TestStatsEventsTopology`. Edge activity is not reported. |
 | YAML DSL `map`, `set`, `filter` steps | Implemented (wired) | `TestPipelineEndToEnd`. `build` and `destinationSet` are not supported. |
 | WASM executor (wazero), module registry | Library-only | Not used by the server. The executor has no WASI host. |
