@@ -235,6 +235,9 @@ func (s *Server) Router() http.Handler {
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
+	if wantsXML(w) && writeXML(w, status, v) {
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(v)
