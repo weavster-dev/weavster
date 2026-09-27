@@ -124,6 +124,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#deploy-import-and-export-spec-forms" class="nav-link">Deploy, import, and export (spec forms)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#other-commands" class="nav-link">Other commands</a>
               <ul class="nav flex-column">
               </ul>
@@ -201,8 +205,10 @@ leaving. <code>quit</code>, <code>exit</code>, or end of input (Ctrl-D) ends it 
 1 MiB, or a read error, ends it with exit code <code>2</code>. It accepts the same
 commands as batch mode.</p>
 <h2 id="batch-mode">Batch mode</h2>
-<p>Commands are split on spaces: arguments (such as file names) cannot contain spaces, and there is
-no quoting. File names are relative to the directory you run <code>weavster</code> from.</p>
+<p>Commands are split on spaces. Put an argument that contains spaces in double quotes, and write
+<code>\"</code> and <code>\\</code> for a quote or backslash inside them: <code>flow rename adt "ADT \"Inbound\""</code>. A
+missing closing quote is an error. File names are relative to the directory you run <code>weavster</code>
+from.</p>
 <p>Every command in the script runs, even after an error. The client exits <code>0</code> when every command
 succeeded and <code>2</code> when any command failed: an unknown command, a usage error, a file that cannot
 be read, a server that cannot be reached, or an error reply from the server. Server errors are
@@ -277,7 +283,7 @@ flow list
 <td><code>POST /api/v1/flows/import</code></td>
 </tr>
 <tr>
-<td><code>flow deploy\|undeploy\|start\|stop\|pause\|halt\|resume &lt;id&gt;</code></td>
+<td><code>flow deploy &lt;id&gt;</code>, and likewise <code>undeploy</code>, <code>start</code>, <code>stop</code>, <code>pause</code>, <code>halt</code>, <code>resume</code></td>
 <td>Changes the flow's <a href="../flow-lifecycle/">lifecycle</a> status.</td>
 <td><code>POST /api/v1/flows/{id}/{action}</code></td>
 </tr>
@@ -302,16 +308,50 @@ flow list
 <td><code>GET /api/v1/flows/ports-in-use</code></td>
 </tr>
 <tr>
+<td><code>flow stats [&lt;id&gt;]</code></td>
+<td>Statistics of one flow, or of every flow: <code>id  received=… filtered=… transformed=… sent=… errored=… queued=…</code>.</td>
+<td><code>GET /api/v1/flows/{id}/stats</code></td>
+</tr>
+<tr>
 <td><code>flow help</code></td>
 <td>Lists the flow commands.</td>
 <td>—</td>
 </tr>
 </tbody>
 </table>
-<p><code>export</code>, <code>import</code>, <code>redeploy-all</code>, <code>connector-names</code>, and <code>ports-in-use</code> are not flow ids; using
-one as <code>&lt;id&gt;</code> is an error.</p>
+<p>Wherever a command takes <code>&lt;id&gt;</code>, you can also give the flow's name (spec: <code>id|name</code>). The client
+first uses the argument as an id. Only if the server reports that flow missing does it look the
+argument up by name (this needs the <code>flows:view</code> permission) and run the command again. An unknown
+name, or a name several flows share, is an error that lists their ids.</p>
 <p>Commands that change a flow print the server's reply (the flow, or the import/update result).
 <code>flow export</code> and <code>flow import</code> use the <a href="../flow-export-import/">export document</a> format.</p>
+<h2 id="deploy-import-and-export-spec-forms">Deploy, import, and export (spec forms)</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>deploy [timeout]</code></td>
+<td>Deploys every flow that is <code>enabled</code> and <code>undeployed</code> (dependencies first, as <code>flow deploy</code> does); disabled flows are skipped, as at server start. Prints <code>deployed &lt;id&gt;</code> for each and <code>deployed N flows</code>. After <code>timeout</code> seconds no further flow is started (a deploy already sent finishes) and the command exits <code>2</code>. A flow that fails is reported, the others still deploy, and the command exits <code>2</code>.</td>
+</tr>
+<tr>
+<td><code>import "path" [force]</code></td>
+<td>Same as <code>flow import</code>; <code>force</code> replaces existing flows.</td>
+</tr>
+<tr>
+<td><code>export &lt;id&gt; "path"</code>, <code>export "name" "path"</code>, <code>export * "path"</code></td>
+<td>Same as <code>flow export</code>: one flow (by id or name) and its dependencies, or <code>*</code> for all flows.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-text">deploy 60
+export * &quot;backups/all flows.json&quot;
+import &quot;backups/all flows.json&quot; force
+</code></pre>
 <h2 id="other-commands">Other commands</h2>
 <table>
 <thead>

@@ -482,7 +482,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>weavster -s script.txt</code> batch mode</td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixCLI/batch-*</code>, <code>TestFlowCLI</code>. Commands: <code>help</code>, <code>status</code>, <code>version</code>, <code>flow</code> (list, get, create, update, update-all, rename, enable, disable, remove, export, import, lifecycle actions, redeploy-all, start/stop-destination, connectors, ports), <code>user list</code>, <code>quit</code>/<code>exit</code>. <code>user list</code> always prints nothing. Exits <code>2</code> if any line fails (unknown command, usage error, unreadable file, unreachable server, or an error reply). See <a href="../cli/">Command-line client</a>.</td>
+<td><code>TestSupportMatrixCLI/batch-*</code>, <code>TestFlowCLI</code>. Commands: <code>help</code>, <code>status</code>, <code>version</code>, <code>flow</code> (list, get, create, update, update-all, rename, enable, disable, remove, export, import, lifecycle actions, redeploy-all, start/stop-destination, connectors, ports, stats; flows by id or name), <code>deploy [timeout]</code>, <code>import "path" [force]</code>, <code>export &lt;id or name or *&gt; "path"</code>; double-quoted arguments, <code>user list</code>, <code>quit</code>/<code>exit</code>. <code>user list</code> always prints nothing. Exits <code>2</code> if any line fails (unknown command, usage error, unreadable file, unreachable server, or an error reply). See <a href="../cli/">Command-line client</a>.</td>
 </tr>
 <tr>
 <td><code>-a address</code></td>
