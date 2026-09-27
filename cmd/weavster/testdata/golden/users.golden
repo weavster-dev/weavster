@@ -1,0 +1,19 @@
+# users
+user add ops Ops-Passw0rd flows:view
+user list
+user changepw ops New-Passw0rd-1
+user add ops Ops-Passw0rd
+user remove ops
+user remove ops
+user
+--- stdout
+added ops (must change the password at first login)
+admin	admin
+ops	flows:view	must change password
+password set for ops (must change it at next login)
+removed ops
+--- stderr
+Error: server returned 409 Conflict: user already exists
+Error: server returned 404 Not Found: user not found
+Error: usage: user list | user add <name> <password> [permission...] | user remove <name> | user changepw <name> <password>
+--- exit 2

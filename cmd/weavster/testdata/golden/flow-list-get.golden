@@ -1,0 +1,12 @@
+# flow-list-get
+flow list
+flow get adt
+flow get "ADT Inbound"
+flow get nope
+--- stdout
+adt	undeployed	ADT Inbound
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"undeployed","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"undeployed","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+--- stderr
+Error: no flow with id or name "nope"
+--- exit 2

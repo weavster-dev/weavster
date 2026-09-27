@@ -1,0 +1,20 @@
+# flow-export-import
+flow export $DIR/flows.json adt
+flow import $DIR/flows.json
+flow import $DIR/flows.json --overwrite
+export adt "$DIR/one.json"
+export * "$DIR/all-flows.json"
+import "$DIR/one.json"
+import "$DIR/one.json" force
+import "$DIR/none.json"
+--- stdout
+exported to $DIR/flows.json
+{"created":[],"updated":["adt"]}
+exported to $DIR/one.json
+exported to $DIR/all-flows.json
+{"created":[],"updated":["adt"]}
+--- stderr
+Error: server returned 409 Conflict: flows already exist: adt (use overwrite=true to replace them)
+Error: server returned 409 Conflict: flows already exist: adt (use overwrite=true to replace them)
+Error: open $DIR/none.json: no such file or directory
+--- exit 2
