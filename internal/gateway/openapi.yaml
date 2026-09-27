@@ -387,6 +387,88 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{<flow id>: statistics}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: lifetime is not true or false, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/git:
+    get:
+      summary: "The server's Git repository of configuration: path, branch, head commit (requires git:view)"
+      description: Answers 503 unless the server configuration sets git.path.
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: Repository information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: {type: string}
+                  branch: {type: string}
+                  head: {type: string, description: "Commit hash; empty before the first commit"}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+  /api/v1/git/commit:
+    post:
+      summary: "Commit the live configuration (not the config map) to the repository as the signed-in user (requires git:commit)"
+      description: >
+        Writes one config-as-code document per artifact at <section>/<name>.yaml (flows, alerts,
+        snippets, snippetLibraries, scripts, settings), removes the files of artifacts that no
+        longer exist, and commits when anything changed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              additionalProperties: false
+              properties:
+                message: {type: string, minLength: 1}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: "committed is false when the repository already matched (no new commit)"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  committed: {type: boolean}
+                  head: {type: string}
+                  changed: {type: array, items: {type: string}, description: "Files added, updated, or removed"}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "400": {description: Missing message or a bad body, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/git/log:
+    get:
+      summary: "Commits, newest first; with path only those that changed that file (requires git:view)"
+      parameters:
+        - {name: path, in: query, schema: {type: string}, description: "A repository file, for example flows/adt.yaml"}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 100}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: The commits
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    hash: {type: string}
+                    message: {type: string}
+                    author: {type: string}
+                    at: {type: string, format: date-time}
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+        "400": {description: A limit outside 1-1000, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/git/content:
+    get:
+      summary: "A repository file as it was at a revision (requires git:view)"
+      parameters:
+        - {name: path, in: query, required: true, schema: {type: string}}
+        - {name: rev, in: query, schema: {type: string, default: HEAD}, description: "Any revision Git understands: a hash, a short hash, HEAD~1, a branch"}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: The file, content: {application/yaml: {schema: {type: string}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: Missing path, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown revision, or no such file at it", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/stats/series:
     get:
       summary: "Sampled lifetime statistics of every flow (or one), oldest first (requires flows:view)"

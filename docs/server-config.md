@@ -141,6 +141,17 @@ stats:
   retentionHours: 48
 ```
 
+### `git`
+
+| Key | Default | Description |
+|---|---|---|
+| `path` | `""` | Directory of the server's [Git repository](git.md) of configuration. It is created, with an empty repository on branch `main`, when missing; an existing repository is used as it is. Empty turns the Git endpoints off (they answer `503`). |
+
+```yaml
+git:
+  path: /var/lib/weavster/config-repo
+```
+
 ### `paths`
 
 | Key | Default | Description |

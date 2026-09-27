@@ -1,6 +1,7 @@
 package gitstore
 
 import (
+	"errors"
 	"time"
 
 	git "github.com/go-git/go-git/v5"
@@ -40,9 +41,10 @@ func (s *Store) History(path string) ([]Revision, error) {
 	return revisions(iter)
 }
 
-// ContentAtRevision returns the content of path at the given revision.
+// ContentAtRevision returns the content of path at the given revision (any
+// revision Git understands); ErrNotFound when either does not exist.
 func (s *Store) ContentAtRevision(path, rev string) ([]byte, error) {
-	c, err := s.repo.CommitObject(plumbing.NewHash(rev))
+	c, err := s.resolve(rev)
 	if err != nil {
 		return nil, err
 	}
@@ -51,6 +53,9 @@ func (s *Store) ContentAtRevision(path, rev string) ([]byte, error) {
 		return nil, err
 	}
 	f, err := tree.File(path)
+	if errors.Is(err, object.ErrFileNotFound) {
+		return nil, ErrNotFound
+	}
 	if err != nil {
 		return nil, err
 	}

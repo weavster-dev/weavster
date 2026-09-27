@@ -183,6 +183,10 @@ func (s *Server) Router() http.Handler {
 				s.require("scripts", "edit"), s.require("settings", "edit"),
 				s.requireWhen(func(r *http.Request) bool { return !queryTrue("nodeploy")(r) }, "flows", "deploy"),
 				s.requireWhen(queryTrue("overwriteConfigMap"), "configmap", "edit")).Post("/config/import", s.handleConfigImport)
+			r.With(s.require("git", "view")).Get("/git", s.handleGitInfo)
+			r.With(s.require("git", "view")).Get("/git/log", s.handleGitLog)
+			r.With(s.require("git", "view")).Get("/git/content", s.handleGitContent)
+			r.With(s.require("git", "commit")).Post("/git/commit", s.handleGitCommit)
 			lookupsView, lookupsEdit := s.require("lookups", "view"), s.require("lookups", "edit")
 			r.With(lookupsView).Get("/lookups", s.handleLookupGroups)
 			r.With(lookupsView).Get("/lookups/{group}", s.handleLookupMatching)

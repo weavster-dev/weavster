@@ -21,6 +21,8 @@ const (
 	PermSettingsEdit    = "settings:edit"
 	PermLookupsView     = "lookups:view"
 	PermLookupsEdit     = "lookups:edit"
+	PermGitView         = "git:view"
+	PermGitCommit       = "git:commit"
 )
 
 // PermUsersAdmin allows user administration.
@@ -32,7 +34,7 @@ func KnownPermissions() []string {
 		PermAdmin, PermUsersAdmin, PermFlowsView, PermFlowsEdit, PermFlowsDeploy,
 		PermMessagesView, PermMessagesSend, PermMessagesContent, PermMessagesDelete, PermMessagesImport,
 		PermEventsView, PermAlertsEdit, PermSnippetsEdit, PermScriptsEdit, PermConfigMapEdit, PermSettingsEdit,
-		PermLookupsView, PermLookupsEdit,
+		PermLookupsView, PermLookupsEdit, PermGitView, PermGitCommit,
 	}
 }
 

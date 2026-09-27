@@ -45,7 +45,9 @@ func TestOpenAPIContract(t *testing.T) {
 	// Every operation runs on its documented /api/v1 path and on the
 	// unversioned alias (spec §5), each against a fresh server.
 	for _, prefix := range []string{"/api/v1/", "/api/"} {
-		c := startComposed(t, serverconfig.Default(), io.Discard)
+		cfg := serverconfig.Default()
+		cfg.Git.Path = t.TempDir() // the Git operations answer 503 without a repository
+		c := startComposed(t, cfg, io.Discard)
 		admin := basic(bootstrapAdmin, testAdminPassword)
 		if code, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"f","destinations":[{"name":"d","type":"file","dir":"`+t.TempDir()+`"}]}`, admin); code != http.StatusCreated {
 			t.Fatalf("create: %d %q", code, body)

@@ -301,6 +301,9 @@ type Config struct {
 	FlowUpdates FlowUpdater
 	Transfer    FlowTransfer
 	Stats       StatsProvider
+	// Git is the server's configuration repository; nil when not
+	// configured.
+	Git GitRepository
 	// StatsHistory reads the sampled statistics time series.
 	StatsHistory StatsHistory
 	Events       EventSearcher
