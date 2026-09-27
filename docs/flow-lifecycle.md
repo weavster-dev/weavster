@@ -59,6 +59,31 @@ response lists the redeployed flows. If it fails part-way, it returns
 `500 {"error":{"code":"REDEPLOY_INCOMPLETE",…},"redeployed":[…]}`, listing the flows already
 redeployed. The rest keep their status.
 
+## Act on all flows at once
+
+`POST /api/v1/flows/{action}-all` runs one action on every flow it applies to (permission
+`flows:deploy`). The actions are `deploy`, `undeploy`, `start`, `stop`, `pause`, `halt`, and `resume`:
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/start-all
+```
+
+```json
+{"changed":["adt","orm"],"skipped":[{"id":"legacy","reason":"invalid lifecycle transition: cannot start a flow that is undeployed"}]}
+```
+
+- Flows are handled in dependency order: dependencies first for `deploy`, `start`, and `resume`;
+  dependents first for the others.
+- A flow the action does not apply to (for example `start` on an `undeployed` flow) is listed in
+  `skipped` with the reason; the others still change.
+- `deploy-all` skips disabled flows (`"reason":"disabled"`), as automatic deployment at startup
+  does. An enabled flow's deploy still deploys its undeployed dependencies, disabled or not, as a
+  single `deploy` does; such a dependency is then listed in `changed`.
+- `changed` lists every flow whose status the call changed.
+- If the store fails part-way, the reply is
+  `500 {"error":{"code":"TRANSITION_INCOMPLETE",…},"changed":[…],"skipped":[…]}`: the flow that
+  failed is skipped with reason `failed`, and the flows not reached with `not attempted`.
+
 ## What each status means for messages
 
 | Status | New messages (`POST /flows/{id}/messages`) | Queued retries |

@@ -98,7 +98,7 @@ check always sees the flows it is written against.
 
 ## Reserved ids
 
-`export`, `import`, `redeploy-all`, `connector-names`, and `ports-in-use` cannot be used as flow ids, because they name these
+`export`, `import`, `redeploy-all`, `connector-names`, `ports-in-use`, `stats`, and `deploy-all`, `undeploy-all`, `start-all`, `stop-all`, `pause-all`, `halt-all`, `resume-all` cannot be used as flow ids, because they name these
 endpoints. A flow created with one of these ids before this rule existed can still be deleted
 (`DELETE /api/v1/flows/export`). To keep it, export all flows, change its id in the file,
 delete it, and import the file.

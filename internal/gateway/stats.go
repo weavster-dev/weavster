@@ -28,6 +28,11 @@ type FlowStats struct {
 // StatsProvider reports flow statistics.
 type StatsProvider interface {
 	FlowStats(ctx context.Context, flowID string, lifetime bool) (FlowStats, error)
+	// AllFlowStats returns every flow's statistics by flow id.
+	AllFlowStats(ctx context.Context, lifetime bool) (map[string]FlowStats, error)
+	// ResetStats clears a flow's (all flows' when flowID is empty) current
+	// statistics, and with lifetime its lifetime totals too.
+	ResetStats(ctx context.Context, flowID string, lifetime bool) error
 }
 
 // Event is one entry of the event log.
@@ -62,13 +67,9 @@ func (s *Server) handleFlowStats(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusServiceUnavailable, "statistics unavailable")
 		return
 	}
-	lifetime := false
-	if v := r.URL.Query().Get("lifetime"); v != "" {
-		var err error
-		if lifetime, err = strconv.ParseBool(v); err != nil {
-			writeStatusError(w, http.StatusBadRequest, "lifetime must be true or false")
-			return
-		}
+	lifetime, ok := lifetimeParam(w, r)
+	if !ok {
+		return
 	}
 	st, err := s.cfg.Stats.FlowStats(r.Context(), r.PathValue("id"), lifetime)
 	if err != nil {
@@ -76,6 +77,56 @@ func (s *Server) handleFlowStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+// lifetimeParam reads the optional lifetime=true|false query parameter; on
+// a bad value it answers 400 and returns false.
+func lifetimeParam(w http.ResponseWriter, r *http.Request) (lifetime, ok bool) {
+	v := r.URL.Query().Get("lifetime")
+	if v == "" {
+		return false, true
+	}
+	lifetime, err := strconv.ParseBool(v)
+	if err != nil {
+		writeStatusError(w, http.StatusBadRequest, "lifetime must be true or false")
+		return false, false
+	}
+	return lifetime, true
+}
+
+func (s *Server) handleAllFlowStats(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Stats == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "statistics unavailable")
+		return
+	}
+	lifetime, ok := lifetimeParam(w, r)
+	if !ok {
+		return
+	}
+	all, err := s.cfg.Stats.AllFlowStats(r.Context(), lifetime)
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, all)
+}
+
+// handleResetStats clears one flow's statistics ({id} in the path) or every
+// flow's.
+func (s *Server) handleResetStats(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Stats == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "statistics unavailable")
+		return
+	}
+	lifetime, ok := lifetimeParam(w, r)
+	if !ok {
+		return
+	}
+	if err := s.cfg.Stats.ResetStats(r.Context(), r.PathValue("id"), lifetime); err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {

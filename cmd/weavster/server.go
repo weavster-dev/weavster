@@ -564,10 +564,25 @@ func (a flowAdapter) lock(id string, skipDrain bool) func() {
 // halt waits for the flow's in-flight messages; halt takes effect at once
 // (force-stop, D-30).
 func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway.Flow, error) {
+	return a.transition(ctx, id, action, nil, nil)
+}
+
+// errNotEligible is returned by transition when its check refuses the flow.
+var errNotEligible = errors.New("flow not eligible")
+
+// transition is Transition with an optional check of the flow, made under
+// the flow's lock before anything changes (errNotEligible when it fails),
+// and an optional changed callback, told (under the lock) of every flow
+// whose status this call changed: dependencies deployed along the way, then
+// the flow itself.
+func (a flowAdapter) transition(ctx context.Context, id, action string, check func(gateway.Flow) bool, changed func(id string)) (gateway.Flow, error) {
 	defer a.lock(id, action == flowlife.Halt)()
 	f, err := a.Get(ctx, id)
 	if err != nil {
 		return gateway.Flow{}, err
+	}
+	if check != nil && !check(f) {
+		return f, errNotEligible
 	}
 	next, err := flowlife.Next(f.Status, action)
 	if errors.Is(err, flowlife.ErrUnknownAction) {
@@ -580,11 +595,15 @@ func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway
 		// Spec §6.1: deploy also deploys the flow's undeployed dependencies
 		// (D-31). Locks are taken along dependency edges, which are acyclic,
 		// so this cannot deadlock.
-		if err := a.deployDependencies(ctx, f); err != nil {
+		if err := a.deployDependencies(ctx, f, changed); err != nil {
 			return gateway.Flow{}, err
 		}
 	}
-	return a.setStatus(ctx, f, next)
+	out, err := a.setStatus(ctx, f, next)
+	if err == nil && changed != nil {
+		changed(id)
+	}
+	return out, err
 }
 
 // deployDependencies deploys every undeployed flow f depends on, directly or
@@ -593,7 +612,7 @@ func (a flowAdapter) Transition(ctx context.Context, id, action string) (gateway
 // global (id-sorted) order, so concurrent deploys cannot deadlock. A missing
 // dependency is ErrDependency; on a store failure the dependencies deployed
 // so far stay deployed (visible via GET).
-func (a flowAdapter) deployDependencies(ctx context.Context, root gateway.Flow) error {
+func (a flowAdapter) deployDependencies(ctx context.Context, root gateway.Flow, deployed func(id string)) error {
 	closure := map[string]gateway.Flow{}
 	var collect func(f gateway.Flow) error
 	collect = func(f gateway.Flow) error {
@@ -634,6 +653,9 @@ func (a flowAdapter) deployDependencies(ctx context.Context, root gateway.Flow) 
 		if dep.Status == flowlife.Undeployed {
 			if _, err := a.setStatus(ctx, dep, flowlife.Deployed); err != nil {
 				return err
+			}
+			if deployed != nil {
+				deployed(id)
 			}
 		}
 	}
@@ -792,7 +814,7 @@ func (a flowAdapter) DeployEnabled(ctx context.Context, logger *slog.Logger) {
 				return "", nil
 			}
 			// Same as a manual deploy: undeployed dependencies are deployed.
-			if err := a.deployDependencies(ctx, current); err != nil {
+			if err := a.deployDependencies(ctx, current, nil); err != nil {
 				return "", err
 			}
 			status := initialStatus(current)
@@ -895,6 +917,76 @@ func checkBatch(flows []gateway.Flow) ([]string, error) {
 		}
 	}
 	return ids, nil
+}
+
+// TransitionAll applies action to every flow it applies to, in dependency
+// order: dependencies first for deploy, start, and resume; dependents first
+// otherwise. deploy skips disabled undeployed flows (checked under each
+// flow's lock, as at startup), but an enabled flow's deploy still deploys its
+// dependencies (D-31), disabled or not. Changed lists, in the order they
+// happened, the flows this call changed (recorded under their locks);
+// skipped lists every other flow with the reason. A store failure stops the
+// run (ErrTransitionIncomplete): the failed flow is skipped as "failed" and
+// the ones not reached as "not attempted".
+func (a flowAdapter) TransitionAll(ctx context.Context, action string) (gateway.TransitionAllResult, error) {
+	res := gateway.TransitionAllResult{Changed: []string{}, Skipped: []gateway.SkippedFlow{}}
+	all, err := a.withFlows(ctx)
+	if err != nil {
+		return res, err
+	}
+	ids := make([]string, 0, len(all))
+	for id := range all {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	order := dependencyOrder(all, ids)
+	switch action {
+	case flowlife.Deploy, flowlife.Start, flowlife.Resume:
+	default:
+		slices.Reverse(order)
+	}
+	var check func(gateway.Flow) bool
+	if action == flowlife.Deploy {
+		// Only undeployed flows would be deployed; others report why not.
+		check = func(f gateway.Flow) bool { return f.Enabled || f.Status != flowlife.Undeployed }
+	}
+	done := map[string]bool{}
+	record := func(id string) {
+		done[id] = true
+		res.Changed = append(res.Changed, id)
+	}
+	skipped := map[string]string{}
+	var runErr error
+	for i, id := range order {
+		if done[id] { // already deployed as a dependency in this call
+			continue
+		}
+		_, err := a.transition(ctx, id, action, check, record)
+		switch {
+		case err == nil:
+		case errors.Is(err, errNotEligible):
+			skipped[id] = "disabled"
+		case errors.Is(err, gateway.ErrUnknownAction):
+			return res, err
+		case errors.Is(err, gateway.ErrInvalidTransition), errors.Is(err, gateway.ErrDependency), errors.Is(err, gateway.ErrFlowNotFound):
+			skipped[id] = err.Error()
+		default:
+			runErr = fmt.Errorf("%w: flow %s: %w", gateway.ErrTransitionIncomplete, id, err)
+			skipped[id] = "failed" // no internal detail in the reply
+			for _, rest := range order[i+1:] {
+				skipped[rest] = "not attempted"
+			}
+		}
+		if runErr != nil {
+			break
+		}
+	}
+	for _, id := range order {
+		if reason, ok := skipped[id]; ok && !done[id] {
+			res.Skipped = append(res.Skipped, gateway.SkippedFlow{ID: id, Reason: reason})
+		}
+	}
+	return res, runErr
 }
 
 // RedeployAll undeploys and re-deploys every flow that is not undeployed;
@@ -1523,7 +1615,36 @@ func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime boo
 	if _, err := a.flows.Get(ctx, flowID); err != nil {
 		return gateway.FlowStats{}, err
 	}
-	s := a.stats.Snapshot(flowID, lifetime)
+	return toGatewayStats(a.stats.Snapshot(flowID, lifetime)), nil
+}
+
+// AllFlowStats returns the statistics of every flow.
+func (a statsAdapter) AllFlowStats(ctx context.Context, lifetime bool) (map[string]gateway.FlowStats, error) {
+	flows, err := a.flows.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+	all := a.stats.SnapshotAll(lifetime) // one instant for every flow
+	out := make(map[string]gateway.FlowStats, len(flows))
+	for _, f := range flows {
+		out[f.ID] = toGatewayStats(all[f.ID])
+	}
+	return out, nil
+}
+
+// ResetStats clears current statistics of one flow (all flows when flowID
+// is empty), and lifetime totals too when lifetime is set.
+func (a statsAdapter) ResetStats(ctx context.Context, flowID string, lifetime bool) error {
+	if flowID != "" {
+		if _, err := a.flows.Get(ctx, flowID); err != nil {
+			return err
+		}
+	}
+	a.stats.Clear(flowID, lifetime)
+	return nil
+}
+
+func toGatewayStats(s observability.FlowStats) gateway.FlowStats {
 	out := gateway.FlowStats{
 		Received: s.Received, Filtered: s.Filtered, Transformed: s.Transformed,
 		Sent: s.Sent, Errored: s.Errored, Queued: s.Queued,
@@ -1536,7 +1657,7 @@ func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime boo
 		t := s.LastMessageAt.UTC()
 		out.LastMessageAt = &t
 	}
-	return out, nil
+	return out
 }
 
 type eventsAdapter struct{ log *observability.EventLog }

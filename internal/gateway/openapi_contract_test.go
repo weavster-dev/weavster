@@ -11,6 +11,8 @@ import (
 
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
+
+	"github.com/weavster-dev/weavster/internal/flowdef"
 )
 
 // TestOpenAPIPublished keeps agent-docs/openapi.yaml identical to the
@@ -93,6 +95,20 @@ func TestOpenAPIVersionHeader(t *testing.T) {
 					t.Errorf("%s %s %s: no Weavster-API-Version header", method, path, status)
 				}
 			}
+		}
+	}
+}
+
+// TestAllFlowRoutesReserved: every static /flows/<word> route is a
+// reserved flow id, so it cannot shadow a flow.
+func TestAllFlowRoutesReserved(t *testing.T) {
+	words := []string{"stats", "export", "import", "redeploy-all", "connector-names", "ports-in-use"}
+	for _, action := range AllFlowActions {
+		words = append(words, action+"-all")
+	}
+	for _, w := range words {
+		if !flowdef.Reserved(w) {
+			t.Errorf("%q names a route but is not a reserved flow id in flow.schema.json", w)
 		}
 	}
 }

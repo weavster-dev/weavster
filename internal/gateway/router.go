@@ -136,6 +136,12 @@ func (s *Server) Router() http.Handler {
 			r.With(s.require("flows", "edit")).Post("/flows/{id}/disable", s.handleFlowEnable(false))
 			r.With(s.require("messages", "send")).Post("/flows/{id}/messages", s.handleIngest)
 			r.With(s.require("flows", "deploy")).Post("/flows/redeploy-all", s.handleRedeployAll)
+			for _, action := range AllFlowActions {
+				r.With(s.require("flows", "deploy")).Post("/flows/"+action+"-all", s.handleActionAll(action))
+			}
+			r.With(s.require("flows", "view")).Get("/flows/stats", s.handleAllFlowStats)
+			r.With(s.require("flows", "deploy")).Post("/flows/stats/reset", s.handleResetStats)
+			r.With(s.require("flows", "deploy")).Post("/flows/{id}/stats/reset", s.handleResetStats)
 			r.With(s.require("flows", "deploy")).Post("/flows/{id}/{action}", s.handleFlowAction)
 			r.With(s.require("flows", "deploy")).Post("/flows/{id}/destinations/{dest}/{action}", s.handleDestinationAction)
 			r.With(s.require("flows", "view")).Get("/flows/{id}/stats", s.handleFlowStats)

@@ -64,7 +64,7 @@ below, in order, on the message as a JSON object.
 
 | Field | Meaning |
 |---|---|
-| `id` | Required. 1–128 characters from `A-Z a-z 0-9 . _ -`. `export`, `import`, `redeploy-all`, `connector-names`, and `ports-in-use` are reserved. |
+| `id` | Required. 1–128 characters from `A-Z a-z 0-9 . _ -`. `export`, `import`, `redeploy-all`, `connector-names`, `ports-in-use`, `stats`, and `deploy-all`, `undeploy-all`, `start-all`, `stop-all`, `pause-all`, `halt-all`, `resume-all` are reserved. |
 | `name`, `sourceType` | Free text shown in lists. |
 | `enabled`, `initialState` | Automatic deployment at startup; see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
 | `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). |
@@ -296,7 +296,21 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1
 - `destinations` counts successful and failed deliveries per destination.
 - `lastMessageAt` is the arrival time of the newest message, `null` until the first one.
 - Deleting a flow clears its counters, so a new flow with the same `id` starts at zero.
-- Add `?lifetime=true` for lifetime totals. Today both views are identical because no reset exists yet.
+- Add `?lifetime=true` for lifetime totals, which are kept when you reset the current counters.
+- `GET /api/v1/flows/stats` returns every flow's statistics at once, keyed by flow id (also with
+  `?lifetime=true`).
+
+Reset statistics (permission `flows:deploy`):
+
+```bash
+# One flow's current counters
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/flows/adt/stats/reset
+# Every flow's current counters and lifetime totals
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST 'http://127.0.0.1:8080/api/v1/flows/stats/reset?lifetime=true'
+```
+
+Both return `204`. Without `lifetime=true` only the current counters are cleared; the lifetime
+totals keep counting. An unknown flow returns `404`.
 
 Events (permission `events:view`). Each processed message adds one event of type
 `message.sent`, `message.queued`, `message.filtered`, or `message.errored`:

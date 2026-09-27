@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode"
@@ -32,10 +34,12 @@ const flowUsage = `flow subcommands:
   flow import <file> [--overwrite]
   flow deploy|undeploy|start|stop|pause|halt|resume <id>
   flow redeploy-all
+  flow deploy-all|undeploy-all|start-all|stop-all|pause-all|halt-all|resume-all
   flow start-destination|stop-destination <id> <destination>
   flow connectors
   flow ports
   flow stats [<id>]
+  flow reset-stats <id> [lifetime]
 
 <id> is a flow id or name; quote arguments with spaces: "ADT Inbound".`
 
@@ -188,6 +192,8 @@ func runFlowCommand(ctx context.Context, client Client, sub string, rest []strin
 		return withFile(rest[0], func(b []byte) int { return call(http.MethodPost, path, b) })
 	case sub == "redeploy-all" && len(rest) == 0:
 		return call(http.MethodPost, "/api/v1/flows/redeploy-all", nil)
+	case strings.HasSuffix(sub, "-all") && slices.Contains(gateway.AllFlowActions, strings.TrimSuffix(sub, "-all")):
+		return call(http.MethodPost, "/api/v1/flows/"+sub, nil)
 	case (sub == "start-destination" || sub == "stop-destination") && len(rest) == 2:
 		action := strings.TrimSuffix(sub, "-destination")
 		return call(http.MethodPost, flowPath(rest[0], "destinations", rest[1], action), nil)
@@ -195,20 +201,36 @@ func runFlowCommand(ctx context.Context, client Client, sub string, rest []strin
 		return call(http.MethodGet, "/api/v1/flows/connector-names", nil)
 	case sub == "ports" && len(rest) == 0:
 		return call(http.MethodGet, "/api/v1/flows/ports-in-use", nil)
+	case sub == "reset-stats":
+		path := flowPath(rest[0], "stats", "reset")
+		if len(rest) == 2 {
+			path += "?lifetime=true"
+		}
+		if code := call(http.MethodPost, path, nil); code != 0 {
+			return code
+		}
+		_, _ = fmt.Fprintf(stdout, "statistics reset for %s\n", rest[0])
+		return 0
 	case sub == "stats" && len(rest) == 1:
 		return flowStats(ctx, client, rest[0], stdout, fail)
 	case sub == "stats" && len(rest) == 0:
-		flows, err := listFlows(ctx, client)
+		out, err := client.Call(ctx, http.MethodGet, "/api/v1/flows/stats", nil) // one snapshot of every flow
+		var all map[string]gateway.FlowStats
+		if err == nil {
+			err = json.Unmarshal(out, &all)
+		}
 		if err != nil {
 			return shellError(stderr, debug, err)
 		}
-		code := 0
-		for _, f := range flows { // a flow removed meanwhile is reported; the rest still print
-			if c := flowStats(ctx, client, f.ID, stdout, func(err error) int { return shellError(stderr, debug, err) }); c != 0 {
-				code = c
-			}
+		ids := make([]string, 0, len(all))
+		for id := range all {
+			ids = append(ids, id)
 		}
-		return code
+		sort.Strings(ids)
+		for _, id := range ids {
+			printStats(stdout, id, all[id])
+		}
+		return 0
 	}
 	_, _ = fmt.Fprintln(stderr, "Error: usage:\n"+flowUsage)
 	return 2
@@ -233,8 +255,12 @@ func flowUsageOK(sub string, n int, rest []string) bool {
 		return n == 1 || n == 2 && rest[1] == "--overwrite"
 	case "redeploy-all", "connectors", "ports":
 		return n == 0
+	case "deploy-all", "undeploy-all", "start-all", "stop-all", "pause-all", "halt-all", "resume-all":
+		return n == 0
 	case "stats":
 		return n <= 1
+	case "reset-stats":
+		return n == 1 || n == 2 && rest[1] == "lifetime"
 	}
 	return false
 }
@@ -283,16 +309,22 @@ func flowStats(ctx context.Context, client Client, id string, stdout io.Writer, 
 	if err != nil {
 		return fail(err)
 	}
+	printStats(stdout, id, st)
+	return 0
+}
+
+// printStats prints one flow's counters on one line.
+func printStats(stdout io.Writer, id string, st gateway.FlowStats) {
 	_, _ = fmt.Fprintf(stdout, "%s\treceived=%d filtered=%d transformed=%d sent=%d errored=%d queued=%d\n",
 		id, st.Received, st.Filtered, st.Transformed, st.Sent, st.Errored, st.Queued)
-	return 0
 }
 
 // idArgs returns the arguments of a subcommand that are flow ids (a
 // slice of rest, so callers can replace them).
 func idArgs(sub string, rest []string) []string {
 	switch sub {
-	case "list", "help", "create", "update-all", "import", "redeploy-all", "connectors", "ports":
+	case "list", "help", "create", "update-all", "import", "redeploy-all", "connectors", "ports",
+		"deploy-all", "undeploy-all", "start-all", "stop-all", "pause-all", "halt-all", "resume-all":
 		return nil
 	case "export":
 		if len(rest) > 1 {

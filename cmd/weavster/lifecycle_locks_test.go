@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/weavster-dev/weavster/internal/flowlife"
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/observability"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
@@ -542,5 +543,70 @@ func TestRetriedCounters(t *testing.T) {
 		if got := tt.want(stats.Snapshot("f", false)); got != 1 {
 			t.Errorf("%s: counter = %d, want 1", tt.status, got)
 		}
+	}
+}
+
+// TestTransitionAll: deploy-all reports a disabled dependency deployed by
+// its dependent as changed; a store failure part-way reports what changed;
+// an unknown action and a failing list are errors.
+func TestTransitionAll(t *testing.T) {
+	ctx := context.Background()
+	docs := map[string]string{
+		"a":   `{"id":"a","enabled":true,"dependsOn":["dep"]}`,
+		"dep": `{"id":"dep"}`,
+		"off": `{"id":"off"}`,
+		"b":   `{"id":"b","status":"deployed"}`,
+		"c":   `{"id":"c","status":"deployed"}`,
+	}
+	tests := []struct {
+		name, action, failID string
+		listFails            bool
+		wantErr              error
+		changed, skipped     string
+	}{
+		{"deploy with a disabled dependency", "deploy", "", false, nil, "dep,a", "off=disabled"},
+		{"store failure part-way", "start", "b", false, gateway.ErrTransitionIncomplete, "", "b=failed,c=not attempted,off=not attempted"},
+		{"unknown action", "explode", "", false, gateway.ErrUnknownAction, "", ""},
+		{"failing list", "start", "", true, errors.New("any"), "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mem := state.NewMemStore()
+			for id, doc := range docs {
+				_ = mem.CreateFlow(ctx, state.FlowDefinition{ID: id, Document: []byte(doc)})
+			}
+			var repo flowRepository = failingUpdateRepo{MemStore: mem, failID: tt.failID}
+			if tt.listFails {
+				repo = listFailRepo{mem}
+			}
+			flows := flowAdapter{store: repo, locks: newFlowLocks(), defs: &sync.Mutex{}}
+			res, err := flows.TransitionAll(ctx, tt.action)
+			var skipped []string
+			for _, sk := range res.Skipped {
+				if sk.Reason == "disabled" || sk.Reason == "failed" || sk.Reason == "not attempted" {
+					skipped = append(skipped, sk.ID+"="+sk.Reason)
+				}
+			}
+			switch {
+			case tt.wantErr == nil && err != nil, tt.wantErr != nil && err == nil,
+				tt.wantErr != nil && !tt.listFails && !errors.Is(err, tt.wantErr):
+				t.Fatalf("err = %v, want %v", err, tt.wantErr)
+			}
+			if got := strings.Join(res.Changed, ","); got != tt.changed {
+				t.Errorf("changed = %q, want %q", got, tt.changed)
+			}
+			if got := strings.Join(skipped, ","); got != tt.skipped {
+				t.Errorf("skipped (disabled, failed, not attempted) = %q, want %q", got, tt.skipped)
+			}
+		})
+	}
+}
+
+// TestAllFlowActionsMatchLifecycle keeps the all-flows routes in step with
+// the lifecycle actions.
+func TestAllFlowActionsMatchLifecycle(t *testing.T) {
+	want := []string{flowlife.Deploy, flowlife.Undeploy, flowlife.Start, flowlife.Stop, flowlife.Pause, flowlife.Halt, flowlife.Resume}
+	if !slices.Equal(gateway.AllFlowActions, want) {
+		t.Errorf("gateway.AllFlowActions = %v, want %v", gateway.AllFlowActions, want)
 	}
 }

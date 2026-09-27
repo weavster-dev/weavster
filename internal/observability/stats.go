@@ -126,6 +126,41 @@ func (s *StatsRegistry) Reset(flow string, lifetime bool) {
 	delete(m, flow)
 }
 
+// Clear clears a flow's (every flow's when flow is empty) current counters
+// and, with lifetime, its lifetime totals too, under one lock so no message
+// is counted in one and not the other.
+func (s *StatsRegistry) Clear(flow string, lifetime bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	maps := []map[string]*FlowStats{s.current}
+	if lifetime {
+		maps = append(maps, s.lifetime)
+	}
+	for _, m := range maps {
+		if flow == "" {
+			clear(m)
+			continue
+		}
+		delete(m, flow)
+	}
+}
+
+// SnapshotAll returns a copy of every flow's current (or lifetime) stats,
+// taken at one instant.
+func (s *StatsRegistry) SnapshotAll(lifetime bool) map[string]FlowStats {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m := s.current
+	if lifetime {
+		m = s.lifetime
+	}
+	out := make(map[string]FlowStats, len(m))
+	for flow, fs := range m {
+		out[flow] = cloneStats(fs)
+	}
+	return out
+}
+
 // Dump writes all flows' statistics to path as JSON (spec §2.11.36).
 func (s *StatsRegistry) Dump(path string, lifetime bool) error {
 	s.mu.Lock()

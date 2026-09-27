@@ -95,8 +95,24 @@ type FlowTransfer interface {
 type FlowLifecycle interface {
 	Transition(ctx context.Context, id, action string) (Flow, error)
 	RedeployAll(ctx context.Context) ([]Flow, error)
+	// TransitionAll applies action to every flow it applies to (spec §5
+	// "all"); on a store failure (ErrTransitionIncomplete) the result lists
+	// the flows already changed.
+	TransitionAll(ctx context.Context, action string) (TransitionAllResult, error)
 	// SetDestinationRunning starts (running) or stops one destination.
 	SetDestinationRunning(ctx context.Context, id, destination string, running bool) (Flow, error)
+}
+
+// TransitionAllResult reports an all-flows lifecycle action.
+type TransitionAllResult struct {
+	Changed []string      `json:"changed"`
+	Skipped []SkippedFlow `json:"skipped"`
+}
+
+// SkippedFlow is a flow an all-flows action left alone, and why.
+type SkippedFlow struct {
+	ID     string `json:"id"`
+	Reason string `json:"reason"`
 }
 
 // IngestResult is the outcome of processing one received message.
@@ -137,6 +153,8 @@ var (
 	// ErrImportIncomplete: writing stopped part-way; the ImportResult lists
 	// what was written.
 	ErrImportIncomplete = errors.New("import stopped part-way")
+	// ErrTransitionIncomplete: an all-flows action stopped part-way.
+	ErrTransitionIncomplete = errors.New("all-flows action stopped part-way")
 	// ErrUpdateIncomplete: a bulk update stopped part-way.
 	ErrUpdateIncomplete = errors.New("update stopped part-way")
 )
