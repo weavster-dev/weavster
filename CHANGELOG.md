@@ -76,6 +76,7 @@ All notable changes to this project are documented here, following
 - Dynamic lookups (#249): `/api/v1/lookups` groups of text key → text value with prefix matching, get, exists, batch, put, delete, and import (merge or replace); SQLite-durable (migration 7); permissions `lookups:view` and `lookups:edit`. Flows do not read lookups yet.
 - Message trends (#251): `GET /api/v1/messages/trends?from=&to=&interval=hour|day[&flowId=]` counts the stored messages per bucket and status, empty buckets included.
 - XML responses (#253): API responses, errors included, are sent as XML when the client explicitly asks for it (`Accept: application/xml` ranked above JSON and everything else), with a documented mapping; browsers still get JSON, message content is never converted, and request bodies stay JSON.
+- Statistics over time (#255): the server samples every flow's lifetime statistics (`stats.sampleIntervalMs`, default one minute; kept for `stats.retentionHours`, default 24) and `GET /api/v1/stats/series[?flowId=&from=&to=&limit=]` returns the newest matching samples (default 1000), oldest first.
 
 ### Changed
 

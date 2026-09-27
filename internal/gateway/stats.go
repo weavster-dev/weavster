@@ -36,6 +36,34 @@ type StatsProvider interface {
 	ResetStats(ctx context.Context, flowID string, lifetime bool) error
 }
 
+// StatsSample is one flow's lifetime statistics at one sampling time
+// (spec §2.11.37).
+type StatsSample struct {
+	At     time.Time `json:"at"`
+	FlowID string    `json:"flowId"`
+	Stats  FlowStats `json:"stats"`
+}
+
+// StatsSeriesQuery narrows a statistics time-series read.
+type StatsSeriesQuery struct {
+	FlowID   string    // empty = every flow
+	From, To time.Time // at or after / at or before; zero = open
+	Limit    int       // the newest N matching samples
+}
+
+// Statistics time-series limits.
+const (
+	DefaultStatsSeriesLimit = 1000
+	MaxStatsSeriesLimit     = 10000
+)
+
+// StatsHistory reads the statistics time series.
+type StatsHistory interface {
+	// StatsSeries returns the newest q.Limit matching samples, oldest first;
+	// ErrFlowNotFound when q.FlowID names no flow.
+	StatsSeries(ctx context.Context, q StatsSeriesQuery) ([]StatsSample, error)
+}
+
 // Event is one entry of the event log.
 type Event struct {
 	ID     int64             `json:"id"`
@@ -91,6 +119,33 @@ func (s *Server) handleFlowStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) handleStatsSeries(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.StatsHistory == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "statistics unavailable")
+		return
+	}
+	v := r.URL.Query()
+	q := StatsSeriesQuery{FlowID: v.Get("flowId"), Limit: DefaultStatsSeriesLimit}
+	if msg := timeRange(v, &q.From, &q.To); msg != "" {
+		writeStatusError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if raw := v.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > MaxStatsSeriesLimit {
+			writeStatusError(w, http.StatusBadRequest, "limit must be between 1 and 10000")
+			return
+		}
+		q.Limit = n
+	}
+	samples, err := s.cfg.StatsHistory.StatsSeries(r.Context(), q)
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, samples)
 }
 
 // lifetimeParam reads the optional lifetime=true|false query parameter; on

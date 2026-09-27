@@ -40,6 +40,7 @@ var protectedRoutes = []struct {
 	{http.MethodDelete, "/api/v1/flows/admit", "flows:edit"},
 	{http.MethodGet, "/api/v1/messages", "messages:view"},
 	{http.MethodGet, "/api/v1/messages/trends?from=2026-01-01T00:00:00Z&to=2026-01-01T01:00:00Z", "messages:view"},
+	{http.MethodGet, "/api/v1/stats/series", "flows:view"},
 	{http.MethodPost, "/api/v1/flows/admit/messages", "messages:send"},
 	{http.MethodGet, "/api/v1/flows/admit/stats", "flows:view"},
 	{http.MethodGet, "/api/v1/events", "events:view"},

@@ -3,6 +3,8 @@ package observability
 import (
 	"encoding/json"
 	"os"
+	"slices"
+	"sort"
 	"sync"
 	"time"
 )
@@ -247,37 +249,63 @@ type TimeSeriesPoint struct {
 	Stats FlowStats `json:"stats"`
 }
 
-// TimeSeries is a bounded ring of per-flow snapshots for trending.
+// TimeSeries keeps per-flow snapshots for trending, dropping those older
+// than its retention and, past maxPoints in total, the oldest.
 type TimeSeries struct {
-	mu     sync.Mutex
-	points []TimeSeriesPoint
-	limit  int
+	mu        sync.Mutex
+	points    []TimeSeriesPoint // in recording order
+	retention time.Duration
+	maxPoints int
 }
 
-// NewTimeSeries returns a time-series ring holding at most limit points.
-func NewTimeSeries(limit int) *TimeSeries {
-	return &TimeSeries{limit: limit}
+// NewTimeSeries returns a time series keeping snapshots for retention, at
+// most maxPoints in total.
+func NewTimeSeries(retention time.Duration, maxPoints int) *TimeSeries {
+	return &TimeSeries{retention: retention, maxPoints: maxPoints}
 }
 
-// Record appends a snapshot.
-func (ts *TimeSeries) Record(flow string, s FlowStats) {
+// RecordAll appends one snapshot per flow, all stamped with the same
+// wall-clock time, and drops snapshots older than the retention before that
+// time and any past maxPoints.
+func (ts *TimeSeries) RecordAll(at time.Time, stats map[string]FlowStats) {
+	at = at.Round(0) // wall clock only, as reported and filtered
+	flows := make([]string, 0, len(stats))
+	for f := range stats {
+		flows = append(flows, f)
+	}
+	sort.Strings(flows)
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	ts.points = append(ts.points, TimeSeriesPoint{At: time.Now(), Flow: flow, Stats: s})
-	if len(ts.points) > ts.limit {
-		ts.points = ts.points[len(ts.points)-ts.limit:]
+	for _, f := range flows {
+		ts.points = append(ts.points, TimeSeriesPoint{At: at, Flow: f, Stats: stats[f]})
 	}
+	cut := max(0, len(ts.points)-ts.maxPoints)
+	for cut < len(ts.points) && ts.points[cut].At.Before(at.Add(-ts.retention)) {
+		cut++
+	}
+	ts.points = slices.Clone(ts.points[cut:]) // release the dropped points
 }
 
-// Series returns snapshots for a flow (or all flows when flow is empty).
-func (ts *TimeSeries) Series(flow string) []TimeSeriesPoint {
+// Forget drops every snapshot of flow.
+func (ts *TimeSeries) Forget(flow string) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.points = slices.DeleteFunc(ts.points, func(p TimeSeriesPoint) bool { return p.Flow == flow })
+}
+
+// Series returns the newest limit (0 = all) snapshots whose flow satisfies
+// keep, taken at or after from and at or before to (zero = open), in
+// recording order.
+func (ts *TimeSeries) Series(keep func(flow string) bool, from, to time.Time, limit int) []TimeSeriesPoint {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	out := make([]TimeSeriesPoint, 0)
-	for _, p := range ts.points {
-		if flow == "" || p.Flow == flow {
+	for i := len(ts.points) - 1; i >= 0 && (limit == 0 || len(out) < limit); i-- {
+		p := ts.points[i]
+		if keep(p.Flow) && (from.IsZero() || !p.At.Before(from)) && (to.IsZero() || !p.At.After(to)) {
 			out = append(out, p)
 		}
 	}
+	slices.Reverse(out)
 	return out
 }

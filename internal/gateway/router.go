@@ -145,6 +145,7 @@ func (s *Server) Router() http.Handler {
 				r.With(s.require("flows", "deploy")).Post("/flows/"+action+"-all", s.handleActionAll(action))
 			}
 			r.With(s.require("flows", "view")).Get("/flows/stats", s.handleAllFlowStats)
+			r.With(s.require("flows", "view")).Get("/stats/series", s.handleStatsSeries)
 			r.With(s.require("flows", "deploy")).Post("/flows/stats/reset", s.handleResetStats)
 			r.With(s.require("flows", "deploy")).Post("/flows/{id}/stats/reset", s.handleResetStats)
 			r.With(s.require("flows", "deploy")).Post("/flows/{id}/{action}", s.handleFlowAction)

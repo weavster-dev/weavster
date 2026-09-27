@@ -17,7 +17,7 @@ func TestLoad(t *testing.T) {
 		{name: "empty file keeps defaults", yaml: "", check: func(t *testing.T, c Config) {
 			if c.Listen.Address != "127.0.0.1:8080" || c.Store.Dialect != DialectMemory || !c.Listen.RequireMarkerHeader ||
 				c.Listen.ShutdownTimeoutMs != 10000 || c.Delivery != (Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000}) ||
-				!c.Flows.DeployOnStartup {
+				!c.Flows.DeployOnStartup || c.Stats != (Stats{SampleIntervalMs: 60000, RetentionHours: 24}) {
 				t.Errorf("defaults not applied: %+v", c)
 			}
 		}},
@@ -61,6 +61,20 @@ auth:
 		{name: "negative shutdown timeout", yaml: "listen: {shutdownTimeoutMs: -5}\n", wantErr: "listen.shutdownTimeoutMs"},
 		{name: "zero delivery attempts", yaml: "delivery: {maxAttempts: 0}\n", wantErr: "delivery.maxAttempts"},
 		{name: "huge retry interval", yaml: "delivery: {retryIntervalMs: 9223372036854775807}\n", wantErr: "delivery.retryIntervalMs must be between"},
+		{name: "fast stats sampling", yaml: "stats: {sampleIntervalMs: 99}\n", wantErr: "stats.sampleIntervalMs must be between"},
+		{name: "zero stats retention", yaml: "stats: {retentionHours: 0}\n", wantErr: "stats.retentionHours must be between"},
+		{name: "too many stats samples", yaml: "stats: {sampleIntervalMs: 1000, retentionHours: 28}\n", wantErr: "more than 100000 samples"},
+		{name: "one stats sample too many", yaml: "stats: {sampleIntervalMs: 864, retentionHours: 24}\n" /* 100000 intervals + the first sample */, wantErr: "more than 100000 samples"},
+		{name: "stats just under the sample limit", yaml: "stats: {sampleIntervalMs: 865, retentionHours: 24}\n", check: func(t *testing.T, c Config) {
+			if c.Stats.SampleIntervalMs != 865 { // 99884 intervals + the first sample
+				t.Errorf("stats = %+v", c.Stats)
+			}
+		}},
+		{name: "stats at the sample limit", yaml: "stats: {sampleIntervalMs: 1000, retentionHours: 27}\n", check: func(t *testing.T, c Config) {
+			if c.Stats.RetentionHours != 27 {
+				t.Errorf("stats = %+v", c.Stats)
+			}
+		}},
 		{name: "zero backoff", yaml: "delivery: {backoffBaseMs: 0}\n", wantErr: "delivery.backoffBaseMs must be between"},
 		{name: "negative lockout", yaml: "auth: {lockout: {retryLimit: -2}}\n", wantErr: "auth.lockout values must be >= 0"},
 		{name: "class count below -1", yaml: "auth: {passwordPolicy: {minUpper: -2}}\n", wantErr: "must be >= -1"},
