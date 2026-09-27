@@ -11,6 +11,8 @@ import (
 	"regexp"
 	"slices"
 	"unicode/utf8"
+
+	"github.com/invopop/jsonschema"
 )
 
 // Alert is an alert definition (spec §2.7): which processing events of which
@@ -26,13 +28,13 @@ type Alert struct {
 // AlertTrigger selects the events an alert reacts to; no flows means every
 // flow.
 type AlertTrigger struct {
-	Events []string `json:"events" yaml:"events" jsonschema:"required,minItems=1,enum=message.errored,enum=message.queued,enum=message.dead-lettered"`
+	Events []string `json:"events" yaml:"events" jsonschema:"required,minItems=1"`
 	Flows  []string `json:"flows,omitempty" yaml:"flows,omitempty"`
 }
 
 // AlertAction is one notification: email (to) or webhook (url).
 type AlertAction struct {
-	Type string   `json:"type" yaml:"type" jsonschema:"required,enum=email,enum=webhook"`
+	Type string   `json:"type" yaml:"type" jsonschema:"required"`
 	To   []string `json:"to,omitempty" yaml:"to,omitempty"`
 	URL  string   `json:"url,omitempty" yaml:"url,omitempty"`
 }
@@ -68,11 +70,38 @@ var (
 var ValidName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,128}$`)
 
 // CheckName validates a name; the error is safe to show.
-func CheckName(name string) error {
+func CheckName(name string) error { return CheckValue("name", name) }
+
+// CheckValue validates a name held in the field label ("name", "alert id"):
+// the error names the label and is safe to show.
+func CheckValue(label, name string) error {
 	if !ValidName.MatchString(name) {
-		return fmt.Errorf("name %q must be 1-128 characters from A-Z a-z 0-9 . _ -", name)
+		return fmt.Errorf("%s %q must be 1-128 characters from A-Z a-z 0-9 . _ -", label, name)
 	}
 	return nil
+}
+
+// JSONSchemaExtend sets the allowed trigger events in generated schemas
+// from AlertEvents, the list CheckAlert uses.
+func (AlertTrigger) JSONSchemaExtend(s *jsonschema.Schema) {
+	if p, ok := s.Properties.Get("events"); ok && p.Items != nil {
+		p.Items.Enum = anys(AlertEvents)
+	}
+}
+
+// JSONSchemaExtend sets the allowed action types from AlertActionTypes.
+func (AlertAction) JSONSchemaExtend(s *jsonschema.Schema) {
+	if p, ok := s.Properties.Get("type"); ok {
+		p.Enum = anys(AlertActionTypes)
+	}
+}
+
+func anys(list []string) []any {
+	out := make([]any, len(list))
+	for i, v := range list {
+		out[i] = v
+	}
+	return out
 }
 
 // CheckAlert validates one alert definition; the error is safe to show.

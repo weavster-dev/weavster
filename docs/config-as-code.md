@@ -49,7 +49,9 @@ settings:
 | `configmap` | entry name | A text value. |
 | `settings` | setting name | Any JSON value except `null`. |
 
-- Every section is optional; `version` defaults to `"1"`.
+- Every section is optional; `version` defaults to `"1"`, the only version.
+- The file holds one YAML document: a second one after `---` is an error, and so is an empty
+  file.
 - An artifact's `id` (flows, alerts) or `name` (snippets, libraries) defaults to its key. If you
   write it, it must equal the key.
 - Names are 1–128 characters from `A-Z a-z 0-9 . _ -`.
@@ -65,7 +67,7 @@ weavster> config validate "weavster.yaml"
 weavster.yaml is valid: 1 flows, 1 alerts, 1 snippets, 1 snippet libraries, 1 scripts, 1 config map entries, 1 settings
 ```
 
-Or with the API (any signed-in user; nothing on the server changes):
+Or with the API (permission `flows:edit`; nothing on the server changes):
 
 ```bash
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' --data-binary @weavster.yaml \

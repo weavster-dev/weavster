@@ -602,7 +602,7 @@ paths:
         "404": {description: Unknown name, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/config/validate:
     post:
-      summary: "Check a config-as-code document (YAML or JSON) without changing anything (any signed-in user)"
+      summary: "Check a config-as-code document (YAML or JSON) without changing anything (requires flows:edit)"
       requestBody:
         required: true
         content:

@@ -39,18 +39,12 @@ var itemKinds = []itemKind{
 	{kind: "settings", resource: "settings", label: "setting"},
 }
 
-// validItemName: 1–128 of A-Z a-z 0-9 . _ -.
-var validItemName = artifact.ValidName
-
 // maxItemsBody caps an item request body.
 const maxItemsBody = 10 << 20
 
-// checkName validates an item name; the error is safe to show.
-var checkName = artifact.CheckName
-
 // checkItem validates a name and value for kind k; the error is safe to show.
 func (k itemKind) checkItem(name string, value json.RawMessage) error {
-	if err := checkName(name); err != nil {
+	if err := artifact.CheckName(name); err != nil {
 		return err
 	}
 	if string(value) == "null" {

@@ -74,8 +74,8 @@ func checkNames[T any, P namedDoc[T]](list []T, noun string) error {
 	for i := range list {
 		ref, field := P(&list[i]).Key()
 		name := *ref
-		if !validItemName.MatchString(name) {
-			return fmt.Errorf("%s %s %q must be 1-128 characters from A-Z a-z 0-9 . _ -", noun, field, name)
+		if err := artifact.CheckValue(noun+" "+field, name); err != nil {
+			return err
 		}
 		if seen[name] {
 			return fmt.Errorf("%s %s %q appears more than once", noun, field, name)
@@ -148,7 +148,7 @@ func isBulk(r *http.Request) bool {
 // pathName returns the {name} path value, answering 400 when it is invalid.
 func pathName(w http.ResponseWriter, r *http.Request) (string, bool) {
 	name := r.PathValue("name")
-	if err := checkName(name); err != nil {
+	if err := artifact.CheckName(name); err != nil {
 		writeStatusError(w, http.StatusBadRequest, err.Error())
 		return "", false
 	}
@@ -189,7 +189,7 @@ func (s *Server) handleSnippetsSave(w http.ResponseWriter, r *http.Request) {
 		if sn.Library == "" {
 			return nil
 		}
-		if err := checkName(sn.Library); err != nil {
+		if err := artifact.CheckName(sn.Library); err != nil {
 			return fmt.Errorf("library: %w", err)
 		}
 		return nil

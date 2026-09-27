@@ -36,15 +36,6 @@ var (
 	ErrAlertExists   = errors.New("an alert with that id already exists")
 )
 
-// Alert options: the events an alert can trigger on and its action types.
-var (
-	alertEvents      = artifact.AlertEvents
-	alertActionTypes = artifact.AlertActionTypes
-)
-
-// checkAlert validates one alert definition; the error is safe to show.
-var checkAlert = artifact.CheckAlert
-
 func (s *Server) alertsAvailable(w http.ResponseWriter) bool {
 	if s.cfg.Alerts == nil {
 		writeStatusError(w, http.StatusServiceUnavailable, "alerts unavailable")
@@ -82,7 +73,7 @@ func (s *Server) handleAlertsSave(w http.ResponseWriter, r *http.Request) {
 	if !s.alertsAvailable(w) {
 		return
 	}
-	saveNamed(w, r, "alert", false, checkAlert, s.cfg.Alerts.SaveAlerts, writeAlertError)
+	saveNamed(w, r, "alert", false, artifact.CheckAlert, s.cfg.Alerts.SaveAlerts, writeAlertError)
 }
 
 // handleAlertsImport saves an array of alerts, all or nothing: without
@@ -102,7 +93,7 @@ func (s *Server) handleAlertsImport(w http.ResponseWriter, r *http.Request) {
 	save := func(ctx context.Context, list []Alert, _ bool) error {
 		return s.cfg.Alerts.SaveAlerts(ctx, list, !force)
 	}
-	saveNamed(w, r, "alert", true, checkAlert, save, writeAlertError)
+	saveNamed(w, r, "alert", true, artifact.CheckAlert, save, writeAlertError)
 }
 
 func (s *Server) handleAlertGet(w http.ResponseWriter, r *http.Request) {
@@ -156,5 +147,5 @@ func (s *Server) handleAlertEnable(enabled bool) http.HandlerFunc {
 }
 
 func (s *Server) handleAlertOptions(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, map[string][]string{"events": alertEvents, "actionTypes": alertActionTypes})
+	writeJSON(w, http.StatusOK, map[string][]string{"events": artifact.AlertEvents, "actionTypes": artifact.AlertActionTypes})
 }

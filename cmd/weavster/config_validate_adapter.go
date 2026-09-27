@@ -10,10 +10,7 @@ import (
 type configValidator struct{}
 
 func (configValidator) ValidateConfig(doc []byte) (gateway.ConfigSummary, error) {
-	if err := config.Validate(doc); err != nil {
-		return gateway.ConfigSummary{}, err
-	}
-	c, err := config.Parse(doc)
+	c, err := config.ParseValid(doc)
 	if err != nil {
 		return gateway.ConfigSummary{}, err
 	}

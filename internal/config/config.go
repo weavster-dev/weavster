@@ -67,9 +67,19 @@ func parse(data []byte) (*Config, map[string]json.RawMessage, error) {
 	var doc document
 	dec := yaml.NewDecoder(bytes.NewReader(data))
 	dec.KnownFields(true)
-	if err := dec.Decode(&doc); err != nil && !errors.Is(err, io.EOF) {
+	err := dec.Decode(&doc)
+	if errors.Is(err, io.EOF) {
+		return nil, nil, errors.New("config: the document is empty")
+	}
+	if err != nil {
 		// "field x not found in type config.document": name the field only.
 		return nil, nil, fmt.Errorf("config: parse: %s", goTypeName.ReplaceAllString(err.Error(), ""))
+	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, nil, errors.New("config: parse: the file holds more than one YAML document (---); put everything in one")
+	}
+	if doc.Version != "" && doc.Version != "1" {
+		return nil, nil, fmt.Errorf("config: version %q is not supported; use \"1\"", doc.Version)
 	}
 	c := &Config{Version: doc.Version, Alerts: doc.Alerts, Snippets: doc.Snippets, SnippetLibraries: doc.SnippetLibraries,
 		Scripts: doc.Scripts, ConfigMap: doc.ConfigMap, Settings: doc.Settings}

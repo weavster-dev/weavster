@@ -73,9 +73,16 @@ func PublishedSchemas() (map[string][]byte, error) {
 // rejecting invalid configs on load (arch §6). Each flow is checked against
 // flow.schema.json, so runtime fields such as status are rejected.
 func Validate(data []byte) error {
+	_, err := ParseValid(data)
+	return err
+}
+
+// ParseValid parses and validates a config document in one pass and returns
+// it when it is valid.
+func ParseValid(data []byte) (*Config, error) {
 	c, written, err := parse(data)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	// Check each flow as written (unknown fields included) against the flow
 	// schema, for messages that name the flow.
@@ -99,13 +106,16 @@ func Validate(data []byte) error {
 	}
 	errs = append(errs, checkArtifacts(c)...)
 	if len(errs) > 0 {
-		return fmt.Errorf("config: %s", strings.Join(errs, "; "))
+		return nil, fmt.Errorf("config: %s", strings.Join(errs, "; "))
 	}
 	js, err := json.Marshal(c)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	return validateJSON(js)
+	if err := validateJSON(js); err != nil {
+		return nil, err
+	}
+	return c, nil
 }
 
 // checkArtifacts applies the rules the API applies to alerts, snippets,
@@ -114,7 +124,9 @@ func Validate(data []byte) error {
 func checkArtifacts(c *Config) []string {
 	var errs []string
 	for _, k := range sortedKeys(c.Alerts) {
-		if err := artifact.CheckAlert(c.Alerts[k]); err != nil {
+		if err := artifact.CheckName(k); err != nil {
+			errs = append(errs, "alerts."+k+": "+err.Error())
+		} else if err := artifact.CheckAlert(c.Alerts[k]); err != nil {
 			errs = append(errs, "alerts."+k+": "+err.Error())
 		}
 	}

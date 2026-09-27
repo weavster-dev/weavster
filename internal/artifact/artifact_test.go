@@ -1,8 +1,11 @@
 package artifact
 
 import (
+	"fmt"
 	"strings"
 	"testing"
+
+	"github.com/invopop/jsonschema"
 )
 
 func TestCheckAlert(t *testing.T) {
@@ -61,5 +64,19 @@ func TestKey(t *testing.T) {
 		if ref, field := tt.key(); *ref != tt.value || field != tt.field {
 			t.Errorf("Key = %q %q, want %q %q", *ref, field, tt.value, tt.field)
 		}
+	}
+}
+
+// TestSchemaEnums: generated schemas list the events and action types
+// CheckAlert accepts.
+func TestSchemaEnums(t *testing.T) {
+	r := &jsonschema.Reflector{ExpandedStruct: true}
+	trigger, _ := r.Reflect(&AlertTrigger{}).Properties.Get("events")
+	if trigger == nil || fmt.Sprint(trigger.Items.Enum) != fmt.Sprint(AlertEvents) {
+		t.Errorf("events enum = %v, want %v", trigger, AlertEvents)
+	}
+	typ, _ := r.Reflect(&AlertAction{}).Properties.Get("type")
+	if typ == nil || fmt.Sprint(typ.Enum) != fmt.Sprint(AlertActionTypes) {
+		t.Errorf("type enum = %v, want %v", typ, AlertActionTypes)
 	}
 }

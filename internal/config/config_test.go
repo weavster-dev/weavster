@@ -162,6 +162,10 @@ func TestValidate(t *testing.T) {
 		{"null setting", "settings:\n  s: null\n", "settings.s: value must not be null"},
 		{"setting with a number key", "settings:\n  s: {1: x}\n", "settings.s: not JSON-compatible"},
 		{"config map needs text", "configmap:\n  a: [1]\n", "config: parse"},
+		{"empty document", "  \n", "the document is empty"},
+		{"two YAML documents", "flows: {}\n---\nbogus: 1\n", "more than one YAML document"},
+		{"unsupported version", "version: \"2\"\n", `version "2" is not supported`},
+		{"bad alert key", "alerts:\n  \"a b\": {name: X, trigger: {events: [message.errored]}, actions: [{type: email, to: [a@b.co]}]}\n", `alerts.a b: name "a b" must be`},
 		{"flow that is not JSON-compatible", "flows:\n  a: {name: {1: x}}\n", "not JSON-compatible"},
 	}
 	for _, tt := range tests {
