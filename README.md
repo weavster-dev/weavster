@@ -109,6 +109,12 @@ weavster server 127.0.0.1:8080
 weavster server --config weavster.yaml   # see docs/server-config.md
 ```
 
+With PostgreSQL 16 for local development (see docs/docker-compose.md):
+
+```bash
+docker compose up -d --build --wait      # API at http://127.0.0.1:8080 a moment later, admin / Weavster-dev-1
+```
+
 ## Layout
 
 ```

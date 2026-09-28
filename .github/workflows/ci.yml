@@ -111,3 +111,14 @@ jobs:
           done
           docker logs weavster
           exit 1
+
+  compose:
+    # docker-compose.yml: the server with PostgreSQL 16 for local development.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke test the compose stack
+        run: scripts/compose-smoke.sh
+      - name: Remove the stack
+        if: always()
+        run: docker compose down -v

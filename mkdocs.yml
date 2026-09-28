@@ -13,6 +13,7 @@ nav:
   - Support Matrix: support-matrix.md
   - Server Configuration: server-config.md
   - Production Setup: production.md
+  - Local Development with Docker Compose: docker-compose.md
   - Capacity and Limits: limits.md
   - Authentication: authentication.md
   - Command-line client: cli.md
