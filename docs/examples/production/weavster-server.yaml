@@ -1,0 +1,44 @@
+# Production server configuration: HTTPS only, PostgreSQL, strict login policy.
+# See docs/production.md. Secrets are not in this file: the database password
+# comes from PGPASSWORD (or ~/.pgpass), the first admin password from
+# WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE, and flow connection strings from
+# WEAVSTER_DB_* / WEAVSTER_SOURCE_* variables.
+listen:
+  address: ""                  # no cleartext listener
+  tlsAddress: 0.0.0.0:8443
+  requireMarkerHeader: true    # the X-Weavster-CSRF header (CSRF protection)
+  shutdownTimeoutMs: 30000
+tls:
+  certFile: /etc/weavster/tls/server.crt
+  keyFile: /etc/weavster/tls/server.key
+  minVersion: "1.3"
+store:
+  dialect: postgres
+  dsn: postgres://weavster@db.internal:5432/weavster?sslmode=verify-full
+  maxConnections: 20
+  maxRetry: 10
+  retryWaitMs: 2000
+paths:
+  dataDir: /var/lib/weavster
+auth:
+  passwordPolicy:
+    minLength: 14
+    minUpper: 1
+    minLower: 1
+    minNumeric: 1
+    minSpecial: 1
+  lockout:
+    retryLimit: 5
+    lockoutPeriodSeconds: 900
+delivery:
+  maxAttempts: 10
+  backoffBaseMs: 2000
+  retryIntervalMs: 1000
+processing:
+  maxConcurrent: 64
+  waitMs: 5000
+flows:
+  deployOnStartup: true
+stats:
+  sampleIntervalMs: 60000
+  retentionHours: 168
