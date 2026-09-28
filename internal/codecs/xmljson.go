@@ -47,15 +47,20 @@ func XMLJSON(in []byte) (map[string]any, error) {
 		}
 		return enc.NewDecoder().Reader(r), nil
 	}
+	type binding struct {
+		uri     string
+		present bool
+	}
 	type open struct {
-		name xml.Name // as written: Space is the prefix
-		el   map[string]any
-		text strings.Builder
-		ns   map[string]string // prefix ("" for the default) -> URI in scope
+		name     xml.Name // as written: Space is the prefix
+		el       map[string]any
+		text     strings.Builder
+		previous map[string]binding // only bindings changed by this element
 	}
 	var root map[string]any
 	var rootName string
 	var stack []*open
+	ns := map[string]string{"xml": xmlNamespace}
 	elements, tokens := 0, 0
 	doctype := false
 	for {
@@ -91,17 +96,29 @@ func XMLJSON(in []byte) (map[string]any, error) {
 				return nil, notXML(fmt.Sprintf("more than %d elements", MaxXMLElements))
 			}
 			elements++
-			ns := map[string]string{"xml": xmlNamespace}
-			if len(stack) > 0 {
-				ns = stack[len(stack)-1].ns
-			}
+			// Update bindings in place, saving only this element's changes.
+			// Copying the whole inherited map per declaration or element
+			// makes small namespace-heavy documents quadratic to parse.
+			var previous map[string]binding
 			for _, a := range t.Attr {
+				var prefix string
 				switch {
 				case a.Name.Space == "xmlns":
-					ns = copyWith(ns, a.Name.Local, a.Value)
+					prefix = a.Name.Local
 				case a.Name.Space == "" && a.Name.Local == "xmlns":
-					ns = copyWith(ns, "", a.Value)
+					prefix = ""
+				default:
+					continue
 				}
+				if previous == nil {
+					previous = make(map[string]binding)
+				}
+				if _, duplicate := previous[prefix]; duplicate {
+					return nil, notXML("duplicate attribute")
+				}
+				uri, present := ns[prefix]
+				previous[prefix] = binding{uri: uri, present: present}
+				ns[prefix] = a.Value
 			}
 			uri, ok := ns[t.Name.Space]
 			if t.Name.Space != "" && !ok {
@@ -139,7 +156,7 @@ func XMLJSON(in []byte) (map[string]any, error) {
 			} else {
 				addChild(stack[len(stack)-1].el, t.Name.Local, el)
 			}
-			stack = append(stack, &open{name: t.Name, el: el, ns: ns})
+			stack = append(stack, &open{name: t.Name, el: el, previous: previous})
 		case xml.EndElement:
 			if len(stack) == 0 || stack[len(stack)-1].name != t.Name {
 				return nil, notXML("")
@@ -147,6 +164,13 @@ func XMLJSON(in []byte) (map[string]any, error) {
 			o := stack[len(stack)-1]
 			if s := strings.TrimSpace(o.text.String()); s != "" {
 				o.el["#text"] = s
+			}
+			for prefix, old := range o.previous {
+				if old.present {
+					ns[prefix] = old.uri
+				} else {
+					delete(ns, prefix)
+				}
 			}
 			stack = stack[:len(stack)-1]
 		case xml.CharData:
@@ -176,14 +200,4 @@ func addChild(parent map[string]any, name string, el map[string]any) {
 	default:
 		parent[name] = []any{prev, el}
 	}
-}
-
-// copyWith returns a copy of ns with prefix bound to uri.
-func copyWith(ns map[string]string, prefix, uri string) map[string]string {
-	out := make(map[string]string, len(ns)+1)
-	for k, v := range ns {
-		out[k] = v
-	}
-	out[prefix] = uri
-	return out
 }
