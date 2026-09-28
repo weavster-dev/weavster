@@ -31,6 +31,11 @@ const (
 type DestinationAttempt struct {
 	Attempts  int    `json:"attempts"`
 	LastError string `json:"lastError"`
+	// LastCode is the last failure's protocol-specific code ("http:503",
+	// "mllp:AE", "sqlstate:23505", "net:timeout", …; "" for none or after a
+	// success), and LastAttemptAt when the last attempt ended (#107 D-78).
+	LastCode      string    `json:"lastCode,omitempty"`
+	LastAttemptAt time.Time `json:"lastAttemptAt,omitempty"`
 	// NextAttemptAt is when a failed delivery is due for retry.
 	NextAttemptAt time.Time `json:"nextAttemptAt,omitempty"`
 }
@@ -159,8 +164,8 @@ func (s *sqlStore) Put(ctx context.Context, m Message) error {
 	}
 	for dest, a := range m.Attempts {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO message_attempts (message_id, destination, attempts, last_error, next_attempt_at) VALUES (?, ?, ?, ?, ?)`,
-			m.ID, dest, a.Attempts, a.LastError, unixMilli(a.NextAttemptAt)); err != nil {
+			`INSERT INTO message_attempts (message_id, destination, attempts, last_error, next_attempt_at, last_code, last_attempt_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			m.ID, dest, a.Attempts, a.LastError, unixMilli(a.NextAttemptAt), a.LastCode, unixMilli(a.LastAttemptAt)); err != nil {
 			return err
 		}
 	}
@@ -278,7 +283,7 @@ func (s *sqlStore) loadMetadata(ctx context.Context, id string) (map[string]stri
 
 func (s *sqlStore) loadAttempts(ctx context.Context, id string) (map[string]DestinationAttempt, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT destination, attempts, last_error, next_attempt_at FROM message_attempts WHERE message_id = ?`, id)
+		`SELECT destination, attempts, last_error, next_attempt_at, last_code, last_attempt_at FROM message_attempts WHERE message_id = ?`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -287,12 +292,15 @@ func (s *sqlStore) loadAttempts(ctx context.Context, id string) (map[string]Dest
 	for rows.Next() {
 		var dest string
 		var a DestinationAttempt
-		var next int64
-		if err := rows.Scan(&dest, &a.Attempts, &a.LastError, &next); err != nil {
+		var next, last int64
+		if err := rows.Scan(&dest, &a.Attempts, &a.LastError, &next, &a.LastCode, &last); err != nil {
 			return nil, err
 		}
 		if next != 0 {
 			a.NextAttemptAt = time.UnixMilli(next)
+		}
+		if last != 0 {
+			a.LastAttemptAt = time.UnixMilli(last)
 		}
 		out[dest] = a
 	}

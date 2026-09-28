@@ -1224,8 +1224,26 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 ```json
 [{"id":"6f1c…","flowId":"adt","status":"queued","contentType":"json",
   "receivedAt":"2026-09-26T12:00:00Z","updatedAt":"2026-09-26T12:00:05Z",
-  "attempts":{"ehr":{"attempts":2,"lastError":"Service Unavailable","nextAttemptAt":"2026-09-26T12:00:09Z"}}}]
+  "attempts":{"ehr":{"attempts":2,"lastError":"Service Unavailable","lastCode":"http:503",
+    "lastAttemptAt":"2026-09-26T12:00:05Z","nextAttemptAt":"2026-09-26T12:00:09Z"}}}]
 ```
+
+`attempts` has one entry per destination tried: `attempts` (how many), `lastAttemptAt` (when the
+last one ended), `nextAttemptAt` (when a failed delivery is retried), and, after a failure,
+`lastError` (what went wrong, in words) and `lastCode`, a code for scripts and alerts:
+
+| `lastCode` | Meaning |
+|---|---|
+| `http:<status>` | The receiver answered with this status, for example `http:503`; `http:307` is a redirect that was not followed. |
+| `mllp:AE`, `mllp:AR`, `mllp:CE`, `mllp:CR` | The receiver's HL7 ACK code. |
+| `mllp:no-ack`, `mllp:not-an-ack`, `mllp:wrong-message`, `mllp:unknown-code` | No reply, a reply that is not an ACK, an ACK for another control id, or an ACK code other than AA/AE/AR/CA/CE/CR. |
+| `sqlstate:<code>` | A PostgreSQL error, for example `sqlstate:42P01` (table does not exist). |
+| `net:timeout`, `net:refused`, `net:reset`, `net:dns`, `net:connect` | No answer in time, the connection refused or reset, the host name not found, or a database connection that failed otherwise. |
+| `tls:certificate` | The receiver's certificate could not be verified. |
+| `flow:not-running` | A flow destination's target flow is not started. |
+
+A failure without a protocol behind it (a destination transform error, a message that cannot be
+framed) has no `lastCode`. A successful attempt clears `lastError` and `lastCode`.
 
 | Parameter | Meaning |
 |---|---|

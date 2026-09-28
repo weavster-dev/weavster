@@ -133,6 +133,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 			MaxAttempts: cfg.Delivery.MaxAttempts,
 			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
 			Gate:        flows.locks,
+			ErrorCode:   adapters.ErrorCode,
 		})
 		ia := ingestAdapter{flows: flows, pipe: pipe}
 		sinks.ingest = ia // flow destinations hand messages to other flows (#107 D-70)
@@ -1722,6 +1723,8 @@ func (s flowSink) Write(ctx context.Context, d pipeline.Delivery) error {
 		"source.flow": d.FlowID, "source.message": d.MessageID, flowKeyMetadata: d.IdempotencyKey,
 	})
 	switch {
+	case err != nil && res.ID == "" && (errors.Is(err, gateway.ErrFlowNotRunning) || errors.Is(err, gateway.ErrFlowNotFound)):
+		return adapters.WithCode("flow:not-running", fmt.Errorf("flow %s: %w", s.target, err))
 	case err != nil && res.ID == "":
 		return fmt.Errorf("flow %s: %w", s.target, err)
 	case err != nil: // stored: the target has it, and reports its own failure
@@ -2596,10 +2599,14 @@ func toGatewayMessage(msg state.Message) gateway.Message {
 	if len(msg.Attempts) > 0 {
 		out.Attempts = make(map[string]gateway.MessageAttempt, len(msg.Attempts))
 		for dest, a := range msg.Attempts {
-			ga := gateway.MessageAttempt{Attempts: a.Attempts, LastError: a.LastError}
+			ga := gateway.MessageAttempt{Attempts: a.Attempts, LastError: a.LastError, LastCode: a.LastCode}
 			if !a.NextAttemptAt.IsZero() {
 				t := a.NextAttemptAt.UTC()
 				ga.NextAttemptAt = &t
+			}
+			if !a.LastAttemptAt.IsZero() {
+				t := a.LastAttemptAt.UTC()
+				ga.LastAttemptAt = &t
 			}
 			out.Attempts[dest] = ga
 		}

@@ -82,6 +82,21 @@ func Migrations() []Migration {
 		},
 		itemsMigration(),
 		lookupsMigration(),
+		{
+			Version: 8,
+			Name:    "attempt-code-and-time",
+			Apply: func(ctx context.Context, tx *sql.Tx) error {
+				for _, stmt := range []string{
+					`ALTER TABLE message_attempts ADD COLUMN last_code TEXT NOT NULL DEFAULT ''`,
+					`ALTER TABLE message_attempts ADD COLUMN last_attempt_at BIGINT NOT NULL DEFAULT 0`,
+				} {
+					if _, err := tx.ExecContext(ctx, stmt); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
 	}
 }
 

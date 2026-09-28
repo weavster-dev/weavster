@@ -136,21 +136,24 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 	}
 	reply, err := readFramed(bufio.NewReader(conn), maxACKBytes, framing)
 	if err != nil {
-		return fmt.Errorf("mllp: no ACK: %w", err)
+		if code := ErrorCode(err); code != "" {
+			return withCode(code, fmt.Errorf("mllp: no ACK: %w", err))
+		}
+		return withCode("mllp:no-ack", fmt.Errorf("mllp: no ACK: %w", err))
 	}
 	code, acked, ok := codecs.ParseHL7ACK(reply)
 	switch {
 	case !ok:
-		return errors.New("mllp: the reply is not an HL7 ACK")
+		return withCode("mllp:not-an-ack", errors.New("mllp: the reply is not an HL7 ACK"))
 	case code == codecs.AckApplicationError || code == codecs.AckCommitError:
-		return fmt.Errorf("mllp: ACK %s (application error)", code)
+		return withCode("mllp:"+code, fmt.Errorf("mllp: ACK %s (application error)", code))
 	case code == codecs.AckApplicationReject || code == codecs.AckCommitReject:
-		return fmt.Errorf("mllp: ACK %s (application reject)", code)
+		return withCode("mllp:"+code, fmt.Errorf("mllp: ACK %s (application reject)", code))
 	case code != codecs.AckApplicationAccept && code != codecs.AckCommitAccept:
-		return fmt.Errorf("mllp: ACK with an unknown code %q", code[:min(len(code), 8)]) // bounded: from the receiver
+		return withCode("mllp:unknown-code", fmt.Errorf("mllp: ACK with an unknown code %q", code[:min(len(code), 8)])) // bounded: from the receiver
 	case acked != codecs.HL7ControlID(m.Body):
 		// An accept counts only for this message.
-		return errors.New("mllp: the ACK is for another message (MSA-2 does not match MSH-10)")
+		return withCode("mllp:wrong-message", errors.New("mllp: the ACK is for another message (MSA-2 does not match MSH-10)"))
 	}
 	return nil
 }
