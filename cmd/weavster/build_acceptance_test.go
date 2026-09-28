@@ -25,7 +25,7 @@ func TestBuildOutput(t *testing.T) {
 	defer ehr.Close()
 	lab := &mllpReceiver{codes: []string{"AA"}}
 	addr, src := freeAddr(t), freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
 	c := apiClient{t: t, base: "http://" + addr}

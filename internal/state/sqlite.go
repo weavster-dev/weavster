@@ -7,8 +7,9 @@ import (
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (no CGo)
 )
 
-// OpenSQLite opens a SQLite-backed Store (local DX; no Postgres required,
-// constraint #3). dsn may be ":memory:" or a file path.
+// OpenSQLite opens a SQLite-backed Store for tests that need a SQL store
+// without PostgreSQL (constraint #3); the server does not offer it (D-55).
+// dsn may be ":memory:" or a file path.
 func OpenSQLite(ctx context.Context, dsn string) (Store, error) {
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {

@@ -10,7 +10,7 @@ import (
 // and auto-deploy of enabled flows on restart (flows.deployOnStartup).
 func TestFlowUpdateAndEnable(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
@@ -66,6 +66,9 @@ func TestFlowUpdateAndEnable(t *testing.T) {
 		t.Errorf("enable unknown: %d, want 404", code)
 	}
 	stop()
+	if !restartable(t) {
+		return
+	}
 
 	// Restart: the enabled, undeployed flow is deployed and started; the
 	// disabled one is left undeployed; f keeps its state.
@@ -82,7 +85,7 @@ func TestFlowUpdateAndEnable(t *testing.T) {
 // flows stay undeployed across a restart.
 func TestDeployOnStartupDisabled(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\nflows: {deployOnStartup: false}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+durableStoreConfig(t)+"flows: {deployOnStartup: false}\n")
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)

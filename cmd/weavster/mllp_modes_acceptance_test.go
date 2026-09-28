@@ -14,7 +14,7 @@ import (
 // destination does not wait for an ACK.
 func TestMLLPModes(t *testing.T) {
 	addr, framed, silent := freeAddr(t), freeAddr(t), freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
 	c := apiClient{t: t, base: "http://" + addr}

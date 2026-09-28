@@ -27,7 +27,7 @@ const productionExample = "../../docs/examples/production/weavster-server.yaml"
 // secure as documented (HTTPS only with TLS 1.3, PostgreSQL over verified
 // TLS with no password in the file, the marker header, a strict login
 // policy), and shown verbatim on the Production setup page; with test
-// certificates, a free port, and SQLite in place of its own, the server
+// certificates, a free port, and the test store in place of its own, the server
 // starts from it, listens only on its HTTPS port, and refuses TLS 1.2,
 // requests without the marker header, and requests without credentials.
 func TestProductionExample(t *testing.T) {
@@ -60,15 +60,16 @@ func TestProductionExample(t *testing.T) {
 		t.Fatalf("the production example is not what docs/production.md says: %+v", cfg)
 	}
 
-	// The same configuration with test certificates, a free port, and SQLite.
+	// The same configuration with test certificates, a free port, and the
+	// test database (the memory store without WEAVSTER_TEST_POSTGRES_DSN).
 	certFile, keyFile, pool := selfSignedCert(t, t.TempDir())
 	addr := freeAddr(t)
 	cfg.Listen.TLSAddress = addr
 	cfg.TLS.CertFile, cfg.TLS.KeyFile = certFile, keyFile
-	// A PostgreSQL store is tested by TestServerOnPostgres; here SQLite
-	// stands in for it.
-	cfg.Store.Dialect, cfg.Store.DSN = serverconfig.DialectSQLite, ""
-	cfg.Paths.DataDir = t.TempDir() // the store file goes here
+	cfg.Store.Dialect, cfg.Store.DSN = serverconfig.DialectMemory, ""
+	if testPostgres() {
+		cfg.Store.Dialect, cfg.Store.DSN = serverconfig.DialectPostgres, postgresStoreDSN(t)
+	}
 	if err := cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}

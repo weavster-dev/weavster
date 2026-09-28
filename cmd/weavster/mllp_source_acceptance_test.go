@@ -57,7 +57,7 @@ func (c *mllpClient) send(msg string) []string {
 // stored, AR refused); the port follows the flow's lifecycle.
 func TestMLLPSource(t *testing.T) {
 	addr, src, strict := freeAddr(t), freeAddr(t), freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
 	c := apiClient{t: t, base: "http://" + addr}

@@ -12,13 +12,15 @@ import (
 )
 
 // TestMessageTrends: real processed messages are counted per hour by
-// status, with a flow filter, the same on the SQLite and memory stores.
+// status, with a flow filter, the same on the PostgreSQL and memory stores.
 func TestMessageTrends(t *testing.T) {
-	for _, dialect := range []string{serverconfig.DialectSQLite, "memory"} {
+	for _, dialect := range []string{serverconfig.DialectPostgres, serverconfig.DialectMemory} {
 		t.Run(dialect, func(t *testing.T) {
 			cfg := serverconfig.Default()
 			cfg.Store.Dialect = dialect
-			cfg.Paths.DataDir = t.TempDir()
+			if dialect == serverconfig.DialectPostgres {
+				cfg.Store.DSN = postgresStoreDSN(t)
+			}
 			c := startComposed(t, cfg, io.Discard)
 			admin := basic(bootstrapAdmin, testAdminPassword)
 			// The hour is taken before sending, and the range covers the next

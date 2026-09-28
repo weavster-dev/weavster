@@ -9,7 +9,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
@@ -17,7 +16,6 @@ import (
 // Store dialects accepted by store.dialect (spec §4.2, §11).
 const (
 	DialectMemory   = "memory"
-	DialectSQLite   = "sqlite"
 	DialectPostgres = "postgres"
 	DialectDisabled = "disabled"
 )
@@ -27,7 +25,6 @@ type Config struct {
 	Listen   Listen   `yaml:"listen"`
 	TLS      TLS      `yaml:"tls"`
 	Store    Store    `yaml:"store"`
-	Paths    Paths    `yaml:"paths"`
 	Auth     Auth     `yaml:"auth"`
 	Delivery Delivery `yaml:"delivery"`
 	// Processing bounds how many messages are processed at once (#107
@@ -96,11 +93,6 @@ type Store struct {
 	RetryWaitMs    int    `yaml:"retryWaitMs"`
 }
 
-// Paths configures on-disk locations.
-type Paths struct {
-	DataDir string `yaml:"dataDir"`
-}
-
 // Auth configures the local password and lockout policy (spec §4.4).
 type Auth struct {
 	PasswordPolicy PasswordPolicy `yaml:"passwordPolicy"`
@@ -128,7 +120,6 @@ func Default() Config {
 		Listen: Listen{Address: "127.0.0.1:8080", RequireMarkerHeader: true, ShutdownTimeoutMs: 10000},
 		TLS:    TLS{MinVersion: "1.2"},
 		Store:  Store{Dialect: DialectMemory, MaxConnections: 10, MaxRetry: 3, RetryWaitMs: 1000},
-		Paths:  Paths{},
 		Auth: Auth{
 			PasswordPolicy: PasswordPolicy{MinLength: 8, MinUpper: 1, MinLower: 1, MinNumeric: 1},
 			Lockout:        Lockout{RetryLimit: 5, LockoutPeriodSeconds: 300},
@@ -160,15 +151,6 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
-// StoreDSN returns store.dsn, or for the sqlite dialect without one,
-// <paths.dataDir>/weavster.db.
-func (c Config) StoreDSN() string {
-	if c.Store.Dialect == DialectSQLite && c.Store.DSN == "" && c.Paths.DataDir != "" {
-		return filepath.Join(c.Paths.DataDir, "weavster.db")
-	}
-	return c.Store.DSN
-}
-
 // Validate reports the first invalid value or combination.
 func (c Config) Validate() error {
 	if c.Listen.Address == "" && c.Listen.TLSAddress == "" {
@@ -195,16 +177,14 @@ func (c Config) Validate() error {
 	}
 	switch c.Store.Dialect {
 	case DialectMemory, DialectDisabled:
-	case DialectSQLite:
-		if c.StoreDSN() == "" {
-			return errors.New("config: store.dsn or paths.dataDir is required for the sqlite dialect")
-		}
+	case "sqlite":
+		return errors.New("config: store.dialect sqlite is no longer supported: use postgres for a durable store, or memory")
 	case DialectPostgres:
 		if c.Store.DSN == "" {
 			return errors.New("config: store.dsn is required for the postgres dialect")
 		}
 	default:
-		return fmt.Errorf("config: store.dialect must be memory, sqlite, postgres, or disabled, got %q", c.Store.Dialect)
+		return fmt.Errorf("config: store.dialect must be memory, postgres, or disabled, got %q", c.Store.Dialect)
 	}
 	if c.Store.MaxConnections < 1 {
 		return errors.New("config: store.maxConnections must be >= 1")

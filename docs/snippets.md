@@ -1,7 +1,7 @@
 # Code snippets and libraries
 
 **Code snippets** are named pieces of code you keep on the server to reuse. You can group them
-into **snippet libraries**. Both are stored with the flows (durable with `store.dialect: postgres` or `sqlite`)
+into **snippet libraries**. Both are stored with the flows (durable with `store.dialect: postgres`)
 and managed over the API and the command-line client. Every request needs the `snippets:edit`
 permission.
 

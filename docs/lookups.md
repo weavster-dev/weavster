@@ -2,7 +2,7 @@
 
 A **lookup group** is a named table of text keys and text values: facility codes to names,
 local codes to standard ones, and similar. Groups are stored with the flows (durable with
-`store.dialect: postgres` or `sqlite`) and managed over the API.
+`store.dialect: postgres`) and managed over the API.
 
 !!! note "Stored, not used by flows yet"
     Flows cannot read lookups yet. Today these endpoints store and serve them.

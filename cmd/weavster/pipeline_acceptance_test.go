@@ -40,7 +40,7 @@ func TestPipelineEndToEnd(t *testing.T) {
 	outDir := filepath.Join(t.TempDir(), "out")
 	addr := freeAddr(t)
 	base := "http://" + addr
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	stop := startCLI(t, []string{"server", "--config", cfg}, base+"/api/openapi.yaml")
 	defer stop()
 	c := apiClient{t: t, base: base}

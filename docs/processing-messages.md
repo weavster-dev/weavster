@@ -1517,7 +1517,7 @@ A message is acknowledged to its sender only after it is stored: the API and htt
 `202` (also when a later step then fails: the message is kept and finished), an mllp source
 `AA`, a file source removes or moves the file, and a database source marks the row. If storing
 fails, the sender gets an error (`500`, `AE`, or the file or row stays for the next poll) and can
-send it again. With a durable store (`store.dialect: postgres` or `sqlite`), each later step (the transformed
+send it again. With a durable store (`store.dialect: postgres`), each later step (the transformed
 result, each destination's result, the final status) is written in one step with the message,
 so a stop at any point leaves the message in a state the next start can finish; with `memory`
 a stop loses every message.
@@ -1529,7 +1529,7 @@ receiver that must not see duplicates should also check a business key (an HL7 c
 order number), not only `Idempotency-Key`.
 
 Retry times are stored with the message. After a restart, the server resumes pending
-retries right away. With `store.dialect: postgres` or `sqlite`, a message that was `queued` when the server
+retries right away. With `store.dialect: postgres`, a message that was `queued` when the server
 stopped is delivered once its destination is back. So is a message the server was still
 processing when it stopped or crashed: it is transformed if needed and delivered to every
 destination that has not received it.

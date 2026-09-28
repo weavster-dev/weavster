@@ -45,6 +45,41 @@ func postgresStoreDSN(t *testing.T) string {
 	return u.String()
 }
 
+// testPostgres reports whether the tests have a PostgreSQL database
+// (WEAVSTER_TEST_POSTGRES_DSN, set by the CI PostgreSQL job).
+func testPostgres() bool { return os.Getenv("WEAVSTER_TEST_POSTGRES_DSN") != "" }
+
+// storeConfig is the store line of a test server's configuration: a fresh
+// PostgreSQL schema when WEAVSTER_TEST_POSTGRES_DSN is set (the CI
+// PostgreSQL jobs), the memory store otherwise.
+func storeConfig(t *testing.T) string {
+	t.Helper()
+	if !testPostgres() {
+		return "store: {dialect: memory}\n"
+	}
+	return durableStoreConfig(t)
+}
+
+// durableStoreConfig is the store line for a test that restarts the server
+// and needs what it stored: PostgreSQL only, so without
+// WEAVSTER_TEST_POSTGRES_DSN the test is skipped.
+func durableStoreConfig(t *testing.T) string {
+	t.Helper()
+	return "store: {dialect: postgres, dsn: \"" + postgresStoreDSN(t) + "\"}\n"
+}
+
+// restartable reports whether the test server's store keeps what it
+// stored across a restart (PostgreSQL). With the memory store a test ends
+// before its restart checks, which the CI PostgreSQL jobs run.
+func restartable(t *testing.T) bool {
+	t.Helper()
+	if !testPostgres() {
+		t.Log("restart checks skipped: they need WEAVSTER_TEST_POSTGRES_DSN")
+		return false
+	}
+	return true
+}
+
 // TestServerOnPostgres: with store.dialect postgres the server runs its
 // schema migrations, stores flows, messages (with their attempts), users,
 // and lookups, answers message search and trends, and keeps all of it
