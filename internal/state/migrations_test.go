@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -335,5 +336,51 @@ func TestUpgradeFromEveryVersion(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+// TestMigrateFollowsSearchPath: on PostgreSQL the version table is found
+// where an unqualified name resolves, anywhere on the search_path, so a
+// store migrated in one schema is not migrated again in an earlier one.
+func TestMigrateFollowsSearchPath(t *testing.T) {
+	base := testPostgresDSN(t) // search_path=<schema>
+	if base == "" {
+		t.Skip("WEAVSTER_TEST_POSTGRES_DSN not set")
+	}
+	ctx := context.Background()
+	u, err := url.Parse(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	home := u.Query().Get("search_path")
+	first := home + "_first"
+	admin, err := sql.Open("pgx", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec("DROP SCHEMA IF EXISTS " + first + " CASCADE")
+		_ = admin.Close()
+	})
+	if err := Migrate(ctx, admin, Migrations()); err != nil { // the store, in <schema>
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec("CREATE SCHEMA " + first); err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	q.Set("search_path", first+","+home)
+	u.RawQuery = q.Encode()
+	db, err := sql.Open("pgx", u.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if err := Migrate(ctx, db, Migrations()); err != nil {
+		t.Fatalf("Migrate() with %s first on the search_path: %v", first, err)
+	}
+	var n int
+	if err := admin.QueryRow(`SELECT count(*) FROM information_schema.tables WHERE table_schema = $1`, first).Scan(&n); err != nil || n != 0 {
+		t.Errorf("%d tables (%v) created in %s: the store was migrated again", n, err, first)
 	}
 }

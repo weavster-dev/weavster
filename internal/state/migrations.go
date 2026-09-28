@@ -236,12 +236,12 @@ func currentVersion(ctx context.Context, conn *sql.Conn, hasAppVersion bool) (in
 	return v, app, err
 }
 
-// columns names the columns of table in the current schema (none when the
-// table does not exist).
+// columns names the columns of table as an unqualified name resolves it
+// (on PostgreSQL through the whole search_path), none when there is none.
 func columns(ctx context.Context, conn *sql.Conn, postgres bool, table string) (map[string]bool, error) {
 	q := `SELECT name FROM pragma_table_info(?)`
 	if postgres {
-		q = `SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1`
+		q = `SELECT attname FROM pg_attribute WHERE attrelid = to_regclass($1::text) AND attnum > 0 AND NOT attisdropped`
 	}
 	rows, err := conn.QueryContext(ctx, q, table)
 	if err != nil {
