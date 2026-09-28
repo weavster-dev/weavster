@@ -330,6 +330,35 @@ instead of losing messages. To follow them, set `maxRedirects`:
 - A redirect from `https://` to `http://` is never followed.
 - Each redirect counts toward `maxRedirects`; one more is a failed delivery.
 
+### Processing order
+
+Each message goes through these stages, in this order:
+
+1. **Flow transform**: the flow's `transform` steps, one after another in the order written, on
+   the message (or its [HL7 v2](#transform-hl7-v2-messages),
+   [XML](#transform-xml-documents), or [delimited](#transform-delimited-text-csv) view). A
+   `filter` step sees what the steps before it produced; if it drops the message, the message is
+   `filtered` and nothing is delivered.
+2. **Destination transform**: for each destination, its own `transform` steps in order, on the
+   flow's output (not the original message). A `filter` here drops the message for that
+   destination only.
+3. **Delivery** to each destination.
+4. **Response transform**: on the reply of the destination named by `responseSelector`, which is
+   returned to the sender.
+
+Step order matters. Here the `filter` reads `adult`, which the `map` step before it sets:
+
+```json
+"transform": {"steps": [
+  {"map": {"from": "age.flag", "to": "adult"}},
+  {"filter": {"when": "adult == 'y'", "action": "accept"}}
+]}
+```
+
+Written the other way round, the filter runs before `adult` exists (a missing value compares
+equal to `''`), so every message is filtered. A destination's filter on `adult` works either way
+round inside the flow, because destinations only see the flow's finished output.
+
 ### Per-destination transforms and filters
 
 A destination's `transform` runs on the flow's output, just before delivery to that
