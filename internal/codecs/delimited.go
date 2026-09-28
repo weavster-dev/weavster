@@ -29,10 +29,18 @@ func (c *DelimitedCodec) Name() string { return "delimited" }
 
 // Parse reads records the way the server reads delimited text
 // (readDelimited: RFC 4180 quoting, blank lines skipped, rows of equal
-// length, the same limits; #107 D-74).
+// length, the same limits, MaxDelimitedRows rows after the header; #107
+// D-74).
 func (c *DelimitedCodec) Parse(in []byte) (any, error) {
 	var rows [][]string
+	limit := MaxDelimitedRows
+	if c.hasHeader {
+		limit++
+	}
 	if err := readDelimited(in, rune(c.delim), func(rec []string) error {
+		if len(rows) == limit {
+			return notDelimited(fmt.Sprintf("more than %d rows", MaxDelimitedRows))
+		}
 		rows = append(rows, rec)
 		return nil
 	}); err != nil {

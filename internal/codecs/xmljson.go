@@ -74,7 +74,7 @@ func scanXML(in []byte, visit func(tok xml.Token, ns map[string]string) error) e
 			}
 		case xml.Directive:
 			// Only one DOCTYPE, before the root element (never processed).
-			if !bytes.HasPrefix(t, []byte("DOCTYPE")) || doctype || root {
+			if !isDoctype(t) || doctype || root {
 				return notXML("")
 			}
 			doctype = true
@@ -95,6 +95,8 @@ func scanXML(in []byte, visit func(tok xml.Token, ns map[string]string) error) e
 			}
 			for _, a := range t.Attr {
 				switch {
+				case a.Name.Space == "xmlns" && a.Value == "":
+					return notXML("a namespace prefix bound to an empty URI")
 				case a.Name.Space == "xmlns":
 					scope = copyWith(scope, a.Name.Local, a.Value)
 				case a.Name.Space == "" && a.Name.Local == "xmlns":
@@ -142,6 +144,15 @@ func scanXML(in []byte, visit func(tok xml.Token, ns map[string]string) error) e
 	}
 	return nil
 }
+
+// isDoctype reports whether a directive is a DOCTYPE declaration: the
+// keyword, white space, and a name.
+func isDoctype(d xml.Directive) bool {
+	rest, ok := bytes.CutPrefix(d, []byte("DOCTYPE"))
+	return ok && len(rest) > 1 && isXMLSpace(rest[0]) && len(bytes.TrimSpace(rest)) > 0
+}
+
+func isXMLSpace(b byte) bool { return b == ' ' || b == '\t' || b == '\n' || b == '\r' }
 
 // XMLJSON parses an XML document into the JSON view the DSL reads (#107
 // D-62): {"<root local name>": element}. An element object has "@<name>"

@@ -58,6 +58,7 @@ func TestXMLCodecRefuses(t *testing.T) {
 		"<r>" + strings.Repeat("<a/>", MaxXMLElements) + "</r>",
 		`<?xml version="1.0" encoding="x-unknown"?><a/>`,
 		`<a x="1" x="2"/>`, `<p:a/>`, `<a b:c="1"/>`, `<a/><!DOCTYPE b>`, `<a/><?xml version="1.0"?>`, `<!ENTITY x "y"><a/>`,
+		`<!DOCTYPEfoo><a/>`, `<!DOCTYPE ><a/>`, `<p:a xmlns:p=""/>`,
 	} {
 		if _, err := XML().Parse([]byte(in)); err == nil {
 			t.Errorf("%.60q: parsed", in)
@@ -85,6 +86,13 @@ func TestDelimitedCodecRefuses(t *testing.T) {
 		if _, err := NewDelimited('|', true).Parse([]byte(in)); err == nil {
 			t.Errorf("%q: parsed", in)
 		}
+	}
+	rows := "h\n" + strings.Repeat("x\n", MaxDelimitedRows)
+	if _, err := NewDelimited('|', true).Parse([]byte(rows)); err != nil {
+		t.Errorf("%d rows after a header: %v", MaxDelimitedRows, err)
+	}
+	if _, err := NewDelimited('|', true).Parse([]byte(rows + "x\n")); err == nil {
+		t.Errorf("more than %d rows parsed", MaxDelimitedRows)
 	}
 	for _, delim := range []byte{0, '"', '\n', '\r', 0xA6} {
 		c := NewDelimited(delim, false)
