@@ -413,6 +413,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestServerOnPostgres</code> (server with a restart), the store suite on PostgreSQL (<code>TestStoreCRUDAndSearch</code>, <code>TestFlowStore</code>, <code>TestUsers…</code>, <code>TestConfigItems</code>, <code>TestLookups</code>, <code>TestSearchFilterParity</code>, …), <code>TestRebind</code>, <code>TestDialectDetection</code>; run by the <code>postgres</code> CI job against PostgreSQL 16.</td>
 </tr>
 <tr>
+<td>Schema migrations at startup: ordered, one transaction each, locked on PostgreSQL, the applying release recorded; a newer release's database refused (exit <code>1</code>, not retried); upgrades from every earlier version keep the data</td>
+<td>Implemented (wired)</td>
+<td><code>TestUpgradeFromEveryVersion</code> (SQLite and PostgreSQL), <code>TestMigrateOrderEnforced</code>, <code>TestMigrateNewerSchemaRefused</code>, <code>TestMigrateFollowsSearchPath</code>, <code>TestRefusesNewerSchema</code>, <code>TestMigratesBeforeTraffic</code>, <code>TestPostgresConcurrentMigrate</code>, <code>TestOpenClosesHandleOnMigrationFailure</code>. See <a href="../server-config/#upgrades">Upgrades</a>.</td>
+</tr>
+<tr>
 <td>Store connection retries (<code>store.maxRetry</code>, <code>store.retryWaitMs</code>)</td>
 <td>Implemented (wired)</td>
 <td><code>TestServerConfigErrors/retry-exhausted</code>, <code>TestServerStopDuringStoreRetry</code>. PostgreSQL only.</td>

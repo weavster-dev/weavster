@@ -162,6 +162,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#upgrades" class="nav-link">Upgrades</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#keys" class="nav-link">Keys</a>
               <ul class="nav flex-column">
               </ul>
@@ -223,10 +227,9 @@ auth:
 <li>Checks its arguments (a bad flag or an extra argument exits <code>2</code>) and refuses to run as root
    unless <code>WEAVSTER_ALLOW_ROOT=1</code> is set.</li>
 <li>Reads and checks the configuration file (a problem exits <code>1</code>).</li>
-<li>Opens the store and applies any pending schema migrations. A store left at an older version
-   by an earlier release is upgraded here, and the data in it is kept. With PostgreSQL, a failed
-   connection or migration is retried per <code>store.maxRetry</code> and <code>store.retryWaitMs</code>; run one
-   server at a time while it upgrades a database.</li>
+<li>Opens the store and applies any pending schema migrations (see <a href="#upgrades">Upgrades</a>).
+   With PostgreSQL, a failed connection or migration is retried per <code>store.maxRetry</code> and
+   <code>store.retryWaitMs</code>.</li>
 <li>Loads users and creates the first <code>admin</code> account when there are none (see
    <a href="../authentication/">Authentication</a>).</li>
 <li>With <code>flows.deployOnStartup</code> (and a store), deploys every flow that is <code>enabled</code> and
@@ -243,6 +246,18 @@ auth:
 <p>Messages of a flow that is not running are not recovered at start; they are finished once the
 flow is started. The server keeps no jobs or leases of its own to reconcile: everything it must
 resume is a stored message, which the recovery pass picks up.</p>
+<h2 id="upgrades">Upgrades</h2>
+<p>A new release upgrades the database schema when it starts (step 3 above), before it accepts any
+traffic. The data is kept. Each schema change runs in its own transaction, so a failed upgrade
+leaves the database at the last completed version, and the next start carries on from there.
+Servers that start together on one database take turns: only the first applies the upgrade.
+The database records which weavster release applied each schema version.</p>
+<p>A database that a <strong>newer</strong> release has already upgraded is refused, and nothing in it changes.
+The server exits <code>1</code> at once (this is not retried) with:</p>
+<pre><code class="language-text">Error: store: state: the database schema is at version 10 (written by weavster 0.3.0), newer than this release supports (9): run weavster 0.3.0 or later, or restore a backup taken before the upgrade
+</code></pre>
+<p>So you can't roll back to an older release by just starting it again. Back up the database
+before upgrading, and to go back, restore that backup and start the older release.</p>
 <h2 id="keys">Keys</h2>
 <p>Keys you leave out keep their default.</p>
 <h3 id="listen"><code>listen</code></h3>
