@@ -1,8 +1,8 @@
 # Production server configuration: HTTPS only, PostgreSQL, strict login policy.
-# See docs/production.md. Secrets are not in this file: the database password
-# comes from PGPASSWORD (or ~/.pgpass), the first admin password from
-# WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE, and flow connection strings from
-# WEAVSTER_DB_* / WEAVSTER_SOURCE_* variables.
+# See docs/production.md. Secrets are not in this file: the store's password
+# comes from ~/.pgpass of the server's account (a line for db.internal only),
+# the first admin password from WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE, and
+# flow connection strings from WEAVSTER_DB_* / WEAVSTER_SOURCE_* variables.
 listen:
   address: ""                  # no cleartext listener
   tlsAddress: 0.0.0.0:8443

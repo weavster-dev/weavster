@@ -48,7 +48,8 @@ change are marked with their configuration key or flow field.
 | Flow import, bulk update, config documents | 50 MiB per request or file. |
 | Config map, scripts, settings bodies | 10 MiB. |
 | Events per request | 1000 by default. |
-| Statistics series and message trends | 1000 points or buckets per request. |
+| Statistics series | 1000 points per request by default; `limit` up to 10000. |
+| Message trends | 1000 buckets per request. |
 | `weavster deadletter list` | 1000 messages per call. |
 
 ## Retention

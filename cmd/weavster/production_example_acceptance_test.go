@@ -2,15 +2,20 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 )
@@ -18,51 +23,72 @@ import (
 // productionExample is the production configuration the docs publish.
 const productionExample = "../../docs/examples/production/weavster-server.yaml"
 
-// TestProductionExample: the published production configuration is valid
-// and secure as documented (HTTPS only with TLS 1.3, PostgreSQL over
-// verified TLS, the marker header, a strict login policy); with test
+// TestProductionExample: the published production configuration is valid,
+// secure as documented (HTTPS only with TLS 1.3, PostgreSQL over verified
+// TLS with no password in the file, the marker header, a strict login
+// policy), and shown verbatim on the Production setup page; with test
 // certificates and SQLite in place of its paths and database, the server
-// starts from it and serves only HTTPS, refusing TLS 1.2, requests without
-// the marker header, and requests without credentials.
+// starts from it, listens only on its HTTPS port, and refuses TLS 1.2,
+// requests without the marker header, and requests without credentials.
 func TestProductionExample(t *testing.T) {
-	cfg, err := serverconfig.Load(productionExample)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if cfg.Listen.Address != "" || cfg.Listen.TLSAddress == "" || !cfg.Listen.RequireMarkerHeader || cfg.TLS.MinVersion != "1.3" ||
-		cfg.Store.Dialect != serverconfig.DialectPostgres || !strings.Contains(cfg.Store.DSN, "sslmode=verify-full") || strings.Contains(cfg.Store.DSN, ":@") ||
-		cfg.Auth.PasswordPolicy.MinLength < 12 || cfg.Auth.Lockout.RetryLimit < 1 {
-		t.Fatalf("the production example is not what docs/production.md says: %+v", cfg)
-	}
-
 	raw, err := os.ReadFile(productionExample)
 	if err != nil {
 		t.Fatal(err)
 	}
-	certFile, keyFile, pool := selfSignedCert(t, t.TempDir())
-	addr := freeAddr(t)
-	local := strings.NewReplacer(
-		"tlsAddress: 0.0.0.0:8443", "tlsAddress: "+addr,
-		"/etc/weavster/tls/server.crt", certFile,
-		"/etc/weavster/tls/server.key", keyFile,
-		"dialect: postgres", "dialect: sqlite",
-		"dsn: postgres://weavster@db.internal:5432/weavster?sslmode=verify-full", "dsn: "+filepath.Join(t.TempDir(), "weavster.db"),
-		"/var/lib/weavster", t.TempDir(),
-	).Replace(string(raw))
-	path := filepath.Join(t.TempDir(), "weavster-server.yaml")
-	if err := os.WriteFile(path, []byte(local), 0o600); err != nil {
+	page, err := os.ReadFile("../../docs/production.md")
+	if err != nil {
 		t.Fatal(err)
 	}
-	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
+	if !strings.Contains(string(page), "```yaml\n"+string(raw)+"```") {
+		t.Error("docs/production.md does not show docs/examples/production/weavster-server.yaml verbatim")
+	}
+	cfg, err := serverconfig.Load(productionExample)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dsn, err := url.Parse(cfg.Store.DSN)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, hasPassword := dsn.User.Password()
+	if cfg.Listen.Address != "" || cfg.Listen.TLSAddress == "" || !cfg.Listen.RequireMarkerHeader || cfg.TLS.MinVersion != "1.3" ||
+		cfg.Store.Dialect != serverconfig.DialectPostgres || dsn.Query().Get("sslmode") != "verify-full" || hasPassword ||
+		cfg.Auth.PasswordPolicy.MinLength < 12 || cfg.Auth.Lockout.RetryLimit < 1 {
+		t.Fatalf("the production example is not what docs/production.md says: %+v", cfg)
+	}
+
+	// The same configuration with test certificates, a free port, and SQLite.
+	certFile, keyFile, pool := selfSignedCert(t, t.TempDir())
+	addr := freeAddr(t)
+	cfg.Listen.TLSAddress = addr
+	cfg.TLS.CertFile, cfg.TLS.KeyFile = certFile, keyFile
+	cfg.Store.Dialect, cfg.Store.DSN = serverconfig.DialectSQLite, filepath.Join(t.TempDir(), "weavster.db")
+	cfg.Paths.DataDir = t.TempDir()
+	local, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "weavster-server.yaml")
+	if err := os.WriteFile(path, local, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
 	// startCLI waits over plain HTTP; this server has only HTTPS.
+	client := &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}}}
+	stderr := &syncBuffer{}
 	done := make(chan int, 1)
-	go func() {
-		done <- run([]string{"server", "--config", path}, strings.NewReader(""), io.Discard, io.Discard)
-	}()
+	go func() { done <- run([]string{"server", "--config", path}, strings.NewReader(""), io.Discard, stderr) }()
+	exited := false
 	defer func() {
+		if exited {
+			return // no SIGTERM: without the server's handler it would end the test binary
+		}
 		_ = syscall.Kill(os.Getpid(), syscall.SIGTERM)
 		select {
-		case <-done:
+		case code := <-done:
+			if code != 0 {
+				t.Errorf("exit %d after SIGTERM: %s", code, stderr.String())
+			}
 		case <-time.After(5 * time.Second):
 			t.Error("the server did not stop")
 		}
@@ -74,13 +100,18 @@ func TestProductionExample(t *testing.T) {
 			_ = resp.Body.Close()
 			break
 		}
-		if time.Now().After(deadline) {
-			t.Fatalf("the server never served HTTPS: %v", err)
+		select {
+		case code := <-done:
+			exited = true
+			t.Fatalf("the server exited %d: %s", code, stderr.String())
+		case <-time.After(20 * time.Millisecond):
 		}
-		time.Sleep(20 * time.Millisecond)
+		if time.Now().After(deadline) {
+			t.Fatalf("the server never served HTTPS: %v (%s)", err, stderr.String())
+		}
 	}
 
-	get := func(path string, marker bool, creds func(*http.Request)) int {
+	do := func(path string, marker bool, creds func(*http.Request)) (int, string) {
 		t.Helper()
 		req, _ := http.NewRequest(http.MethodGet, "https://"+addr+path, nil)
 		if marker {
@@ -93,34 +124,31 @@ func TestProductionExample(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_ = resp.Body.Close()
-		return resp.StatusCode
+		defer func() { _ = resp.Body.Close() }()
+		body, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(body)
 	}
-	if code := get("/api/v1/flows", true, nil); code != http.StatusUnauthorized {
+	admin := basic(bootstrapAdmin, testAdminPassword)
+	if code, _ := do("/api/v1/flows", true, nil); code != http.StatusUnauthorized {
 		t.Errorf("without credentials: %d, want 401", code)
 	}
-	if code := get("/api/v1/flows", false, basic(bootstrapAdmin, testAdminPassword)); code != http.StatusBadRequest {
+	if code, _ := do("/api/v1/flows", false, admin); code != http.StatusBadRequest {
 		t.Errorf("without the marker header: %d, want 400", code)
 	}
-	if code := get("/api/v1/flows", true, basic(bootstrapAdmin, testAdminPassword)); code != http.StatusOK {
-		t.Errorf("with both: %d, want 200", code)
+	// The server's own listeners: only the HTTPS port.
+	code, body := do("/api/v1/flows/ports-in-use", true, admin)
+	var ports []struct {
+		Port   int
+		UsedBy string
+	}
+	_, portText, _ := net.SplitHostPort(addr)
+	tlsPort, _ := strconv.Atoi(portText)
+	if code != http.StatusOK || json.Unmarshal([]byte(body), &ports) != nil || len(ports) != 1 || ports[0].Port != tlsPort {
+		t.Errorf("listeners: %d %s, want only the HTTPS port %d", code, body, tlsPort)
 	}
 	old := &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12, MaxVersion: tls.VersionTLS12}
 	if conn, err := tls.Dial("tcp", addr, old); err == nil {
 		_ = conn.Close()
 		t.Error("a TLS 1.2 client was accepted; the example requires TLS 1.3")
-	}
-	if conn, err := net.DialTimeout("tcp", "127.0.0.1:8080", 200*time.Millisecond); err == nil {
-		_ = conn.Close()
-		t.Log("something listens on 127.0.0.1:8080; the cleartext check is skipped")
-	} else if code := func() int {
-		resp, err := http.Get("http://" + addr + "/api/openapi.yaml")
-		if err != nil {
-			return 0
-		}
-		_ = resp.Body.Close()
-		return resp.StatusCode
-	}(); code == http.StatusOK {
-		t.Error("the HTTPS port answered cleartext HTTP")
 	}
 }
