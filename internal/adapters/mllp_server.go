@@ -37,16 +37,21 @@ type MLLPOptions struct {
 }
 
 // MLLPFraming is the bytes around each frame: Start, then the message, then
-// End (one or two bytes). The zero value is MLLP's VT … FS CR.
+// End (one or two different bytes). The zero value is MLLP's VT … FS CR;
+// without End, End is MLLP's FS CR.
 type MLLPFraming struct {
 	Start byte
 	End   []byte
 }
 
-// orDefault is f, or MLLP's framing when f is the zero value.
+// orDefault is f with MLLP's bytes for what it leaves unset (a zero Start
+// is NUL once End is set).
 func (f MLLPFraming) orDefault() MLLPFraming {
 	if len(f.End) == 0 {
-		return MLLPFraming{Start: mllpStart, End: mllpEnd}
+		if f.Start == 0 {
+			f.Start = mllpStart
+		}
+		f.End = mllpEnd
 	}
 	return f
 }
@@ -185,15 +190,11 @@ func (s *MLLPServer) Close() error {
 	return err
 }
 
-// readFrame reads one MLLP frame (VT … FS CR) from r, skipping bytes before
-// the start byte (such as line breaks between frames). A frame over max is
+// readFramed reads one frame in framing f (MLLP's VT … FS CR by default)
+// from r, skipping bytes before the start byte (such as line breaks
+// between frames). A frame over max is
 // read to its end and reported as ErrMLLPFrameTooLarge, with its first
 // segment (up to maxFrameHead bytes).
-func readFrame(r *bufio.Reader, max int) ([]byte, error) {
-	return readFramed(r, max, MLLPFraming{})
-}
-
-// readFramed is readFrame with framing f.
 func readFramed(r *bufio.Reader, max int, f MLLPFraming) ([]byte, error) {
 	f = f.orDefault()
 	for {

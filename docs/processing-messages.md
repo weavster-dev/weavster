@@ -963,13 +963,16 @@ that uses standard MLLP:
 
 - `frameStart` and the first byte of `frameEnd` must be control bytes that HL7 text never
   contains: `00`–`1F` except `09` (tab), `0A` (line feed), and `0D` (carriage return), or `7F`;
-  and they must differ. The second byte of `frameEnd` can be any byte (MLLP's is `0D`).
+  and they must differ. The second byte of `frameEnd` can be any other byte (MLLP's is `0D`).
   Anything else is refused when you create the flow, for example
   `frameEnd starts with 0D, which can occur in a message; use a control byte such as 1C`.
 - A source reads everything between the start byte and the end bytes as one message and skips
   bytes outside a frame; its ACKs use the same framing. With a one-byte `frameEnd`, a message
   cannot contain that byte.
-- A message containing the destination's `frameEnd` cannot be framed; its delivery fails.
+- A message containing the destination's `frameStart` byte or `frameEnd` cannot be framed; its
+  delivery fails.
+- With `ackMode: none` the destination sends the message, closes its side of the connection, and
+  waits up to a second for the receiver to close before counting it as delivered.
 - With `ackMode: none` the sender learns nothing: on the source, a message the flow refuses or
   cannot store is dropped with no reply (look for it in the flow's messages and events); on the
   destination, a receiver that rejects the message is not noticed. Use it only for systems that

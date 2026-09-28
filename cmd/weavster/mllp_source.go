@@ -34,12 +34,15 @@ const maxControlIDMetadata = 199
 // id and answers it with an ACK (#107 D-60): AA once the message is stored,
 // AR when it is refused (resending it unchanged would be refused again), AE
 // when it could not be stored (the sender may try again). MSA-3 says why in
-// fixed words, never with message content.
-func mllpHandler(id string, ingest gateway.SourceIngester) adapters.MLLPHandler {
+// fixed words, never with message content. Without reply it only ingests.
+func mllpHandler(id string, ingest gateway.SourceIngester, reply bool) adapters.MLLPHandler {
 	tooLarge := fmt.Sprintf("message larger than %d MiB", gateway.MaxMessageBytes>>20)
 	return func(frame []byte, readErr error) []byte {
 		msh := withoutFraming(firstSegment(frame)) // the ACK needs only MSH
 		ack := func(code, text string) []byte {
+			if !reply {
+				return nil // ackMode none: no ACK is sent (#107 D-72)
+			}
 			// HL7ACK answers any input (the HL7 parser accepts every byte string).
 			b, _ := codecs.HL7ACK(msh, codecs.HL7AckOptions{Code: code, Text: text, ControlID: newControlID(), Now: time.Now()})
 			return b

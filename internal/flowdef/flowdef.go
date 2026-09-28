@@ -185,6 +185,9 @@ func checkMLLPMode(start, end, ackMode string) error {
 		return fmt.Errorf("frameEnd starts with %02X, which can occur in a message; use a control byte such as 1C", e[0])
 	case s == e[0]:
 		return errors.New("frameStart and the first byte of frameEnd must differ")
+	case len(e) == 2 && e[0] == e[1]:
+		// A message ending in that byte could not be told from the end.
+		return errors.New("the two bytes of frameEnd must differ")
 	case ackMode != "" && ackMode != "original" && ackMode != "none":
 		return fmt.Errorf("ackMode must be original or none, got %q", ackMode)
 	}

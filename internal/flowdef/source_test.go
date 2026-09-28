@@ -47,6 +47,7 @@ func TestCheckSource(t *testing.T) {
 		{"mllp printable start", &Source{Type: "mllp", Address: ":2575", FrameStart: "41"}, "frameStart 41 can occur in a message"},
 		{"mllp CR end", &Source{Type: "mllp", Address: ":2575", FrameEnd: "0D"}, "frameEnd starts with 0D"},
 		{"mllp same bytes", &Source{Type: "mllp", Address: ":2575", FrameStart: "1C"}, "must differ"},
+		{"mllp repeated end byte", &Source{Type: "mllp", Address: ":2575", FrameEnd: "1C1C"}, "the two bytes of frameEnd must differ"},
 		{"mllp DEL start", &Source{Type: "mllp", Address: ":2575", FrameStart: "7F"}, ""},
 		{"mllp ackMode", &Source{Type: "mllp", Address: ":2575", AckMode: "enhanced"}, "ackMode must be original or none"},
 		{"http framing", &Source{Type: "http", Address: ":9001", AckMode: "none"}, "apply only to mllp sources"},

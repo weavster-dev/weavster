@@ -19,15 +19,6 @@ const mllpStart = 0x0B // VT
 
 var mllpEnd = []byte{0x1C, 0x0D} // FS CR
 
-// frameMLLP wraps body in an MLLP frame.
-func frameMLLP(body []byte) []byte {
-	out := make([]byte, 0, len(body)+3)
-	out = append(out, mllpStart)
-	out = append(out, body...)
-	out = append(out, mllpEnd...)
-	return out
-}
-
 // readMLLPFrame reads one MLLP frame from r (leading start byte through the
 // FS CR terminator).
 func readMLLPFrame(r io.Reader) ([]byte, error) {
@@ -120,8 +111,8 @@ func (s *MLLPSink) Name() string { return "tcp" }
 // Without ACKs (WithMode), m is delivered once it is written.
 func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 	framing := s.framing.orDefault()
-	if bytes.Contains(m.Body, framing.End) {
-		return fmt.Errorf("mllp: the message contains the frame's end bytes (%X) and cannot be framed", framing.End)
+	if bytes.Contains(m.Body, framing.End) || bytes.IndexByte(m.Body, framing.Start) >= 0 {
+		return fmt.Errorf("mllp: the message contains the frame's start byte (%02X) or end bytes (%X) and cannot be framed", framing.Start, framing.End)
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
@@ -140,6 +131,7 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 		return err
 	}
 	if s.noACK {
+		drain(conn)
 		return nil
 	}
 	reply, err := readFramed(bufio.NewReader(conn), maxACKBytes, framing)
@@ -161,6 +153,21 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 		return errors.New("mllp: the ACK is for another message (MSA-2 does not match MSH-10)")
 	}
 	return nil
+}
+
+// noACKDrain bounds how long a sink without ACKs waits for the receiver
+// to close after the message was sent.
+const noACKDrain = time.Second
+
+// drain ends the sending side of conn and reads what the receiver still
+// sends for a moment, so closing conn does not reset it (a reset can drop
+// data not yet sent).
+func drain(conn net.Conn) {
+	if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+		_ = cw.CloseWrite()
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(noACKDrain))
+	_, _ = io.Copy(io.Discard, io.LimitReader(conn, maxACKBytes))
 }
 
 func (s *MLLPSink) Close() error { return nil }

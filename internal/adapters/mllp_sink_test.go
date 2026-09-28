@@ -28,8 +28,8 @@ func mllpPeer(t *testing.T, replies ...string) string {
 			if err != nil {
 				return
 			}
-			if _, err := readFrame(bufio.NewReader(conn), 1<<20); err == nil && reply != "" {
-				_, _ = conn.Write(frameMLLP([]byte(reply)))
+			if _, err := readFramed(bufio.NewReader(conn), 1<<20, MLLPFraming{}); err == nil && reply != "" {
+				_, _ = conn.Write(MLLPFraming{}.wrap([]byte(reply)))
 			}
 			if reply == "" {
 				time.Sleep(300 * time.Millisecond)
@@ -116,10 +116,10 @@ func TestMLLPSinkTLS(t *testing.T) {
 					return
 				}
 				defer func() { _ = conn.Close() }()
-				_, err = readFrame(bufio.NewReader(conn), 1<<20)
+				_, err = readFramed(bufio.NewReader(conn), 1<<20, MLLPFraming{})
 				got <- err == nil
 				if err == nil {
-					_, _ = conn.Write(frameMLLP([]byte("MSH|^~\\&|C|D|A|B|2||ACK^A01|X|P|2.5\rMSA|AA|C1\r")))
+					_, _ = conn.Write(MLLPFraming{}.wrap([]byte("MSH|^~\\&|C|D|A|B|2||ACK^A01|X|P|2.5\rMSA|AA|C1\r")))
 				}
 			}()
 			cfg := &tls.Config{RootCAs: tt.roots, ServerName: "127.0.0.1", MinVersion: tls.VersionTLS12}
@@ -172,5 +172,8 @@ func TestMLLPSinkMode(t *testing.T) {
 	}
 	if err := NewMLLPSink("127.0.0.1:1").WithMode(f, true).Write(context.Background(), Message{Body: []byte("a\x03b")}); err == nil || !strings.Contains(err.Error(), "end bytes (03)") {
 		t.Errorf("a body with the end byte: %v", err)
+	}
+	if err := NewMLLPSink("127.0.0.1:1").Write(context.Background(), Message{Body: []byte("MSH|^~\\&|A\x0bB")}); err == nil || !strings.Contains(err.Error(), "start byte (0B)") {
+		t.Errorf("a body with the start byte: %v", err)
 	}
 }

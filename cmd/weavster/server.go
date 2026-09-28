@@ -1740,13 +1740,15 @@ func buildSink(d pipeline.Destination, tlsOpts gateway.TLSOptions) (pipeline.Sin
 		if err != nil {
 			return nil, err
 		}
-		sink := adapters.NewMLLPSinkWith(d.Address, d.Timeout)
+		var sink *adapters.MLLPSink
 		if d.TLS {
 			cfg, err := mllpClientTLS(d, tlsOpts)
 			if err != nil {
 				return nil, err
 			}
 			sink = adapters.NewMLLPSinkTLS(d.Address, d.Timeout, cfg)
+		} else {
+			sink = adapters.NewMLLPSinkWith(d.Address, d.Timeout)
 		}
 		return adapterSink{sink.WithMode(framing, d.AckMode == "none")}, nil
 	}
