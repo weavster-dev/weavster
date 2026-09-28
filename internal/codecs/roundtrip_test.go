@@ -22,7 +22,7 @@ func TestCodecRoundTrip(t *testing.T) {
 		{"json exact numbers", "json", `{"a":[1,2.50,12345678901234567890123],"b":"<&>","c":null,"d":true}`, ""},
 		{"json keys sorted", "json", `{ "z": 1, "a": {"y": 2, "b": 3} }`, `{"a":{"b":3,"y":2},"z":1}`},
 		{"delimited quoting", "delimited", "id|name|note\n1|\"Doe|John\"|\"say \"\"hi\"\"\"\n2|Ann|\"two\nlines\"", ""},
-		{"delimited ragged rows", "delimited", "a|b|c\nd\n\ne|f", "a|b|c\nd\ne|f"},
+		{"delimited blank lines and BOM", "delimited", "\xEF\xBB\xBFa|b\n\nc|d\n", "a|b\nc|d"},
 		{"raw binary", "raw", "\x00\x01\xff\r\n\x0b", ""},
 		{"hl7v2", "hl7v2", "MSH#$%!@#A#B#C#D#1##ADT$A01#M!F!2#P#2.4\rPID#1##1$$$H@O!T!X\r", ""},
 	} {
@@ -57,6 +57,7 @@ func TestXMLCodecRefuses(t *testing.T) {
 		strings.Repeat("<a>", MaxXMLDepth+1) + strings.Repeat("</a>", MaxXMLDepth+1),
 		"<r>" + strings.Repeat("<a/>", MaxXMLElements) + "</r>",
 		`<?xml version="1.0" encoding="x-unknown"?><a/>`,
+		`<a x="1" x="2"/>`, `<p:a/>`, `<a b:c="1"/>`, `<a/><!DOCTYPE b>`, `<a/><?xml version="1.0"?>`, `<!ENTITY x "y"><a/>`,
 	} {
 		if _, err := XML().Parse([]byte(in)); err == nil {
 			t.Errorf("%.60q: parsed", in)
@@ -74,7 +75,24 @@ func TestJSONCodecRefuses(t *testing.T) {
 			t.Errorf("%q: parsed", in)
 		}
 	}
-	if _, err := NewDelimited('|', true).Parse([]byte("a|\"b\nc")); err == nil {
-		t.Error("an unterminated quote parsed")
+}
+
+// TestDelimitedCodecRefuses: the codec reads as the server does (quotes,
+// rows of equal length), and an unusable delimiter fails instead of
+// dropping rows.
+func TestDelimitedCodecRefuses(t *testing.T) {
+	for _, in := range []string{"a|\"b\nc", "a|5\" pipe|c", "a|b\nc", "a|b\n   \nc|d"} {
+		if _, err := NewDelimited('|', true).Parse([]byte(in)); err == nil {
+			t.Errorf("%q: parsed", in)
+		}
+	}
+	for _, delim := range []byte{0, '"', '\n', '\r', 0xA6} {
+		c := NewDelimited(delim, false)
+		if _, err := c.Parse([]byte("a")); err == nil {
+			t.Errorf("delimiter %#x: parsed", delim)
+		}
+		if _, err := c.Serialize(&Delimited{Rows: [][]string{{"a", "b"}}}); err == nil {
+			t.Errorf("delimiter %#x: serialized", delim)
+		}
 	}
 }

@@ -146,9 +146,10 @@ import "backups/all flows.json" force
 
 ## Codec self-test (`weavster test`)
 
-`weavster test` checks that this build reads and writes each data format without changing it:
-it parses a built-in sample of each format and writes it back, and a sample passes only if the
-output is byte for byte the input. It needs no server or database.
+`weavster test` checks this build's codecs: it parses a built-in sample of each data format and
+writes it back, and a sample passes only if the output is byte for byte the input. The codecs
+read XML and delimited text with the same checks and limits as flows with `inputFormat: xml` or
+`delimited`, but the samples do not run a flow or the server. It needs no server or database.
 
 | Sample | Covers |
 |---|---|

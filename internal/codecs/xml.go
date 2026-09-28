@@ -3,13 +3,9 @@ package codecs
 import (
 	"bytes"
 	"encoding/xml"
-	"errors"
 	"fmt"
-	"io"
 	"regexp"
 	"strings"
-
-	"golang.org/x/text/encoding/ianaindex"
 )
 
 // XMLCodec parses an XML document into a tree that keeps what the document
@@ -21,8 +17,9 @@ import (
 // equivalent document in UTF-8.
 //
 // XXE safety (D-14): encoding/xml processes no DTD and expands no entities
-// beyond the predefined ones, and nothing is fetched; a DOCTYPE is kept
-// verbatim and never interpreted.
+// beyond the predefined ones, and nothing is fetched; a DOCTYPE is kept and
+// never interpreted (the decoder drops comments inside it). A tab or line
+// break in an attribute value is written as a character reference.
 type XMLCodec struct{}
 
 // XMLKind is what an XMLNode is.
@@ -66,69 +63,19 @@ func XML() *XMLCodec { return &XMLCodec{} }
 
 func (c *XMLCodec) Name() string { return "xml" }
 
-// Parse reads one well-formed document in any IANA character set (a UTF-8
-// byte order mark is skipped), within MaxXMLDepth and MaxXMLElements.
+// Parse reads one well-formed document with the checks and limits of the
+// XML view (scanXML): refusals are ErrNotXML with fixed words.
 func (c *XMLCodec) Parse(in []byte) (any, error) {
-	dec := xml.NewDecoder(bytes.NewReader(bytes.TrimPrefix(in, []byte("\xEF\xBB\xBF"))))
-	dec.CharsetReader = func(label string, r io.Reader) (io.Reader, error) {
-		enc, err := ianaindex.IANA.Encoding(label)
-		if err != nil || enc == nil {
-			return nil, fmt.Errorf("unsupported encoding %q", label)
-		}
-		return enc.NewDecoder().Reader(r), nil
-	}
 	doc := &XMLDocument{}
 	var stack []*XMLNode
-	elements := 0
-	add := func(n *XMLNode) error {
-		switch {
-		case len(stack) > 0:
-			parent := stack[len(stack)-1]
-			parent.Children = append(parent.Children, n)
-		case n.Kind == XMLText && strings.TrimSpace(n.Text) != "":
-			return errors.New("codec: xml: text outside the root element")
-		case doc.Root == nil:
-			doc.Prolog = append(doc.Prolog, n)
-		default:
-			doc.Epilog = append(doc.Epilog, n)
-		}
-		return nil
-	}
-	for {
-		// RawToken keeps prefixes as written; end tags are matched here.
-		tok, err := dec.RawToken()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return nil, fmt.Errorf("codec: xml: %w", err)
-		}
+	err := scanXML(in, func(tok xml.Token, _ map[string]string) error {
 		var n *XMLNode
 		switch t := tok.(type) {
 		case xml.StartElement:
-			switch {
-			case len(stack) == 0 && doc.Root != nil:
-				return nil, errors.New("codec: xml: more than one root element")
-			case len(stack) == MaxXMLDepth:
-				return nil, fmt.Errorf("codec: xml: elements nested deeper than %d", MaxXMLDepth)
-			case elements == MaxXMLElements:
-				return nil, fmt.Errorf("codec: xml: more than %d elements", MaxXMLElements)
-			}
-			elements++
 			n = &XMLNode{Kind: XMLElement, Name: t.Name, Attrs: t.Copy().Attr}
-			if len(stack) == 0 {
-				doc.Root = n
-			} else if err := add(n); err != nil {
-				return nil, err
-			}
-			stack = append(stack, n)
-			continue
 		case xml.EndElement:
-			if len(stack) == 0 || stack[len(stack)-1].Name != t.Name {
-				return nil, errors.New("codec: xml: end tag does not match its start tag")
-			}
 			stack = stack[:len(stack)-1]
-			continue
+			return nil
 		case xml.CharData:
 			n = &XMLNode{Kind: XMLText, Text: string(t)}
 		case xml.Comment:
@@ -138,12 +85,24 @@ func (c *XMLCodec) Parse(in []byte) (any, error) {
 		case xml.Directive:
 			n = &XMLNode{Kind: XMLDirective, Text: string(t)}
 		}
-		if err := add(n); err != nil {
-			return nil, err
+		switch {
+		case len(stack) > 0:
+			parent := stack[len(stack)-1]
+			parent.Children = append(parent.Children, n)
+		case n.Kind == XMLElement:
+			doc.Root = n
+		case doc.Root == nil:
+			doc.Prolog = append(doc.Prolog, n)
+		default:
+			doc.Epilog = append(doc.Epilog, n)
 		}
-	}
-	if len(stack) > 0 || doc.Root == nil {
-		return nil, errors.New("codec: xml: no complete root element")
+		if n.Kind == XMLElement {
+			stack = append(stack, n)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return doc, nil
 }

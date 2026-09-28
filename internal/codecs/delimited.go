@@ -3,6 +3,7 @@ package codecs
 import (
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
 )
 
@@ -26,16 +27,16 @@ func NewDelimited(delim byte, hasHeader bool) *DelimitedCodec {
 
 func (c *DelimitedCodec) Name() string { return "delimited" }
 
-// Parse reads records with RFC 4180 quoting ("a, b" and "say ""hi"""
-// are one field each; a quoted field may span lines); blank lines are
-// skipped and rows may differ in length (#107 D-74).
+// Parse reads records the way the server reads delimited text
+// (readDelimited: RFC 4180 quoting, blank lines skipped, rows of equal
+// length, the same limits; #107 D-74).
 func (c *DelimitedCodec) Parse(in []byte) (any, error) {
-	r := csv.NewReader(bytes.NewReader(in))
-	r.Comma = rune(c.delim)
-	r.FieldsPerRecord = -1
-	rows, err := r.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("codec: delimited: %w", err)
+	var rows [][]string
+	if err := readDelimited(in, rune(c.delim), func(rec []string) error {
+		rows = append(rows, rec)
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	d := &Delimited{}
 	if c.hasHeader && len(rows) > 0 {
@@ -55,17 +56,17 @@ func (c *DelimitedCodec) Serialize(v any) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("codec: delimited: serialize expects *Delimited, got %T", v)
 	}
+	if !validDelimiter(rune(c.delim)) {
+		return nil, errors.New("codec: delimited: the delimiter must be an ASCII character other than a quote or a line break")
+	}
 	var buf bytes.Buffer
 	w := csv.NewWriter(&buf)
 	w.Comma = rune(c.delim)
+	rows := d.Rows
 	if len(d.Header) > 0 {
-		_ = w.Write(d.Header) // a bytes.Buffer does not fail
+		rows = append([][]string{d.Header}, rows...)
 	}
-	for _, row := range d.Rows {
-		_ = w.Write(row)
-	}
-	w.Flush()
-	if err := w.Error(); err != nil {
+	if err := w.WriteAll(rows); err != nil {
 		return nil, fmt.Errorf("codec: delimited: %w", err)
 	}
 	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
