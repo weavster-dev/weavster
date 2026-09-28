@@ -33,7 +33,11 @@ func newHTTPClient(addr, user, pass string) *httpClient {
 	if addr == "" {
 		addr = "http://127.0.0.1:8080"
 	}
-	return &httpClient{base: addr, user: user, pass: pass, http: http.DefaultClient}
+	return &httpClient{base: addr, user: user, pass: pass, http: &http.Client{
+		// API redirects must not forward credentials or replay message bodies
+		// to another endpoint, including a plaintext HTTP downgrade.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}}
 }
 
 func (c *httpClient) request(ctx context.Context, method, path string, body []byte) (*http.Response, error) {

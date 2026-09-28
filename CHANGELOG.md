@@ -128,6 +128,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- The CLI refuses HTTP redirects instead of forwarding credentials and request bodies, including from HTTPS to plaintext HTTP. Configure the final API address directly.
 - HL7 v2 parsing (#300): components and repetitions were split with the wrong MSH-2 characters (the repetition and escape characters), so a field such as `ADT^A01` was never split into components; HL7 ACKs now also carry MSH-8, so the message type is in MSH-9, and MSH-7 is the time the ACK was made instead of the original message's.
 - `auth.passwordPolicy.minLength` counts characters, not bytes, so a password with accented letters is not accepted as longer than it is (#245).
 - `GET /api/v1/messages?flowId=…` filters in the store before the page limit (#212); before, it filtered the first page afterwards and could miss that flow's messages. With `store.dialect: memory`, messages now get their receive and update times.
