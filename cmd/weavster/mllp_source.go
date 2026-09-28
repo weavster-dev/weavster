@@ -34,12 +34,15 @@ const maxControlIDMetadata = 199
 // id and answers it with an ACK (#107 D-60): AA once the message is stored,
 // AR when it is refused (resending it unchanged would be refused again), AE
 // when it could not be stored (the sender may try again). MSA-3 says why in
-// fixed words, never with message content.
-func mllpHandler(id string, ingest gateway.SourceIngester) adapters.MLLPHandler {
+// fixed words, never with message content. Without reply it only ingests.
+func mllpHandler(id string, ingest gateway.SourceIngester, reply bool) adapters.MLLPHandler {
 	tooLarge := fmt.Sprintf("message larger than %d MiB", gateway.MaxMessageBytes>>20)
 	return func(frame []byte, readErr error) []byte {
 		msh := withoutFraming(firstSegment(frame)) // the ACK needs only MSH
 		ack := func(code, text string) []byte {
+			if !reply {
+				return nil // ackMode none: no ACK is sent (#107 D-72)
+			}
 			// HL7ACK answers any input (the HL7 parser accepts every byte string).
 			b, _ := codecs.HL7ACK(msh, codecs.HL7AckOptions{Code: code, Text: text, ControlID: newControlID(), Now: time.Now()})
 			return b
@@ -79,11 +82,13 @@ func firstSegment(frame []byte) []byte {
 	return frame
 }
 
-// withoutFraming drops MLLP's start and end bytes from seg, so values the
-// ACK echoes from it can never end the ACK's frame early.
+// withoutFraming drops control bytes other than tab from seg (a first
+// segment has no line breaks), so values the ACK echoes from it can never
+// end the ACK's frame early, whatever the source's framing (#107 D-72: its
+// start and first end byte are such control bytes).
 func withoutFraming(seg []byte) []byte {
 	return bytes.Map(func(r rune) rune {
-		if r == 0x0b || r == 0x1c {
+		if (r < 0x20 && r != '\t') || r == 0x7f {
 			return -1
 		}
 		return r

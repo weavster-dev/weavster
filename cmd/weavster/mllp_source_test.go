@@ -41,11 +41,11 @@ func TestMLLPHandler(t *testing.T) {
 		{"too large, nothing kept", nil, adapters.ErrMLLPFrameTooLarge, mllpIngest{}, "MSA|AR||message larger than 10 MiB"},
 		{"space before MSH", []byte(" " + string(msg)), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
 		{"MSHX", []byte("MSHX|1\r"), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
-		{"framing bytes in MSH-10", []byte("MSH|^~\\&|LAB|HOSP|W|H|1||ORU^R01|C\x1c1\x0b|P|2.5\r"), nil, mllpIngest{res: gateway.IngestResult{ID: "m1"}}, "MSA|AA|C1"},
+		{"framing bytes in MSH-10", []byte("MSH|^~\\&|LAB|HOSP|W|H|1||ORU^R01|C\x1c1\x0b\x02\x7f|P|2.5\r"), nil, mllpIngest{res: gateway.IngestResult{ID: "m1"}}, "MSA|AA|C1"},
 		{"line break before MSH", append([]byte("\r\n"), msg...), nil, mllpIngest{res: gateway.IngestResult{ID: "m1"}}, "MSA|AA|C1"},
 		{"not HL7", []byte("hello"), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
 	} {
-		ack := string(mllpHandler("f", tt.ingest)(tt.frame, tt.readErr))
+		ack := string(mllpHandler("f", tt.ingest, true)(tt.frame, tt.readErr))
 		segs := strings.Split(strings.TrimSuffix(ack, "\r"), "\r")
 		if len(segs) != 2 || segs[1] != tt.want {
 			t.Errorf("%s: %q, want MSA %q", tt.name, ack, tt.want)
@@ -55,9 +55,13 @@ func TestMLLPHandler(t *testing.T) {
 		}
 	}
 	long := mllpIngestSpy{}
-	mllpHandler("f", &long)([]byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|"+strings.Repeat("9", 500)+"|P|2.5\r"), nil)
+	mllpHandler("f", &long, true)([]byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|"+strings.Repeat("9", 500)+"|P|2.5\r"), nil)
 	if len(long.cid) != maxControlIDMetadata {
 		t.Errorf("stored control id is %d characters", len(long.cid))
+	}
+	silent := mllpIngestSpy{}
+	if ack := mllpHandler("f", &silent, false)(msg, nil); ack != nil || silent.cid != "C1" {
+		t.Errorf("without replies: ACK %q, stored control id %q", ack, silent.cid)
 	}
 }
 

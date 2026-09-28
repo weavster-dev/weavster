@@ -28,8 +28,8 @@ func mllpPeer(t *testing.T, replies ...string) string {
 			if err != nil {
 				return
 			}
-			if _, err := readFrame(bufio.NewReader(conn), 1<<20); err == nil && reply != "" {
-				_, _ = conn.Write(frameMLLP([]byte(reply)))
+			if _, err := readFramed(bufio.NewReader(conn), 1<<20, MLLPFraming{}); err == nil && reply != "" {
+				_, _ = conn.Write(MLLPFraming{}.wrap([]byte(reply)))
 			}
 			if reply == "" {
 				time.Sleep(300 * time.Millisecond)
@@ -71,7 +71,7 @@ func TestMLLPSinkACK(t *testing.T) {
 	if err := NewMLLPSink("127.0.0.1:1").Write(context.Background(), Message{Body: []byte(msg)}); err == nil {
 		t.Error("delivery to a closed port succeeded")
 	}
-	if err := NewMLLPSink("127.0.0.1:1").Write(context.Background(), Message{Body: []byte("MSH|^~\\&|A\x1c\rPID|1")}); err == nil || !strings.Contains(err.Error(), "MLLP end bytes") {
+	if err := NewMLLPSink("127.0.0.1:1").Write(context.Background(), Message{Body: []byte("MSH|^~\\&|A\x1c\rPID|1")}); err == nil || !strings.Contains(err.Error(), "end bytes (1C0D)") {
 		t.Errorf("a body with FS CR: %v", err)
 	}
 	// Cancelling the caller stops the wait for the ACK at once.
@@ -116,10 +116,10 @@ func TestMLLPSinkTLS(t *testing.T) {
 					return
 				}
 				defer func() { _ = conn.Close() }()
-				_, err = readFrame(bufio.NewReader(conn), 1<<20)
+				_, err = readFramed(bufio.NewReader(conn), 1<<20, MLLPFraming{})
 				got <- err == nil
 				if err == nil {
-					_, _ = conn.Write(frameMLLP([]byte("MSH|^~\\&|C|D|A|B|2||ACK^A01|X|P|2.5\rMSA|AA|C1\r")))
+					_, _ = conn.Write(MLLPFraming{}.wrap([]byte("MSH|^~\\&|C|D|A|B|2||ACK^A01|X|P|2.5\rMSA|AA|C1\r")))
 				}
 			}()
 			cfg := &tls.Config{RootCAs: tt.roots, ServerName: "127.0.0.1", MinVersion: tls.VersionTLS12}
@@ -131,5 +131,90 @@ func TestMLLPSinkTLS(t *testing.T) {
 				t.Errorf("the receiver read a frame: %v", read)
 			}
 		})
+	}
+}
+
+// TestMLLPSinkMode: a sink with other framing sends and reads the ACK in
+// it; without ACKs a written message is delivered.
+func TestMLLPSinkMode(t *testing.T) {
+	msg := "MSH|^~\\&|A|B|C|D|1||ADT^A01|C1|P|2.5\rPID|1\r"
+	f := MLLPFraming{Start: 0x02, End: []byte{0x03}}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	got := make(chan string, 2)
+	go func() {
+		for i := 0; i < 2; i++ {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			frame, err := readFramed(bufio.NewReader(conn), 1<<20, f)
+			got <- string(frame)
+			if err == nil && i == 0 {
+				_, _ = conn.Write(f.wrap([]byte("MSH|^~\\&|C|D|A|B|2||ACK^A01|X|P|2.5\rMSA|AA|C1\r")))
+			}
+			_ = conn.Close()
+		}
+	}()
+	if err := NewMLLPSinkWith(ln.Addr().String(), 5*time.Second).WithMode(f, false).Write(context.Background(), Message{Body: []byte(msg)}); err != nil {
+		t.Errorf("framed delivery: %v", err)
+	}
+	if err := NewMLLPSinkWith(ln.Addr().String(), 5*time.Second).WithMode(f, true).Write(context.Background(), Message{Body: []byte(msg)}); err != nil {
+		t.Errorf("delivery without an ACK: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if m := <-got; m != msg {
+			t.Errorf("received %q", m)
+		}
+	}
+	if err := NewMLLPSink("127.0.0.1:1").WithMode(f, true).Write(context.Background(), Message{Body: []byte("a\x03b")}); err == nil || !strings.Contains(err.Error(), "end bytes (03)") {
+		t.Errorf("a body with the end byte: %v", err)
+	}
+	if err := NewMLLPSink("127.0.0.1:1").Write(context.Background(), Message{Body: []byte("MSH|^~\\&|A\x0bB")}); err == nil || !strings.Contains(err.Error(), "start byte (0B)") {
+		t.Errorf("a body with the start byte: %v", err)
+	}
+}
+
+// TestMLLPSinkDrain: without ACKs, waiting for the receiver to close ends
+// at the delivery's deadline, or at once when the caller is gone.
+func TestMLLPSinkDrain(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_, _ = conn.Write([]byte("hello")) // then never closes
+			t.Cleanup(func() { _ = conn.Close() })
+		}
+	}()
+	for _, tt := range []struct {
+		name    string
+		timeout time.Duration
+		cancel  bool
+	}{
+		{"deadline", 200 * time.Millisecond, false},
+		{"cancelled", 5 * time.Second, true},
+	} {
+		c, _ := net.Dial("tcp", ln.Addr().String())
+		ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
+		if tt.cancel {
+			cancel()
+		}
+		start := time.Now()
+		drain(ctx, c)
+		cancel()
+		_ = c.Close()
+		if time.Since(start) > 600*time.Millisecond {
+			t.Errorf("%s: drained for %s", tt.name, time.Since(start))
+		}
 	}
 }

@@ -30,6 +30,39 @@ type MLLPOptions struct {
 	// HandshakeTimeout bounds a TLS connection's handshake (the listener
 	// is a tls listener), so a stalled client does not wait IdleTimeout.
 	HandshakeTimeout time.Duration
+	// Framing delimits frames (zero: MLLP's VT … FS CR).
+	Framing MLLPFraming
+	// NoReply sends nothing back: the handler's reply is discarded.
+	NoReply bool
+}
+
+// MLLPFraming is the bytes around each frame: Start, then the message, then
+// End (one or two different bytes). The zero value is MLLP's VT … FS CR;
+// without End, End is MLLP's FS CR.
+type MLLPFraming struct {
+	Start byte
+	End   []byte
+}
+
+// orDefault is f with MLLP's bytes for what it leaves unset (a zero Start
+// is NUL once End is set).
+func (f MLLPFraming) orDefault() MLLPFraming {
+	if len(f.End) == 0 {
+		if f.Start == 0 {
+			f.Start = mllpStart
+		}
+		f.End = mllpEnd
+	}
+	return f
+}
+
+// wrap frames body.
+func (f MLLPFraming) wrap(body []byte) []byte {
+	f = f.orDefault()
+	out := make([]byte, 0, len(body)+1+len(f.End))
+	out = append(out, f.Start)
+	out = append(out, body...)
+	return append(out, f.End...)
 }
 
 // maxFrameHead is how much of an oversize frame's first segment is kept.
@@ -124,15 +157,18 @@ func (s *MLLPServer) serve(conn net.Conn) {
 		if stop {
 			return
 		}
-		frame, err := readFrame(r, s.opts.MaxFrame)
+		frame, err := readFramed(r, s.opts.MaxFrame, s.opts.Framing)
 		if err != nil && !errors.Is(err, ErrMLLPFrameTooLarge) {
 			return // closed, idle, or broken framing
 		}
 		reply := s.handle(frame, err)
+		if s.opts.NoReply {
+			continue
+		}
 		if conn.SetWriteDeadline(time.Now().Add(mllpWriteTimeout)) != nil {
 			return
 		}
-		if _, err := conn.Write(frameMLLP(reply)); err != nil {
+		if _, err := conn.Write(s.opts.Framing.wrap(reply)); err != nil {
 			return
 		}
 	}
@@ -154,17 +190,19 @@ func (s *MLLPServer) Close() error {
 	return err
 }
 
-// readFrame reads one MLLP frame (VT … FS CR) from r, skipping bytes before
-// the start byte (such as line breaks between frames). A frame over max is
+// readFramed reads one frame in framing f (MLLP's VT … FS CR by default)
+// from r, skipping bytes before the start byte (such as line breaks
+// between frames). A frame over max is
 // read to its end and reported as ErrMLLPFrameTooLarge, with its first
 // segment (up to maxFrameHead bytes).
-func readFrame(r *bufio.Reader, max int) ([]byte, error) {
+func readFramed(r *bufio.Reader, max int, f MLLPFraming) ([]byte, error) {
+	f = f.orDefault()
 	for {
 		b, err := r.ReadByte()
 		if err != nil {
 			return nil, err
 		}
-		if b == mllpStart {
+		if b == f.Start {
 			break
 		}
 	}
@@ -184,7 +222,7 @@ func readFrame(r *bufio.Reader, max int) ([]byte, error) {
 		}
 	}
 	for {
-		chunk, err := r.ReadSlice(mllpEnd[0])
+		chunk, err := r.ReadSlice(f.End[0])
 		if errors.Is(err, bufio.ErrBufferFull) {
 			add(chunk)
 			continue
@@ -193,21 +231,30 @@ func readFrame(r *bufio.Reader, max int) ([]byte, error) {
 			return nil, err
 		}
 		add(chunk[:len(chunk)-1])
+		if len(f.End) == 1 {
+			return frameDone(frame, tooLarge)
+		}
 		next, err := r.ReadByte()
 		if err != nil {
 			return nil, err
 		}
-		if next == mllpEnd[1] {
-			if tooLarge {
-				return frame, ErrMLLPFrameTooLarge
-			}
-			if frame == nil {
-				frame = []byte{}
-			}
-			return frame, nil
+		if next == f.End[1] {
+			return frameDone(frame, tooLarge)
 		}
-		// An FS inside the message: keep it and look at next again.
-		add(mllpEnd[:1])
+		// End's first byte inside the message: keep it and look at next again.
+		add(f.End[:1])
 		_ = r.UnreadByte()
 	}
+}
+
+// frameDone is a complete frame: ErrMLLPFrameTooLarge with its head when it was
+// over the limit, else never nil (an empty frame is an empty message).
+func frameDone(frame []byte, tooLarge bool) ([]byte, error) {
+	if tooLarge {
+		return frame, ErrMLLPFrameTooLarge
+	}
+	if frame == nil {
+		frame = []byte{}
+	}
+	return frame, nil
 }

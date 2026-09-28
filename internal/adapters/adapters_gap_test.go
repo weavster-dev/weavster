@@ -184,7 +184,7 @@ func TestMLLPSourceLifecycle(t *testing.T) {
 			return
 		}
 		defer func() { _ = conn.Close() }()
-		if _, err := conn.Write(frameMLLP([]byte("hello"))); err != nil {
+		if _, err := conn.Write(MLLPFraming{}.wrap([]byte("hello"))); err != nil {
 			t.Error(err)
 		}
 	}()

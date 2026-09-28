@@ -140,11 +140,13 @@ func (s *portSources) start(id string, src gateway.FlowSource) {
 	delete(s.failed, id)
 	l := &sourceListener{src: src, port: port}
 	if src.Type == "mllp" {
+		framing, _ := mllpFraming(src.FrameStart, src.FrameEnd) // validated with the definition
 		if tlsCfg != nil {
 			ln = tls.NewListener(ln, tlsCfg) // MLLP over TLS only (#107 D-71)
 		}
-		srv := adapters.ServeMLLP(ln, mllpHandler(id, s.ingest), adapters.MLLPOptions{
+		srv := adapters.ServeMLLP(ln, mllpHandler(id, s.ingest, src.AckMode != "none"), adapters.MLLPOptions{
 			MaxFrame: gateway.MaxMessageBytes, IdleTimeout: mllpIdleTimeout, FrameTimeout: mllpFrameTimeout, HandshakeTimeout: mllpHandshakeTimeout,
+			Framing: framing, NoReply: src.AckMode == "none",
 		})
 		l.done, l.shut = srv.Done(), func() { _ = srv.Close() }
 	} else {

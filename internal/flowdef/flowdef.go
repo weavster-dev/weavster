@@ -4,6 +4,7 @@
 package flowdef
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -140,9 +141,63 @@ func CheckDestinations(f Flow) error {
 			return fmt.Errorf("destination %s: caFile needs tls: true", d.Name)
 		case d.CAFile != "" && !filepath.IsAbs(d.CAFile):
 			return fmt.Errorf("destination %s: caFile must be an absolute path, got %q", d.Name, d.CAFile)
+		case (d.FrameStart != "" || d.FrameEnd != "" || d.AckMode != "") && d.Type != "mllp":
+			return fmt.Errorf("destination %s: frameStart, frameEnd, and ackMode apply only to mllp destinations", d.Name)
+		}
+		if err := checkMLLPMode(d.FrameStart, d.FrameEnd, d.AckMode); err != nil {
+			return fmt.Errorf("destination %s: %w", d.Name, err)
 		}
 	}
 	return nil
+}
+
+// MLLPFraming decodes an mllp source's or destination's frameStart and
+// frameEnd (hex; defaults 0B and 1C0D, MLLP's VT and FS CR).
+func MLLPFraming(start, end string) (byte, []byte, error) {
+	if start == "" {
+		start = "0B"
+	}
+	if end == "" {
+		end = "1C0D"
+	}
+	s, err := hex.DecodeString(start)
+	if err != nil || len(s) != 1 {
+		return 0, nil, fmt.Errorf("frameStart must be one byte in hex, such as 0B, got %q", start)
+	}
+	e, err := hex.DecodeString(end)
+	if err != nil || len(e) < 1 || len(e) > 2 {
+		return 0, nil, fmt.Errorf("frameEnd must be one or two bytes in hex, such as 1C0D, got %q", end)
+	}
+	return s[0], e, nil
+}
+
+// checkMLLPMode checks framing and ackMode: the start byte and the first
+// end byte must be control bytes that HL7 v2 text never contains (not tab,
+// line feed, or carriage return), and differ.
+func checkMLLPMode(start, end, ackMode string) error {
+	s, e, err := MLLPFraming(start, end)
+	switch {
+	case err != nil:
+		return err
+	case !frameByte(s):
+		return fmt.Errorf("frameStart %02X can occur in a message; use a control byte such as 0B", s)
+	case !frameByte(e[0]):
+		return fmt.Errorf("frameEnd starts with %02X, which can occur in a message; use a control byte such as 1C", e[0])
+	case s == e[0]:
+		return errors.New("frameStart and the first byte of frameEnd must differ")
+	case len(e) == 2 && e[0] == e[1]:
+		// A message ending in that byte could not be told from the end.
+		return errors.New("the two bytes of frameEnd must differ")
+	case ackMode != "" && ackMode != "original" && ackMode != "none":
+		return fmt.Errorf("ackMode must be original or none, got %q", ackMode)
+	}
+	return nil
+}
+
+// frameByte reports whether b is a control byte other than tab, line
+// feed, and carriage return.
+func frameByte(b byte) bool {
+	return (b < 0x20 && b != '\t' && b != '\n' && b != '\r') || b == 0x7f
 }
 
 // CheckInput checks what the schema cannot: delimited options go with
@@ -197,6 +252,11 @@ type Source struct {
 	// ReadTimeoutMs bounds reading one request on an http source
 	// (default 60000).
 	ReadTimeoutMs int `json:"readTimeoutMs,omitempty"`
+	// FrameStart, FrameEnd, and AckMode set an mllp source's framing and
+	// whether it answers with ACKs (#107 D-72).
+	FrameStart string `json:"frameStart,omitempty"`
+	FrameEnd   string `json:"frameEnd,omitempty"`
+	AckMode    string `json:"ackMode,omitempty"`
 }
 
 // Destination is one delivery target of a flow.
@@ -212,6 +272,11 @@ type Destination struct {
 	// D-71).
 	TLS    bool   `json:"tls,omitempty"`
 	CAFile string `json:"caFile,omitempty"`
+	// FrameStart, FrameEnd, and AckMode set an mllp destination's framing
+	// and whether it waits for ACKs (#107 D-72).
+	FrameStart string `json:"frameStart,omitempty"`
+	FrameEnd   string `json:"frameEnd,omitempty"`
+	AckMode    string `json:"ackMode,omitempty"`
 	// Flow is the id of the flow a flow destination hands messages to
 	// (#107 D-70).
 	Flow string `json:"flow,omitempty"`
@@ -234,8 +299,15 @@ func CheckSource(s *Source) error {
 	if s == nil {
 		return nil
 	}
-	if s.Type == "mllp" && *s != (Source{Type: "mllp", Address: s.Address, CertFile: s.CertFile, KeyFile: s.KeyFile}) {
-		return errors.New("an mllp source takes only type, address, certFile, and keyFile")
+	if s.Type == "mllp" {
+		if *s != (Source{Type: "mllp", Address: s.Address, CertFile: s.CertFile, KeyFile: s.KeyFile, FrameStart: s.FrameStart, FrameEnd: s.FrameEnd, AckMode: s.AckMode}) {
+			return errors.New("an mllp source takes only type, address, certFile, keyFile, frameStart, frameEnd, and ackMode")
+		}
+		if err := checkMLLPMode(s.FrameStart, s.FrameEnd, s.AckMode); err != nil {
+			return fmt.Errorf("source.%w", err)
+		}
+	} else if s.FrameStart != "" || s.FrameEnd != "" || s.AckMode != "" {
+		return errors.New("source.frameStart, frameEnd, and ackMode apply only to mllp sources")
 	}
 	if s.Listens() {
 		switch {

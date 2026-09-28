@@ -19,15 +19,6 @@ const mllpStart = 0x0B // VT
 
 var mllpEnd = []byte{0x1C, 0x0D} // FS CR
 
-// frameMLLP wraps body in an MLLP frame.
-func frameMLLP(body []byte) []byte {
-	out := make([]byte, 0, len(body)+3)
-	out = append(out, mllpStart)
-	out = append(out, body...)
-	out = append(out, mllpEnd...)
-	return out
-}
-
 // readMLLPFrame reads one MLLP frame from r (leading start byte through the
 // FS CR terminator).
 func readMLLPFrame(r io.Reader) ([]byte, error) {
@@ -75,6 +66,8 @@ type MLLPSink struct {
 	addr    string
 	timeout time.Duration
 	dialer  func(ctx context.Context, addr string) (net.Conn, error)
+	framing MLLPFraming
+	noACK   bool
 }
 
 // NewMLLPSink returns an MLLP sink for addr with the default timeout.
@@ -103,14 +96,23 @@ func NewMLLPSinkTLS(addr string, timeout time.Duration, cfg *tls.Config) *MLLPSi
 	return s
 }
 
+// WithMode sets the sink's framing (zero: MLLP's) and whether it waits for
+// an ACK; with noACK a message is delivered once it is written.
+func (s *MLLPSink) WithMode(framing MLLPFraming, noACK bool) *MLLPSink {
+	s.framing, s.noACK = framing, noACK
+	return s
+}
+
 func (s *MLLPSink) Name() string { return "tcp" }
 
 // Write sends m and waits for its ACK: AA or CA delivers it; any other code,
 // a reply that is not an ACK, an ACK for another control id, or no reply
 // in time is an error. Errors name the ACK code, never message content.
+// Without ACKs (WithMode), m is delivered once it is written.
 func (s *MLLPSink) Write(ctx context.Context, m Message) error {
-	if bytes.Contains(m.Body, mllpEnd) {
-		return errors.New("mllp: the message contains the MLLP end bytes (FS CR) and cannot be framed")
+	framing := s.framing.orDefault()
+	if bytes.Contains(m.Body, framing.End) || bytes.IndexByte(m.Body, framing.Start) >= 0 {
+		return fmt.Errorf("mllp: the message contains the frame's start byte (%02X) or end bytes (%X) and cannot be framed", framing.Start, framing.End)
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
@@ -125,10 +127,14 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 	// A cancelled caller stops a blocked write or ACK read at once.
 	stop := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
 	defer stop()
-	if _, err := conn.Write(frameMLLP(m.Body)); err != nil {
+	if _, err := conn.Write(framing.wrap(m.Body)); err != nil {
 		return err
 	}
-	reply, err := readFrame(bufio.NewReader(conn), maxACKBytes)
+	if s.noACK {
+		drain(ctx, conn)
+		return nil
+	}
+	reply, err := readFramed(bufio.NewReader(conn), maxACKBytes, framing)
 	if err != nil {
 		return fmt.Errorf("mllp: no ACK: %w", err)
 	}
@@ -147,6 +153,29 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 		return errors.New("mllp: the ACK is for another message (MSA-2 does not match MSH-10)")
 	}
 	return nil
+}
+
+// noACKDrain bounds how long a sink without ACKs waits for the receiver
+// to close after the message was sent.
+const noACKDrain = time.Second
+
+// drain ends the sending side of conn and reads what the receiver still
+// sends for a moment (never past ctx's deadline, and not at all once ctx
+// is done), so closing conn does not reset it (a reset can drop data not
+// yet sent).
+func drain(ctx context.Context, conn net.Conn) {
+	if cw, ok := conn.(interface{ CloseWrite() error }); ok {
+		_ = cw.CloseWrite()
+	}
+	deadline := time.Now().Add(noACKDrain)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	_ = conn.SetReadDeadline(deadline)
+	if ctx.Err() != nil { // the cancel's deadline may have been replaced
+		return
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(conn, maxACKBytes))
 }
 
 func (s *MLLPSink) Close() error { return nil }

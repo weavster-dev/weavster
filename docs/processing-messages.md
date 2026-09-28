@@ -333,6 +333,8 @@ certificate itself); only the certificates in `caFile` are then trusted:
   unreadable `caFile`, fails the attempt before anything is sent; the attempt's error says why
   (for example `x509: certificate signed by unknown authority`), and it is retried like any
   other failure.
+- For other framing bytes, or to send without waiting for ACKs, see
+  [MLLP framing and ACK modes](#mllp-framing-and-ack-modes).
 - `tls` and `caFile` apply only to mllp destinations; an http destination uses TLS with an
   `https://` URL.
 
@@ -935,6 +937,47 @@ printf '\x0bMSH|^~\\&|LAB|HOSP|WEAVSTER|HOSP|20260927120000||ADT^A01|MSG1|P|2.5\
   plain TCP) and records a `source.mllp.failed` event with the reason, as an
   [http source](#receive-messages-over-http) does. The server's own TLS key is refused.
 - Client certificates (mutual TLS) are not requested.
+
+### MLLP framing and ACK modes
+
+Some systems frame HL7 messages with other bytes than MLLP's, or do not exchange ACKs. An mllp
+source and an mllp destination both take:
+
+| Field | Meaning |
+|---|---|
+| `frameStart` | Byte before each message, in hex. Default `0B` (VT). |
+| `frameEnd` | One or two bytes after each message, in hex. Default `1C0D` (FS CR). |
+| `ackMode` | `original` (default): the source answers every message with an HL7 ACK, and the destination waits for the receiver's ACK. `none`: the source sends nothing back, and the destination counts a message as delivered once it is written. |
+
+For example, a feed framed with STX … ETX that expects no replies, forwarded to a lab system
+that uses standard MLLP:
+
+```json
+{
+  "id": "legacy-feed",
+  "inputFormat": "hl7v2",
+  "source": {"type": "mllp", "address": ":2577", "frameStart": "02", "frameEnd": "03", "ackMode": "none"},
+  "destinations": [{"name": "lab", "type": "mllp", "address": "lab.example.com:2575"}]
+}
+```
+
+- `frameStart` and the first byte of `frameEnd` must be control bytes that HL7 text never
+  contains: `00`–`1F` except `09` (tab), `0A` (line feed), and `0D` (carriage return), or `7F`;
+  and they must differ. The second byte of `frameEnd` can be any other byte (MLLP's is `0D`).
+  Anything else is refused when you create the flow, for example
+  `frameEnd starts with 0D, which can occur in a message; use a control byte such as 1C`.
+- A source reads everything between the start byte and the end bytes as one message and skips
+  bytes outside a frame; its ACKs use the same framing. With a one-byte `frameEnd`, a message
+  cannot contain that byte.
+- A message containing the destination's `frameStart` byte or `frameEnd` cannot be framed; its
+  delivery fails.
+- With `ackMode: none` the destination sends the message, closes its side of the connection, and
+  waits up to a second for the receiver to close before counting it as delivered.
+- With `ackMode: none` the sender learns nothing: on the source, a message the flow refuses or
+  cannot store is dropped with no reply (look for it in the flow's messages and events); on the
+  destination, a receiver that rejects the message is not noticed. Use it only for systems that
+  do not send or expect ACKs.
+- The fields apply only to mllp sources and destinations.
 
 ## 2. Deploy and start the flow
 
