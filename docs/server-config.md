@@ -147,9 +147,13 @@ running** (the new one does not start with `sqlite`):
 
 1. Export the configuration with the config map:
    `GET /api/v1/config/export?includeConfigMap=true` (see [Export and import](config-transfer.md)).
-2. Save every lookup group: `GET /api/v1/lookups` lists them, and
-   `GET /api/v1/lookups/{group}?limit=10000` returns up to 10,000 entries of one as `{key: value}`
-   (use `prefix` for a larger group). See [Dynamic lookups](lookups.md).
+2. Save every lookup group. `GET /api/v1/lookups` lists the groups with their number of
+   entries, and `GET /api/v1/lookups/{group}?limit=10000` returns up to 10,000 entries of one as
+   `{key: value}` (see [Dynamic lookups](lookups.md)). A group with 10,000 entries or more does
+   not fit in one response: save it in parts with `prefix`, one part per first character of the
+   keys (for example `prefix=A`, `prefix=B`, …), and split any part that returns exactly 10,000
+   entries by a longer prefix (`prefix=AB`, …). Check that the saved entries of each group add up
+   to its number of entries before you upgrade.
 3. Upgrade, set `store.dialect: postgres` and `store.dsn`, remove `paths`, and start the server.
 4. Import the configuration with `POST /api/v1/config/import?overwriteConfigMap=true`, and each
    group with `POST /api/v1/lookups/{group}/import`.
