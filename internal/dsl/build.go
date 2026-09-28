@@ -163,6 +163,10 @@ func (b buildStep) render(doc map[string]any) ([]byte, error) {
 		out = strings.ReplaceAll(strings.ReplaceAll(out, "\r\n", "\n"), "\n", "\r")
 		out = strings.Trim(out, "\r") + "\r"
 		if _, err := codecs.HL7JSON([]byte(out)); err != nil {
+			var r *codecs.RefusedError
+			if errors.As(err, &r) {
+				return nil, errors.New("the result is not a readable HL7 v2 message: " + r.Reason)
+			}
 			return nil, errors.New("the result is not an HL7 v2 message (MSH segment first)")
 		}
 		return []byte(out), nil

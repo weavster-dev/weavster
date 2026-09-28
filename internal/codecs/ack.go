@@ -2,6 +2,7 @@ package codecs
 
 import (
 	"bytes"
+	"strings"
 	"time"
 )
 
@@ -72,9 +73,28 @@ func HL7ACK(in []byte, opts HL7AckOptions) ([]byte, error) {
 	return c.Serialize(hl7ACK(v.(*HL7Message), opts))
 }
 
-// hl7ACK builds the acknowledgment described by opts (spec §7).
+// recode rewrites a component value written with delimiters from for a
+// message with delimiters to, subcomponents kept.
+func recode(v string, from, to HL7Delimiters) string {
+	from, to = from.orStandard(), to.orStandard()
+	if from == to {
+		return v
+	}
+	subs := from.Subcomponents(v)
+	for i, sub := range subs {
+		subs[i] = to.Encode(from.Decode(sub))
+	}
+	return strings.Join(subs, string(to.Subcomponent))
+}
+
+// hl7ACK builds the acknowledgment described by opts (spec §7). It uses the
+// standard delimiters; values echoed from a message with other delimiters
+// are rewritten for them.
 func hl7ACK(msg *HL7Message, opts HL7AckOptions) *HL7Message {
 	msh := findSegment(msg, "MSH")
+	hl7Value := func(seg *HL7Segment, n int) string {
+		return recode(hl7Value(seg, n), msg.Delimiters, StandardHL7)
+	}
 	controlID := hl7Value(msh, 10)
 	ackID := opts.ControlID
 	if ackID == "" {
@@ -83,7 +103,7 @@ func hl7ACK(msg *HL7Message, opts HL7AckOptions) *HL7Message {
 	msgType := []string{"ACK"}
 	if msh != nil {
 		if typ := msh.Field(9); len(typ) > 1 && typ[1] != "" {
-			msgType = append(msgType, typ[1]) // ACK^<trigger event>
+			msgType = append(msgType, recode(typ[1], msg.Delimiters, StandardHL7)) // ACK^<trigger event>
 		}
 	}
 	ackMSH := HL7Segment{Name: "MSH", Fields: [][][]string{

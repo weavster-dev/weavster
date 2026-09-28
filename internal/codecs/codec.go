@@ -100,7 +100,7 @@ type CoverageEntry struct {
 func CoverageMatrix() []CoverageEntry {
 	return []CoverageEntry{
 		{Name: "delimited", Versions: "any (configurable delimiter)", Notes: "tab/pipe/comma; optional header", Server: "reads it for transforms (inputFormat delimited): RFC 4180 quoting, one-character delimiter"},
-		{Name: "hl7v2", Versions: "2.x segment/field/component/repetition", Acknowledgment: true, Notes: "MSH/MSA ACK", Server: "reads it for transforms (inputFormat hl7v2), writes it (build format hl7v2), acknowledges MLLP messages"},
+		{Name: "hl7v2", Versions: "2.1–2.9 segment/field/repetition/component/subcomponent", Acknowledgment: true, Notes: "MSH/MSA ACK", Server: "reads it for transforms (inputFormat hl7v2), writes it (build format hl7v2), acknowledges MLLP messages"},
 		{Name: "json", Versions: "RFC 8259", Notes: "stdlib encoding/json", Server: "reads and writes it for transforms (the default)"},
 		{Name: "xml", Versions: "XML 1.0 (XXE-safe)", Notes: "no DTD/external-entity resolution by construction", Server: "reads it for transforms (inputFormat xml), writes it (build format xml)"},
 		{Name: "x12", Versions: "ISA/GS/ST envelope", Acknowledgment: true, Notes: "997 functional acknowledgment"},

@@ -7,9 +7,70 @@ import (
 	"time"
 )
 
-// HL7Message is the structured form of an HL7 v2 message.
+// HL7Message is the structured form of an HL7 v2 message. Component
+// values are kept as written, escape sequences and subcomponent separators
+// included, so serializing a parsed message gives it back unchanged;
+// Delimiters.Decode reads a value.
 type HL7Message struct {
 	Segments []HL7Segment
+	// Delimiters are the message's own (from its MSH segment); the zero
+	// value means the standard |^~\&.
+	Delimiters HL7Delimiters
+}
+
+// HL7Delimiters are an HL7 v2 message's separators and escape character.
+type HL7Delimiters struct {
+	Field, Component, Repetition, Escape, Subcomponent byte
+}
+
+// StandardHL7 are the standard delimiters |^~\&.
+var StandardHL7 = HL7Delimiters{Field: '|', Component: '^', Repetition: '~', Escape: '\\', Subcomponent: '&'}
+
+// orStandard is d, or the standard delimiters for the zero value.
+func (d HL7Delimiters) orStandard() HL7Delimiters {
+	if d.Field == 0 {
+		return StandardHL7
+	}
+	return d
+}
+
+// Subcomponents splits a component value as written into its
+// subcomponents, still as written.
+func (d HL7Delimiters) Subcomponents(v string) []string {
+	return strings.Split(v, string(d.orStandard().Subcomponent))
+}
+
+// Decode reads a value as written (a subcomponent, or a component without
+// subcomponents): \F\ \S\ \R\ \T\ \E\, written with the message's escape
+// character, become its own delimiters; other escape sequences (\X…\,
+// \H\, \.br\, …) are kept as written.
+func (d HL7Delimiters) Decode(v string) string {
+	d = d.orStandard()
+	e := string(d.Escape)
+	if !strings.Contains(v, e) {
+		return v
+	}
+	return strings.NewReplacer(
+		e+"F"+e, string(d.Field),
+		e+"S"+e, string(d.Component),
+		e+"R"+e, string(d.Repetition),
+		e+"T"+e, string(d.Subcomponent),
+		e+"E"+e, e,
+	).Replace(v)
+}
+
+// Encode writes a plain value for a message with delimiters d: each
+// delimiter and the escape character become an escape sequence.
+func (d HL7Delimiters) Encode(v string) string {
+	d = d.orStandard()
+	e := string(d.Escape)
+	return strings.NewReplacer(
+		e, e+"E"+e,
+		string(d.Field), e+"F"+e,
+		string(d.Component), e+"S"+e,
+		string(d.Repetition), e+"R"+e,
+		string(d.Subcomponent), e+"T"+e,
+	).Replace(v)
 }
 
 // HL7Segment is a single segment: fields are indexed field -> repetition ->
@@ -54,6 +115,7 @@ func (c *HL7Codec) Parse(in []byte) (any, error) {
 	lines := strings.Split(text, "\r")
 	msg := &HL7Message{}
 	seps := *c
+	seen := false // the first MSH declares the message's delimiters
 	for _, line := range lines {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -71,6 +133,10 @@ func (c *HL7Codec) Parse(in []byte) (any, error) {
 				seps.escape = enc[2]
 				seps.subSep = enc[3]
 			}
+		}
+		if strings.HasPrefix(line, "MSH") && len(line) > 3 && !seen {
+			seen = true
+			msg.Delimiters = HL7Delimiters{Field: seps.fieldSep, Component: seps.compSep, Repetition: seps.repSep, Escape: seps.escape, Subcomponent: seps.subSep}
 		}
 		msg.Segments = append(msg.Segments, seps.parseSegment(line))
 	}
@@ -114,11 +180,7 @@ func (c *HL7Codec) parseField(f string) [][]string {
 	reps := strings.Split(f, string(c.repSep))
 	field := make([][]string, 0, len(reps))
 	for _, rep := range reps {
-		comps := strings.Split(rep, string(c.compSep))
-		for i := range comps {
-			comps[i] = c.unescape(comps[i])
-		}
-		field = append(field, comps)
+		field = append(field, strings.Split(rep, string(c.compSep)))
 	}
 	return field
 }
@@ -128,19 +190,22 @@ func (c *HL7Codec) Serialize(v any) ([]byte, error) {
 	if !ok {
 		return nil, fmt.Errorf("codec: hl7v2: serialize expects *HL7Message, got %T", v)
 	}
+	d := msg.Delimiters.orStandard()
 	var buf bytes.Buffer
 	for _, seg := range msg.Segments {
-		buf.WriteString(c.serializeSegment(seg))
+		buf.WriteString(serializeSegment(seg, d))
 		buf.WriteByte('\r')
 	}
 	return buf.Bytes(), nil
 }
 
-func (c *HL7Codec) serializeSegment(seg HL7Segment) string {
+// serializeSegment writes seg with delimiters d, values as they are
+// (already escaped for d).
+func serializeSegment(seg HL7Segment, d HL7Delimiters) string {
 	var b strings.Builder
 	b.WriteString(seg.Name)
 	for fi, field := range seg.Fields {
-		b.WriteByte(c.fieldSep)
+		b.WriteByte(d.Field)
 		if seg.Name == "MSH" && fi == 0 {
 			// MSH-2 encoding characters are joined without separators.
 			for _, rep := range field {
@@ -152,13 +217,13 @@ func (c *HL7Codec) serializeSegment(seg HL7Segment) string {
 		}
 		for ri, rep := range field {
 			if ri > 0 {
-				b.WriteByte(c.repSep)
+				b.WriteByte(d.Repetition)
 			}
 			for ci, comp := range rep {
 				if ci > 0 {
-					b.WriteByte(c.compSep)
+					b.WriteByte(d.Component)
 				}
-				b.WriteString(escapeHL7(comp))
+				b.WriteString(comp)
 			}
 		}
 	}
@@ -173,31 +238,4 @@ func normalizeSegTerminators(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\r")
 	s = strings.ReplaceAll(s, "\n", "\r")
 	return s
-}
-
-// unescape decodes the escape sequences \F\ \S\ \R\ \T\ \E\ written with
-// the message's escape character into its own delimiters.
-func (c *HL7Codec) unescape(s string) string {
-	e := string(c.escape)
-	if !strings.Contains(s, e) {
-		return s
-	}
-	return strings.NewReplacer(
-		e+"F"+e, string(c.fieldSep),
-		e+"S"+e, string(c.compSep),
-		e+"R"+e, string(c.repSep),
-		e+"T"+e, string(c.subSep),
-		e+"E"+e, e,
-	).Replace(s)
-}
-
-func escapeHL7(s string) string {
-	r := strings.NewReplacer(
-		"|", `\F\`,
-		"^", `\S\`,
-		"~", `\R\`,
-		"&", `\T\`,
-		`\`, `\E\`,
-	)
-	return r.Replace(s)
 }
