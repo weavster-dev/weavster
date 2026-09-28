@@ -105,12 +105,12 @@ func TestXMLJSON(t *testing.T) {
 		"duplicate declaration": {`<a xmlns:x="urn:x" xmlns:x="urn:y"/>`, "duplicate attribute"},
 	} {
 		_, err := XMLJSON([]byte(tt.in))
-		var e *NotXMLError
+		var e *RefusedError
 		if !errors.As(err, &e) || e.Reason != tt.reason || !errors.Is(err, ErrNotXML) {
 			t.Errorf("%s: %v, want reason %q", name, err, tt.reason)
 		}
 	}
-	if (&NotXMLError{}).Error() != "not a well-formed XML document" || notXML("x").Error() != "not a well-formed XML document: x" {
-		t.Error("NotXMLError text")
+	if notXML("").Error() != "not a well-formed XML document" || notXML("x").Error() != "not a well-formed XML document: x" {
+		t.Error("refusal text")
 	}
 }

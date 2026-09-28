@@ -1245,6 +1245,9 @@ func (a flowAdapter) withFlows(ctx context.Context, changed ...gateway.Flow) (ma
 // checkDefinition validates a flow's transform and destinations.
 func checkDefinition(f gateway.Flow) error {
 	err := flowdef.CheckSource(f.Source)
+	if err == nil {
+		err = flowdef.CheckInput(f)
+	}
 	var pf pipeline.Flow
 	if err == nil {
 		pf, err = toPipelineFlow(f)
@@ -1407,6 +1410,12 @@ func (a flowAdapter) replaceKeepingStatus(ctx context.Context, f gateway.Flow, k
 // strictly decoding its transform.
 func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 	pf := pipeline.Flow{ID: f.ID, Paused: !flowlife.AcceptsMessages(f.Status), ResponseSelector: f.ResponseSelector, InputFormat: f.InputFormat}
+	if d := f.Delimited; d != nil {
+		if d.Delimiter != "" {
+			pf.Delimiter = []rune(d.Delimiter)[0] // the schema allows one character
+		}
+		pf.NoHeader = d.Header != nil && !*d.Header
+	}
 	stopped := make(map[string]bool, len(f.StoppedDestinations))
 	for _, name := range f.StoppedDestinations {
 		stopped[name] = true

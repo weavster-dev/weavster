@@ -1416,7 +1416,14 @@ components:
         transform: {description: The flow's transform}
         destinations: {type: array, items: {$ref: "#/components/schemas/FlowDestination"}}
         responseSelector: {type: string}
-        inputFormat: {type: string, enum: [json, hl7v2, xml], description: "How transforms read a message: json (default), hl7v2 (the HL7 v2 message as JSON, e.g. PID.5.1), or xml (the XML document as JSON, e.g. order.@id)"}
+        inputFormat: {type: string, enum: [json, hl7v2, xml, delimited], description: "How transforms read a message: json (default), hl7v2 (the HL7 v2 message as JSON, e.g. PID.5.1), xml (the XML document as JSON, e.g. order.@id), or delimited (rows.0.<column>)"}
+        delimited:
+          type: object
+          additionalProperties: false
+          description: Options of inputFormat delimited
+          properties:
+            delimiter: {type: string, enum: [",", ";", "|", "\t"], description: "Field delimiter (default ,)"}
+            header: {type: boolean, description: "Whether the first row names the columns (default true)"}
     UpdatedList:
       example: {"updated": ["adt", "lab"]}
       type: object

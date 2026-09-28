@@ -71,9 +71,14 @@ type Flow struct {
 	// ResponseSelector names the destination whose reply Process returns.
 	ResponseSelector string
 	// InputFormat is how transforms read a received message: "json" (or
-	// empty), "hl7v2" (the HL7 v2 message's JSON view, #107 D-61), or "xml"
-	// (the XML document's JSON view, D-62).
+	// empty), or the JSON view of an HL7 v2 message ("hl7v2", #107 D-61),
+	// XML document ("xml", D-62), or delimited text ("delimited", D-63).
 	InputFormat string
+	// Delimiter and NoHeader describe InputFormat "delimited": the field
+	// delimiter (',' when zero) and whether the first row is data rather
+	// than column names (D-63).
+	Delimiter rune
+	NoHeader  bool
 }
 
 // Delivery is one message sent to one destination.
@@ -240,7 +245,7 @@ func (p *Pipeline) ProcessWithMetadata(ctx context.Context, f Flow, body []byte,
 		}
 	}
 	if needsObject(f) || (f.InputFormat != "" && f.InputFormat != "json") { // a flow with a format takes only that format
-		if _, err := decodeInput(f.InputFormat, body); err != nil {
+		if _, err := decodeInput(f, body); err != nil {
 			return Result{}, err
 		}
 	}
@@ -377,11 +382,11 @@ func (p *Pipeline) Requeue(ctx context.Context, id string) (state.Message, error
 	return before, p.store.Put(ctx, m)
 }
 
-// decodeInput reads a received message as the object transforms work on:
-// the JSON view of an HL7 v2 message ("hl7v2") or XML document ("xml"),
-// otherwise the JSON object.
-func decodeInput(format string, body []byte) (map[string]any, error) {
-	switch format {
+// decodeInput reads a received message the way f's input options say: the
+// JSON view of an HL7 v2 message ("hl7v2"), XML document ("xml"), or
+// delimited text ("delimited"), otherwise the JSON object.
+func decodeInput(f Flow, body []byte) (map[string]any, error) {
+	switch f.InputFormat {
 	case "hl7v2":
 		doc, err := codecs.HL7JSON(body)
 		if err != nil {
@@ -390,16 +395,29 @@ func decodeInput(format string, body []byte) (map[string]any, error) {
 		return doc, nil
 	case "xml":
 		doc, err := codecs.XMLJSON(body)
-		var notXML *codecs.NotXMLError
-		if errors.As(err, &notXML) && notXML.Reason != "" {
-			return nil, invalid("body must be a single well-formed XML document: " + notXML.Reason)
+		return doc, refused("body must be a single well-formed XML document", err)
+	case "delimited":
+		delim := f.Delimiter
+		if delim == 0 {
+			delim = ','
 		}
-		if err != nil {
-			return nil, invalid("body must be a single well-formed XML document")
-		}
-		return doc, nil
+		doc, err := codecs.DelimitedJSON(body, delim, !f.NoHeader)
+		return doc, refused("body must be valid delimited text", err)
 	}
 	return decodeObject(body)
+}
+
+// refused is the invalid-message error for a view's refusal: what the body
+// must be, and the codec's reason when it gives one.
+func refused(must string, err error) error {
+	var r *codecs.RefusedError
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &r) && r.Reason != "":
+		return invalid(must + ": " + r.Reason)
+	}
+	return invalid(must)
 }
 
 // decodeObject decodes body as a single JSON object, keeping numbers exact
@@ -435,7 +453,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 			if err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
-			doc, err := decodeInput(f.InputFormat, m.Raw)
+			doc, err := decodeInput(f, m.Raw)
 			if err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
@@ -502,7 +520,7 @@ func responseOutput(f Flow, r *Reply) json.RawMessage {
 		}
 	}
 	if t != nil {
-		out, _, err := destinationOutput(*t, "json", r.Body) // replies are read as JSON
+		out, _, err := destinationOutput(*t, Flow{}, r.Body) // replies are read as JSON
 		if err != nil || isJSONNull(out) {
 			return nil
 		}
@@ -546,9 +564,11 @@ func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 	// The flow's output is JSON when a flow transform made it, else the
 	// message as received. Judge by what was stored, not the current
 	// definition, which may have changed since.
-	format := f.InputFormat
+	// Changed input options (delimiter, header) apply to messages still
+	// waiting, like any other definition change.
+	format := f
 	if m.ContentType == "json" {
-		format = "json"
+		format = Flow{}
 	}
 	for _, d := range f.Destinations {
 		a := m.Attempts[d.Name]
@@ -562,9 +582,9 @@ func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 	return outs
 }
 
-// destinationOutput runs transform t over body, the flow's output, read as
-// format.
-func destinationOutput(t compiler.Transform, format string, body []byte) (out []byte, filtered bool, err error) {
+// destinationOutput runs transform t over body, the flow's output, read the
+// way format's input options say.
+func destinationOutput(t compiler.Transform, format Flow, body []byte) (out []byte, filtered bool, err error) {
 	prog, err := dsl.Compile(t)
 	if err != nil {
 		return nil, false, err

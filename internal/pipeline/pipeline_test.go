@@ -397,3 +397,34 @@ func TestProcessXMLInput(t *testing.T) {
 		}
 	}
 }
+
+// TestProcessDelimitedInput: with inputFormat delimited, transforms read
+// {"rows": ...}, with or without a header row and with any delimiter.
+func TestProcessDelimitedInput(t *testing.T) {
+	ctx := context.Background()
+	sink := &recordingSink{}
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil }, nil, Options{})
+	dest := []Destination{{Name: "a", Type: "file", Dir: "d"}}
+	header := Flow{ID: "h", InputFormat: "delimited", Transform: transform(t, "name: t\nsteps:\n  - map: { from: rows.1.last, to: second }"), Destinations: dest}
+	tabs := Flow{ID: "t", InputFormat: "delimited", Delimiter: '\t', NoHeader: true, Transform: transform(t, "name: t\nsteps:\n  - map: { from: rows.0.1, to: last }"), Destinations: dest}
+	if _, err := p.Process(ctx, header, []byte("mrn,last\n1,DOE\n2,ROE\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Process(ctx, tabs, []byte("1\tDOE\n")); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sink.bodies[0], `"second":"ROE"`) || !strings.Contains(sink.bodies[1], `"last":"DOE"`) {
+		t.Errorf("delivered %v", sink.bodies)
+	}
+	for body, want := range map[string]string{
+		"a,b\n1\n":  "body must be valid delimited text: rows have different numbers of fields",
+		"a\n\"x\"y": `body must be valid delimited text: a quoted value is not closed, or has a " not doubled`,
+		"":          "body must be valid delimited text: no rows",
+	} {
+		_, err := p.Process(ctx, header, []byte(body))
+		var invalid *InvalidMessageError
+		if !errors.As(err, &invalid) || invalid.Reason != want {
+			t.Errorf("%q: %v, want %q", body, err, want)
+		}
+	}
+}

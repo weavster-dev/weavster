@@ -124,8 +124,9 @@ func ParseValid(data []byte) (*Config, error) {
 func checkArtifacts(c *Config) []string {
 	var errs []string
 	for _, k := range sortedKeys(c.Flows) {
-		if f := c.Flows[k]; f.Source != nil {
-			if err := flowdef.CheckSource(f.Source); err != nil {
+		f := c.Flows[k]
+		for _, err := range []error{flowdef.CheckSource(f.Source), flowdef.CheckInput(f)} {
+			if err != nil {
 				errs = append(errs, "flows."+k+": "+err.Error())
 			}
 		}

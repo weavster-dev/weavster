@@ -20,21 +20,7 @@ const (
 // ErrNotXML reports input that is not a single well-formed XML document.
 var ErrNotXML = errors.New("not a well-formed XML document")
 
-// NotXMLError is a refused document and why, in fixed words that never
-// quote the document (the reason reaches events and replies).
-type NotXMLError struct{ Reason string }
-
-func (e *NotXMLError) Error() string {
-	if e.Reason == "" {
-		return ErrNotXML.Error()
-	}
-	return ErrNotXML.Error() + ": " + e.Reason
-}
-
-// Is makes errors.Is(err, ErrNotXML) hold.
-func (e *NotXMLError) Is(target error) bool { return target == ErrNotXML }
-
-func notXML(reason string) error { return &NotXMLError{Reason: reason} }
+func notXML(reason string) error { return &RefusedError{Err: ErrNotXML, Reason: reason} }
 
 // xmlNamespace is the URI the xml: prefix always stands for.
 const xmlNamespace = "http://www.w3.org/XML/1998/namespace"

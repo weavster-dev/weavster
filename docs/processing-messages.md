@@ -44,9 +44,9 @@ Unknown fields and wrong types are rejected rather than ignored:
 
 `transform` is optional. Without it (or with `null` or no `steps`), messages pass through
 unchanged and may be any bytes (unless a destination has its own `transform`, or `inputFormat`
-is `hl7v2` or `xml`). It uses the steps below, in order, on the message as a JSON object, or on
-the JSON view of an [HL7 v2 message](#transform-hl7-v2-messages) or
-[XML document](#transform-xml-documents).
+is not `json`). It uses the steps below, in order, on the message as a JSON object, or on the
+JSON view of an [HL7 v2 message](#transform-hl7-v2-messages),
+[XML document](#transform-xml-documents), or [delimited text](#transform-delimited-text-csv).
 
 | Step | Fields | Effect |
 |---|---|---|
@@ -71,7 +71,8 @@ the JSON view of an [HL7 v2 message](#transform-hl7-v2-messages) or
 | `enabled`, `initialState` | Automatic deployment at startup; see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
 | `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). |
 | `responseSelector` | The destination whose reply is returned to the sender; see [Return a destination's reply](#return-a-destinations-reply). |
-| `inputFormat` | How transforms read a message: `json` (default), `hl7v2`, or `xml`; see [Transform HL7 v2 messages](#transform-hl7-v2-messages) and [Transform XML documents](#transform-xml-documents). |
+| `inputFormat` | How transforms read a message: `json` (default), `hl7v2`, `xml`, or `delimited`; see [Transform HL7 v2 messages](#transform-hl7-v2-messages), [Transform XML documents](#transform-xml-documents), and [Transform delimited text](#transform-delimited-text-csv). |
+| `delimited` | Options of `inputFormat: delimited`: `delimiter` and `header`. |
 | `source` | Where the flow receives messages on its own; see [Read files from a directory](#read-files-from-a-directory), [Receive messages over HTTP](#receive-messages-over-http), and [Receive HL7 v2 over MLLP](#receive-hl7-v2-over-mllp). Without it, messages arrive only through the API. |
 
 ### `destinations`
@@ -206,6 +207,61 @@ the transform sees:
   (`400` over the API, rejected by a file source), even when the flow has no transform. A
   `DOCTYPE` is allowed but never processed: entities it declares are not expanded and nothing is
   fetched, so a document using one is refused.
+
+### Transform delimited text (CSV)
+
+Set `"inputFormat": "delimited"` and the flow's transforms read each message (a whole file, or
+the body of a request) as rows:
+
+```json
+{
+  "id": "roster",
+  "inputFormat": "delimited",
+  "delimited": {"delimiter": ";", "header": true},
+  "source": {"type": "file", "dir": "/var/lib/weavster/in/roster", "pattern": "*.csv"},
+  "transform": {"name": "roster", "steps": [
+    {"map": {"from": "rows.0.lastName", "to": "firstPatient.lastName"}}
+  ]},
+  "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/roster"}]
+}
+```
+
+For
+
+```text
+mrn;lastName;note
+123;DOE;plain
+456;ROE;"has; a delimiter"
+```
+
+the transform sees:
+
+```json
+{"header": ["mrn", "lastName", "note"],
+ "rows": [{"mrn": "123", "lastName": "DOE", "note": "plain"},
+          {"mrn": "456", "lastName": "ROE", "note": "has; a delimiter"}]}
+```
+
+| `delimited` field | Meaning |
+|---|---|
+| `delimiter` | `,` (default), `;`, `\|`, or a tab (`"\t"` in JSON). |
+| `header` | `true` (default): the first row names the columns and each row is an object. `false`: each row is a list of values (`rows.0.1` is the second value of the first row), and there is no `header`. |
+
+- Values are text. Quoting follows RFC 4180: a value in double quotes may contain the delimiter,
+  line breaks, and doubled quotes (`""`). Rows may end with CRLF or LF (a CRLF inside a quoted
+  value becomes LF); blank lines are skipped and a UTF-8 byte order mark is ignored.
+- Header names have surrounding spaces removed (`mrn, lastName` gives `lastName`) and must be
+  unique, not empty, and without dots (a dot would make the column unreachable, since paths use
+  dots).
+- Every row must have as many values as the first row (or the header); input with no rows at
+  all, more than 100,000 rows, or more than 1,000,000 values is refused (`400`, or rejected by a
+  file source), even when the flow has no transform. The reason names the problem, for example
+  `a " inside a value that is not in quotes`.
+- Changing `delimited` options also changes how messages still waiting for a retry are read,
+  like any other change to a flow's definition.
+- The whole file is one message. A transform reaches rows by position (`rows.0`, `rows.1`); there
+  are no loops yet, and splitting a file into one message per row comes later.
+- The transform's output is JSON, delivered as `application/json`.
 
 ### Redirects
 
@@ -608,7 +664,7 @@ Errors:
 
 | Response | Cause |
 |---|---|
-| `400` | The flow or one of its destinations has a `transform` (a `responseTransform` does not count) and the body is not a JSON object; the flow has `inputFormat: hl7v2` or `xml` and the body is not an HL7 v2 message or well-formed XML document; or the body could not be read. |
+| `400` | The flow or one of its destinations has a `transform` (a `responseTransform` does not count) and the body is not a JSON object; the flow has `inputFormat: hl7v2`, `xml`, or `delimited` and the body is not an HL7 v2 message, a well-formed XML document, or valid delimited text; or the body could not be read. |
 | `404` | Unknown flow. |
 | `409` | The flow is not `started`. |
 | `413` | Body larger than 10 MiB. |

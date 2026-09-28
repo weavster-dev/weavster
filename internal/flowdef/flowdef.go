@@ -40,10 +40,28 @@ type Flow struct {
 	// ResponseSelector names the destination whose reply is returned to
 	// the sender of a message.
 	ResponseSelector string `json:"responseSelector,omitempty"`
-	// InputFormat is how transforms read a message: json (default), hl7v2,
-	// or xml — the HL7 v2 message's or XML document's JSON view (#107 D-61,
-	// D-62).
+	// InputFormat is how transforms read a message: json (default), or the
+	// JSON view of an HL7 v2 message (hl7v2), XML document (xml), or
+	// delimited text (delimited) (#107 D-61 to D-63).
 	InputFormat string `json:"inputFormat,omitempty"`
+	// Delimited configures inputFormat delimited (#107 D-63).
+	Delimited *Delimited `json:"delimited,omitempty"`
+}
+
+// Delimited describes delimited text: the delimiter ("," when empty) and
+// whether the first row names the columns (true when nil).
+type Delimited struct {
+	Delimiter string `json:"delimiter,omitempty"`
+	Header    *bool  `json:"header,omitempty"`
+}
+
+// CheckInput checks what the schema cannot: delimited options go with
+// inputFormat delimited only.
+func CheckInput(f Flow) error {
+	if f.Delimited != nil && f.InputFormat != "delimited" {
+		return errors.New("delimited applies only to inputFormat delimited")
+	}
+	return nil
 }
 
 // SourceKind is the flow's source type: its source's, or else the
