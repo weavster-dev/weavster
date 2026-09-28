@@ -218,9 +218,9 @@ Unknown fields and wrong types are rejected rather than ignored:</p>
 <h3 id="transform"><code>transform</code></h3>
 <p><code>transform</code> is optional. Without it (or with <code>null</code> or no <code>steps</code>), messages pass through
 unchanged and may be any bytes (unless a destination has its own <code>transform</code>, or <code>inputFormat</code>
-is <code>hl7v2</code> or <code>xml</code>). It uses the steps below, in order, on the message as a JSON object, or on
-the JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a> or
-<a href="#transform-xml-documents">XML document</a>.</p>
+is not <code>json</code>). It uses the steps below, in order, on the message as a JSON object, or on the
+JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a>,
+<a href="#transform-xml-documents">XML document</a>, or <a href="#transform-delimited-text-csv">delimited text</a>.</p>
 <table>
 <thead>
 <tr>
@@ -287,7 +287,11 @@ the JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a> or
 </tr>
 <tr>
 <td><code>inputFormat</code></td>
-<td>How transforms read a message: <code>json</code> (default), <code>hl7v2</code>, or <code>xml</code>; see <a href="#transform-hl7-v2-messages">Transform HL7 v2 messages</a> and <a href="#transform-xml-documents">Transform XML documents</a>.</td>
+<td>How transforms read a message: <code>json</code> (default), <code>hl7v2</code>, <code>xml</code>, or <code>delimited</code>; see <a href="#transform-hl7-v2-messages">Transform HL7 v2 messages</a>, <a href="#transform-xml-documents">Transform XML documents</a>, and <a href="#transform-delimited-text-csv">Transform delimited text</a>.</td>
+</tr>
+<tr>
+<td><code>delimited</code></td>
+<td>Options of <code>inputFormat: delimited</code>: <code>delimiter</code> and <code>header</code>.</td>
 </tr>
 <tr>
 <td><code>source</code></td>
@@ -445,6 +449,65 @@ paths name segment, field, and component the way HL7 does:</p>
   (<code>400</code> over the API, rejected by a file source), even when the flow has no transform. A
   <code>DOCTYPE</code> is allowed but never processed: entities it declares are not expanded and nothing is
   fetched, so a document using one is refused.</li>
+</ul>
+<h3 id="transform-delimited-text-csv">Transform delimited text (CSV)</h3>
+<p>Set <code>"inputFormat": "delimited"</code> and the flow's transforms read each message (a whole file, or
+the body of a request) as rows:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;roster&quot;,
+  &quot;inputFormat&quot;: &quot;delimited&quot;,
+  &quot;delimited&quot;: {&quot;delimiter&quot;: &quot;;&quot;, &quot;header&quot;: true},
+  &quot;source&quot;: {&quot;type&quot;: &quot;file&quot;, &quot;dir&quot;: &quot;/var/lib/weavster/in/roster&quot;, &quot;pattern&quot;: &quot;*.csv&quot;},
+  &quot;transform&quot;: {&quot;name&quot;: &quot;roster&quot;, &quot;steps&quot;: [
+    {&quot;map&quot;: {&quot;from&quot;: &quot;rows.0.lastName&quot;, &quot;to&quot;: &quot;firstPatient.lastName&quot;}}
+  ]},
+  &quot;destinations&quot;: [{&quot;name&quot;: &quot;ehr&quot;, &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://ehr.example.com/roster&quot;}]
+}
+</code></pre>
+<p>For</p>
+<pre><code class="language-text">mrn;lastName;note
+123;DOE;plain
+456;ROE;&quot;has; a delimiter&quot;
+</code></pre>
+<p>the transform sees:</p>
+<pre><code class="language-json">{&quot;header&quot;: [&quot;mrn&quot;, &quot;lastName&quot;, &quot;note&quot;],
+ &quot;rows&quot;: [{&quot;mrn&quot;: &quot;123&quot;, &quot;lastName&quot;: &quot;DOE&quot;, &quot;note&quot;: &quot;plain&quot;},
+          {&quot;mrn&quot;: &quot;456&quot;, &quot;lastName&quot;: &quot;ROE&quot;, &quot;note&quot;: &quot;has; a delimiter&quot;}]}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th><code>delimited</code> field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>delimiter</code></td>
+<td><code>,</code> (default), <code>;</code>, <code>\|</code>, or a tab (<code>"\t"</code> in JSON).</td>
+</tr>
+<tr>
+<td><code>header</code></td>
+<td><code>true</code> (default): the first row names the columns and each row is an object. <code>false</code>: each row is a list of values (<code>rows.0.1</code> is the second value of the first row), and there is no <code>header</code>.</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Values are text. Quoting follows RFC 4180: a value in double quotes may contain the delimiter,
+  line breaks, and doubled quotes (<code>""</code>). Rows may end with CRLF or LF (a CRLF inside a quoted
+  value becomes LF); blank lines are skipped and a UTF-8 byte order mark is ignored.</li>
+<li>Header names have surrounding spaces removed (<code>mrn, lastName</code> gives <code>lastName</code>) and must be
+  unique, not empty, and without dots (a dot would make the column unreachable, since paths use
+  dots).</li>
+<li>Every row must have as many values as the first row (or the header); input with no rows at
+  all, more than 100,000 rows, or more than 1,000,000 values is refused (<code>400</code>, or rejected by a
+  file source), even when the flow has no transform. The reason names the problem, for example
+  <code>a " inside a value that is not in quotes</code>.</li>
+<li>Changing <code>delimited</code> options also changes how messages still waiting for a retry are read,
+  like any other change to a flow's definition.</li>
+<li>The whole file is one message. A transform reaches rows by position (<code>rows.0</code>, <code>rows.1</code>); there
+  are no loops yet, and splitting a file into one message per row comes later.</li>
+<li>The transform's output is JSON, delivered as <code>application/json</code>.</li>
 </ul>
 <h3 id="redirects">Redirects</h3>
 <p>By default an <code>http</code> destination does not follow redirects: a <code>3xx</code> reply is a failed delivery,
@@ -870,7 +933,7 @@ statuses above.</p>
 <tbody>
 <tr>
 <td><code>400</code></td>
-<td>The flow or one of its destinations has a <code>transform</code> (a <code>responseTransform</code> does not count) and the body is not a JSON object; the flow has <code>inputFormat: hl7v2</code> or <code>xml</code> and the body is not an HL7 v2 message or well-formed XML document; or the body could not be read.</td>
+<td>The flow or one of its destinations has a <code>transform</code> (a <code>responseTransform</code> does not count) and the body is not a JSON object; the flow has <code>inputFormat: hl7v2</code>, <code>xml</code>, or <code>delimited</code> and the body is not an HL7 v2 message, a well-formed XML document, or valid delimited text; or the body could not be read.</td>
 </tr>
 <tr>
 <td><code>404</code></td>

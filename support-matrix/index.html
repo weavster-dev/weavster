@@ -516,6 +516,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestHTTPSource</code>, <code>TestHTTPSourceSecured</code>, <code>TestSourceHandler</code>, <code>TestSourceHandlerBasicAuth</code>, <code>TestCheckSource</code>. Optional HTTP Basic (<code>username</code>, <code>passwordEnv</code>), HTTPS (<code>certFile</code>, <code>keyFile</code>), and <code>readTimeoutMs</code> (<code>TestHTTPSourceReadTimeout</code>); one flow source per port; listed by <code>GET /api/v1/flows/ports-in-use</code>. See <a href="../processing-messages/#receive-messages-over-http">Receive messages over HTTP</a>.</td>
 </tr>
 <tr>
+<td>Delimited input: <code>inputFormat: delimited</code> (<code>delimited: {delimiter, header}</code>) gives transforms <code>{"rows": [...]}</code> (objects by column name, or lists) with RFC 4180 quoting</td>
+<td>Implemented (wired)</td>
+<td><code>TestDelimitedInput</code>, <code>TestProcessDelimitedInput</code>, <code>TestDelimitedJSON</code>, <code>TestCheckInput</code>. One message per file; at most 100,000 rows; output is JSON. See <a href="../processing-messages/#transform-delimited-text-csv">Transform delimited text</a>.</td>
+</tr>
+<tr>
 <td>XML input: <code>inputFormat: xml</code> gives transforms the document as JSON (<code>order.@id</code>, <code>order.patient.name.#text</code>, repeated names as lists, <code>#ns</code>); DTDs never processed and declared entities never expanded (predefined ones such as <code>&amp;amp;</code> are decoded)</td>
 <td>Implemented (wired)</td>
 <td><code>TestXMLInput</code>, <code>TestProcessXMLInput</code>, <code>TestXMLJSON</code>. Output is JSON; order between different child names and mixed-content position not kept; at most 256 levels and 100,000 elements. See <a href="../processing-messages/#transform-xml-documents">Transform XML documents</a>.</td>
@@ -735,8 +740,8 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'PASSWORD' -s smoke.txt
 <p>There are <strong>no</strong> OIDC/SAML, OPA/Cedar, SIEM, Kubernetes, Redis/NATS, or object-storage stubs.
 Those are Enterprise items with no code in the source tree.</p>
 <h2 id="codecs">Codecs</h2>
-<p>Codecs are library-only except HL7 v2 and XML. The server reads HL7 v2 messages and XML
-documents for transforms (<a href="../processing-messages/#transform-hl7-v2-messages"><code>inputFormat</code></a>) and
+<p>Codecs are library-only except HL7 v2, XML, and delimited text. The server reads HL7 v2
+messages, XML documents, and delimited text for transforms (<a href="../processing-messages/#transform-hl7-v2-messages"><code>inputFormat</code></a>) and
 acknowledges messages an <a href="../processing-messages/#receive-hl7-v2-over-mllp">mllp source</a> receives;
 transform output is always JSON. You can exercise the codecs with <code>weavster test</code>,
 which covers HL7 v2, JSON, XML, and raw.</p>
