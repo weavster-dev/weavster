@@ -2,7 +2,7 @@
 
 The server keeps three sets of named values for you: the **config map** (text values, for example
 hostnames per environment), **global scripts** (script sources), and **settings** (any JSON
-value). They are stored with the flows (durable with `store.dialect: sqlite`) and managed over the
+value). They are stored with the flows (durable with `store.dialect: postgres` or `sqlite`) and managed over the
 API and the command-line client.
 
 !!! note "Stored, not used yet"

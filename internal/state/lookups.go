@@ -57,7 +57,7 @@ func (s *sqlStore) LookupGroups(ctx context.Context) (map[string]int, error) {
 func (s *sqlStore) LookupEntries(ctx context.Context, group, prefix string, limit int) (map[string]string, error) {
 	ctx = s.bind(ctx)
 	rows, err := s.db.QueryContext(ctx, `SELECT key, value FROM lookups
-		WHERE grp = ? AND key >= ? AND substr(key, 1, ?) = ? ORDER BY key LIMIT ?`,
+		WHERE grp = ? AND key /*C*/ >= ? AND substr(key, 1, ?) = ? ORDER BY key /*C*/ LIMIT ?`,
 		group, prefix, len([]rune(prefix)), prefix, limit)
 	if err != nil {
 		return nil, err

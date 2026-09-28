@@ -2,7 +2,7 @@
 
 A **lookup group** is a named table of text keys and text values: facility codes to names,
 local codes to standard ones, and similar. Groups are stored with the flows (durable with
-`store.dialect: sqlite`) and managed over the API.
+`store.dialect: postgres` or `sqlite`) and managed over the API.
 
 !!! note "Stored, not used by flows yet"
     Flows cannot read lookups yet. Today these endpoints store and serve them.
@@ -30,7 +30,7 @@ other entries stay. Add `?replace=true` to make the body the whole group.
 - Group names are 1–128 characters from `A-Z a-z 0-9 . _ -`.
 - Keys are 1–512 characters of any text except control characters, `/` included. URL-encode
   them in paths (`RAD%2001`, `ICD%2F10`).
-- Values are text of at most 64 KiB. A group exists while it has entries.
+- Values are UTF-8 text of at most 64 KiB, without NUL characters. A group exists while it has entries.
 
 ## Requests
 
