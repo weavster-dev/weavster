@@ -44,8 +44,8 @@ type BuildStep struct {
 
 // DestinationSetStep computes the allowed destination set (spec §2.2.5):
 // Exclude names destinations the message skips, when When holds (always
-// when empty). Include is kept for the code generator; the interpreter
-// supports exclusion only (#107 D-20).
+// when empty). Destination sets are exclusion only (#107 D-20): Include is
+// refused by the schema and the interpreter.
 type DestinationSetStep struct {
 	Include []string `json:"include,omitempty" yaml:"include,omitempty"`
 	Exclude []string `json:"exclude,omitempty" yaml:"exclude,omitempty"`

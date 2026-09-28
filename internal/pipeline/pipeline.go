@@ -206,9 +206,6 @@ func Validate(f Flow) error {
 			if _, err := dsl.Compile(*d.Transform); err != nil {
 				return fmt.Errorf("destination %s: transform: %w", d.Name, err)
 			}
-			if len(dsl.ExcludedNames(*d.Transform)) > 0 {
-				return fmt.Errorf("destination %s: transform: destinationSet belongs in the flow's transform", d.Name)
-			}
 		}
 		if d.ResponseTransform != nil {
 			if d.Name != f.ResponseSelector {
@@ -217,18 +214,8 @@ func Validate(f Flow) error {
 			if _, err := dsl.Compile(*d.ResponseTransform); err != nil {
 				return fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
 			}
-			if len(dsl.ExcludedNames(*d.ResponseTransform)) > 0 {
-				return fmt.Errorf("destination %s: responseTransform: destinationSet belongs in the flow's transform", d.Name)
-			}
 		}
 		seen[d.Name] = d.Type
-	}
-	if f.Transform != nil {
-		for _, name := range dsl.ExcludedNames(*f.Transform) {
-			if seen[name] == "" {
-				return fmt.Errorf("transform: destinationSet excludes %q, which is not a destination of the flow", name)
-			}
-		}
 	}
 	switch kind := seen[f.ResponseSelector]; {
 	case f.ResponseSelector == "":
@@ -495,20 +482,15 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 			if transformed, err = json.Marshal(out); err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
-			if len(excluded) > 0 {
-				routed = map[string]string{ExcludedMetadata: strings.Join(excluded, ",")}
-			}
+			// Always set, so an exclusion carried over (a reprocessed
+			// message keeps its metadata) never outlives this run: "" removes it.
+			routed = map[string]string{ExcludedMetadata: strings.Join(excluded, ",")}
 		}
-		if err := ob.SetTransformed(ctx, id, transformed, routed); err != nil {
+		stored, err := ob.SetTransformed(ctx, id, transformed, routed)
+		if err != nil {
 			return Result{}, err
 		}
-		m.Transformed = transformed
-		for k, v := range routed {
-			if m.Metadata == nil {
-				m.Metadata = map[string]string{}
-			}
-			m.Metadata[k] = v
-		}
+		m = stored
 	}
 
 	now := time.Now()

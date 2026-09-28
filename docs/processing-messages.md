@@ -380,7 +380,7 @@ its content:
 ]},
 "destinations": [
   {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"},
-  {"name": "lab", "type": "mllp", "address": "lab.example.com:2575"},
+  {"name": "lab", "type": "http", "url": "https://lab.example.com/in"},
   {"name": "archive", "type": "file", "dir": "/var/lib/weavster/archive"}
 ]
 ```
@@ -395,7 +395,13 @@ its content:
   the flow; otherwise the flow is refused when you create or update it.
 - The exclusion is decided once, when the message is transformed, and stored with it as the
   metadata `destinationSet.excluded` (for example `"archive"`). Retries, a restart, and starting
-  a stopped destination all keep it, even if you change the flow meanwhile.
+  a stopped destination all keep it, even if you change the flow meanwhile. Reprocessing a
+  message decides again with the flow's current steps.
+- If the [`responseSelector`](#return-a-destinations-reply) destination is excluded, the sender
+  gets no `response` for that message (the message is still `sent` when the other destinations
+  succeed).
+- `weavster config validate` checks the names and placement too, so a misspelled destination is
+  reported before you apply the file.
 
 ### Per-destination transforms and filters
 

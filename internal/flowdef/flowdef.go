@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/weavster-dev/weavster/internal/compiler"
 )
 
 // Flow is a flow definition. Status and StoppedDestinations are runtime
@@ -53,6 +55,43 @@ type Flow struct {
 type Delimited struct {
 	Delimiter string `json:"delimiter,omitempty"`
 	Header    *bool  `json:"header,omitempty"`
+}
+
+// CheckTransforms checks what the schema cannot about transforms (#107
+// D-66): destinationSet steps belong in the flow's transform only, and
+// every destination they exclude is a destination of the flow.
+func CheckTransforms(f Flow) error {
+	names := map[string]bool{}
+	for _, d := range f.Destinations {
+		names[d.Name] = true
+		for field, raw := range map[string]json.RawMessage{"transform": d.Transform, "responseTransform": d.ResponseTransform} {
+			if len(excluded(raw)) > 0 {
+				return fmt.Errorf("destination %s: %s: destinationSet can only be used in the flow's transform", d.Name, field)
+			}
+		}
+	}
+	for _, name := range excluded(f.Transform) {
+		if !names[name] {
+			return fmt.Errorf("transform: destinationSet excludes %q, which is not a destination of the flow", name)
+		}
+	}
+	return nil
+}
+
+// excluded lists the names a transform's destinationSet steps exclude
+// (none when raw is empty or not a transform; the schema reports that).
+func excluded(raw json.RawMessage) []string {
+	var t compiler.Transform
+	if len(raw) == 0 || json.Unmarshal(raw, &t) != nil {
+		return nil
+	}
+	var out []string
+	for _, s := range t.Steps {
+		if s.DestinationSet != nil {
+			out = append(out, s.DestinationSet.Exclude...)
+		}
+	}
+	return out
 }
 
 // CheckInput checks what the schema cannot: delimited options go with

@@ -466,9 +466,19 @@ func TestProcessDestinationSet(t *testing.T) {
 		}
 	}
 
-	// A retry honors the stored exclusion even though ehr failed first.
+	// A reprocessed message arrives with the old exclusion in its metadata;
+	// this run excludes nothing, so it is removed and ehr gets the message.
+	res, err := p.ProcessWithMetadata(ctx, f, []byte(`{"kind":"adt"}`), map[string]string{ExcludedMetadata: "ehr"})
+	if err != nil || res.Status != state.StatusSent {
+		t.Fatalf("reprocessed: %+v %v", res, err)
+	}
+	if m, _ := store.Get(ctx, res.ID); m.Metadata[ExcludedMetadata] != "" || len(sinks["ehr"].bodies) != 2 {
+		t.Errorf("reprocessed: excluded %q, ehr deliveries %d; want none, 2", m.Metadata[ExcludedMetadata], len(sinks["ehr"].bodies))
+	}
+
+	// A retry honors the stored exclusion even though archive failed first.
 	sinks["archive"].fail = errors.New("down")
-	res, err := p.Process(ctx, f, []byte(`{"kind":"orm"}`))
+	res, err = p.Process(ctx, f, []byte(`{"kind":"orm"}`))
 	if err != nil || res.Status != state.StatusQueued {
 		t.Fatalf("with archive down: %+v %v", res, err)
 	}
@@ -479,27 +489,7 @@ func TestProcessDestinationSet(t *testing.T) {
 	if _, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) { return f, nil }); err != nil {
 		t.Fatal(err)
 	}
-	if m, _ = store.Get(ctx, res.ID); m.Status != state.StatusSent || len(sinks["ehr"].bodies) != 1 {
-		t.Errorf("after retry: status %s, ehr deliveries %d (want sent, 1: ehr stays excluded)", m.Status, len(sinks["ehr"].bodies))
-	}
-}
-
-func TestValidateDestinationSet(t *testing.T) {
-	dest := func(name string) Destination { return Destination{Name: name, Type: "file", Dir: "d"} }
-	withSet := transform(t, "name: t\nsteps:\n  - destinationSet: { exclude: [b] }")
-	for _, tt := range []struct {
-		name string
-		flow Flow
-		want string
-	}{
-		{"ok", Flow{Transform: withSet, Destinations: []Destination{dest("a"), dest("b")}}, ""},
-		{"unknown name", Flow{Transform: withSet, Destinations: []Destination{dest("a")}}, `destinationSet excludes "b", which is not a destination of the flow`},
-		{"in a destination transform", Flow{Destinations: []Destination{dest("a"), {Name: "b", Type: "file", Dir: "d", Transform: withSet}}}, "destinationSet belongs in the flow's transform"},
-		{"in a response transform", Flow{ResponseSelector: "b", Destinations: []Destination{dest("a"), {Name: "b", Type: "http", URL: "https://x", ResponseTransform: withSet}}}, "destinationSet belongs in the flow's transform"},
-	} {
-		err := Validate(tt.flow)
-		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
-			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
-		}
+	if m, _ = store.Get(ctx, res.ID); m.Status != state.StatusSent || len(sinks["ehr"].bodies) != 2 {
+		t.Errorf("after retry: status %s, ehr deliveries %d (want sent, 2: ehr stays excluded)", m.Status, len(sinks["ehr"].bodies))
 	}
 }

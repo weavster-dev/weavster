@@ -241,8 +241,8 @@ steps:
   - set: { field: routed, expr: yes }
   - destinationSet: { exclude: [lab], when: routed }
 `)
-	if !prog.Excludes() {
-		t.Error("Excludes = false")
+	if _, _, err := prog.Run(map[string]any{}); !errors.Is(err, ErrRoutesElsewhere) {
+		t.Errorf("Run of a routing program: %v", err)
 	}
 	for _, tt := range []struct {
 		in   map[string]any
@@ -260,13 +260,7 @@ steps:
 	if _, filtered, excluded, err := dropped.RunRouted(map[string]any{}); err != nil || !filtered || excluded != nil {
 		t.Errorf("filtered message: %v %v %v", filtered, excluded, err)
 	}
-	if compileYAML(t, "name: t\nsteps:\n  - set: { field: a, expr: b }\n").Excludes() {
-		t.Error("a program without destinationSet Excludes")
-	}
-	tr, _ := compiler.Parse([]byte("name: t\nsteps:\n  - destinationSet: { exclude: [a, b] }\n  - destinationSet: { exclude: [c] }\n"))
-	if got := strings.Join(ExcludedNames(*tr), ","); got != "a,b,c" {
-		t.Errorf("ExcludedNames = %s", got)
-	}
+
 }
 
 // compileYAML compiles a transform written in YAML.

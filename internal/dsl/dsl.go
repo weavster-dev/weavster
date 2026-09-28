@@ -26,6 +26,9 @@ var ErrUnsupportedStep = errors.New("dsl: step not supported yet")
 type Program struct {
 	name  string
 	steps []step
+	// routes: the program has destinationSet steps, which only a flow's
+	// transform may use (RunRouted); Run refuses it.
+	routes bool
 }
 
 type step interface {
@@ -43,6 +46,9 @@ func Compile(t compiler.Transform) (*Program, error) {
 			return nil, fmt.Errorf("dsl: %s: step %d: %w", t.Name, i+1, err)
 		}
 		p.steps = append(p.steps, st)
+		if _, ok := st.(destinationSetStep); ok {
+			p.routes = true
+		}
 	}
 	return p, nil
 }
@@ -71,10 +77,19 @@ func compileStep(s compiler.Step) (step, error) {
 	}
 }
 
+// ErrRoutesElsewhere is returned by Run for a program with destinationSet
+// steps: only a flow's transform decides destinations (RunRouted).
+var ErrRoutesElsewhere = errors.New("destinationSet can only be used in a flow's transform")
+
 // Run applies the program to a copy of in and returns the result; in is
 // never modified. A nil in is treated as an empty object. filtered reports
-// that a filter step dropped the message; no later steps run.
+// that a filter step dropped the message; no later steps run. A program
+// with destinationSet steps is refused (ErrRoutesElsewhere), so exclusions
+// are never silently dropped.
 func (p *Program) Run(in map[string]any) (out map[string]any, filtered bool, err error) {
+	if p.routes {
+		return nil, false, fmt.Errorf("dsl: %s: %w", p.name, ErrRoutesElsewhere)
+	}
 	out, filtered, _, err = p.RunRouted(in)
 	return out, filtered, err
 }
@@ -101,16 +116,6 @@ func (p *Program) RunRouted(in map[string]any) (out map[string]any, filtered boo
 	}
 	sort.Strings(excluded)
 	return doc, false, excluded, nil
-}
-
-// Excludes reports whether the program has a destinationSet step.
-func (p *Program) Excludes() bool {
-	for _, st := range p.steps {
-		if _, ok := st.(destinationSetStep); ok {
-			return true
-		}
-	}
-	return false
 }
 
 // deepCopy copies JSON-shaped values so no two fields share an object or
@@ -481,18 +486,6 @@ func (d destinationSetStep) apply(doc map[string]any, excluded map[string]bool) 
 		}
 	}
 	return false, nil
-}
-
-// ExcludedNames lists the destinations the destinationSet steps of t can
-// exclude, so callers can check them against the flow.
-func ExcludedNames(t compiler.Transform) []string {
-	var out []string
-	for _, s := range t.Steps {
-		if s.DestinationSet != nil {
-			out = append(out, s.DestinationSet.Exclude...)
-		}
-	}
-	return out
 }
 
 func parseOperand(s string) (operand, error) {

@@ -47,7 +47,7 @@ func writeStep(b *bytes.Buffer, s Step) {
 	case s.Build != nil:
 		fmt.Fprintf(b, "{kind: %q, expr: %q}", "build", s.Build.Template)
 	case s.DestinationSet != nil:
-		fmt.Fprintf(b, "{kind: %q, to: %q}", "destinationSet", joinComma(s.DestinationSet.Exclude))
+		fmt.Fprintf(b, "{kind: %q, expr: %q, to: %q}", "destinationSet", s.DestinationSet.When, joinComma(s.DestinationSet.Exclude))
 	default:
 		fmt.Fprintf(b, "{kind: %q}", "empty")
 	}

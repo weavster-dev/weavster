@@ -48,24 +48,31 @@ func TestReceiveAndTransform(t *testing.T) {
 		t.Errorf("status = %s", m.Status)
 	}
 
-	if err := o.SetTransformed(ctx, "1", []byte("done"), map[string]string{"k": "v"}); err != nil {
+	stored, err := o.SetTransformed(ctx, "1", []byte("done"), map[string]string{"k": "v"})
+	if err != nil {
 		t.Fatal(err)
 	}
 	m, _ = s.Get(ctx, "1")
-	if m.Status != state.StatusTransformed || string(m.Transformed) != "done" || m.Metadata["k"] != "v" {
+	if m.Status != state.StatusTransformed || string(m.Transformed) != "done" || m.Metadata["k"] != "v" || stored.Metadata["k"] != "v" {
 		t.Errorf("after transform: %+v", m)
 	}
-	if err := o.SetTransformed(ctx, "1", []byte("again"), nil); err != nil {
+	if _, err := o.SetTransformed(ctx, "1", []byte("again"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if m, _ = s.Get(ctx, "1"); string(m.Transformed) != "again" || m.Metadata["k"] != "v" {
 		t.Errorf("metadata not kept: %+v", m)
 	}
+	if _, err := o.SetTransformed(ctx, "1", []byte("again"), map[string]string{"k": ""}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ = s.Get(ctx, "1"); m.Metadata["k"] != "" {
+		t.Errorf("empty value did not remove the key: %+v", m)
+	}
 }
 
 func TestSetTransformedMissingMessage(t *testing.T) {
 	o := New(state.NewMemStore(), nil, Options{})
-	if err := o.SetTransformed(context.Background(), "missing", []byte("x"), nil); err == nil {
+	if _, err := o.SetTransformed(context.Background(), "missing", []byte("x"), nil); err == nil {
 		t.Fatal("SetTransformed() on a missing message = nil, want an error")
 	}
 }
