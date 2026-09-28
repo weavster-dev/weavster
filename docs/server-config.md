@@ -117,6 +117,32 @@ The store holds messages, flow definitions, and users. With `sqlite`, flows and 
 
 `maxAttempts` must be 1–1000; the two intervals must be 1–3,600,000 ms (one hour). See [Processing messages](processing-messages.md#retries).
 
+### `processing`
+
+Bounds how many messages the server receives and processes at once, across the API and every
+flow source, so a burst queues at the senders instead of piling up in the server.
+
+| Key | Default | Description |
+|---|---|---|
+| `maxConcurrent` | `32` | Messages received and processed at the same time (1–10000). |
+| `waitMs` | `5000` | How long a message that arrives while all are busy waits for its turn (0–600000; `0` refuses it at once). |
+
+```yaml
+processing: {maxConcurrent: 64, waitMs: 2000}
+```
+
+A message still waiting after `waitMs` is refused as busy, and the sender tries again:
+
+- the API and http sources answer `503` with `Retry-After: 1` and
+  `{"error":{"code":"SERVICE_UNAVAILABLE","message":"the server is busy: too many messages are being processed; retry shortly"}}`;
+- an mllp source answers `AE` with `server busy`;
+- a file or database source keeps the file or row and tries it at its next poll.
+
+A message a flow destination hands to another flow is processed in the sender's turn, so a chain
+of flows never waits for itself. Retries of queued deliveries run one message at a time outside
+this limit. Raise `maxConcurrent` when senders often see `503`/`AE` and the destinations can take
+more parallel traffic; lower it to protect slow destinations or a small database.
+
 ### `flows`
 
 | Key | Default | Description |

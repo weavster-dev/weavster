@@ -134,8 +134,12 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
 			Gate:        flows.locks,
 		})
-		ia := ingestAdapter{flows: flows, pipe: pipe}
-		sinks.ingest = ia // flow destinations hand messages to other flows (#107 D-70)
+		ia := ingestAdapter{flows: flows, pipe: pipe, limit: newProcessLimit(cfg.Processing)}
+		// Flow destinations hand messages to other flows (#107 D-70) inside
+		// the sender's slot: a second slot could deadlock a full server.
+		inProcess := ia
+		inProcess.limit = nil
+		sinks.ingest = inProcess
 		ingest = ia
 		ma := messageAdapter{store: store, pipe: pipe, ingest: ia}
 		messages, deadLetters = ma, ma
@@ -1573,6 +1577,9 @@ func decodeTransform(raw json.RawMessage, name string) (*compiler.Transform, err
 type ingestAdapter struct {
 	flows flowAdapter
 	pipe  *pipeline.Pipeline
+	// limit bounds the messages processed at once (nil: unbounded, for
+	// in-process handoffs that already hold a slot).
+	limit *processLimit
 }
 
 func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (gateway.IngestResult, error) {
@@ -1584,8 +1591,16 @@ func (a ingestAdapter) IngestFrom(ctx context.Context, flowID string, body []byt
 	return a.ingest(ctx, flowID, body, metadata)
 }
 
-// ingest runs body through flowID, storing metadata with the new message.
+// ingest runs body through flowID, storing metadata with the new message,
+// within the processing limit when the adapter has one.
 func (a ingestAdapter) ingest(ctx context.Context, flowID string, body []byte, metadata map[string]string) (gateway.IngestResult, error) {
+	if a.limit != nil {
+		release, err := a.limit.acquire(ctx)
+		if err != nil {
+			return gateway.IngestResult{}, err
+		}
+		defer release()
+	}
 	if a.flows.locks != nil {
 		defer a.flows.locks.ProcessFlow(flowID)()
 	}

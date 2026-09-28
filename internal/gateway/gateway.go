@@ -141,6 +141,9 @@ var (
 	ErrInvalidFlow    = errors.New("invalid flow")
 	ErrInvalidMessage = errors.New("invalid message")
 	ErrFlowNotRunning = errors.New("flow is not accepting messages")
+	// ErrBusy refuses a message while the server processes as many as it
+	// may at once (#107 D-79); the sender should retry shortly.
+	ErrBusy = errors.New("the server is busy: too many messages are being processed; retry shortly")
 	// ErrInvalidTransition is wrapped with the reason, e.g. "cannot pause a
 	// flow that is stopped".
 	ErrInvalidTransition = errors.New("invalid lifecycle transition")

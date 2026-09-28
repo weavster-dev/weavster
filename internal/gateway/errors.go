@@ -42,6 +42,11 @@ func writeErrorWith(w http.ResponseWriter, status int, code, message string, ext
 // writeBackendError answers an unexpected backend error: 501 for an
 // Enterprise-only feature (D-17), otherwise a 500 that hides the detail.
 func writeBackendError(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrBusy) {
+		w.Header().Set("Retry-After", "1")
+		writeStatusError(w, http.StatusServiceUnavailable, ErrBusy.Error())
+		return
+	}
 	if errors.Is(err, enterprise.ErrNotImplemented) {
 		writeStatusError(w, http.StatusNotImplemented, err.Error())
 		return

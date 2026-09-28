@@ -162,3 +162,12 @@ func TestUserHandlersUnavailableAndBadInput(t *testing.T) {
 		}
 	}
 }
+
+// TestBusyError: a busy server answers 503 with Retry-After.
+func TestBusyError(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writeBackendError(rec, fmt.Errorf("ingest: %w", ErrBusy))
+	if rec.Code != http.StatusServiceUnavailable || rec.Header().Get("Retry-After") != "1" || !strings.Contains(rec.Body.String(), "SERVICE_UNAVAILABLE") {
+		t.Errorf("busy: %d %v %s", rec.Code, rec.Header(), rec.Body)
+	}
+}

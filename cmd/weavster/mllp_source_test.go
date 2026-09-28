@@ -37,6 +37,7 @@ func TestMLLPHandler(t *testing.T) {
 		{"not running", msg, nil, mllpIngest{err: gateway.ErrFlowNotRunning}, "MSA|AE|C1|flow is not accepting messages"},
 		{"removed", msg, nil, mllpIngest{err: gateway.ErrFlowNotFound}, "MSA|AE|C1|flow is not accepting messages"},
 		{"failed", msg, nil, mllpIngest{err: errors.New("disk full")}, "MSA|AE|C1|message could not be processed"},
+		{"busy", msg, nil, mllpIngest{err: gateway.ErrBusy}, "MSA|AE|C1|server busy"},
 		{"too large", []byte("MSH|^~\\&|LAB|HOSP|W|H|1||ORU^R01|BIG|P|2.5"), adapters.ErrMLLPFrameTooLarge, mllpIngest{}, "MSA|AR|BIG|message larger than 10 MiB"},
 		{"too large, nothing kept", nil, adapters.ErrMLLPFrameTooLarge, mllpIngest{}, "MSA|AR||message larger than 10 MiB"},
 		{"space before MSH", []byte(" " + string(msg)), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
