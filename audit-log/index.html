@@ -200,7 +200,7 @@ structured <code>audit</code> line on stderr:</p>
 </tr>
 <tr>
 <td><code>detail</code></td>
-<td><code>status</code> (HTTP status returned) plus <code>query.&lt;name&gt;</code> for each query parameter. Repeated parameters are joined with <code>,</code>.</td>
+<td><code>status</code> (HTTP status returned) plus <code>query.&lt;name&gt;</code> for each query parameter. Repeated parameters are joined with <code>,</code>. <code>phi.access</code> entries also say what was disclosed; see below.</td>
 </tr>
 </tbody>
 </table>
@@ -236,6 +236,42 @@ structured <code>audit</code> line on stderr:</p>
 </tbody>
 </table>
 <p>Other reads, such as <code>GET /api/v1/flows</code> and <code>GET /api/v1/topology</code>, are not recorded.</p>
+<h3 id="what-a-phiaccess-entry-discloses">What a <code>phi.access</code> entry discloses</h3>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Added to <code>detail</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/v1/messages</code> (search)</td>
+<td><code>messages</code>: how many messages were returned; <code>messages.ids</code>: every returned id, as a JSON array (up to <code>limit</code>, at most 1000).</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/messages/export</code></td>
+<td><code>messages</code> and <code>messages.ids</code> for every message in the archive (up to 10,000, so this entry can be long; allow for it in your log shipper's line limit).</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/messages/{id}</code></td>
+<td>The message id is the <code>resource</code>.</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/messages/{id}/content</code></td>
+<td><code>part</code>: the content form returned, <code>raw</code> when the request gave none.</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/messages/{id}/requeue</code></td>
+<td><code>message.id</code>, and <code>previous.&lt;destination&gt;.attempts</code>: the attempts each destination had before the requeue.</td>
+</tr>
+</tbody>
+</table>
+<p>A read that was refused or failed (for example <code>403</code> or <code>404</code>) adds none of these: its entry has
+<code>status</code> and the <code>query.&lt;name&gt;</code> parameters only, since nothing was disclosed.</p>
+<pre><code class="language-text">actor=admin action=phi.access resource=/api/v1/messages detail=&quot;map[messages:1 messages.ids:[\&quot;6f1c9e\&quot;] query.flowId:adt status:200]&quot;
+actor=admin action=phi.access resource=/api/v1/messages/6f1c9e/content detail=&quot;map[part:raw status:200]&quot;
+</code></pre>
 <h2 id="redaction">Redaction</h2>
 <p>Request bodies are never recorded, so passwords sent to <code>/auth/login</code> or <code>/auth/password</code>
 never reach the log. A query parameter is logged as <code>[redacted]</code> when, ignoring case:</p>
@@ -245,7 +281,7 @@ never reach the log. A query parameter is logged as <code>[redacted]</code> when
 <li>one of its words is <code>ssn</code> or <code>phi</code> (<code>patient_ssn</code>, <code>phiFlag</code>). A new word starts at <code>-</code>,
   <code>_</code>, <code>.</code>, or a lowercase-to-uppercase change, so <code>className</code> and <code>graphId</code> are not redacted.</li>
 </ul>
-<pre><code class="language-text">actor=admin action=phi.access resource=/api/v1/messages detail=&quot;map[query.apiToken:[redacted] query.status:sent status:200]&quot;
+<pre><code class="language-text">actor=admin action=phi.access resource=/api/v1/messages detail=&quot;map[messages:0 messages.ids:[] query.apiToken:[redacted] query.status:sent status:200]&quot;
 </code></pre>
 <h2 id="retention">Retention</h2>
 <p>Audit entries exist only in the log output and in process memory, which keeps exactly the

@@ -1775,9 +1775,14 @@ counts once, in its current status.</p>
 </tr>
 </tbody>
 </table>
+<p>A message's stored content forms are <code>raw</code> (as received) and <code>transformed</code> (after the flow
+transform). What each destination was sent and what it answered are not stored as content:
+the reply returned to the sender is in the send response, and each destination's outcome is in
+<code>attempts</code>. Messages have no attachments.</p>
 <p>An unknown id returns <code>404</code>. Message content can hold protected health information, so
 <code>messages:content</code> is a separate permission and every search, read, and content request is
-recorded in the <a href="../audit-log/">audit log</a> as <code>phi.access</code>.</p>
+recorded in the <a href="../audit-log/">audit log</a> as <code>phi.access</code>, with the messages or content part it
+disclosed.</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/messages/6f1c…/content?part=raw'
 </code></pre>
 <h3 id="remove-many-messages">Remove many messages</h3>
