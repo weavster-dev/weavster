@@ -27,11 +27,21 @@ func TestIdempotencyKey(t *testing.T) {
 }
 
 func TestSemanticsForAdapter(t *testing.T) {
-	if SemanticsForAdapter("tcp") != SemanticsAtLeastOnce {
-		t.Error("raw tcp mllp must be at-least-once")
-	}
-	if SemanticsForAdapter("http") != SemanticsExactlyOnce {
-		t.Error("http must be exactly-once")
+	for adapter, want := range map[string]DeliverySemantics{
+		"database":    SemanticsAtLeastOnce,
+		"http":        SemanticsKeySent,
+		"web-service": SemanticsAtLeastOnce,
+		"tcp":         SemanticsAtLeastOnce,
+		"mllp":        SemanticsAtLeastOnce,
+		"file":        SemanticsAtLeastOnce,
+		"smtp":        SemanticsAtLeastOnce,
+		"document":    SemanticsAtLeastOnce,
+		"interflow":   SemanticsAtLeastOnce,
+		"something":   SemanticsAtLeastOnce,
+	} {
+		if got := SemanticsForAdapter(adapter); got != want {
+			t.Errorf("%s: %s, want %s", adapter, got, want)
+		}
 	}
 }
 

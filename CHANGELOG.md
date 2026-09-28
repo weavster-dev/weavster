@@ -95,6 +95,8 @@ All notable changes to this project are documented here, following
 
 ### Changed
 
+- Codec coverage matrix (#327): `CoverageMatrix()` records how the server itself handles each format; the support matrix adds a "Server use" column (HL7 v2, XML, delimited, JSON, raw), checked by a test, and says that the codecs listed are libraries.
+- `SemanticsForAdapter` (#327) no longer calls every non-TCP sink exactly-once: no sink is exactly-once (deferred, D-55); HTTP sends the idempotency key and every other adapter, including unknown ones, is at-least-once. The delivery-guarantee table's key column and wired guarantees are checked against it.
 - `agent-docs/schemas/transform.schema.json` (#315) is now the one transform schema: `flow.schema.json` refers to it for flow, destination, and response transforms, and the server, `config validate`, and the DSL compiler all check against it. It describes what runs — every field optional, one of `map`/`set`/`filter` per step, `filter.action` and `map.type` enums, non-empty paths — instead of the schema generated from Go types, which required `kind`/`name`/`inputs`/`steps` and listed `build`/`destinationSet`.
 - HTTP destinations no longer follow redirects unless `maxRedirects` allows it, and then only 307/308, never from https to http (#297). Before, up to 10 redirects were followed, and a 301/302/303 turned the POST into a GET without the message, so a moved endpoint could mark a message sent that never arrived.
 - OpenAPI: every operation with a JSON reply has an example (on the shared component schemas, or on the operation for inline ones), the error response and the main request bodies have examples, and every example is checked against its schema (#286).

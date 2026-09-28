@@ -16,20 +16,23 @@ func IdempotencyKey(messageID, dest string) string {
 // DeliverySemantics classifies a sink's idempotency guarantees.
 type DeliverySemantics string
 
+// No sink is exactly-once: a delivery whose outcome was lost is repeated
+// (exactly-once delivery is deferred from the MVP, D-55). The difference is
+// whether the receiver gets a key to drop the repeat with.
 const (
-	// SemanticsExactlyOnce sinks receive and honor the idempotency key.
-	SemanticsExactlyOnce DeliverySemantics = "exactly-once"
-	// SemanticsAtLeastOnce sinks (raw TCP MLLP) cannot carry a key and are
-	// documented as at-least-once (gap #5).
+	// SemanticsKeySent sinks send the idempotency key to the receiver (the
+	// HTTP Idempotency-Key header): effectively once when it honors the key.
+	SemanticsKeySent DeliverySemantics = "idempotency-key-sent"
+	// SemanticsAtLeastOnce sinks send no key (raw TCP/MLLP, file, SMTP,
+	// database, …); the receiver may see a message twice (gap #5).
 	SemanticsAtLeastOnce DeliverySemantics = "at-least-once"
 )
 
-// SemanticsForAdapter returns the delivery semantics for an adapter type.
+// SemanticsForAdapter returns the delivery semantics for an adapter type;
+// an unknown type is at-least-once (#107 §8).
 func SemanticsForAdapter(adapterType string) DeliverySemantics {
-	switch adapterType {
-	case "tcp", "mllp":
-		return SemanticsAtLeastOnce
-	default:
-		return SemanticsExactlyOnce
+	if adapterType == "http" {
+		return SemanticsKeySent
 	}
+	return SemanticsAtLeastOnce
 }
