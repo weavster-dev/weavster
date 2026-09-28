@@ -120,8 +120,12 @@ and serves nothing.
 - **`sqlite`**: set `dsn` or `paths.dataDir`. `dsn` defaults to `<paths.dataDir>/weavster.db`.
   The parent directory is created (mode `0700`) if missing. Migrations run at startup. A SQLite
   failure is never retried.
-- **`postgres`**: `dsn` is required. **PostgreSQL does not work yet:** the schema uses
-  SQLite-only SQL, so startup fails after the retries.
+- **`postgres`**: `dsn` is required, for example
+  `postgres://weavster@db.internal:5432/weavster?sslmode=verify-full` (tested with PostgreSQL
+  16). The server creates and migrates its tables on the first start; the account needs to create
+  tables in the database (or in the schema named by `search_path` in the URL, for example
+  `…&search_path=weavster`). Keep the password out of the file: put it in `~/.pgpass` of the
+  server's account, on a line for the database's host only.
 - **`disabled`**: runs with no message store. `GET /api/v1/messages` returns `503 messages unavailable`.
   Flow definitions and users are kept in memory.
 
@@ -132,8 +136,8 @@ stops the server immediately with exit code `0`. When every attempt fails:
 Error: store: postgres: giving up after 4 attempts: ...
 ```
 
-The store holds messages, flow definitions, and users. With `sqlite`, flows and users
-(including password changes and lockouts) survive a restart.
+The store holds messages, flow definitions, and users. With `sqlite` or `postgres`, flows and
+users (including password changes and lockouts) survive a restart.
 
 ### `delivery`
 

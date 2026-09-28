@@ -103,7 +103,7 @@ func (s *sqlStore) ReplaceItems(ctx context.Context, kind string, items map[stri
 }
 
 // upsertItems creates or replaces items of kind inside tx.
-func upsertItems(ctx context.Context, tx *sql.Tx, kind string, items map[string]json.RawMessage) error {
+func upsertItems(ctx context.Context, tx *dialectTx, kind string, items map[string]json.RawMessage) error {
 	stmt, err := tx.PrepareContext(ctx, `INSERT INTO config_items (kind, name, value) VALUES (?, ?, ?)
 		ON CONFLICT (kind, name) DO UPDATE SET value = excluded.value`)
 	if err != nil {

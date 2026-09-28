@@ -19,7 +19,11 @@ func TestUserDocuments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, s := range map[string]userStore{"memory": NewMemStore(), "sqlite": sqlite.(userStore)} {
+	stores := map[string]userStore{"memory": NewMemStore(), "sqlite": sqlite.(userStore)}
+	if pg := testPostgres(t); pg != nil {
+		stores["postgres"] = pg.(userStore)
+	}
+	for name, s := range stores {
 		t.Run(name, func(t *testing.T) {
 			defer func() { _ = s.Close() }()
 			for _, u := range []UserDocument{{"bob", []byte(`{"v":1}`)}, {"alice", []byte(`{"v":1}`)}, {"bob", []byte(`{"v":2}`)}} {

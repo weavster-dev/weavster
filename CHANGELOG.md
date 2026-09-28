@@ -107,6 +107,7 @@ All notable changes to this project are documented here, following
 - Docs (#357): [Capacity and limits](docs/limits.md) lists every size, count, time, and retention limit with its default and what happens at it; [Production setup](docs/production.md) lists the secure defaults and gives an HTTPS-only production configuration with a durable store (`docs/examples/production/weavster-server.yaml`), which a test starts the server from.
 - Crash consistency (#359): `TestCrashAtEveryWrite` stops the store at each of a message's writes in turn (delivered, queued, and filtered paths) and checks the next start finishes it with one idempotency key per destination; the processing docs state when each source acknowledges a message, that every step is written with the message on a durable store, and where a duplicate can still arise.
 - Startup order (#361): the server configuration docs list what the server does at start and in which order; `TestMigratesBeforeTraffic` upgrades a store left at an older schema version and checks it is migrated, with its flows and messages, while the server is built, before any listener exists.
+- PostgreSQL store (#363): `store.dialect: postgres` works — the store rewrites its `?` placeholders as `$n` and the schema uses `BIGINT` and `BYTEA` — for messages, flows, users, config items, lookups, search, and trends; a `postgres` CI job runs the store suite, the database adapters, and the server against PostgreSQL 16. The production example uses PostgreSQL again.
 
 ### Changed
 

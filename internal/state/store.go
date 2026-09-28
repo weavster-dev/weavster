@@ -91,7 +91,7 @@ type Store interface {
 // sqlStore is the shared SQL-backed Store core used by the SQLite and
 // Postgres adapters (schema and query semantics are identical).
 type sqlStore struct {
-	db *sql.DB
+	db *dialectDB
 	// uncancelable detaches caller cancellation from every statement.
 	// SQLite sets it: modernc.org/sqlite (up to at least v1.38) leaves the
 	// file open and locked after Close when a context cancels a statement,
@@ -109,7 +109,7 @@ func (s *sqlStore) bind(ctx context.Context) context.Context {
 }
 
 func openSQLStore(ctx context.Context, db *sql.DB) (*sqlStore, error) {
-	s := &sqlStore{db: db}
+	s := &sqlStore{db: newDialectDB(db)}
 	if err := Migrate(ctx, db, Migrations()); err != nil {
 		_ = db.Close()
 		return nil, err

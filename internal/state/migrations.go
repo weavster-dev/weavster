@@ -28,10 +28,10 @@ func Migrations() []Migration {
 						flow_id TEXT NOT NULL,
 						status TEXT NOT NULL,
 						content_type TEXT NOT NULL DEFAULT 'raw',
-						received_at INTEGER NOT NULL,
-						updated_at INTEGER NOT NULL,
-						raw BLOB, processed BLOB, transformed BLOB,
-						encoded BLOB, response BLOB, original BLOB
+						received_at BIGINT NOT NULL,
+						updated_at BIGINT NOT NULL,
+						raw BYTEA, processed BYTEA, transformed BYTEA,
+						encoded BYTEA, response BYTEA, original BYTEA
 					)`,
 					`CREATE TABLE IF NOT EXISTS message_metadata (
 						message_id TEXT NOT NULL,
@@ -61,7 +61,7 @@ func Migrations() []Migration {
 			Version: 4,
 			Name:    "attempt-next-attempt-at",
 			Apply: func(ctx context.Context, tx *sql.Tx) error {
-				_, err := tx.ExecContext(ctx, `ALTER TABLE message_attempts ADD COLUMN next_attempt_at INTEGER NOT NULL DEFAULT 0`)
+				_, err := tx.ExecContext(ctx, `ALTER TABLE message_attempts ADD COLUMN next_attempt_at BIGINT NOT NULL DEFAULT 0`)
 				return err
 			},
 		},
@@ -122,7 +122,7 @@ func Migrate(ctx context.Context, db *sql.DB, migrations []Migration) error {
 			return fmt.Errorf("state: migration %d (%s): %w", m.Version, m.Name, err)
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO schema_migrations (version, name) VALUES (?, ?)`, m.Version, m.Name); err != nil {
+			rebind(isPostgres(db), `INSERT INTO schema_migrations (version, name) VALUES (?, ?)`), m.Version, m.Name); err != nil {
 			_ = tx.Rollback()
 			return err
 		}

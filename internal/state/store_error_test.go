@@ -30,7 +30,7 @@ func newMockSQLStore(t *testing.T) (*sqlStore, sqlmock.Sqlmock) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return &sqlStore{db: db}, mock
+	return &sqlStore{db: newDialectDB(db)}, mock
 }
 
 // Normalized single-line forms of the SQL in store.go (used verbatim by the

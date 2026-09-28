@@ -60,7 +60,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
 - **Running server** (`weavster server [--config FILE]`): REST API over HTTP and optional HTTPS,
   with the OpenAPI document,
   `/api/v1/system`, CSRF marker enforcement, security headers, and TRACE/TRACK blocking;
-  flow create/list/get/update/delete stored in the configured store (durable with `sqlite`),
+  flow create/list/get/update/delete stored in the configured store (durable with `postgres` or `sqlite`),
   enable/disable with auto-deploy of enabled flows at startup, and a
   deploy/start/stop/pause/halt/resume/undeploy lifecycle;
   `POST /api/v1/flows/{id}/messages` runs a message through the flow's DSL transform and
@@ -74,7 +74,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   read-only topology JSON built from the flows.
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
   account; security-relevant API calls are written to an audit log on stderr. Users persist
-  across restarts only with `store.dialect: sqlite`; otherwise they are kept in memory.
+  across restarts with `store.dialect: postgres` or `sqlite`; otherwise they are kept in memory.
 - **Configuration management** (API and CLI): user administration; the config map, global
   scripts, and settings; code snippets and libraries; alert definitions (stored and validated;
   they do not send notifications yet); whole-configuration export and import; and checking a
@@ -88,8 +88,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   a connection file, and `-v` prints the server's version.
 - **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
   scheduler, the other adapters (SMTP, web service, and the earlier `DBSink`/`DBSource` library types), outbox, codecs other than
-  HL7 v2, XML, and delimited, WASM compiler/executor/registry, PostgreSQL
-  store, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
+  HL7 v2, XML, and delimited, WASM compiler/executor/registry, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
   metrics/tracing.
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.
 - **Build**: CI verifies static `CGO_ENABLED=0` builds for linux/amd64, linux/arm64,

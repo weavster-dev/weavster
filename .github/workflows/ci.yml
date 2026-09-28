@@ -22,6 +22,33 @@ jobs:
       - name: Build
         run: go build ./...
 
+  postgres:
+    # The store, the database adapters, and the server against PostgreSQL 16
+    # (D-21, D-55): tests use WEAVSTER_TEST_POSTGRES_DSN, a fresh schema each.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: weavster
+          POSTGRES_PASSWORD: weavster
+          POSTGRES_DB: weavster
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U weavster"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      WEAVSTER_TEST_POSTGRES_DSN: postgres://weavster:weavster@127.0.0.1:5432/weavster?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Test against PostgreSQL 16
+        run: go test -race ./...
+
   lint:
     runs-on: ubuntu-latest
     steps:

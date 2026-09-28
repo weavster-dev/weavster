@@ -2,8 +2,12 @@ package state
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
+	"net/url"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,10 +20,53 @@ func testBackends(t *testing.T) map[string]Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlite.Close() })
-	return map[string]Store{
+	backends := map[string]Store{
 		"sqlite": sqlite,
 		"memory": NewMemStore(),
 	}
+	if pg := testPostgres(t); pg != nil {
+		backends["postgres"] = pg
+	}
+	return backends
+}
+
+// testPostgres opens a store in a fresh schema of the PostgreSQL database
+// WEAVSTER_TEST_POSTGRES_DSN names (the CI PostgreSQL job sets it), or
+// returns nil when it is not set: no test needs PostgreSQL to run.
+func testPostgres(t *testing.T) Store {
+	t.Helper()
+	dsn := os.Getenv("WEAVSTER_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		return nil
+	}
+	ctx := context.Background()
+	admin, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	schema := "t_" + hex.EncodeToString(b)
+	if _, err := admin.ExecContext(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	q.Set("search_path", schema)
+	u.RawQuery = q.Encode()
+	s, err := OpenPostgres(ctx, u.String(), 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = s.Close()
+		_, _ = admin.ExecContext(ctx, "DROP SCHEMA "+schema+" CASCADE")
+		_ = admin.Close()
+	})
+	return s
 }
 
 func sampleMessage() Message {
