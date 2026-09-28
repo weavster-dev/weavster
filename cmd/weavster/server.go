@@ -141,15 +141,21 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
 		sources := newFileSources(flows, ia, eventLogRecorder{events}, logger)
+		tables := newDatabaseSources(flows, ia, eventLogRecorder{events}, sinks.dbs, func(ctx context.Context, flowID, rowID string) (bool, error) {
+			found, err := store.Search(ctx, state.Query{FlowID: flowID, Metadata: map[string]string{rowIDMetadata: rowID}, Limit: 1})
+			return len(found) > 0, err
+		}, logger)
 		listening := newPortSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, logger)
 		sourcePorts = listening
 		retry = func(ctx context.Context) {
-			polled, served := make(chan struct{}), make(chan struct{})
+			polled, served, queried := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			go func() { sources.loop(ctx); close(polled) }()   // flows' file sources (#107 D-56)
 			go func() { listening.loop(ctx); close(served) }() // flows' http and mllp sources (#107 D-57, D-60)
+			go func() { tables.loop(ctx); close(queried) }()   // flows' database sources (#107 D-76)
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
 			<-polled
 			<-served
+			<-queried
 		}
 		closeStore = func() error { // after the API drained: nothing delivers any more
 			sinks.dbs.close()
@@ -1156,7 +1162,7 @@ func checkSources(all map[string]gateway.Flow, serverPorts map[int]string) error
 				return fmt.Errorf("flows %s and %s both listen on port %d; a port can have one flow source", other, id, port)
 			}
 			listenedBy[port] = id
-		default:
+		case src.Type == "file":
 			dir := filepath.Clean(src.Dir)
 			if other, taken := readBy[dir]; taken {
 				return fmt.Errorf("flows %s and %s both read %s; a directory can have one file source", other, id, dir)

@@ -1343,13 +1343,13 @@ components:
     FlowSource:
       example: {"type": "file", "dir": "/var/lib/weavster/in/adt", "pattern": "*.json", "pollIntervalMs": 1000, "moveTo": "/var/lib/weavster/done/adt"}
       type: object
-      description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs, and moveTo; an http source takes address, path, method, username with passwordEnv, certFile with keyFile, and readTimeoutMs; an mllp source takes address, certFile with keyFile, frameStart, frameEnd, and ackMode."
+      description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs, and moveTo; an http source takes address, path, method, username with passwordEnv, certFile with keyFile, and readTimeoutMs; an mllp source takes address, certFile with keyFile, frameStart, frameEnd, and ackMode; a database source takes driver, dsnEnv, query, idColumn, update, pollIntervalMs, maxRows, and timeoutMs."
       required: [type]
       additionalProperties: false
       oneOf:
         - required: [dir]
           properties: {type: {enum: [file]}}
-          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
+          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}, {required: [driver]}, {required: [dsnEnv]}, {required: [query]}, {required: [idColumn]}, {required: [update]}, {required: [maxRows]}, {required: [timeoutMs]}]}
         - required: [address]
           properties: {type: {enum: [mllp]}}
           not:
@@ -1364,8 +1364,18 @@ components:
               - {required: [username]}
               - {required: [passwordEnv]}
               - {required: [readTimeoutMs]}
+              - {required: [driver]}
+              - {required: [dsnEnv]}
+              - {required: [query]}
+              - {required: [idColumn]}
+              - {required: [update]}
+              - {required: [maxRows]}
+              - {required: [timeoutMs]}
               - {required: [certFile], not: {required: [keyFile]}}
               - {required: [keyFile], not: {required: [certFile]}}
+        - required: [driver, dsnEnv, query, idColumn]
+          properties: {type: {enum: [database]}}
+          not: {anyOf: [{required: [dir]}, {required: [pattern]}, {required: [moveTo]}, {required: [recursive]}, {required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
         - required: [address]
           properties: {type: {enum: [http]}}
           not:
@@ -1378,15 +1388,22 @@ components:
               - {required: [frameStart]}
               - {required: [frameEnd]}
               - {required: [ackMode]}
+              - {required: [driver]}
+              - {required: [dsnEnv]}
+              - {required: [query]}
+              - {required: [idColumn]}
+              - {required: [update]}
+              - {required: [maxRows]}
+              - {required: [timeoutMs]}
               - {required: [username], not: {required: [passwordEnv]}}
               - {required: [passwordEnv], not: {required: [username]}}
               - {required: [certFile], not: {required: [keyFile]}}
               - {required: [keyFile], not: {required: [certFile]}}
       properties:
-        type: {type: string, enum: [file, http, mllp]}
+        type: {type: string, enum: [file, http, mllp, database]}
         dir: {type: string, description: "file: absolute directory to poll"}
         pattern: {type: string, description: "file: file-name glob (default *)"}
-        pollIntervalMs: {type: integer, minimum: 100, maximum: 3600000, description: "file: default 1000"}
+        pollIntervalMs: {type: integer, minimum: 100, maximum: 3600000, description: "file: default 1000; database: at least 1000, default 5000"}
         moveTo: {type: string, description: "file: absolute directory processed files are moved to (default: deleted)"}
         recursive: {type: boolean, description: "file: also read subdirectories of dir (default false)"}
         address: {type: string, description: "http, mllp: host:port the flow listens on while it is started"}
@@ -1400,6 +1417,21 @@ components:
         frameStart: {type: string, pattern: "^[0-9A-Fa-f]{2}$", description: "mllp: byte before each message, in hex (default 0B, MLLP's VT)"}
         frameEnd: {type: string, pattern: "^([0-9A-Fa-f]{2}){1,2}$", description: "mllp: one or two bytes after each message, in hex (default 1C0D, MLLP's FS CR)"}
         ackMode: {type: string, enum: [original, none], description: "mllp: original (default): answer each message with an HL7 ACK; none: send no reply"}
+        driver: {type: string, enum: [postgres, sqlite], description: "database: postgres, or sqlite (a database file; for local use and tests)"}
+        dsnEnv: {type: string, pattern: "^WEAVSTER_DB_[A-Z0-9_]+$", description: "database: server environment variable holding the connection string, WEAVSTER_DB_..."}
+        query: {type: string, minLength: 1, description: "database: one SELECT (or WITH) statement run read-only every pollIntervalMs; each row becomes a message"}
+        idColumn: {type: string, minLength: 1, description: "database: column of the result identifying a row; a row whose id the flow already stored is not stored again"}
+        update:
+          type: object
+          additionalProperties: false
+          required: [table, key, set]
+          description: "database: marks each stored row: UPDATE table SET … WHERE key = the row's id"
+          properties:
+            table: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}(\\.[A-Za-z_][A-Za-z0-9_]{0,62})?$"}
+            key: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}$"}
+            set: {type: object, minProperties: 1, additionalProperties: {type: string}}
+        maxRows: {type: integer, minimum: 1, maximum: 10000, description: "database: rows read per poll (default 100)"}
+        timeoutMs: {type: integer, minimum: 1000, maximum: 120000, description: "database: time allowed for the query or one update (default 30000)"}
     FlowDestination:
       example: {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}
       type: object

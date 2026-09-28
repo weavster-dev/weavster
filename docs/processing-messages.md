@@ -92,7 +92,7 @@ VS Code, for example, mistakes are underlined and fields are completed:
 | `responseSelector` | The destination whose reply is returned to the sender; see [Return a destination's reply](#return-a-destinations-reply). |
 | `inputFormat` | How transforms read a message: `json` (default), `hl7v2`, `xml`, or `delimited`; see [Transform HL7 v2 messages](#transform-hl7-v2-messages), [Transform XML documents](#transform-xml-documents), and [Transform delimited text](#transform-delimited-text-csv). |
 | `delimited` | Options of `inputFormat: delimited`: `delimiter` and `header`. |
-| `source` | Where the flow receives messages on its own; see [Read files from a directory](#read-files-from-a-directory), [Receive messages over HTTP](#receive-messages-over-http), and [Receive HL7 v2 over MLLP](#receive-hl7-v2-over-mllp). Without it, messages arrive only through the API. |
+| `source` | Where the flow receives messages on its own; see [Read files from a directory](#read-files-from-a-directory), [Receive messages over HTTP](#receive-messages-over-http), [Receive HL7 v2 over MLLP](#receive-hl7-v2-over-mllp), and [Read rows from a database](#read-rows-from-a-database). Without it, messages arrive only through the API. |
 
 ### `destinations`
 
@@ -935,6 +935,65 @@ curl -s -u 'lab:a long random password' https://weavster.example.com:9443/result
   new reason is recorded again), and opening is tried again every second.
 - The server reads the certificate and key files with its own permissions; only give
   `flows:edit` to users you trust with the files it can read.
+
+### Read rows from a database
+
+A flow with a `database` source runs a query every few seconds while it is started and turns each
+row into a message: a JSON object of the row's columns. Use `update` to mark the rows it has
+taken, so the query does not return them again:
+
+```json
+{
+  "id": "orders-out",
+  "source": {
+    "type": "database", "driver": "postgres", "dsnEnv": "WEAVSTER_DB_HIS",
+    "query": "SELECT id, mrn, test_code, ordered_at FROM his.orders WHERE exported = false ORDER BY id",
+    "idColumn": "id",
+    "update": {"table": "his.orders", "key": "id", "set": {"exported": "true"}},
+    "pollIntervalMs": 5000
+  },
+  "destinations": [{"name": "lab", "type": "http", "url": "https://lab.example.com/orders"}]
+}
+```
+
+With the connection string in the server's environment
+(`export WEAVSTER_DB_HIS='postgres://reader:secret@his.example.com/his?sslmode=verify-full'`),
+each new order becomes a message such as:
+
+```json
+{"id": 42, "mrn": "A-1001", "ordered_at": "2026-09-28T10:00:00Z", "test_code": "GLU"}
+```
+
+| Field | Meaning |
+|---|---|
+| `driver` | Required. `postgres`, or `sqlite` (the connection string is then a database file path). |
+| `dsnEnv` | Required. The server environment variable holding the connection string, `WEAVSTER_DB_…`. |
+| `query` | Required. One `SELECT` (or `WITH … SELECT`) statement, without `;` inside it. It runs read-only: a PostgreSQL `READ ONLY` transaction, SQLite `query_only`. |
+| `idColumn` | Required. The column of the result that identifies a row. It is kept with the message as the metadata `source.database.id`. |
+| `update` | Optional. `table` (or `schema.table`), `key` (the table's column holding the row id), and `set` (column → value) mark each row once its message is stored: `UPDATE table SET … WHERE key = <id>`. |
+| `pollIntervalMs` | How often the query runs, 1000–3600000 (default 5000). |
+| `maxRows` | Rows read per poll, 1–10000 (default 100); the rest come with the next polls. |
+| `timeoutMs` | Time allowed for the query and for each update, 1000–120000 (default 30000). |
+
+- Values become JSON: numbers, `true`/`false`, text, `null`; times as RFC 3339 text; bytes as
+  text, or base64 when they are not UTF-8. The flow reads them with `inputFormat: json` (the
+  default); other input formats are refused for a database source.
+- A row is stored at most once per id: before storing a row, the flow looks for a message it
+  already stored with that `source.database.id` and only marks it again if so. So a server that
+  stops between storing a row and marking it does not store it twice, and a query without
+  `update` sends each row once, even when the row changes later (use `update`, or a query that
+  only returns new rows, for changing data).
+- `update` values are sent as text and converted to the column's type by the database; names are
+  checked and quoted as for the [database destination](#write-rows-to-a-database) (case-sensitive
+  in PostgreSQL). Each update is one statement, its own transaction.
+- A row the flow refuses (for example a transform error) is not marked, is reported once as a
+  `source.database.refused` event with its id, and is not read again until the flow restarts.
+- A failed poll (an unset variable, a query or update error) is logged and recorded once as a
+  `source.database.failed` event with the reason, for example
+  `database: environment variable WEAVSTER_DB_HIS is not set`; it is retried at every interval.
+- Give the database user only what the source needs: `SELECT` on the query's tables, and
+  `UPDATE` on the marked columns.
+- Cron schedules are not available yet; the query runs every `pollIntervalMs`.
 
 ### Receive HL7 v2 over MLLP
 

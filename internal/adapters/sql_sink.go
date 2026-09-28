@@ -197,11 +197,17 @@ func sqlValue(v any) any {
 // kind, and SQLite's by their message (it names tables and columns, not
 // values).
 func (s *SQLSink) dbError(ctx context.Context, err error) error {
+	return dbError(ctx, s.dialect, s.timeout, err)
+}
+
+// dbError describes err of a statement run with timeout on dialect (see
+// SQLSink.dbError).
+func dbError(ctx context.Context, dialect string, timeout time.Duration, err error) error {
 	var pg *pgconn.PgError
 	var connect *pgconn.ConnectError
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return fmt.Errorf("database: no result within %s", s.timeout)
+		return fmt.Errorf("database: no result within %s", timeout)
 	case ctx.Err() != nil:
 		return errors.New("database: the delivery was cancelled")
 	case errors.As(err, &connect):
@@ -209,7 +215,7 @@ func (s *SQLSink) dbError(ctx context.Context, err error) error {
 	case errors.Is(err, sql.ErrConnDone):
 		return errors.New("database: the connection was closed")
 	case errors.As(err, &pg):
-	case s.dialect == DialectPostgres:
+	case dialect == DialectPostgres:
 		return errors.New("database: the statement failed before reaching the database")
 	default:
 		return fmt.Errorf("database: %w", err)

@@ -4,10 +4,10 @@
 
 Message-oriented integration platform. The current server stores flow definitions, accepts
 messages for a flow through its REST API, from files in a directory, on the flow's own HTTP
-port, or as HL7 v2 over MLLP (optionally over TLS; acknowledged with HL7 ACKs), transforms them with a declarative YAML DSL (`map`/`set`/`filter`), and delivers them to
+port, from rows a database query returns, or as HL7 v2 over MLLP (optionally over TLS; acknowledged with HL7 ACKs), transforms them with a declarative YAML DSL (`map`/`set`/`filter`), and delivers them to
 HTTP, file, MLLP (HL7 v2 over TCP or TLS), and database (PostgreSQL, or SQLite for local use) destinations or to other flows, recording every message and its status;
-failed deliveries are retried with backoff and dead-lettered after a limit. Database sources, cron
-scheduling, and WASM modules exist as libraries in the source tree that the server does not use.
+failed deliveries are retried with backoff and dead-lettered after a limit. Cron
+scheduling and WASM modules exist as libraries in the source tree that the server does not use.
 See [What exists now](#what-exists-now) and the
 [support matrix](docs/support-matrix.md).
 
@@ -67,7 +67,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   delivers it to each destination (`http`, `file`, `mllp`, another flow, or a `database` table
   in PostgreSQL, or SQLite for local use), retrying failures with backoff (see
   [Processing messages](docs/processing-messages.md)); a flow can also read files from a
-  directory, listen on its own HTTP port, or accept HL7 v2 over MLLP, and transforms can read
+  directory, listen on its own HTTP port, accept HL7 v2 over MLLP, or poll a database query, and transforms can read
   HL7 v2 messages, XML documents, and CSV (`inputFormat: hl7v2`, `xml`, or `delimited`); message
   search (flow, status, time,
   paging), reading one message and its content (audited), reprocessing, and removing messages;
@@ -87,7 +87,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   flow API operation, user administration, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
   a connection file, and `-v` prints the server's version.
 - **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
-  scheduler, the other adapters (database source, SMTP, web service), outbox, codecs other than
+  scheduler, the other adapters (SMTP, web service), outbox, codecs other than
   HL7 v2, XML, and delimited, WASM compiler/executor/registry, PostgreSQL
   store, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
   metrics/tracing.
