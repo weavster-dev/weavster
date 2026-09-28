@@ -17,7 +17,7 @@ func TestLoad(t *testing.T) {
 		{name: "empty file keeps defaults", yaml: "", check: func(t *testing.T, c Config) {
 			if c.Listen.Address != "127.0.0.1:8080" || c.Store.Dialect != DialectMemory || !c.Listen.RequireMarkerHeader ||
 				c.Listen.ShutdownTimeoutMs != 10000 || c.Delivery != (Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000}) ||
-				!c.Flows.DeployOnStartup || c.Stats != (Stats{SampleIntervalMs: 60000, RetentionHours: 24}) ||
+				!c.Flows.DeployOnStartup || c.Stats != (Stats{SampleIntervalMs: 60000, RetentionHours: 24}) || c.Prune != (Prune{IntervalMinutes: 60}) ||
 				c.Processing != (Processing{MaxConcurrent: 32, WaitMs: 5000}) {
 				t.Errorf("defaults not applied: %+v", c)
 			}
@@ -50,6 +50,10 @@ auth:
 		{name: "bad dialect", yaml: "store: {dialect: mysql}\n", wantErr: "store.dialect must be"},
 		{name: "postgres without dsn", yaml: "store: {dialect: postgres}\n", wantErr: "store.dsn is required"},
 		{name: "sqlite removed", yaml: "store: {dialect: sqlite, dsn: /var/lib/weavster/weavster.db}\n", wantErr: "sqlite is no longer supported: use postgres"},
+		{name: "prune negative age", yaml: "prune: {maxAgeHours: -1}\n", wantErr: "prune.maxAgeHours must be 0-876000"},
+		{name: "prune negative count", yaml: "prune: {maxMessages: -1}\n", wantErr: "prune.maxMessages >= 0"},
+		{name: "prune interval zero", yaml: "prune: {intervalMinutes: 0}\n", wantErr: "prune.intervalMinutes 1-10080"},
+		{name: "prune interval too long", yaml: "prune: {intervalMinutes: 10081}\n", wantErr: "prune.intervalMinutes 1-10080"},
 		{name: "paths removed", yaml: "paths: {dataDir: /var/lib/weavster}\n", wantErr: "field paths not found"},
 		{name: "zero pool", yaml: "store: {maxConnections: 0}\n", wantErr: "store.maxConnections must be >= 1"},
 		{name: "negative retry", yaml: "store: {maxRetry: -1}\n", wantErr: "must be >= 0"},

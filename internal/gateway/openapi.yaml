@@ -106,6 +106,29 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{guid}", content: {application/json: {schema: {type: object, properties: {guid: {type: string, format: uuid}}}, example: {"guid": "2f1c6b0e-5c2a-4b7e-9a41-7d3b1f0e8c55"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/system/prune:
+    get:
+      summary: "Message pruning: the configured limits, whether a pass is running, the last pass, and the next (requires messages:view)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: The prune status, content: {application/json: {schema: {$ref: "#/components/schemas/PruneStatus"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: No message store, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/system/prune/start:
+    post:
+      summary: "Run a prune pass now, in the background (requires messages:delete)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "202": {description: "Started; the prune status", content: {application/json: {schema: {$ref: "#/components/schemas/PruneStatus"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "A pass is already running, or pruning is not configured (no prune.maxAgeHours or prune.maxMessages); 503 while the server starts or stops", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: No message store, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/system/prune/stop:
+    post:
+      summary: "Stop the running prune pass; the reply comes once it has stopped (requires messages:delete)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "Stopped; the prune status (lastRun.stopped is true)", content: {application/json: {schema: {$ref: "#/components/schemas/PruneStatus"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: No pass is running, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: No message store, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/topology:
     get:
       summary: Flow topology overview graph (read-only)
@@ -1881,6 +1904,26 @@ components:
         enabled: {type: boolean}
         trigger: {$ref: "#/components/schemas/AlertTrigger"}
         actions: {type: array, minItems: 1, items: {$ref: "#/components/schemas/AlertAction"}}
+    PruneStatus:
+      example: {"maxAgeHours": 720, "maxMessages": 0, "intervalMinutes": 60, "running": false, "nextRunAt": "2026-09-28T13:00:00Z", "lastRun": {"startedAt": "2026-09-28T12:00:00Z", "finishedAt": "2026-09-28T12:00:02Z", "removed": 1250, "busy": 0, "stopped": false}}
+      type: object
+      required: [maxAgeHours, maxMessages, intervalMinutes, running]
+      properties:
+        maxAgeHours: {type: integer, description: "prune.maxAgeHours (0 = off)"}
+        maxMessages: {type: integer, description: "prune.maxMessages (0 = off)"}
+        intervalMinutes: {type: integer}
+        running: {type: boolean}
+        nextRunAt: {type: string, format: date-time, description: The next scheduled pass (absent when pruning is off)}
+        lastRun:
+          type: object
+          required: [startedAt, removed, busy, stopped]
+          properties:
+            startedAt: {type: string, format: date-time}
+            finishedAt: {type: string, format: date-time, description: Absent while the pass runs}
+            removed: {type: integer}
+            busy: {type: integer, description: Messages skipped because they were being processed}
+            stopped: {type: boolean}
+            error: {type: string}
     MessagesDeleted:
       example: {"deleted": 250, "busy": 1, "restarted": ["adt"]}
       type: object

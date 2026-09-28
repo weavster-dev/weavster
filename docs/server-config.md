@@ -229,6 +229,24 @@ more parallel traffic; lower it to protect slow destinations or a small database
 |---|---|---|
 | `deployOnStartup` | `true` | At startup, deploy and start every flow that is `enabled` and `undeployed`. See [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
 
+### `prune`
+
+Removes old messages from the store (see [Prune old messages](processing-messages.md#prune-old-messages)).
+Off by default.
+
+| Key | Default | Description |
+|---|---|---|
+| `maxAgeHours` | `0` (off) | Remove messages received more than this many hours ago (1–876000). |
+| `maxMessages` | `0` (off) | Keep at most this many messages; the oldest are removed first. |
+| `intervalMinutes` | `60` | How often a pass runs (1–10080, one week). The first pass runs one interval after the server starts. |
+
+```yaml
+prune: {maxAgeHours: 720, intervalMinutes: 60}   # keep 30 days
+```
+
+Only messages that are done are removed: `sent`, `filtered`, `errored`, and `dead-lettered`.
+Messages that are `received`, `transformed`, or `queued` are never pruned.
+
 ### `stats`
 
 | Key | Default | Description |

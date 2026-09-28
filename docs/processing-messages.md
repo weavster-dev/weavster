@@ -1369,6 +1369,43 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X DELETE \
 
 To clear everything from the command-line client, use `clearallmessages`.
 
+### Prune old messages
+
+With [`prune`](server-config.md#prune) in the server configuration, the server removes old
+messages every `intervalMinutes`. A pass first removes the messages received more than
+`maxAgeHours` ago, then, while more than `maxMessages` are stored, the oldest ones (a few more
+when several were received in the same millisecond). Only messages that are done (`sent`,
+`filtered`, `errored`, `dead-lettered`) are removed; `received`, `transformed`, and `queued`
+messages are left alone and are not counted anywhere, so a store full of queued messages can
+stay above `maxMessages`. A finished message that is being worked on at that moment (for
+example requeued or reprocessed) is skipped and counted once in `busy`; the next pass takes it.
+Removed messages are gone for good, so [export](#export-and-import-messages) the ones you must
+keep first.
+
+| Request | Permission | What it does |
+|---|---|---|
+| `GET /api/v1/system/prune` | `messages:view` | The limits, whether a pass is running, the last pass, and when the next one runs. |
+| `POST /api/v1/system/prune/start` | `messages:delete` | Runs a pass now, in the background (`202`). `409` when one is running, or when neither limit is set; `503` while the server is starting or shutting down. |
+| `POST /api/v1/system/prune/stop` | `messages:delete` | Stops the running pass and answers once it has stopped (`200`); what it removed stays removed. `409` when no pass is running. |
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/system/prune/start
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/system/prune
+```
+
+```json
+{"maxAgeHours":720,"maxMessages":0,"intervalMinutes":60,"running":false,
+ "nextRunAt":"2026-09-28T13:00:00Z",
+ "lastRun":{"startedAt":"2026-09-28T12:00:00Z","finishedAt":"2026-09-28T12:00:02Z",
+   "removed":1250,"busy":0,"stopped":false}}
+```
+
+`lastRun.error` says why a pass failed (for example a lost database connection), and
+`lastRun.stopped` is `true` for a pass that was stopped. Every pass also records a
+`messages.pruned` [event](#5-statistics-and-events) with `removed` and `busy`, and `stopped` or
+`error` when they apply. Without a message store (`store.dialect: disabled`) these requests
+return `503`.
+
 ### Export and import messages
 
 Export writes the messages that match the search parameters into one gzipped archive (permission
