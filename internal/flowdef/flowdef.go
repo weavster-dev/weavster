@@ -217,7 +217,7 @@ func checkSchedule(s *Source) error {
 	}
 	if every, ok := sched.(cron.ConstantDelaySchedule); ok {
 		// robfig rounds anything shorter up to a second without saying so.
-		if d, err := time.ParseDuration(strings.TrimSpace(s.Schedule[strings.Index(s.Schedule, "@every")+len("@every"):])); err != nil || d < time.Second || d != every.Delay {
+		if d, err := time.ParseDuration(strings.TrimSpace(s.Schedule[strings.Index(s.Schedule, "@every")+len("@every"):])); err != nil || d < time.Second || d%time.Second != 0 || d != every.Delay {
 			return fmt.Errorf("source.schedule %q: @every takes whole seconds of at least 1s (use pollIntervalMs for shorter intervals)", s.Schedule)
 		}
 	}

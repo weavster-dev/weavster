@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -135,6 +136,21 @@ func TestScheduledSourcesCatchUp(t *testing.T) {
 		t.Errorf("the file written at 06:00 was not read once settled: %d files", len(ing.files))
 	}
 
+	// A file the store could not take is tried again soon.
+	storeDown := t.TempDir()
+	settled(t, storeDown, "a.json", "{}")
+	failing := &fakeIngest{err: errors.New("store down")}
+	fd := newFileSources(&fakeFlowList{flows: []gateway.Flow{{ID: "g", Status: "started", Source: &gateway.FlowSource{Type: "file", Dir: storeDown, Schedule: "0 6 * * *"}}}},
+		failing, &fakeEvents{}, quiet)
+	now = six.Add(-time.Minute)
+	fd.now = func() time.Time { return now }
+	fd.pass(context.Background())
+	now = six
+	fd.pass(context.Background())
+	if at, ok := fd.clock.again["g"]; !ok || !at.Equal(six.Add(defaultPollInterval)) {
+		t.Errorf("a file that could not be stored retries at %v (%v), want %v", at, ok, six.Add(defaultPollInterval))
+	}
+
 	file := filepath.Join(t.TempDir(), "src.db")
 	db, err := sql.Open("sqlite", file)
 	if err != nil {
@@ -164,9 +180,9 @@ func TestScheduledSourcesCatchUp(t *testing.T) {
 		t.Errorf("%d rows read at 06:00 with maxRows 1, want all 3", done)
 	}
 
-	failing := *src
-	failing.DSNEnv = "WEAVSTER_DB_CATCHUP_UNSET"
-	ds = newDatabaseSources(&fakeFlowList{flows: []gateway.Flow{{ID: "d", Status: "started", Source: &failing}}}, &fakeIngest{id: "m"}, &fakeEvents{}, pool, quiet)
+	unset := *src
+	unset.DSNEnv = "WEAVSTER_DB_CATCHUP_UNSET"
+	ds = newDatabaseSources(&fakeFlowList{flows: []gateway.Flow{{ID: "d", Status: "started", Source: &unset}}}, &fakeIngest{id: "m"}, &fakeEvents{}, pool, quiet)
 	now = six.Add(-time.Minute)
 	ds.now = func() time.Time { return now }
 	ds.pass(context.Background())
