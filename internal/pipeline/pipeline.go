@@ -206,6 +206,9 @@ func Validate(f Flow) error {
 			if _, err := dsl.Compile(*d.Transform); err != nil {
 				return fmt.Errorf("destination %s: transform: %w", d.Name, err)
 			}
+			if len(dsl.ExcludedNames(*d.Transform)) > 0 {
+				return fmt.Errorf("destination %s: transform: destinationSet belongs in the flow's transform", d.Name)
+			}
 		}
 		if d.ResponseTransform != nil {
 			if d.Name != f.ResponseSelector {
@@ -214,8 +217,18 @@ func Validate(f Flow) error {
 			if _, err := dsl.Compile(*d.ResponseTransform); err != nil {
 				return fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
 			}
+			if len(dsl.ExcludedNames(*d.ResponseTransform)) > 0 {
+				return fmt.Errorf("destination %s: responseTransform: destinationSet belongs in the flow's transform", d.Name)
+			}
 		}
 		seen[d.Name] = d.Type
+	}
+	if f.Transform != nil {
+		for _, name := range dsl.ExcludedNames(*f.Transform) {
+			if seen[name] == "" {
+				return fmt.Errorf("transform: destinationSet excludes %q, which is not a destination of the flow", name)
+			}
+		}
 	}
 	switch kind := seen[f.ResponseSelector]; {
 	case f.ResponseSelector == "":
@@ -462,6 +475,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 	ob := p.outbox(f, m.ContentType, nil, nil)
 	if m.Status == state.StatusReceived {
 		transformed := m.Raw
+		var routed map[string]string // metadata the flow transform adds
 		if f.Transform != nil {
 			prog, err := dsl.Compile(*f.Transform)
 			if err != nil {
@@ -471,7 +485,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 			if err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
-			out, filtered, err := prog.Run(doc)
+			out, filtered, excluded, err := prog.RunRouted(doc)
 			if err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
@@ -481,16 +495,25 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 			if transformed, err = json.Marshal(out); err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
+			if len(excluded) > 0 {
+				routed = map[string]string{ExcludedMetadata: strings.Join(excluded, ",")}
+			}
 		}
-		if err := ob.Transform(ctx, id, func([]byte) ([]byte, error) { return transformed, nil }); err != nil {
+		if err := ob.SetTransformed(ctx, id, transformed, routed); err != nil {
 			return Result{}, err
 		}
 		m.Transformed = transformed
+		for k, v := range routed {
+			if m.Metadata == nil {
+				m.Metadata = map[string]string{}
+			}
+			m.Metadata[k] = v
+		}
 	}
 
 	now := time.Now()
 	outs := destinationOutputs(f, m)
-	skip := filteredSet(outs)
+	skip := skipSet(outs, m)
 	// Only a delivery made while the sender waits (not a retry) replies.
 	var reply *Reply
 	replyTo := &reply
@@ -584,9 +607,10 @@ func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 	if m.ContentType == "json" {
 		format = Flow{}
 	}
+	excluded := excludedSet(m)
 	for _, d := range f.Destinations {
 		a := m.Attempts[d.Name]
-		if d.Transform == nil || d.Stopped || (a.Attempts > 0 && a.LastError == "") {
+		if d.Transform == nil || d.Stopped || excluded[d.Name] || (a.Attempts > 0 && a.LastError == "") {
 			continue
 		}
 		var r destinationResult
@@ -615,9 +639,25 @@ func destinationOutput(t compiler.Transform, format Flow, body []byte) (out []by
 	return out, false, err
 }
 
-// filteredSet lists the destinations whose own filter dropped the message.
-func filteredSet(outs map[string]destinationResult) map[string]bool {
-	skip := map[string]bool{}
+// ExcludedMetadata is the message metadata listing (comma-separated) the
+// destinations the flow's destinationSet steps excluded (#107 D-66).
+const ExcludedMetadata = "destinationSet.excluded"
+
+// excludedSet is the set of destinations stored as excluded for m.
+func excludedSet(m state.Message) map[string]bool {
+	out := map[string]bool{}
+	if v := m.Metadata[ExcludedMetadata]; v != "" {
+		for _, name := range strings.Split(v, ",") {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+// skipSet lists the destinations the message skips: excluded by the flow,
+// or dropped by the destination's own filter. Both count as done.
+func skipSet(outs map[string]destinationResult, m state.Message) map[string]bool {
+	skip := excludedSet(m)
 	for name, r := range outs {
 		if r.filtered {
 			skip[name] = true
@@ -791,7 +831,7 @@ func (p *Pipeline) retryOne(ctx context.Context, m state.Message, lookup FlowLoo
 	}
 	if m.Status == state.StatusQueued {
 		now, due := time.Now(), false
-		skip := filteredSet(destinationOutputs(f, m))
+		skip := skipSet(destinationOutputs(f, m), m)
 		for _, d := range f.Destinations {
 			due = due || (!d.Stopped && !skip[d.Name] && p.pending(m.Attempts[d.Name], now))
 		}

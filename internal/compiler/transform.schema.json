@@ -53,7 +53,7 @@
       "additionalProperties": false,
       "minProperties": 1,
       "maxProperties": 1,
-      "description": "Exactly one of map, set, or filter",
+      "description": "Exactly one of map, set, filter, or destinationSet",
       "properties": {
         "map": {
           "$ref": "#/$defs/MapStep"
@@ -63,6 +63,9 @@
         },
         "filter": {
           "$ref": "#/$defs/FilterStep"
+        },
+        "destinationSet": {
+          "$ref": "#/$defs/DestinationSetStep"
         }
       }
     },
@@ -135,6 +138,30 @@
             "reject",
             "accept"
           ]
+        }
+      }
+    },
+    "DestinationSetStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exclude"
+      ],
+      "description": "Excludes the named destinations for this message when when holds (always without when). Only in a flow's transform; destinations can only be excluded.",
+      "properties": {
+        "exclude": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9._-]{1,128}$"
+          },
+          "description": "Names of destinations of the flow"
+        },
+        "when": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "Condition, as in filter.when"
         }
       }
     }

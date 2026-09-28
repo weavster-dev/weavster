@@ -54,13 +54,14 @@ JSON view of an [HL7 v2 message](#transform-hl7-v2-messages),
 | `map` | `from`, `to`, optional `type` (`string`, `number`, `boolean`) | Copies the value at `from` to `to`, converting it if `type` is set. A missing `from` leaves `to` unchanged. |
 | `set` | `field`, `expr` | Sets `field` to `expr`, replacing each `{{path}}` with that value (an empty string when missing). |
 | `filter` | `when`, `action` (`reject` or `accept`) | `reject` drops the message when `when` is true; `accept` drops it when `when` is false. |
+| `destinationSet` | `exclude` (destination names), optional `when` | Excludes those destinations for this message when `when` is true (always without `when`). Flow `transform` only; see [Route by content](#route-by-content-destinationset). |
 
 - **Paths** use dots: `patient.lastName`. A number indexes an array: `items.0.code`.
 - **`when`** is either a path (true when the value is present and not empty, `0`, `false`, or `null`),
   or `<operand> == <operand>` / `<operand> != <operand>`. An operand is a path, a quoted string
   (`'x'` or `"x"`), a number (`3`, `-1.5`), or `true`/`false`. A missing path compares equal
   to `''`. No other operators exist.
-- `build` and `destinationSet` steps are not supported yet.
+- `build` steps are not supported yet.
 - Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.
 
 The transform format is published as
@@ -346,7 +347,8 @@ Each message goes through these stages, in this order:
    [stopped](flow-lifecycle.md#stopping-one-destination) destination holds the message and runs
    its transform (as defined then) when it is started; a destination the message was already
    delivered to is not run again.
-3. **Delivery** to each destination that kept the message.
+3. **Delivery** to each destination that kept the message and was not excluded by a
+   [`destinationSet`](#route-by-content-destinationset) step in stage 1.
 4. **Response transform**: if the flow has a
    [`responseSelector`](#return-a-destinations-reply) and that destination was delivered to while
    the sender waited, its `responseTransform` steps run in order on the reply, which is returned to
@@ -365,6 +367,35 @@ Written the other way round, the filter runs before the `map`, so it sees only w
 itself carries: a message without an `adult` field (a missing value compares equal to `''`) is
 filtered, whatever `age.flag` says. A destination's filter on `adult`, by contrast, always sees
 the flow's finished output, including what the `map` set.
+
+### Route by content (`destinationSet`)
+
+A `destinationSet` step in the flow's `transform` leaves destinations out for a message, based on
+its content:
+
+```json
+"transform": {"steps": [
+  {"destinationSet": {"exclude": ["archive"], "when": "kind == 'orm'"}},
+  {"destinationSet": {"exclude": ["ehr", "lab"], "when": "test"}}
+]},
+"destinations": [
+  {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"},
+  {"name": "lab", "type": "mllp", "address": "lab.example.com:2575"},
+  {"name": "archive", "type": "file", "dir": "/var/lib/weavster/archive"}
+]
+```
+
+- `when` uses the same syntax as a `filter`'s `when`; without it the destinations are always
+  excluded. Steps run in order with the other steps and add up: a message can be excluded from
+  several destinations by several steps.
+- An excluded destination gets nothing: its own transform does not run, nothing is delivered,
+  and it counts as done. A message whose every destination is excluded is `filtered`.
+- Destinations can only be excluded (there is no include list), and only by the flow's
+  `transform`, not by a destination's or response transform. Every name must be a destination of
+  the flow; otherwise the flow is refused when you create or update it.
+- The exclusion is decided once, when the message is transformed, and stored with it as the
+  metadata `destinationSet.excluded` (for example `"archive"`). Retries, a restart, and starting
+  a stopped destination all keep it, even if you change the flow meanwhile.
 
 ### Per-destination transforms and filters
 

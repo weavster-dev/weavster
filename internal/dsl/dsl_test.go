@@ -167,7 +167,9 @@ func TestCompileErrors(t *testing.T) {
 		name, transform, want string
 	}{
 		{"build unsupported", "name: t\nsteps:\n  - build: { template: x }", "build: dsl: step not supported yet"},
-		{"destinationSet unsupported", "name: t\nsteps:\n  - destinationSet: { exclude: [a] }", "destinationSet: dsl: step not supported yet"},
+		{"destinationSet include", "name: t\nsteps:\n  - destinationSet: { include: [a] }", "destinationSet.include is not supported"},
+		{"destinationSet empty", "name: t\nsteps:\n  - destinationSet: { exclude: [] }", "destinationSet.exclude must name at least one destination"},
+		{"destinationSet bad when", "name: t\nsteps:\n  - destinationSet: { exclude: [a], when: 'a == b == c' }", "destinationSet.when: invalid operand"},
 		{"empty step", "name: t\nsteps:\n  - {}", "exactly one of"},
 		{"two kinds in one step", "name: t\nsteps:\n  - map: { from: a, to: b }\n    set: { field: c, expr: d }", "exactly one of"},
 		{"bad map from", "name: t\nsteps:\n  - map: { from: 'a..b', to: b }", "map.from: invalid path"},
@@ -226,4 +228,53 @@ func TestPathLookupEdges(t *testing.T) {
 	if got := text([]any{1.0}); got != "[1]" {
 		t.Errorf("text(slice) = %q", got)
 	}
+}
+
+// TestDestinationSet: steps exclude destinations when their condition
+// holds (always without one), accumulate in order, and a filter that drops
+// the message returns no exclusions.
+func TestDestinationSet(t *testing.T) {
+	prog := compileYAML(t, `name: t
+steps:
+  - destinationSet: { exclude: [archive] }
+  - destinationSet: { exclude: [ehr, lab], when: "kind == 'orm'" }
+  - set: { field: routed, expr: yes }
+  - destinationSet: { exclude: [lab], when: routed }
+`)
+	if !prog.Excludes() {
+		t.Error("Excludes = false")
+	}
+	for _, tt := range []struct {
+		in   map[string]any
+		want string
+	}{
+		{map[string]any{"kind": "adt"}, "archive,lab"},
+		{map[string]any{"kind": "orm"}, "archive,ehr,lab"},
+	} {
+		out, filtered, excluded, err := prog.RunRouted(tt.in)
+		if err != nil || filtered || strings.Join(excluded, ",") != tt.want || out["routed"] != "yes" {
+			t.Errorf("%v: out %v, filtered %v, excluded %v, err %v; want %s", tt.in, out, filtered, excluded, err, tt.want)
+		}
+	}
+	dropped := compileYAML(t, "name: t\nsteps:\n  - destinationSet: { exclude: [a] }\n  - filter: { when: x, action: accept }\n")
+	if _, filtered, excluded, err := dropped.RunRouted(map[string]any{}); err != nil || !filtered || excluded != nil {
+		t.Errorf("filtered message: %v %v %v", filtered, excluded, err)
+	}
+	if compileYAML(t, "name: t\nsteps:\n  - set: { field: a, expr: b }\n").Excludes() {
+		t.Error("a program without destinationSet Excludes")
+	}
+	tr, _ := compiler.Parse([]byte("name: t\nsteps:\n  - destinationSet: { exclude: [a, b] }\n  - destinationSet: { exclude: [c] }\n"))
+	if got := strings.Join(ExcludedNames(*tr), ","); got != "a,b,c" {
+		t.Errorf("ExcludedNames = %s", got)
+	}
+}
+
+// compileYAML compiles a transform written in YAML.
+func compileYAML(t *testing.T, yaml string) *Program {
+	t.Helper()
+	p, err := Compile(mustParse(t, yaml))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
 }
