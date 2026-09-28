@@ -443,6 +443,9 @@ func TestDBPool(t *testing.T) {
 	if b, _ := p.get("sqlite", "WEAVSTER_DB_A", ":memory:"); b != a {
 		t.Error("a second pool for the same variable")
 	}
+	if a.Stats().MaxOpenConnections != 1 {
+		t.Errorf("a SQLite pool allows %d connections, want 1 (one writer)", a.Stats().MaxOpenConnections)
+	}
 	if c, _ := p.get("postgres", "WEAVSTER_DB_A", "postgres://x"); c == a {
 		t.Error("drivers share a pool")
 	}

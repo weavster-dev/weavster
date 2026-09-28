@@ -54,7 +54,7 @@ func TestSQLSink(t *testing.T) {
 		t.Errorf("missing paths are NULL: %v", err)
 	}
 	for body, want := range map[string]string{
-		`[1]`: "not a JSON object", `nope`: "not a JSON object", `null`: "not a JSON object",
+		`[1]`: "not a JSON object", `nope`: "not a JSON object", `null`: "not a JSON object", `{"a":1} trailing`: "not a single JSON object",
 	} {
 		if err := s.Write(ctx, Message{Body: []byte(body), Metadata: map[string]string{IdempotencyKeyMetadata: "k"}}); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v, want %q", body, err, want)

@@ -558,7 +558,7 @@ CREATE TABLE lab.results (mrn text, test text, value text, delivery_key text UNI
   `keyColumn`, a retry can insert the row twice.
 - The connection string is read for every message, so a changed variable (a rotated password)
   applies without a restart: the old connections are closed and new ones opened. Connections
-  are pooled per variable. An unset variable fails the delivery:
+  are pooled per variable; a SQLite database gets one connection, so its inserts take turns. An unset variable fails the delivery:
   `database: environment variable WEAVSTER_DB_WAREHOUSE is not set`.
 - Errors never quote values: PostgreSQL errors are reported by kind and SQLSTATE (for example
   `database: the table does not exist (SQLSTATE 42P01)`), and a failed connection as

@@ -1836,6 +1836,9 @@ func (p *dbPool) get(driver, env, dsn string) (*sql.DB, error) {
 	if err != nil {
 		return nil, errors.New("database: the connection string is not valid for the driver") // not the error: it can quote the string
 	}
+	if driver == adapters.DialectSQLite {
+		db.SetMaxOpenConns(1) // SQLite has one writer: deliveries take turns instead of failing SQLITE_BUSY
+	}
 	p.dbs[key] = pooledDB{dsn: dsn, db: db}
 	return db, nil
 }

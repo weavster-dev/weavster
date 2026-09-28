@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strconv"
 	"strings"
@@ -150,6 +151,9 @@ func (s *SQLSink) values(m Message) ([]any, error) {
 	var doc map[string]any
 	if err := dec.Decode(&doc); err != nil || doc == nil {
 		return nil, errors.New("database: the message is not a JSON object")
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return nil, errors.New("database: the message is not a single JSON object")
 	}
 	args := make([]any, 0, len(s.columns)+1)
 	for _, c := range s.columns {

@@ -5,7 +5,7 @@
 Message-oriented integration platform. The current server stores flow definitions, accepts
 messages for a flow through its REST API, from files in a directory, on the flow's own HTTP
 port, or as HL7 v2 over MLLP (optionally over TLS; acknowledged with HL7 ACKs), transforms them with a declarative YAML DSL (`map`/`set`/`filter`), and delivers them to
-HTTP, file, MLLP (HL7 v2 over TCP or TLS), and database (PostgreSQL) destinations or to other flows, recording every message and its status;
+HTTP, file, MLLP (HL7 v2 over TCP or TLS), and database (PostgreSQL, or SQLite for local use) destinations or to other flows, recording every message and its status;
 failed deliveries are retried with backoff and dead-lettered after a limit. Database sources, cron
 scheduling, and WASM modules exist as libraries in the source tree that the server does not use.
 See [What exists now](#what-exists-now) and the
@@ -64,7 +64,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   enable/disable with auto-deploy of enabled flows at startup, and a
   deploy/start/stop/pause/halt/resume/undeploy lifecycle;
   `POST /api/v1/flows/{id}/messages` runs a message through the flow's DSL transform and
-  delivers it to each `http`/`file` destination, retrying failures with backoff (see
+  delivers it to each destination (`http`, `file`, `mllp`, another flow, or a `database` table
+  in PostgreSQL, or SQLite for local use), retrying failures with backoff (see
   [Processing messages](docs/processing-messages.md)); a flow can also read files from a
   directory, listen on its own HTTP port, or accept HL7 v2 over MLLP, and transforms can read
   HL7 v2 messages, XML documents, and CSV (`inputFormat: hl7v2`, `xml`, or `delimited`); message
@@ -80,13 +81,13 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   config-as-code document and planning and applying it (`config validate`, `diff`, `plan`,
   `apply`). These are stored and managed only: flows do not
   use snippets, scripts, or the config map yet.
-- **CLI**: `weavster server`, `weavster test` (four built-in codec round-trip fixtures,
+- **CLI**: `weavster server`, `weavster test` (five built-in codec round-trip samples,
   JUnit/JSON output), and the command-line client: a bare `weavster` opens the interactive
   shell, and `-s` runs batch scripts, with `help`, `status`, `version`, `flow` commands for every
   flow API operation, user administration, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
   a connection file, and `-v` prints the server's version.
 - **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
-  scheduler, the other adapters (database, SMTP, web service), outbox, codecs other than
+  scheduler, the other adapters (database source, SMTP, web service), outbox, codecs other than
   HL7 v2, XML, and delimited, WASM compiler/executor/registry, PostgreSQL
   store, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
   metrics/tracing.
