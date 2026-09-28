@@ -37,7 +37,7 @@ func TestDestinationTransforms(t *testing.T) {
 	var ca, cb capture
 	sa, sb := listen(&ca), listen(&cb)
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n"+
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t)+
 		"delivery: {backoffBaseMs: 10, retryIntervalMs: 20}\n")
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
@@ -74,6 +74,9 @@ func TestDestinationTransforms(t *testing.T) {
 	}
 	id, _ := sendMessage(t, c, "f", `{"kind":"adt","PID":{"5":"Poe"}}`)
 	stop()
+	if !restartable(t) {
+		return
+	}
 	stop = startCLI(t, args, c.base+"/api/openapi.yaml")
 	defer stop()
 	if code, body, _ := c.do(http.MethodPost, "/api/v1/flows/f/destinations/b/start", "", admin); code != http.StatusOK {

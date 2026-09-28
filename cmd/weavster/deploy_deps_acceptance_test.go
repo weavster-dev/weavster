@@ -12,7 +12,7 @@ import (
 // started flow can be deleted (undeployed first, then removed).
 func TestDeployDependenciesAndDeleteRunning(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
 	stop := startCLI(t, []string{"server", "--config", cfg}, c.base+"/api/openapi.yaml")

@@ -18,7 +18,7 @@ func TestDestinationSet(t *testing.T) {
 	defer ehr.Close()
 	archive := t.TempDir()
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	args := []string{"server", "--config", cfg}
 	stop := startCLI(t, args, "http://"+addr+"/api/openapi.yaml")
 	c := apiClient{t: t, base: "http://" + addr}
@@ -52,6 +52,9 @@ func TestDestinationSet(t *testing.T) {
 		t.Errorf("message = %s", body)
 	}
 	stop()
+	if !restartable(t) {
+		return
+	}
 	stop = startCLI(t, args, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
 	if code, body, _ := c.do(http.MethodPost, "/api/v1/flows/route/destinations/ehr/start", "", admin); code != http.StatusOK {

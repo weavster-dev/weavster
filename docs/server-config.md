@@ -22,7 +22,7 @@ Error: config: /etc/weavster/weavster.yaml: yaml: unmarshal errors:
 
 ## Example
 
-A single-node server with a durable SQLite store and HTTPS:
+A single-node server with a durable PostgreSQL store and HTTPS:
 
 ```yaml
 listen:
@@ -34,11 +34,10 @@ tls:
   keyFile: /etc/weavster/tls/key.pem
   minVersion: "1.2"
 store:
-  dialect: sqlite
+  dialect: postgres
+  dsn: postgres://weavster@db.internal:5432/weavster?sslmode=verify-full
   maxRetry: 3
   retryWaitMs: 1000
-paths:
-  dataDir: /var/lib/weavster     # SQLite file: /var/lib/weavster/weavster.db
 auth:
   passwordPolicy:
     minLength: 12
@@ -110,16 +109,13 @@ and serves nothing.
 
 | Key | Default | Description |
 |---|---|---|
-| `dialect` | `memory` | `memory`, `sqlite`, `postgres`, or `disabled`. |
-| `dsn` | see below | Connection string. For `sqlite`, a file path. For `postgres`, a URL such as `postgres://user:pass@db:5432/weavster`. |
-| `maxConnections` | `10` | Maximum open PostgreSQL connections. SQLite always uses one. |
+| `dialect` | `memory` | `memory`, `postgres`, or `disabled`. |
+| `dsn` | `""` | For `postgres`, a URL such as `postgres://weavster@db:5432/weavster?sslmode=verify-full`. |
+| `maxConnections` | `10` | Maximum open PostgreSQL connections. |
 | `maxRetry` | `3` | PostgreSQL only: extra connection attempts after the first failure. |
 | `retryWaitMs` | `1000` | PostgreSQL only: wait between attempts, in milliseconds. |
 
 - **`memory`**: messages, flow definitions, and users live in process memory and are lost on restart.
-- **`sqlite`**: set `dsn` or `paths.dataDir`. `dsn` defaults to `<paths.dataDir>/weavster.db`.
-  The parent directory is created (mode `0700`) if missing. Migrations run at startup. A SQLite
-  failure is never retried.
 - **`postgres`**: `dsn` is required, for example
   `postgres://weavster@db.internal:5432/weavster?sslmode=verify-full` (tested with PostgreSQL
   16). The server creates and migrates its tables on the first start; the account needs to create
@@ -128,6 +124,11 @@ and serves nothing.
   server's account, on a line for the database's host only.
 - **`disabled`**: runs with no message store. `GET /api/v1/messages` returns `503 messages unavailable`.
   Flow definitions and users are kept in memory.
+- **`sqlite`** is no longer a server store. The server exits `1` with
+  `Error: config: store.dialect sqlite is no longer supported: use postgres for a durable store, or memory`.
+  The `paths` section (`paths.dataDir` named the SQLite file's directory) was removed with it:
+  delete it from the file, or the server exits `1` with `field paths not found`. See
+  [Move from SQLite to PostgreSQL](#move-from-sqlite-to-postgresql).
 
 If every PostgreSQL attempt fails, the server exits `1`. SIGINT/SIGTERM during the retries
 stops the server immediately with exit code `0`. When every attempt fails:
@@ -136,8 +137,28 @@ stops the server immediately with exit code `0`. When every attempt fails:
 Error: store: postgres: giving up after 4 attempts: ...
 ```
 
-The store holds messages, flow definitions, and users. With `sqlite` or `postgres`, flows and
+The store holds messages, flow definitions, and users. With `postgres`, flows and
 users (including password changes and lockouts) survive a restart.
+
+#### Move from SQLite to PostgreSQL
+
+To move a server from SQLite to PostgreSQL, save its setup **while the old release is still
+running** (the new one does not start with `sqlite`):
+
+1. Export the configuration with the config map:
+   `GET /api/v1/config/export?includeConfigMap=true` (see [Export and import](config-transfer.md)).
+2. Save every lookup group. `GET /api/v1/lookups` lists the groups with their number of
+   entries, and `GET /api/v1/lookups/{group}?limit=10000` returns up to 10,000 entries of one as
+   `{key: value}` (see [Dynamic lookups](lookups.md)). A group with 10,000 entries or more does
+   not fit in one response: save it in parts with `prefix`, one part per first character of the
+   keys (for example `prefix=A`, `prefix=B`, …), and split any part that returns exactly 10,000
+   entries by a longer prefix (`prefix=AB`, …). Check that the saved entries of each group add up
+   to its number of entries before you upgrade.
+3. Upgrade, set `store.dialect: postgres` and `store.dsn`, remove `paths`, and start the server.
+4. Import the configuration with `POST /api/v1/config/import?overwriteConfigMap=true`, and each
+   group with `POST /api/v1/lookups/{group}/import`.
+
+Messages and users are not moved: create the users again (see [Authentication](authentication.md)).
 
 ### `delivery`
 
@@ -208,12 +229,6 @@ stats:
   sampleIntervalMs: 10000   # every 10 seconds
   retentionHours: 48
 ```
-
-### `paths`
-
-| Key | Default | Description |
-|---|---|---|
-| `dataDir` | `""` | Directory for the default SQLite file. Use an absolute path; a relative one resolves against the working directory, which is `/` under most service managers. |
 
 ### `auth`
 

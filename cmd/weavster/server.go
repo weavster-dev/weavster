@@ -70,7 +70,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	// Only durable stores persist users; the memory dialect would just
 	// duplicate the provider's own map.
 	var users auth.UserStore
-	if cfg.Store.Dialect == serverconfig.DialectSQLite || cfg.Store.Dialect == serverconfig.DialectPostgres {
+	if cfg.Store.Dialect == serverconfig.DialectPostgres {
 		// Every state backend implements userRepository
 		// (TestStoresImplementUserRepository).
 		users = userStoreAdapter{repo: store.(userRepository)}
@@ -206,28 +206,16 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	return srv.Router(), closeStore, workers, nil
 }
 
-// openStore connects the configured message store. Only PostgreSQL
-// connections are retried (spec §11); SQLite failures are permanent. The
-// disabled dialect returns a nil Store.
+// openStore connects the configured message store, retrying PostgreSQL
+// connections (spec §11). The disabled dialect returns a nil Store.
 func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config) (state.Store, error) {
-	sc, dsn := cfg.Store, cfg.StoreDSN()
+	sc := cfg.Store
 	switch sc.Dialect {
 	case serverconfig.DialectDisabled:
 		logger.Warn("message store disabled; message endpoints return 503")
 		return nil, nil
 	case serverconfig.DialectMemory:
 		return state.NewMemStore(), nil
-	case serverconfig.DialectSQLite:
-		if dsn != ":memory:" && !strings.HasPrefix(dsn, "file:") {
-			if err := os.MkdirAll(filepath.Dir(dsn), 0o700); err != nil {
-				return nil, fmt.Errorf("store: %w", err)
-			}
-		}
-		s, err := state.OpenSQLite(ctx, dsn)
-		if err != nil {
-			return nil, fmt.Errorf("store: sqlite: %w", err)
-		}
-		return s, nil
 	}
 
 	var err error
@@ -240,7 +228,7 @@ func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config
 			}
 		}
 		var s state.Store
-		if s, err = state.OpenPostgres(ctx, dsn, sc.MaxConnections); err == nil {
+		if s, err = state.OpenPostgres(ctx, sc.DSN, sc.MaxConnections); err == nil {
 			return s, nil
 		}
 		logger.Warn("store connection failed", "dialect", sc.Dialect, "attempt", attempt, "error", err)

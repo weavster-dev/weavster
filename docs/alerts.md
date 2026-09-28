@@ -1,7 +1,7 @@
 # Alerts
 
 An **alert** says which processing events of which flows should notify whom. Alert definitions
-are stored with the flows (durable with `store.dialect: postgres` or `sqlite`) and managed over the API and
+are stored with the flows (durable with `store.dialect: postgres`) and managed over the API and
 the command-line client. Every request needs the `alerts:edit` permission.
 
 !!! note "Stored, not sent yet"

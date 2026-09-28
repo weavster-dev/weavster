@@ -143,6 +143,7 @@ All notable changes to this project are documented here, following
 
 - The in-server Git integration built in #263–#269 was taken out before release (never shipped): the MVP is driven by the CLI and config files, with Git as automation around them (D-55, #274). `internal/gitstore` is back to the library it was before #263.
 - The synthetic `admit` flow that the server seeded at startup; a new server starts with no flows (#151).
+- `store.dialect: sqlite` and `paths.dataDir` as server settings (#365, D-55): the durable server store is PostgreSQL. A configuration that still uses them stops the server with `store.dialect sqlite is no longer supported: use postgres for a durable store, or memory` (or `field paths not found`). Database sources and destinations can still use SQLite files. Tests that restart the server now run in the `postgres` CI job; without `WEAVSTER_TEST_POSTGRES_DSN` they are skipped or end before the restart.
 - The hard-coded `admin`/`admin123!` seed user in the composition root. It never passed the default password policy, and a relaxed `auth.passwordPolicy` would have created it (#147).
 
 ### Fixed

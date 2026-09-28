@@ -60,7 +60,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
 - **Running server** (`weavster server [--config FILE]`): REST API over HTTP and optional HTTPS,
   with the OpenAPI document,
   `/api/v1/system`, CSRF marker enforcement, security headers, and TRACE/TRACK blocking;
-  flow create/list/get/update/delete stored in the configured store (durable with `postgres` or `sqlite`),
+  flow create/list/get/update/delete stored in the configured store (durable with `postgres`),
   enable/disable with auto-deploy of enabled flows at startup, and a
   deploy/start/stop/pause/halt/resume/undeploy lifecycle;
   `POST /api/v1/flows/{id}/messages` runs a message through the flow's DSL transform and
@@ -74,7 +74,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   read-only topology JSON built from the flows.
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
   account; security-relevant API calls are written to an audit log on stderr. Users persist
-  across restarts with `store.dialect: postgres` or `sqlite`; otherwise they are kept in memory.
+  across restarts with `store.dialect: postgres`; otherwise they are kept in memory.
 - **Configuration management** (API and CLI): user administration; the config map, global
   scripts, and settings; code snippets and libraries; alert definitions (stored and validated;
   they do not send notifications yet); whole-configuration export and import; and checking a
@@ -121,5 +121,5 @@ specs/           Phase 1/2 requirements and architecture
 
 ## Stack
 
-Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory, SQLite, or PostgreSQL store. Library-only packages
+Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory or PostgreSQL store. Library-only packages
 also depend on wazero, SQLite/PostgreSQL drivers, Prometheus, and OpenTelemetry.

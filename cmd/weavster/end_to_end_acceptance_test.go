@@ -42,9 +42,9 @@ func TestEndToEnd(t *testing.T) {
 		defer mu.Unlock()
 		return len(received)
 	}
-	data, in, archive := t.TempDir(), t.TempDir(), t.TempDir()
+	in, archive := t.TempDir(), t.TempDir()
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+data+"\"}\n"+
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t)+
 		"delivery: {maxAttempts: 100, backoffBaseMs: 10, retryIntervalMs: 50}\n")
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 	stopped := false
@@ -152,6 +152,9 @@ func TestEndToEnd(t *testing.T) {
 	waitFor("a queued message", func() bool { return byStatus("queued") == 1 })
 	var queued []struct{ ID string }
 	decode("/api/v1/messages?flowId=adt&status=queued", &queued)
+	if !restartable(t) {
+		return
+	}
 	stop()
 	stopped = true
 	down.Store(false)

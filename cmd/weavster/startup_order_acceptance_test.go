@@ -24,9 +24,8 @@ import (
 // attempt record) is kept, the new columns empty.
 func TestMigratesBeforeTraffic(t *testing.T) {
 	ctx := context.Background()
-	dataDir := t.TempDir()
-	file := filepath.Join(dataDir, "weavster.db")
-	db, err := sql.Open("sqlite", file)
+	dsn := postgresStoreDSN(t)
+	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,12 +48,12 @@ func TestMigratesBeforeTraffic(t *testing.T) {
 	// Building the server (store open, before any listener or worker)
 	// already migrated the store.
 	cfg := serverconfig.Default()
-	cfg.Store.Dialect, cfg.Paths.DataDir = serverconfig.DialectSQLite, dataDir
+	cfg.Store.Dialect, cfg.Store.DSN = serverconfig.DialectPostgres, dsn
 	_, closeStore, _, err := buildServerWithWorkers(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), io.Discard, cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	check, err := sql.Open("sqlite", file+"?_pragma=busy_timeout(5000)")
+	check, err := sql.Open("pgx", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +66,7 @@ func TestMigratesBeforeTraffic(t *testing.T) {
 
 	// The server started on the upgraded store keeps what it held.
 	addr := freeAddr(t)
-	path := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+dataDir+"\"}\n")
+	path := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: postgres, dsn: \""+dsn+"\"}\n")
 	stop := startCLI(t, []string{"server", "--config", path}, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
 	c := apiClient{t: t, base: "http://" + addr}
@@ -85,9 +84,9 @@ func TestMigratesBeforeTraffic(t *testing.T) {
 // before any background work starts, so a flow's file source has not taken
 // a file.
 func TestPortTakenBeforeWork(t *testing.T) {
-	dataDir, in, out := t.TempDir(), t.TempDir(), t.TempDir()
+	in, out := t.TempDir(), t.TempDir()
 	addr := freeAddr(t)
-	path := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+dataDir+"\"}\n")
+	path := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+durableStoreConfig(t))
 	stop := startCLI(t, []string{"server", "--config", path}, "http://"+addr+"/api/openapi.yaml")
 	createFlow(t, apiClient{t: t, base: "http://" + addr}, `{"id":"files","source":{"type":"file","dir":"`+in+`","pollIntervalMs":100},"destinations":[{"name":"out","type":"file","dir":"`+out+`"}]}`)
 	stop()

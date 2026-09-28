@@ -11,10 +11,10 @@ import (
 
 // TestConfigItems: the config map, global scripts, and settings are managed
 // over the API and CLI, validated, permission-checked, and survive a
-// restart with the SQLite store.
+// restart (on PostgreSQL).
 func TestConfigItems(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
@@ -47,6 +47,9 @@ func TestConfigItems(t *testing.T) {
 		t.Errorf("viewer: %d %q", code, body)
 	}
 	stop()
+	if !restartable(t) {
+		return
+	}
 
 	stop = startCLI(t, args, c.base+"/api/openapi.yaml")
 	defer stop()

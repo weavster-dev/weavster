@@ -42,12 +42,12 @@ Users, password changes, and lockout state are saved in the configured
 
 | `store.dialect` | Users after a restart |
 |---|---|
-| `postgres`, `sqlite` | Kept. The first-start step runs only once per database. After that, the bootstrap variables are ignored and the printed password is never shown again. |
+| `postgres` | Kept. The first-start step runs only once per database. After that, the bootstrap variables are ignored and the printed password is never shown again. |
 | `memory`, `disabled` | Lost. Every start repeats the first-start step, so a generated password changes each time. To keep a stable password, set `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD` or `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE`. |
 
-If you lose a generated password on a durable store, there is no API to reset it. Stop the
-server and delete the SQLite database file, or drop the server's PostgreSQL schema (either one
-also deletes flows and messages), or keep the password somewhere safe when it is first printed.
+If you lose a generated password on a PostgreSQL store, there is no API to reset it. Stop the
+server and drop the server's schema (this also deletes flows and messages), or keep the
+password somewhere safe when it is first printed.
 
 ### Changing a generated password
 
@@ -109,7 +109,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 
 !!! warning "Lockout can shut out the only admin"
     Anyone who can reach the API can lock `admin` by sending wrong passwords, and there is no
-    second account to unlock it. With `store.dialect: postgres` or `sqlite` the lockout also survives a
+    second account to unlock it. With `store.dialect: postgres` the lockout also survives a
     restart, so you have to wait `lockoutPeriodSeconds`. Keep the server off untrusted
     networks. Setting `retryLimit: 0` removes this risk but allows unlimited password guessing.
 

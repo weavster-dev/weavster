@@ -22,11 +22,6 @@ func TestLoad(t *testing.T) {
 				t.Errorf("defaults not applied: %+v", c)
 			}
 		}},
-		{name: "sqlite dsn defaults under dataDir", yaml: "store: {dialect: sqlite}\npaths: {dataDir: /var/lib/weavster}\n", check: func(t *testing.T, c Config) {
-			if c.StoreDSN() != filepath.Join("/var/lib/weavster", "weavster.db") {
-				t.Errorf("dsn = %q", c.StoreDSN())
-			}
-		}},
 		{name: "explicit values override defaults", yaml: `
 listen: {address: "", tlsAddress: "0.0.0.0:8443", requireMarkerHeader: false}
 tls: {certFile: c.pem, keyFile: k.pem, minVersion: "1.3"}
@@ -41,7 +36,7 @@ auth:
 				t.Errorf("unexpected config: %+v", c)
 			}
 		}},
-		{name: "unknown key", yaml: "store: {dialekt: sqlite}\n", wantErr: "field dialekt not found"},
+		{name: "unknown key", yaml: "store: {dialekt: postgres}\n", wantErr: "field dialekt not found"},
 		{name: "second document", yaml: "store: {dialect: memory}\n---\nstore: {dialect: sqlite}\n", wantErr: "exactly one YAML document"},
 		{name: "bad listen address", yaml: "listen: {address: \"8080\"}\n", wantErr: "listen.address must be host:port"},
 		{name: "bad tls address", yaml: "listen: {tlsAddress: \"localhost\"}\n", wantErr: "listen.tlsAddress must be host:port"},
@@ -54,7 +49,8 @@ auth:
 		{name: "bad tls version", yaml: "tls: {minVersion: \"1.0\"}\n", wantErr: "tls.minVersion must be 1.2 or 1.3"},
 		{name: "bad dialect", yaml: "store: {dialect: mysql}\n", wantErr: "store.dialect must be"},
 		{name: "postgres without dsn", yaml: "store: {dialect: postgres}\n", wantErr: "store.dsn is required"},
-		{name: "sqlite without dsn or dataDir", yaml: "store: {dialect: sqlite}\n", wantErr: "store.dsn or paths.dataDir"},
+		{name: "sqlite removed", yaml: "store: {dialect: sqlite, dsn: /var/lib/weavster/weavster.db}\n", wantErr: "sqlite is no longer supported: use postgres"},
+		{name: "paths removed", yaml: "paths: {dataDir: /var/lib/weavster}\n", wantErr: "field paths not found"},
 		{name: "zero pool", yaml: "store: {maxConnections: 0}\n", wantErr: "store.maxConnections must be >= 1"},
 		{name: "negative retry", yaml: "store: {maxRetry: -1}\n", wantErr: "must be >= 0"},
 		{name: "zero shutdown timeout", yaml: "listen: {shutdownTimeoutMs: 0}\n", wantErr: "listen.shutdownTimeoutMs"},

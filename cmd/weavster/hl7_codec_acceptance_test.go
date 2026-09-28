@@ -16,7 +16,7 @@ import (
 // refuses an unsupported version.
 func TestHL7Codec(t *testing.T) {
 	addr, src, pass := freeAddr(t), freeAddr(t), freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
 	c := apiClient{t: t, base: "http://" + addr}

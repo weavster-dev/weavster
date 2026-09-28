@@ -55,8 +55,6 @@ store:
   maxConnections: 20
   maxRetry: 10
   retryWaitMs: 2000
-paths:
-  dataDir: /var/lib/weavster
 auth:
   passwordPolicy:
     minLength: 14
@@ -118,7 +116,7 @@ curl --cacert /etc/weavster/tls/ca.crt -u 'admin:…' -H 'X-Weavster-CSRF: 1' \
 - Set `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE` for the first start, log in, change the password
   (a password you provide is not forced to change), remove the file, then create one account per
   person or system with only the permissions it needs.
-- Run as an unprivileged account; keep `/etc/weavster` and `paths.dataDir` readable only by it.
+- Run as an unprivileged account; keep `/etc/weavster` readable only by it.
 - Give flows' http and mllp sources their own certificates (`certFile`, `keyFile`) and, for http
   sources, credentials (`username`, `passwordEnv`).
 - Collect stderr: it holds the audit log and warnings such as a reached processing limit.

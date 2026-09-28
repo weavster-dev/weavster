@@ -17,7 +17,7 @@ import (
 // a port has one flow source, and a port that cannot be opened is reported.
 func TestHTTPSource(t *testing.T) {
 	addr, src := freeAddr(t), freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 	stopped := false
 	defer func() {
@@ -135,7 +135,7 @@ func TestHTTPSourceSecured(t *testing.T) {
 	t.Setenv("WEAVSTER_SOURCE_TEST_LAB", "s3cret")
 	addr, src := freeAddr(t), freeAddr(t)
 	certFile, keyFile, pool := selfSignedCert(t, t.TempDir())
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
 	c := apiClient{t: t, base: "http://" + addr}

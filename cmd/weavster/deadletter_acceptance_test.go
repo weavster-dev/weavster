@@ -19,7 +19,7 @@ import (
 func TestDeadLetterRequeue(t *testing.T) {
 	url, up, hits := flakyDownstream(t)
 	addr, archive := freeAddr(t), t.TempDir()
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n"+
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t)+
 		"delivery: {maxAttempts: 2, backoffBaseMs: 10, retryIntervalMs: 20}\n")
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
