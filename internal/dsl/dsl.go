@@ -22,11 +22,7 @@ import (
 type Program struct {
 	name  string
 	steps []step
-	// routes: the program has destinationSet steps, which only a flow's
-	// transform may use (Execute); Run refuses it.
-	routes bool
-	// build, the last step when present, renders the output (Execute);
-	// Run refuses it.
+	// build, the last step when present, renders the output.
 	build *buildStep
 }
 
@@ -63,9 +59,6 @@ func Compile(t compiler.Transform) (*Program, error) {
 			continue
 		}
 		p.steps = append(p.steps, st)
-		if _, ok := st.(destinationSetStep); ok {
-			p.routes = true
-		}
 	}
 	return p, nil
 }
@@ -94,33 +87,19 @@ func compileStep(s compiler.Step) (step, error) {
 	}
 }
 
-// ErrRoutesElsewhere is returned by Run for a program with destinationSet
-// steps: only a flow's transform decides destinations (Execute).
-var ErrRoutesElsewhere = errors.New("destinationSet can only be used in a flow's transform")
-
-// ErrBuildsElsewhere is returned by Run for a program with a build step,
-// whose output is not a document (Execute).
-var ErrBuildsElsewhere = errors.New("build can only be used in a flow's or destination's transform")
-
-// Run applies the program to a copy of in and returns the resulting
-// document; in is never modified. A nil in is treated as an empty object.
-// filtered reports that a filter step dropped the message; no later steps
-// run. A program with destinationSet or build steps is refused, so what
-// they decide is never silently dropped.
-func (p *Program) Run(in map[string]any) (out map[string]any, filtered bool, err error) {
-	switch {
-	case p.routes:
-		return nil, false, fmt.Errorf("dsl: %s: %w", p.name, ErrRoutesElsewhere)
-	case p.build != nil:
-		return nil, false, fmt.Errorf("dsl: %s: %w", p.name, ErrBuildsElsewhere)
+// Format is the program's output format: its build step's, or "" when it
+// has none (the output is the document as JSON).
+func (p *Program) Format() string {
+	if p.build == nil {
+		return ""
 	}
-	o, err := p.Execute(in)
-	return o.Doc, o.Filtered, err
+	return p.build.format
 }
 
-// Execute runs every step on a copy of in and returns what they produced:
-// the document, whether it was filtered, the excluded destinations, and the
-// build step's rendered output.
+// Execute runs every step on a copy of in (never modified; nil is an empty
+// object) and returns what they produced: the document, whether a filter
+// dropped it (no later steps run), the excluded destinations, and the build
+// step's rendered output.
 func (p *Program) Execute(in map[string]any) (Output, error) {
 	doc, _ := deepCopy(in).(map[string]any)
 	if doc == nil {

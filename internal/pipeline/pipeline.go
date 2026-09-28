@@ -215,6 +215,9 @@ func Validate(f Flow) error {
 			if _, err := dsl.Compile(*d.ResponseTransform); err != nil {
 				return fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
 			}
+			if builds(d.ResponseTransform) != "" {
+				return fmt.Errorf("destination %s: responseTransform: build cannot be used here: the reply returned to the sender is JSON", d.Name)
+			}
 		}
 		seen[d.Name] = d.Type
 	}
@@ -228,15 +231,17 @@ func Validate(f Flow) error {
 	return nil
 }
 
-// builds reports a transform's build format ("" when it has no build step).
+// builds reports a transform's build format ("" when it has no build step,
+// or does not compile: Validate reports that).
 func builds(t *compiler.Transform) string {
-	if t == nil || len(t.Steps) == 0 || t.Steps[len(t.Steps)-1].Build == nil {
+	if t == nil {
 		return ""
 	}
-	if format := t.Steps[len(t.Steps)-1].Build.Format; format != "" {
-		return format
+	prog, err := dsl.Compile(*t)
+	if err != nil {
+		return ""
 	}
-	return "json"
+	return prog.Format()
 }
 
 // flowOutput is the format of f's output: its build format, json after
@@ -248,19 +253,20 @@ func flowOutput(f Flow) string {
 		return "hl7v2"
 	case f.Transform == nil:
 		return ""
-	case builds(f.Transform) != "":
-		return builds(f.Transform)
+	}
+	if format := builds(f.Transform); format != "" {
+		return format
 	}
 	return "json"
 }
 
 // receives is the format of what destination d is sent.
 func receives(f Flow, d Destination) string {
-	switch {
-	case d.Transform == nil:
+	if d.Transform == nil {
 		return flowOutput(f)
-	case builds(d.Transform) != "":
-		return builds(d.Transform)
+	}
+	if format := builds(d.Transform); format != "" {
+		return format
 	}
 	return "json"
 }
@@ -504,7 +510,9 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 		// is cleared ("") unless the flow transform sets it, so one carried
 		// over (a reprocessed message keeps its metadata) never applies.
 		routed := map[string]string{ExcludedMetadata: ""}
-		contentType := "" // kept unless a build step sets the output's format
+		// What the stored output is, decided now (not at receive time, since
+		// the flow may have changed): passthrough, JSON, or a build format.
+		contentType := "raw"
 		if f.Transform != nil {
 			prog, err := dsl.Compile(*f.Transform)
 			if err != nil {
@@ -521,6 +529,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 			if out.Filtered {
 				return p.complete(ctx, id, state.StatusFiltered, nil, retry, nil)
 			}
+			contentType = "json"
 			if out.Body != nil { // a build step rendered the output
 				transformed, contentType = out.Body, out.Format
 			} else if transformed, err = json.Marshal(out.Doc); err != nil {
@@ -619,9 +628,9 @@ type destinationResult struct {
 	err      error
 }
 
-// mimeType is the Content-Type of a delivery whose body has format (a
-// message's content type or a build step's format).
-func mimeType(format string) string {
+// MimeType is the Content-Type of content whose format is a message's
+// content type or a build step's format.
+func MimeType(format string) string {
 	switch format {
 	case "json":
 		return "application/json"
@@ -736,7 +745,7 @@ func (p *Pipeline) pending(a state.DestinationAttempt, now time.Time) bool {
 // When reply is set, the reply to a successful delivery to the flow's
 // response selector is stored there.
 func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]destinationResult, reply **Reply) outbox.DeliverFunc {
-	mime := mimeType(contentType)
+	mime := MimeType(contentType)
 	type built struct {
 		transformed bool
 		sink        Sink
@@ -761,7 +770,7 @@ func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]desti
 			case out.err != nil:
 				return fmt.Errorf("destination transform: %w", out.err)
 			}
-			body, destMime = out.body, mimeType(out.format)
+			body, destMime = out.body, MimeType(out.format)
 		}
 		d := Delivery{MessageID: m.ID, Body: body, ContentType: destMime, IdempotencyKey: key}
 		if rs, ok := b.sink.(ResponseSink); ok && reply != nil && dest == f.ResponseSelector {

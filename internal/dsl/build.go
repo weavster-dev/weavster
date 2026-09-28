@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/weavster-dev/weavster/internal/codecs"
@@ -43,7 +44,46 @@ func compileBuild(b compiler.BuildStep) (step, error) {
 	if err != nil {
 		return nil, fmt.Errorf("build.template: %w", err)
 	}
+	switch format {
+	case FormatHL7v2:
+		// Values are escaped for the standard delimiters, so the template
+		// must declare them.
+		if !strings.HasPrefix(strings.TrimLeft(b.Template, " \t\r\n"), `MSH|^~\&`) {
+			return nil, errors.New(`build.template: an hl7v2 template must start with MSH|^~\& (the standard delimiters)`)
+		}
+	case FormatJSON:
+		// Values are inserted as string content only: a placeholder outside
+		// quotes could change the structure.
+		if !placeholdersQuoted(parts) {
+			return nil, errors.New(`build.template: in a json template every {{path}} must be inside a string ("{{path}}")`)
+		}
+	}
 	return buildStep{parts: parts, format: format}, nil
+}
+
+// placeholdersQuoted reports whether every placeholder of a JSON template
+// sits inside a string literal.
+func placeholdersQuoted(parts []templatePart) bool {
+	inString, escaped := false, false
+	for _, part := range parts {
+		if part.ref != nil {
+			if !inString {
+				return false
+			}
+			continue
+		}
+		for i := 0; i < len(part.literal); i++ {
+			switch c := part.literal[i]; {
+			case escaped:
+				escaped = false
+			case inString && c == '\\':
+				escaped = true
+			case c == '"':
+				inString = !inString
+			}
+		}
+	}
+	return true
 }
 
 // apply never runs: Compile keeps the build step out of the step list.
@@ -66,22 +106,32 @@ func (b buildStep) render(doc map[string]any) ([]byte, error) {
 		if _, err := codecs.XMLJSON([]byte(out)); err != nil {
 			return nil, errors.New("the result is not a well-formed XML document")
 		}
+		// The output is UTF-8; a declaration saying otherwise would make the
+		// receiver misread it.
+		if m := xmlEncoding.FindStringSubmatch(out); m != nil && !strings.EqualFold(m[1], "utf-8") {
+			return nil, fmt.Errorf("the XML declaration says encoding %q; the output is UTF-8", m[1])
+		}
 		return []byte(out), nil
 	case FormatText:
 		return []byte(fill(b.parts, doc, func(v string) string { return v })), nil
 	}
 	out := fill(b.parts, doc, escapeJSON)
-	if !json.Valid([]byte(out)) {
-		return nil, errors.New("the result is not valid JSON")
+	var obj map[string]any
+	if json.Unmarshal([]byte(out), &obj) != nil || obj == nil {
+		return nil, errors.New("the result is not a JSON object")
 	}
 	return []byte(out), nil
 }
 
+// xmlEncoding finds the encoding an XML declaration names.
+var xmlEncoding = regexp.MustCompile(`^\s*<\?xml[^>]*\bencoding\s*=\s*["']([^"']+)["']`)
+
 // escapeHL7 writes a value with HL7 escape sequences for the standard
-// delimiters, and line breaks as hex escapes, so it stays one component.
+// delimiters, and line breaks and MLLP framing bytes as hex escapes, so it
+// stays one component and can always be framed.
 var escapeHL7 = strings.NewReplacer(
 	`\`, `\E\`, "|", `\F\`, "^", `\S\`, "~", `\R\`, "&", `\T\`,
-	"\r", `\X0D\`, "\n", `\X0A\`,
+	"\r", `\X0D\`, "\n", `\X0A\`, "\x0b", `\X0B\`, "\x1c", `\X1C\`,
 ).Replace
 
 // escapeXML writes a value as XML character data or attribute text.

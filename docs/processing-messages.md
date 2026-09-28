@@ -100,7 +100,7 @@ VS Code, for example, mistakes are underlined and fields are completed:
 |---|---|
 | `name` | Unique within the flow; 1–128 characters from `A-Z a-z 0-9 . _ -` (it appears in URLs). Used to report delivery results. |
 | `type` | `http` (send to `url`), `file` (write one file per message into `dir`, named by message ID), or `mllp` (send HL7 v2 to `address` over TCP; see [Send HL7 v2 over MLLP](#send-hl7-v2-over-mllp)). |
-| `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a request (`POST` unless `method` says otherwise) with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough). The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
+| `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a request (`POST` unless `method` says otherwise) with `Content-Type: application/json` (transformed messages), the [`build`](#build-the-output-build) format's type, or `application/octet-stream` (passthrough). The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`. Created if missing. |
 | `address` | Required for `mllp`: `host:port` of the receiving system, for example `lab.example.com:2575`. |
 | `method` | `http` only: `POST` (default), `PUT`, or `PATCH`. |
@@ -163,7 +163,7 @@ For `MSH|^~\&|LAB|HOSP|W|H|20260927120000||ADT^A01|MSG1|P|2.5` and
   [`build`](#build-the-output-build) step, which can produce HL7 v2 again. A flow without
   transforms delivers the HL7 message unchanged.
 - Destination transforms read the same view when the flow itself has no transform (otherwise they
-  read the flow's JSON output).
+  read the flow's output: JSON, or the view of what its `build` step produced).
 - A message that does not start with an MSH segment is refused: `400` over the API, `AR` over
   MLLP, even when the flow has no transform. The stored original is always the message as
   received.
@@ -393,17 +393,18 @@ or text) again. For example, receive ADT over MLLP and relay a reshaped message 
 
 | `format` | Output | Content-Type |
 |---|---|---|
-| `json` (default) | The template must render valid JSON. | `application/json` |
-| `hl7v2` | Segments may be written on separate lines; they are sent separated by CR. The result must start with an MSH segment. | `x-application/hl7-v2+er7` |
-| `xml` | The template must render a well-formed XML document. | `application/xml` |
+| `json` (default) | The template must render a JSON object, and every `{{path}}` must be inside a string (`"name": "{{name}}"`), so values are always text. | `application/json` |
+| `hl7v2` | The template starts with an MSH segment using the standard delimiters (a vertical bar between fields, `^~\&` in MSH-2); segments may be written on separate lines and are sent separated by CR. | `x-application/hl7-v2+er7` |
+| `xml` | The template must render a well-formed XML document; an XML declaration may only say `encoding="UTF-8"`. | `application/xml` |
 | `text` | Any text. | `text/plain; charset=utf-8` |
 
 - Each `{{path}}` is replaced by that value (an empty string when missing), **escaped for the
   format**, so a value can never change the output's structure: in `hl7v2`, `| ^ ~ \ &` become
-  `\F\ \S\ \R\ \E\ \T\` and line breaks `\X0D\`/`\X0A\` (in the example above, the
+  `\F\ \S\ \R\ \E\ \T\`, and line breaks and MLLP framing bytes hex escapes such as `\X0D\` (in the example above, the
   `^` in `name` is sent as `\S\`, so the name stays one field); in `xml`, `& < > " '` become
-  entities; in `json`, values are escaped as the inside of a JSON string (write the quotes in the
-  template: `"name": "{{name}}"`). `text` inserts values as they are.
+  entities; in `json`, values are escaped as the inside of a JSON string. `text` inserts values
+  as they are. To send numbers or booleans as JSON, leave out `build`: a transform's document is
+  sent as JSON with its types (use `map` with `type`).
 - If the result is not a valid document of its format, the step fails and the message is
   `errored`.
 - A destination transform after a flow `build` reads that output's view: HL7 v2 paths after
@@ -461,7 +462,7 @@ for that destination only:
 ]
 ```
 
-- The destination receives the result as `application/json`.
+- The destination receives the result as `application/json`, or in its `build` step's format.
 - A destination whose filter drops the message is not delivered to and counts as done. A
   [stopped](flow-lifecycle.md#stopping-one-destination) destination still holds the message
   until you start it; its filter is checked then. The

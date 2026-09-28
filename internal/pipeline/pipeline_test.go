@@ -75,6 +75,7 @@ func TestValidate(t *testing.T) {
 		{"mllp after an hl7v2 build", Flow{Transform: buildTo("hl7v2"), Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, ""},
 		{"mllp with its own hl7v2 build", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575", Transform: buildTo("hl7v2")}}}, ""},
 		{"mllp after an xml build", Flow{Transform: buildTo("xml"), Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, "needs an HL7 v2 message"},
+		{"build in a response transform", Flow{ResponseSelector: "a", Destinations: []Destination{{Name: "a", Type: "http", URL: "https://x", ResponseTransform: buildTo("text")}}}, "build cannot be used here"},
 		{"transform after a text build", Flow{Transform: buildTo("text"), Destinations: []Destination{{Name: "a", Type: "file", Dir: "d", Transform: &compiler.Transform{Name: "t"}}}}, "outputs text, which a transform cannot read"},
 		{"mllp without port", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example"}}}, "address must be host:port"},
 		{"mllp without host", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: ":2575"}}}, "address must be host:port"},
@@ -549,8 +550,8 @@ func TestProcessBuild(t *testing.T) {
 		t.Errorf("broken build: %+v %v", res, err)
 	}
 	for format, want := range map[string]string{"text": "text/plain; charset=utf-8", "raw": "application/octet-stream"} {
-		if got := mimeType(format); got != want {
-			t.Errorf("mimeType(%s) = %s", format, got)
+		if got := MimeType(format); got != want {
+			t.Errorf("MimeType(%s) = %s", format, got)
 		}
 	}
 }
