@@ -173,6 +173,7 @@ func TestHL7RoundTrip(t *testing.T) {
 		"MSH#$%!@#A#B#C#D#1##ADT$A01#C1#P#2.4\rPID#1##1$$$H@O%2###a!F!b\r",
 		"MSH|^~\\&|A\rZZ1|||~~|\r",
 		"FHS|^~\\&|F\rMSH#$%!@#A#1$2\rPID#1##a$b\rMSH|^~\\&|B|1^2\rPID|1||c^d\r", // a batch: each MSH its own delimiters
+		"FHS#$%!@#F$1\rBHS#$%!@#B\rMSH#$%!@#A#1$2\rPID#1##a$b\r",                 // batch headers declare delimiters too
 	} {
 		c := HL7v2()
 		v, err := c.Parse([]byte(msg))

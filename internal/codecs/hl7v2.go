@@ -154,9 +154,10 @@ func HL7v2() *HL7Codec {
 
 func (c *HL7Codec) Name() string { return "hl7v2" }
 
-// Parse splits in into segments; each MSH declares the delimiters of the
-// segments from it on (MSH-1, and MSH-2: component, repetition, escape,
-// subcomponent — an escape or subcomponent it leaves out is not used).
+// Parse splits in into segments; each MSH (and batch header FHS or BHS)
+// declares the delimiters of the segments from it on (field 1, and field 2:
+// component, repetition, escape, subcomponent — an escape or subcomponent
+// it leaves out is not used).
 func (c *HL7Codec) Parse(in []byte) (any, error) {
 	text := normalizeSegTerminators(string(in))
 	lines := strings.Split(text, "\r")
@@ -167,7 +168,7 @@ func (c *HL7Codec) Parse(in []byte) (any, error) {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if strings.HasPrefix(line, "MSH") && len(line) > 3 {
+		if isHeader(line) && len(line) > 3 {
 			d.Field = line[3]
 			enc := mshEncoding(line, d.Field)
 			if len(enc) >= 2 {
@@ -180,7 +181,7 @@ func (c *HL7Codec) Parse(in []byte) (any, error) {
 			if len(enc) >= 4 {
 				d.Subcomponent = enc[3]
 			}
-			if !seen {
+			if !seen && strings.HasPrefix(line, "MSH") {
 				seen = true
 				msg.Delimiters = d
 			}
@@ -188,6 +189,12 @@ func (c *HL7Codec) Parse(in []byte) (any, error) {
 		msg.Segments = append(msg.Segments, parseSegment(line, d))
 	}
 	return msg, nil
+}
+
+// isHeader reports whether line is a segment that declares delimiters:
+// MSH, or the batch headers FHS and BHS.
+func isHeader(line string) bool {
+	return strings.HasPrefix(line, "MSH") || strings.HasPrefix(line, "FHS") || strings.HasPrefix(line, "BHS")
 }
 
 // mshEncoding returns the raw MSH-2 field (encoding characters) for a line.
@@ -202,8 +209,8 @@ func mshEncoding(line string, fieldSep byte) string {
 func parseSegment(line string, d HL7Delimiters) HL7Segment {
 	name, rest, _ := strings.Cut(line, string(d.Field))
 	seg := HL7Segment{Name: name, Delimiters: d}
-	if name == "MSH" {
-		// MSH-2 carries the encoding characters and must not be split.
+	if isHeader(name) && len(name) == 3 {
+		// Field 2 carries the encoding characters and must not be split.
 		enc, tail, _ := strings.Cut(rest, string(d.Field))
 		comps := make([]string, 0, len(enc))
 		for i := 0; i < len(enc); i++ {
@@ -262,8 +269,8 @@ func serializeSegment(seg HL7Segment, d HL7Delimiters) string {
 	b.WriteString(seg.Name)
 	for fi, field := range seg.Fields {
 		b.WriteByte(d.Field)
-		if seg.Name == "MSH" && fi == 0 {
-			// MSH-2 encoding characters are joined without separators.
+		if isHeader(seg.Name) && len(seg.Name) == 3 && fi == 0 {
+			// The encoding characters are joined without separators.
 			for _, rep := range field {
 				for _, comp := range rep {
 					b.WriteString(comp)

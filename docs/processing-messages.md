@@ -164,8 +164,9 @@ For `MSH|^~\&|LAB|HOSP|W|H|20260927120000||ADT^A01|MSG1|P|2.5` and
   subcomponents are left out, so a missing value compares equal to `''`.
 - The message's own delimiters (MSH-1 and MSH-2) are used, for example `MSH#$%!@` for field `#`,
   component `$`, repetition `%`, escape `!`, and subcomponent `@`; the view is the same as for
-  the standard `|^~\&`. When MSH-2 declares no escape or subcomponent character (for example
-  `MSH|^~\|`), nothing is decoded or split by it. Line breaks `\n` or `\r\n` between segments are
+  the standard `|^~\&`. When MSH-2 declares no subcomponent character (`MSH|^~\|`), components
+  are not split into subcomponents; when it declares no escape character either (`MSH|^~|`),
+  nothing is decoded. Batch headers (FHS, BHS) declare delimiters the same way. Line breaks `\n` or `\r\n` between segments are
   accepted.
 - HL7 v2.1 to 2.9 are read (MSH-12, with a minor release such as `2.5.1`; surrounding spaces are
   ignored); a message without a version is read too. Any other version is refused: `400` over the API, `AR` over MLLP, with

@@ -45,11 +45,12 @@ func HL7JSON(in []byte) (map[string]any, error) {
 	for _, seg := range segs {
 		obj := map[string]any{"name": seg.Name}
 		first := 1 // HL7 number of seg.Fields[0]
-		if seg.Name == "MSH" {
+		header := isHeader(seg.Name) && len(seg.Name) == 3
+		if header {
 			first = 2
 		}
 		for i, field := range seg.Fields {
-			if seg.Name == "MSH" && i == 0 { // MSH-2: the encoding characters themselves
+			if header && i == 0 { // field 2: the encoding characters themselves
 				obj["2"] = componentsJSON(field[0], func(c string) any { return c })
 				continue
 			}
