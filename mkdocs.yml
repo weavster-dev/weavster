@@ -12,6 +12,8 @@ nav:
   - Home: index.md
   - Support Matrix: support-matrix.md
   - Server Configuration: server-config.md
+  - Production Setup: production.md
+  - Capacity and Limits: limits.md
   - Authentication: authentication.md
   - Command-line client: cli.md
   - REST API: api.md
