@@ -418,7 +418,8 @@ func TestProcessDelimitedInput(t *testing.T) {
 	}
 	for body, want := range map[string]string{
 		"a,b\n1\n":  "body must be valid delimited text: rows have different numbers of fields",
-		"a\n\"x\"y": "body must be valid delimited text",
+		"a\n\"x\"y": `body must be valid delimited text: a quoted value is not closed, or has a " not doubled`,
+		"":          "body must be valid delimited text: no rows",
 	} {
 		_, err := p.Process(ctx, header, []byte(body))
 		var invalid *InvalidMessageError

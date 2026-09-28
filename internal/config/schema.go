@@ -3,7 +3,6 @@ package config
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -126,8 +125,10 @@ func checkArtifacts(c *Config) []string {
 	var errs []string
 	for _, k := range sortedKeys(c.Flows) {
 		f := c.Flows[k]
-		if err := errors.Join(flowdef.CheckSource(f.Source), flowdef.CheckInput(f)); err != nil {
-			errs = append(errs, "flows."+k+": "+err.Error())
+		for _, err := range []error{flowdef.CheckSource(f.Source), flowdef.CheckInput(f)} {
+			if err != nil {
+				errs = append(errs, "flows."+k+": "+err.Error())
+			}
 		}
 	}
 	for _, k := range sortedKeys(c.Alerts) {

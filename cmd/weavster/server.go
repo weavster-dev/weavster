@@ -1244,7 +1244,10 @@ func (a flowAdapter) withFlows(ctx context.Context, changed ...gateway.Flow) (ma
 
 // checkDefinition validates a flow's transform and destinations.
 func checkDefinition(f gateway.Flow) error {
-	err := errors.Join(flowdef.CheckSource(f.Source), flowdef.CheckInput(f))
+	err := flowdef.CheckSource(f.Source)
+	if err == nil {
+		err = flowdef.CheckInput(f)
+	}
 	var pf pipeline.Flow
 	if err == nil {
 		pf, err = toPipelineFlow(f)

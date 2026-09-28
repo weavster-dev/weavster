@@ -6,38 +6,37 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 )
 
-// MaxDelimitedRows is how many rows DelimitedJSON accepts.
-const MaxDelimitedRows = 100_000
+// Limits of DelimitedJSON: rows, and values in all (bounds memory for a
+// body of nothing but delimiters).
+const (
+	MaxDelimitedRows   = 100_000
+	MaxDelimitedValues = 1_000_000
+)
 
 // ErrNotDelimited reports input that is not valid delimited text.
 var ErrNotDelimited = errors.New("not valid delimited text")
 
-// NotDelimitedError is refused delimited text and why, in fixed words that
-// never quote the text (the reason reaches events and replies).
-type NotDelimitedError struct{ Reason string }
-
-func (e *NotDelimitedError) Error() string {
-	if e.Reason == "" {
-		return ErrNotDelimited.Error()
-	}
-	return ErrNotDelimited.Error() + ": " + e.Reason
-}
-
-// Is makes errors.Is(err, ErrNotDelimited) hold.
-func (e *NotDelimitedError) Is(target error) bool { return target == ErrNotDelimited }
-
-func notDelimited(reason string) error { return &NotDelimitedError{Reason: reason} }
+func notDelimited(reason string) error { return &RefusedError{Err: ErrNotDelimited, Reason: reason} }
 
 // DelimitedJSON parses delimited text (RFC 4180 quoting) into the JSON view
 // the DSL reads (#107 D-63): {"rows": [...]} where, with a header row, each
 // row is an object of column name → value and "header" lists the names in
-// order; without one, each row is a list of values. Every row must have as
-// many fields as the first; blank lines are skipped and a UTF-8 byte order
-// mark is ignored.
+// order (surrounding spaces trimmed; names must be unique, not empty, and
+// without dots, so every column has a DSL path); without one, each row is
+// a list of values. Every row must have as many fields as the first; blank
+// lines are skipped and a UTF-8 byte order mark is ignored. Input with no
+// rows at all is refused.
 func DelimitedJSON(in []byte, delim rune, header bool) (map[string]any, error) {
-	r := csv.NewReader(bytes.NewReader(bytes.TrimPrefix(in, []byte("\xEF\xBB\xBF"))))
+	in = bytes.TrimPrefix(in, []byte("\xEF\xBB\xBF"))
+	// An upper bound on the values (quoted delimiters count too), checked
+	// before parsing allocates them.
+	if bytes.Count(in, []byte(string(delim)))+bytes.Count(in, []byte("\n")) >= MaxDelimitedValues {
+		return nil, notDelimited(fmt.Sprintf("more than %d values", MaxDelimitedValues))
+	}
+	r := csv.NewReader(bytes.NewReader(in))
 	r.Comma = delim
 	var names []string
 	rows := []any{}
@@ -46,19 +45,24 @@ func DelimitedJSON(in []byte, delim rune, header bool) (map[string]any, error) {
 		if err == io.EOF {
 			break
 		}
-		if errors.Is(err, csv.ErrFieldCount) {
+		switch {
+		case errors.Is(err, csv.ErrFieldCount):
 			return nil, notDelimited("rows have different numbers of fields")
-		}
-		if err != nil {
+		case errors.Is(err, csv.ErrBareQuote):
+			return nil, notDelimited(`a " inside a value that is not in quotes`)
+		case errors.Is(err, csv.ErrQuote):
+			return nil, notDelimited(`a quoted value is not closed, or has a " not doubled`)
+		case err != nil:
 			return nil, notDelimited("") // not the reader's text: it can quote the input
 		}
 		if header && names == nil {
 			seen := map[string]bool{}
-			for _, n := range rec {
-				if n == "" || seen[n] {
-					return nil, notDelimited("header names must be unique and not empty")
+			for i, n := range rec {
+				n = strings.TrimSpace(n)
+				if n == "" || seen[n] || strings.Contains(n, ".") {
+					return nil, notDelimited("header names must be unique, not empty, and without dots")
 				}
-				seen[n] = true
+				seen[n], rec[i] = true, n
 			}
 			names = rec
 			continue
@@ -80,8 +84,8 @@ func DelimitedJSON(in []byte, delim rune, header bool) (map[string]any, error) {
 		}
 		rows = append(rows, row)
 	}
-	if header && names == nil {
-		return nil, notDelimited("no header row")
+	if names == nil && len(rows) == 0 {
+		return nil, notDelimited("no rows")
 	}
 	doc := map[string]any{"rows": rows}
 	if header {

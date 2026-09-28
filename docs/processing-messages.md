@@ -250,9 +250,15 @@ the transform sees:
 - Values are text. Quoting follows RFC 4180: a value in double quotes may contain the delimiter,
   line breaks, and doubled quotes (`""`). Rows may end with CRLF or LF (a CRLF inside a quoted
   value becomes LF); blank lines are skipped and a UTF-8 byte order mark is ignored.
-- Every row must have as many values as the first row (or the header), header names must be
-  unique and not empty, and at most 100,000 rows are accepted; anything else is refused (`400`,
-  or rejected by a file source), even when the flow has no transform.
+- Header names have surrounding spaces removed (`mrn, lastName` gives `lastName`) and must be
+  unique, not empty, and without dots (a dot would make the column unreachable, since paths use
+  dots).
+- Every row must have as many values as the first row (or the header); input with no rows at
+  all, more than 100,000 rows, or more than 1,000,000 values is refused (`400`, or rejected by a
+  file source), even when the flow has no transform. The reason names the problem, for example
+  `a " inside a value that is not in quotes`.
+- Changing `delimited` options also changes how messages still waiting for a retry are read,
+  like any other change to a flow's definition.
 - The whole file is one message. A transform reaches rows by position (`rows.0`, `rows.1`); there
   are no loops yet, and splitting a file into one message per row comes later.
 - The transform's output is JSON, delivered as `application/json`.

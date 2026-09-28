@@ -39,8 +39,8 @@ func TestDelimitedJSON(t *testing.T) {
 	if b, _ := json.Marshal(mustDelimited(t, "h\n", true)); string(b) != `{"header":["h"],"rows":[]}` {
 		t.Errorf("header only: %s", b)
 	}
-	if b, _ := json.Marshal(mustDelimited(t, "", false)); string(b) != `{"rows":[]}` {
-		t.Errorf("empty: %s", b)
+	if b, _ := json.Marshal(mustDelimited(t, " mrn , last name\n1,DOE\n", true)); string(b) != `{"header":["mrn","last name"],"rows":[{"last name":"DOE","mrn":"1"}]}` {
+		t.Errorf("header names trimmed: %s", b)
 	}
 
 	for name, tt := range map[string]struct {
@@ -50,20 +50,27 @@ func TestDelimitedJSON(t *testing.T) {
 	}{
 		"ragged":           {"a,b\n1\n", true, "rows have different numbers of fields"},
 		"ragged no header": {"1,2\n3\n", false, "rows have different numbers of fields"},
-		"bad quote":        {"a\n\"x\"y\n", true, ""},
-		"duplicate name":   {"a,a\n1,2\n", true, "header names must be unique and not empty"},
-		"empty name":       {"a,\n1,2\n", true, "header names must be unique and not empty"},
-		"no header":        {"", true, "no header row"},
-		"too many":         {"a\n" + strings.Repeat("1\n", MaxDelimitedRows+1), true, "more than 100000 rows"},
+		"bad quote":        {"a\n\"x\"y\n", true, `a quoted value is not closed, or has a " not doubled`},
+		"bare quote":       {"a\nWidget 5\" pipe\n", true, `a " inside a value that is not in quotes`},
+		"unclosed quote":   {"a\n\"x\n", true, `a quoted value is not closed, or has a " not doubled`},
+		"duplicate name":   {"a,a\n1,2\n", true, "header names must be unique, not empty, and without dots"},
+		"spaced duplicate": {"a, a\n1,2\n", true, "header names must be unique, not empty, and without dots"},
+		"empty name":       {"a,\n1,2\n", true, "header names must be unique, not empty, and without dots"},
+		"dotted name":      {"patient.mrn\n1\n", true, "header names must be unique, not empty, and without dots"},
+		"no header":        {"", true, "no rows"},
+		"empty no header":  {"", false, "no rows"},
+		"blank lines":      {"\r\n\r\n", false, "no rows"},
+		"too many rows":    {"a\n" + strings.Repeat("1\n", MaxDelimitedRows+1), true, "more than 100000 rows"},
+		"too many values":  {strings.Repeat(",", MaxDelimitedValues), false, "more than 1000000 values"},
 	} {
 		_, err := DelimitedJSON([]byte(tt.in), ',', tt.header)
-		var e *NotDelimitedError
+		var e *RefusedError
 		if !errors.As(err, &e) || e.Reason != tt.reason || !errors.Is(err, ErrNotDelimited) {
 			t.Errorf("%s: %v, want reason %q", name, err, tt.reason)
 		}
 	}
-	if (&NotDelimitedError{}).Error() != "not valid delimited text" {
-		t.Error("NotDelimitedError text")
+	if notDelimited("").Error() != "not valid delimited text" {
+		t.Error("refusal text")
 	}
 }
 
