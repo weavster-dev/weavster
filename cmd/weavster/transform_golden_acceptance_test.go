@@ -90,6 +90,19 @@ func TestTransformGolden(t *testing.T) {
 				if want := strings.TrimSpace(string(status)); res.Status != want || len(got) != 0 {
 					t.Errorf("status %s with %d deliveries, want %s and none", res.Status, len(got), want)
 				}
+				// A case with an expected status has no expected output.
+				outputs, _ := filepath.Glob(filepath.Join(dir, "expected.*"))
+				for _, f := range outputs {
+					switch {
+					case filepath.Base(f) == "expected.status":
+					case *updateGolden:
+						if err := os.Remove(f); err != nil {
+							t.Fatal(err)
+						}
+					default:
+						t.Errorf("%s is stale beside expected.status (run with -update)", f)
+					}
+				}
 				return
 			}
 			if res.Status != "sent" || len(got) != 1 {
