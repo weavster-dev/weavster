@@ -11,8 +11,10 @@ import (
 )
 
 // TestProcessingOrder: the flow's steps run in the order written on the
-// input, each destination's steps then run on the flow's output, and the
-// response transform runs last on the selected destination's reply.
+// input; each destination's steps then run in order on the flow's output;
+// the response transform's steps run in order on the selected destination's
+// reply. Each case writes the same steps in two orders with different
+// outcomes.
 func TestProcessingOrder(t *testing.T) {
 	var mu sync.Mutex
 	var bodies []string
@@ -22,7 +24,7 @@ func TestProcessingOrder(t *testing.T) {
 		bodies = append(bodies, string(b))
 		mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"code":"OK","echo":` + string(b) + `}`))
+		_, _ = w.Write([]byte(`{"code":"OK"}`))
 	}))
 	defer ehr.Close()
 	addr := freeAddr(t)
@@ -32,45 +34,64 @@ func TestProcessingOrder(t *testing.T) {
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
 
-	// The filter reads "adult", which the map step before it sets: written
-	// in this order, adults pass. The destination filter reads "adult" too
-	// (the flow's output, not the input); the response transform reads the
-	// EHR's reply.
-	mapThenFilter := `[{"map":{"from":"age.flag","to":"adult"}},{"filter":{"when":"adult == 'y'","action":"accept"}}]`
-	createFlow(t, c, `{"id":"ordered","responseSelector":"ehr","transform":{"steps":`+mapThenFilter+`},"destinations":[`+
-		`{"name":"ehr","type":"http","url":"`+ehr.URL+`",`+
-		`"transform":{"steps":[{"filter":{"when":"adult == 'y'","action":"accept"}},{"set":{"field":"seenBy","expr":"ehr after {{adult}}"}}]},`+
-		`"responseTransform":{"steps":[{"map":{"from":"code","to":"ack"}},{"map":{"from":"echo.seenBy","to":"seen"}}]}}]}`)
-	code, resp, _ := c.do(http.MethodPost, "/api/v1/flows/ordered/messages", `{"age":{"flag":"y"}}`, admin)
-	var res struct {
-		Status   string
-		Response map[string]any
-	}
-	_ = json.Unmarshal([]byte(resp), &res)
-	if code != http.StatusAccepted || res.Status != "sent" {
-		t.Fatalf("send: %d %s", code, resp)
-	}
-	mu.Lock()
-	delivered := strings.Join(bodies, "|")
-	mu.Unlock()
-	if delivered != `{"adult":"y","age":{"flag":"y"},"seenBy":"ehr after y"}` {
-		t.Errorf("delivered %s", delivered)
-	}
-	if res.Response["ack"] != "OK" || res.Response["seen"] != "ehr after y" {
-		t.Errorf("response = %v", res.Response)
-	}
-
-	// The same steps the other way round: the filter runs before "adult"
-	// exists, so the message is filtered.
-	filterThenMap := `[{"filter":{"when":"adult == 'y'","action":"accept"}},{"map":{"from":"age.flag","to":"adult"}}]`
-	createFlow(t, c, `{"id":"reordered","transform":{"steps":`+filterThenMap+`},"destinations":[{"name":"ehr","type":"http","url":"`+ehr.URL+`"}]}`)
-	if _, status := sendMessage(t, c, "reordered", `{"age":{"flag":"y"}}`); status != "filtered" {
-		t.Errorf("reordered steps: status %s, want filtered", status)
-	}
-	mu.Lock()
-	n := len(bodies)
-	mu.Unlock()
-	if n != 1 {
-		t.Errorf("the EHR received %d messages, want 1", n)
+	mapAdult := `{"map":{"from":"age.flag","to":"adult"}}`
+	adultOnly := `{"filter":{"when":"adult == 'y'","action":"accept"}}`
+	for _, tt := range []struct {
+		name      string
+		flow      string // steps of the flow transform
+		dest      string // steps of the destination transform
+		reply     string // steps of the response transform
+		status    string // the message's status
+		delivered string // what the EHR received ("" = nothing)
+		response  string // the reply returned to the sender ("" = none)
+	}{
+		{"flow: map, then filter", mapAdult + `,` + adultOnly, ``, ``, "sent", `{"adult":"y","age":{"flag":"y"}}`, `{"code":"OK"}`},
+		{"flow: filter, then map", adultOnly + `,` + mapAdult, ``, ``, "filtered", "", ""},
+		{"destination: set, then filter on it", mapAdult,
+			`{"set":{"field":"to","expr":"ehr"}},{"filter":{"when":"to == 'ehr'","action":"accept"}}`, ``,
+			"sent", `{"adult":"y","age":{"flag":"y"},"to":"ehr"}`, `{"code":"OK"}`},
+		{"destination: filter on it, then set", mapAdult,
+			`{"filter":{"when":"to == 'ehr'","action":"accept"}},{"set":{"field":"to","expr":"ehr"}}`, ``,
+			"filtered", "", ""},
+		{"destination: filter on the flow's output", mapAdult, adultOnly, ``, "sent", `{"adult":"y","age":{"flag":"y"}}`, `{"code":"OK"}`},
+		{"response: map, then set from it", ``, ``,
+			`{"map":{"from":"code","to":"ack"}},{"set":{"field":"text","expr":"ack {{ack}}"}}`,
+			"sent", `{"age":{"flag":"y"}}`, `{"ack":"OK","code":"OK","text":"ack OK"}`},
+		{"response: set, then map", ``, ``,
+			`{"set":{"field":"text","expr":"ack {{ack}}"}},{"map":{"from":"code","to":"ack"}}`,
+			"sent", `{"age":{"flag":"y"}}`, `{"ack":"OK","code":"OK","text":"ack "}`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			mu.Lock()
+			bodies = nil
+			mu.Unlock()
+			id := strings.NewReplacer(" ", "-", ",", "", ":", "", "'", "").Replace(tt.name)
+			dest := `{"name":"ehr","type":"http","url":"` + ehr.URL + `"`
+			if tt.dest != "" {
+				dest += `,"transform":{"steps":[` + tt.dest + `]}`
+			}
+			if tt.reply != "" {
+				dest += `,"responseTransform":{"steps":[` + tt.reply + `]}`
+			}
+			flow := `{"id":"` + id + `","responseSelector":"ehr","destinations":[` + dest + `}]`
+			if tt.flow != "" {
+				flow += `,"transform":{"steps":[` + tt.flow + `]}`
+			}
+			createFlow(t, c, flow+`}`)
+			code, resp, _ := c.do(http.MethodPost, "/api/v1/flows/"+id+"/messages", `{"age":{"flag":"y"}}`, admin)
+			var res struct {
+				Status   string
+				Response json.RawMessage
+			}
+			if err := json.Unmarshal([]byte(resp), &res); err != nil || code != http.StatusAccepted {
+				t.Fatalf("send: %d %s (%v)", code, resp, err)
+			}
+			mu.Lock()
+			delivered := strings.Join(bodies, "|")
+			mu.Unlock()
+			if res.Status != tt.status || delivered != tt.delivered || string(res.Response) != tt.response {
+				t.Errorf("status %s, delivered %q, response %s; want %s, %q, %s", res.Status, delivered, res.Response, tt.status, tt.delivered, tt.response)
+			}
+		})
 	}
 }
