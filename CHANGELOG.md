@@ -7,6 +7,7 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- Safer schema upgrades (#369). Migrations must be numbered in order and each records the weavster release that applied it. A database already upgraded by a newer release is refused at startup, before anything in it changes: exit `1`, no retries, and a message naming both versions. The scheduler's `jobs` table is now created by a migration. Upgrades from every earlier schema version are tested on SQLite and PostgreSQL.
 - Docker Compose for local development (#367): `docker compose up -d --build --wait` runs the server with PostgreSQL 16, with data in a named volume and the API on `127.0.0.1:8080`. `scripts/compose-smoke.sh` checks that a flow survives a restart, and the CI `compose` job runs it.
 - Seed greenfield Go repository: Phase 2 specs, build manifest, MVP project plan, agent onboarding, CI, MkDocs + agent-docs skeletons.
 - P0 scaffold: `cmd/weavster` composition-root stub, stub packages for all 20 modules, `.golangci.yml`, and agent-state gitignore entries (`go build ./...`, `go test ./...`, `go vet ./...`, `golangci-lint run` all green). *Correction (#107): `golangci-lint run` was not green until #143.*

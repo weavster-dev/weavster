@@ -3,6 +3,7 @@ package state
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -97,18 +98,66 @@ func Migrations() []Migration {
 				return nil
 			},
 		},
+		{
+			// The scheduler's durable job queue (was created by the queue, which
+			// no server database used; CREATE TABLE refuses a foreign jobs table).
+			Version: 9,
+			Name:    "jobs",
+			Apply: func(ctx context.Context, tx *sql.Tx) error {
+				_, err := tx.ExecContext(ctx, `CREATE TABLE jobs (
+					id TEXT PRIMARY KEY,
+					type TEXT NOT NULL,
+					payload TEXT NOT NULL DEFAULT '',
+					next_run_at BIGINT NOT NULL DEFAULT 0,
+					status TEXT NOT NULL DEFAULT 'queued',
+					claimed_by TEXT NOT NULL DEFAULT '',
+					lease_until BIGINT NOT NULL DEFAULT 0,
+					attempts INTEGER NOT NULL DEFAULT 0,
+					last_error TEXT NOT NULL DEFAULT ''
+				)`)
+				return err
+			},
+		},
 	}
 }
 
 // migrationLock is the PostgreSQL advisory lock key Migrate holds.
 const migrationLock int64 = 0x7765617673746572 // "weavster"
 
+// NewerSchemaError refuses a database a newer release migrated (Migrate);
+// retrying cannot help.
+type NewerSchemaError struct {
+	Version   int    // the database's schema version
+	Supported int    // the newest this release knows
+	WrittenBy string // the release that applied Version ("" if not recorded)
+}
+
+func (e *NewerSchemaError) Error() string {
+	if e.WrittenBy == "" {
+		return fmt.Sprintf("state: the database schema is at version %d (written by an unknown weavster release), newer than this release supports (%d): run a newer weavster release, or restore a backup taken before the upgrade",
+			e.Version, e.Supported)
+	}
+	return fmt.Sprintf("state: the database schema is at version %d (written by weavster %s), newer than this release supports (%d): run weavster %s or later, or restore a backup taken before the upgrade",
+		e.Version, e.WrittenBy, e.Supported, e.WrittenBy)
+}
+
+// AppVersion is the weavster version recorded with each migration it
+// applies (schema_migrations.app_version); the binary sets it at start.
+var AppVersion = "dev"
+
 // Migrate runs pending forward-only migrations against db, recording the
-// applied version in schema_migrations (gap #7).
+// applied version and AppVersion in schema_migrations (gap #7). The chain
+// must be numbered 1, 2, 3, … in order. A database at a version newer than
+// the chain's last is refused unchanged: it was written by a newer release.
 //
 // Everything runs on one connection, which on PostgreSQL also holds the
 // advisory lock, so a pool of a single connection cannot wait for itself.
 func Migrate(ctx context.Context, db *sql.DB, migrations []Migration) error {
+	for i, m := range migrations {
+		if m.Version != i+1 {
+			return fmt.Errorf("state: migration %q is number %d at position %d: migrations must be numbered 1, 2, 3, … in order", m.Name, m.Version, i+1)
+		}
+	}
 	conn, err := db.Conn(ctx)
 	if err != nil {
 		return err
@@ -125,16 +174,32 @@ func Migrate(ctx context.Context, db *sql.DB, migrations []Migration) error {
 			_, _ = conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, migrationLock)
 		}()
 	}
-	if _, err := conn.ExecContext(ctx,
-		`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL)`); err != nil {
+	// Read the version before changing anything, so a newer release's
+	// database is refused untouched.
+	cols, err := columns(ctx, conn, postgres, "schema_migrations")
+	if err != nil {
 		return err
 	}
-
-	current := currentVersion(ctx, conn)
-	for _, m := range migrations {
-		if m.Version <= current {
-			continue // forward-only: never downgrade or re-apply
+	current, writtenBy := 0, ""
+	if len(cols) > 0 {
+		if current, writtenBy, err = currentVersion(ctx, conn, cols["app_version"]); err != nil {
+			return err
 		}
+	}
+	if current > len(migrations) {
+		return &NewerSchemaError{Version: current, Supported: len(migrations), WrittenBy: writtenBy}
+	}
+	switch {
+	case len(cols) == 0:
+		_, err = conn.ExecContext(ctx,
+			`CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, app_version TEXT NOT NULL DEFAULT '')`)
+	case !cols["app_version"]: // a database from before app_version was recorded
+		_, err = conn.ExecContext(ctx, `ALTER TABLE schema_migrations ADD COLUMN app_version TEXT NOT NULL DEFAULT ''`)
+	}
+	if err != nil {
+		return err
+	}
+	for _, m := range migrations[current:] {
 		tx, err := conn.BeginTx(ctx, nil)
 		if err != nil {
 			return err
@@ -144,7 +209,7 @@ func Migrate(ctx context.Context, db *sql.DB, migrations []Migration) error {
 			return fmt.Errorf("state: migration %d (%s): %w", m.Version, m.Name, err)
 		}
 		if _, err := tx.ExecContext(ctx,
-			rebind(postgres, `INSERT INTO schema_migrations (version, name) VALUES (?, ?)`), m.Version, m.Name); err != nil {
+			rebind(postgres, `INSERT INTO schema_migrations (version, name, app_version) VALUES (?, ?, ?)`), m.Version, m.Name, AppVersion); err != nil {
 			_ = tx.Rollback()
 			return err
 		}
@@ -155,10 +220,43 @@ func Migrate(ctx context.Context, db *sql.DB, migrations []Migration) error {
 	return nil
 }
 
-func currentVersion(ctx context.Context, conn *sql.Conn) int {
+// currentVersion is the database's schema version and, when recorded, the
+// weavster release that applied it (0 and "" for an empty table).
+func currentVersion(ctx context.Context, conn *sql.Conn, hasAppVersion bool) (int, string, error) {
+	q := `SELECT version, '' FROM schema_migrations ORDER BY version DESC LIMIT 1`
+	if hasAppVersion {
+		q = `SELECT version, app_version FROM schema_migrations ORDER BY version DESC LIMIT 1`
+	}
 	var v int
-	_ = conn.QueryRowContext(ctx, `SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&v)
-	return v
+	var app string
+	err := conn.QueryRowContext(ctx, q).Scan(&v, &app)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, "", nil
+	}
+	return v, app, err
+}
+
+// columns names the columns of table in the current schema (none when the
+// table does not exist).
+func columns(ctx context.Context, conn *sql.Conn, postgres bool, table string) (map[string]bool, error) {
+	q := `SELECT name FROM pragma_table_info(?)`
+	if postgres {
+		q = `SELECT column_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1`
+	}
+	rows, err := conn.QueryContext(ctx, q, table)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	cols := map[string]bool{}
+	for rows.Next() {
+		var c string
+		if err := rows.Scan(&c); err != nil {
+			return nil, err
+		}
+		cols[c] = true
+	}
+	return cols, rows.Err()
 }
 
 // sortMessages sorts messages by q.Sort.

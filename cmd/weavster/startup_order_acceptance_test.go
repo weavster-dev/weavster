@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -31,7 +32,13 @@ func TestMigratesBeforeTraffic(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 	all := state.Migrations()
-	if err := state.Migrate(ctx, db, all[:len(all)-1]); err != nil { // the latest migration not applied yet
+	before := 0 // the store as left before the message tables last changed
+	for i, m := range all {
+		if m.Name == "attempt-code-and-time" {
+			before = i
+		}
+	}
+	if err := state.Migrate(ctx, db, all[:before]); err != nil {
 		t.Fatal(err)
 	}
 	for _, stmt := range []string{
@@ -110,5 +117,46 @@ func TestPortTakenBeforeWork(t *testing.T) {
 	}
 	if _, err := os.Stat(file); err != nil {
 		t.Errorf("the file source took a file although the server did not start: %v", err)
+	}
+}
+
+// TestRefusesNewerSchema: a database a newer release has migrated is
+// refused at startup (exit 1) with its version, the newest this release
+// knows, and the release that wrote it, and nothing in it is changed; the
+// migrations this release applied recorded its version.
+func TestRefusesNewerSchema(t *testing.T) {
+	ctx := context.Background()
+	dsn := postgresStoreDSN(t)
+	addr := freeAddr(t)
+	path := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: postgres, dsn: \""+dsn+"\"}\n")
+	stop := startCLI(t, []string{"server", "--config", path}, "http://"+addr+"/api/openapi.yaml")
+	stop()
+
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	latest := len(state.Migrations())
+	var app string
+	if err := db.QueryRowContext(ctx, `SELECT app_version FROM schema_migrations WHERE version = $1`, latest).Scan(&app); err != nil || app != version {
+		t.Errorf("app_version = %q (%v), want %q", app, err, version)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO schema_migrations (version, name, app_version) VALUES ($1, 'future', '99.0.0')`, latest+1); err != nil {
+		t.Fatal(err)
+	}
+
+	var stderr bytes.Buffer
+	code := run([]string{"server", "--config", path}, strings.NewReader(""), io.Discard, &stderr)
+	want := fmt.Sprintf("the database schema is at version %d (written by weavster 99.0.0), newer than this release supports (%d)", latest+1, latest)
+	if code != 1 || !strings.Contains(stderr.String(), want) {
+		t.Fatalf("exit %d: %s; want 1 with %q", code, stderr.String(), want)
+	}
+	if strings.Contains(stderr.String(), "giving up after") {
+		t.Errorf("the refusal was retried as a connection failure: %s", stderr.String())
+	}
+	var n int
+	if err := db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&n); err != nil || n != latest+1 {
+		t.Errorf("schema_migrations has %d rows (%v), want %d: the database was changed", n, err, latest+1)
 	}
 }
