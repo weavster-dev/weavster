@@ -82,6 +82,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | `http` and `file` destinations | Implemented (wired) | `TestPipelineEndToEnd`, `TestHTTPDestinationOptions`. `http` takes `method` (POST/PUT/PATCH), `timeoutMs`, and `maxRedirects` (default 0; only 307/308, never https to http). |
 | File source: a flow polls a directory (`source: {type: file, dir, pattern, pollIntervalMs, moveTo}`); files deleted or moved after the message is stored; rejected files moved aside or skipped | Implemented (wired) | `TestFileSource`, `TestCheckSource`. At-least-once; only while the flow is started; regular files directly in `dir`, not symlinks or subdirectories. See [Read files from a directory](processing-messages.md#read-files-from-a-directory). |
 | HTTP source: a flow listens on its own address (`source: {type: http, address, path, method}`) while it is started | Implemented (wired) | `TestHTTPSource`, `TestHTTPSourceSecured`, `TestSourceHandler`, `TestSourceHandlerBasicAuth`, `TestCheckSource`. Optional HTTP Basic (`username`, `passwordEnv`), HTTPS (`certFile`, `keyFile`), and `readTimeoutMs` (`TestHTTPSourceReadTimeout`); one flow source per port; listed by `GET /api/v1/flows/ports-in-use`. See [Receive messages over HTTP](processing-messages.md#receive-messages-over-http). |
+| XML input: `inputFormat: xml` gives transforms the document as JSON (`order.@id`, `order.patient.name.#text`, `#children` in order, `#ns`); DTD/entities never processed | Implemented (wired) | `TestXMLInput`, `TestProcessXMLInput`, `TestXMLJSON`. Output is JSON; mixed-content position not kept; at most 256 levels. See [Transform XML documents](processing-messages.md#transform-xml-documents). |
 | HL7 v2 input: `inputFormat: hl7v2` gives transforms the message as JSON (`PID.5.1`, repetitions, every segment in order) | Implemented (wired) | `TestHL7Input`, `TestProcessHL7Input`, `TestHL7JSON`. Output is JSON; no conversion back to HL7 yet. See [Transform HL7 v2 messages](processing-messages.md#transform-hl7-v2-messages). |
 | MLLP source: a flow accepts HL7 v2 over TCP (`source: {type: mllp, address}`) while it is started and answers each message with an HL7 ACK (AA stored, AR refused, AE not stored) | Implemented (wired) | `TestMLLPSource`, `TestMLLPHandler`, `TestMLLPServer`, `TestHL7ACKOptions`. No TLS or sender authentication yet; set `inputFormat: hl7v2` to transform the messages. See [Receive HL7 v2 over MLLP](processing-messages.md#receive-hl7-v2-over-mllp). |
 | Other sources and destinations (MLLP destination, database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Only file, http, and mllp sources are wired. |
@@ -151,10 +152,10 @@ Those are Enterprise items with no code in the source tree.
 
 ## Codecs
 
-Codecs are library-only except HL7 v2, which the server uses to read HL7 messages for
-transforms ([`inputFormat: hl7v2`](processing-messages.md#transform-hl7-v2-messages)) and to
-acknowledge messages an [mllp source](processing-messages.md#receive-hl7-v2-over-mllp) receives.
-No other format is converted. You can exercise the codecs with `weavster test`,
+Codecs are library-only except HL7 v2 and XML. The server reads HL7 v2 messages and XML
+documents for transforms ([`inputFormat`](processing-messages.md#transform-hl7-v2-messages)) and
+acknowledges messages an [mllp source](processing-messages.md#receive-hl7-v2-over-mllp) receives;
+transform output is always JSON. You can exercise the codecs with `weavster test`,
 which covers HL7 v2, JSON, XML, and raw.
 
 <!-- codec-table: every cell is checked against codecs.CoverageMatrix() by TestSupportMatrixCodecs -->

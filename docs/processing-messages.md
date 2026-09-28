@@ -44,8 +44,9 @@ Unknown fields and wrong types are rejected rather than ignored:
 
 `transform` is optional. Without it (or with `null` or no `steps`), messages pass through
 unchanged and may be any bytes (unless a destination has its own `transform`, or `inputFormat`
-is `hl7v2`). It uses the steps below, in order, on the message as a JSON object, or on an HL7 v2
-message's JSON view with [`inputFormat: hl7v2`](#transform-hl7-v2-messages).
+is `hl7v2` or `xml`). It uses the steps below, in order, on the message as a JSON object, or on
+the JSON view of an [HL7 v2 message](#transform-hl7-v2-messages) or
+[XML document](#transform-xml-documents).
 
 | Step | Fields | Effect |
 |---|---|---|
@@ -70,7 +71,7 @@ message's JSON view with [`inputFormat: hl7v2`](#transform-hl7-v2-messages).
 | `enabled`, `initialState` | Automatic deployment at startup; see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
 | `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). |
 | `responseSelector` | The destination whose reply is returned to the sender; see [Return a destination's reply](#return-a-destinations-reply). |
-| `inputFormat` | How transforms read a message: `json` (default) or `hl7v2`; see [Transform HL7 v2 messages](#transform-hl7-v2-messages). |
+| `inputFormat` | How transforms read a message: `json` (default), `hl7v2`, or `xml`; see [Transform HL7 v2 messages](#transform-hl7-v2-messages) and [Transform XML documents](#transform-xml-documents). |
 | `source` | Where the flow receives messages on its own; see [Read files from a directory](#read-files-from-a-directory), [Receive messages over HTTP](#receive-messages-over-http), and [Receive HL7 v2 over MLLP](#receive-hl7-v2-over-mllp). Without it, messages arrive only through the API. |
 
 ### `destinations`
@@ -145,6 +146,49 @@ For `MSH|^~\&|LAB|HOSP|W|H|20260927120000||ADT^A01|MSG1|P|2.5` and
 - A message that does not start with an MSH segment is refused: `400` over the API, `AR` over
   MLLP, even when the flow has no transform. The stored original is always the message as
   received.
+
+### Transform XML documents
+
+Set `"inputFormat": "xml"` and the flow's transforms read each XML document as JSON:
+
+```json
+{
+  "id": "orders",
+  "inputFormat": "xml",
+  "transform": {"name": "orders", "steps": [
+    {"map": {"from": "order.@id", "to": "orderId"}},
+    {"map": {"from": "order.patient.name.#text", "to": "patient"}},
+    {"map": {"from": "order.#children.2.@sku", "to": "secondSku"}}
+  ]},
+  "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/orders"}]
+}
+```
+
+For `<order id="42" xmlns="urn:orders"><patient><name>DOE</name></patient><item sku="A"/><item sku="B"/></order>`
+the transform sees:
+
+```json
+{"order": {"@id": "42", "#ns": "urn:orders",
+           "patient": {"#ns": "urn:orders", "name": {"#ns": "urn:orders", "#text": "DOE"}, "#children": ["…"]},
+           "item": {"#ns": "urn:orders", "@sku": "A"},
+           "#children": [{"…patient…": "…"}, {"@sku": "A", "…": "…"}, {"@sku": "B", "…": "…"}]}}
+```
+
+- The top-level key is the root element's name. Elements are named by their local name (without
+  a namespace prefix); `#ns` holds an element's namespace URI when it has one.
+- `@name` is an attribute (namespace declarations such as `xmlns` are left out), `#text` the
+  element's own text when it is not only whitespace (`&amp;` and the other predefined entities
+  are decoded).
+- A child element's name holds the **first** child with that name; `#children` lists every child
+  element in order (`order.#children.2` is the third), which is how you reach a second `item`.
+- Text mixed between child elements is joined into the parent's `#text`; its position among the
+  children is not kept.
+- The transform's output is JSON, delivered as `application/json`; there is no conversion back to
+  XML yet. The stored original is the document as received.
+- Only well-formed documents with one root element and at most 256 levels of nesting are
+  accepted; anything else is refused (`400` over the API, rejected by a file source), even when
+  the flow has no transform. A `DOCTYPE` is allowed but never processed: entities it declares are
+  not expanded and nothing is fetched, so a document using one is refused.
 
 ### Redirects
 
@@ -547,7 +591,7 @@ Errors:
 
 | Response | Cause |
 |---|---|
-| `400` | The flow or one of its destinations has a `transform` (a `responseTransform` does not count) and the body is not a JSON object; the flow has `inputFormat: hl7v2` and the body is not an HL7 v2 message; or the body could not be read. |
+| `400` | The flow or one of its destinations has a `transform` (a `responseTransform` does not count) and the body is not a JSON object; the flow has `inputFormat: hl7v2` or `xml` and the body is not an HL7 v2 message or well-formed XML document; or the body could not be read. |
 | `404` | Unknown flow. |
 | `409` | The flow is not `started`. |
 | `413` | Body larger than 10 MiB. |

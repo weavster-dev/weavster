@@ -50,7 +50,7 @@ func TestHL7Input(t *testing.T) {
 	if code != http.StatusBadRequest || !strings.Contains(resp, "body must be an HL7 v2 message") {
 		t.Errorf("JSON to an hl7v2 flow: %d %s", code, resp)
 	}
-	if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"bad","inputFormat":"xml"}`, admin); code != http.StatusBadRequest {
+	if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"bad","inputFormat":"csv"}`, admin); code != http.StatusBadRequest {
 		t.Errorf("unknown inputFormat: %d %s", code, resp)
 	}
 }

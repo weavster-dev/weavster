@@ -369,3 +369,31 @@ func TestProcessHL7Input(t *testing.T) {
 		t.Errorf("stored HL7 after the definition changed: %s, %v", r.body, r.err)
 	}
 }
+
+// TestProcessXMLInput: with inputFormat xml, transforms read the XML
+// document's JSON view; anything else is refused with a fixed reason.
+func TestProcessXMLInput(t *testing.T) {
+	ctx := context.Background()
+	sink := &recordingSink{}
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil }, nil, Options{})
+	f := Flow{ID: "x", InputFormat: "xml", Transform: transform(t, "name: t\nsteps:\n  - map: { from: order.@id, to: id }\n  - map: { from: order.patient.name.#text, to: name }"),
+		Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	if _, err := p.Process(ctx, f, []byte(`<order id="7"><patient><name>DOE</name></patient></order>`)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sink.bodies[0], `"id":"7"`) || !strings.Contains(sink.bodies[0], `"name":"DOE"`) {
+		t.Errorf("delivered %s", sink.bodies[0])
+	}
+	pass := Flow{ID: "y", InputFormat: "xml", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	for body, want := range map[string]string{
+		`{"a":1}`:     "body must be a single well-formed XML document: text outside the root element",
+		`<a/><b/>`:    "body must be a single well-formed XML document: more than one root element",
+		`<a><secret>`: "body must be a single well-formed XML document",
+	} {
+		_, err := p.Process(ctx, pass, []byte(body))
+		var invalid *InvalidMessageError
+		if !errors.As(err, &invalid) || invalid.Reason != want {
+			t.Errorf("%s: %v, want %q", body, err, want)
+		}
+	}
+}

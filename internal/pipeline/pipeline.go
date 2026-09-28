@@ -71,7 +71,8 @@ type Flow struct {
 	// ResponseSelector names the destination whose reply Process returns.
 	ResponseSelector string
 	// InputFormat is how transforms read a received message: "json" (or
-	// empty) or "hl7v2" (the HL7 v2 message's JSON view, #107 D-61).
+	// empty), "hl7v2" (the HL7 v2 message's JSON view, #107 D-61), or "xml"
+	// (the XML document's JSON view, D-62).
 	InputFormat string
 }
 
@@ -238,7 +239,7 @@ func (p *Pipeline) ProcessWithMetadata(ctx context.Context, f Flow, body []byte,
 			return Result{}, err
 		}
 	}
-	if needsObject(f) || f.InputFormat == "hl7v2" { // an hl7v2 flow takes only HL7
+	if needsObject(f) || f.InputFormat == "hl7v2" || f.InputFormat == "xml" { // these flows take only their format
 		if _, err := decodeInput(f.InputFormat, body); err != nil {
 			return Result{}, err
 		}
@@ -377,16 +378,24 @@ func (p *Pipeline) Requeue(ctx context.Context, id string) (state.Message, error
 }
 
 // decodeInput reads a received message as the object transforms work on:
-// its HL7 v2 JSON view for format "hl7v2", otherwise the JSON object.
+// the JSON view of an HL7 v2 message ("hl7v2") or XML document ("xml"),
+// otherwise the JSON object.
 func decodeInput(format string, body []byte) (map[string]any, error) {
-	if format != "hl7v2" {
-		return decodeObject(body)
+	switch format {
+	case "hl7v2":
+		doc, err := codecs.HL7JSON(body)
+		if err != nil {
+			return nil, invalid("body must be an HL7 v2 message (MSH segment first)")
+		}
+		return doc, nil
+	case "xml":
+		doc, err := codecs.XMLJSON(body)
+		if err != nil {
+			return nil, invalid("body must be a single well-formed XML document" + strings.TrimPrefix(err.Error(), codecs.ErrNotXML.Error()))
+		}
+		return doc, nil
 	}
-	doc, err := codecs.HL7JSON(body)
-	if err != nil {
-		return nil, invalid("body must be an HL7 v2 message (MSH segment first)")
-	}
-	return doc, nil
+	return decodeObject(body)
 }
 
 // decodeObject decodes body as a single JSON object, keeping numbers exact
