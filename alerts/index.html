@@ -172,7 +172,7 @@
 
 <h1 id="alerts">Alerts</h1>
 <p>An <strong>alert</strong> says which processing events of which flows should notify whom. Alert definitions
-are stored with the flows (durable with <code>store.dialect: sqlite</code>) and managed over the API and
+are stored with the flows (durable with <code>store.dialect: postgres</code> or <code>sqlite</code>) and managed over the API and
 the command-line client. Every request needs the <code>alerts:edit</code> permission.</p>
 <p>!!! note "Stored, not sent yet"
     Alerts do not fire yet: no email or webhook is sent. Today these endpoints store, validate,

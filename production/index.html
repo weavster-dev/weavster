@@ -197,15 +197,15 @@
 <li>refuses to run as root unless <code>WEAVSTER_ALLOW_ROOT=1</code> is set.</li>
 </ul>
 <h2 id="a-production-configuration">A production configuration</h2>
-<p>HTTPS only with TLS 1.3, a durable SQLite store, a stricter login policy, and more retries.
-(PostgreSQL is not supported as the server's store; see the
-<a href="../support-matrix/">support matrix</a>. Flows can already read and write PostgreSQL databases.) This is the file
+<p>HTTPS only with TLS 1.3, PostgreSQL over verified TLS, a stricter login policy, and more
+retries. This is the file
 <a href="https://github.com/weavster-dev/weavster/blob/main/docs/examples/production/weavster-server.yaml"><code>docs/examples/production/weavster-server.yaml</code></a>
 from the repository, which a test starts the server from:</p>
-<pre><code class="language-yaml"># Production server configuration: HTTPS only, a durable store, strict login
-# policy. See docs/production.md. Secrets are not in this file: the first admin
-# password comes from WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE, and flow
-# connection strings from WEAVSTER_DB_* / WEAVSTER_SOURCE_* variables.
+<pre><code class="language-yaml"># Production server configuration: HTTPS only, PostgreSQL, strict login policy.
+# See docs/production.md. Secrets are not in this file: the store's password
+# comes from ~/.pgpass of the server's account (a line for db.internal only),
+# the first admin password from WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE, and
+# flow connection strings from WEAVSTER_DB_* / WEAVSTER_SOURCE_* variables.
 listen:
   address: &quot;&quot;                  # no cleartext listener
   tlsAddress: 0.0.0.0:8443
@@ -216,7 +216,11 @@ tls:
   keyFile: /etc/weavster/tls/server.key
   minVersion: &quot;1.3&quot;
 store:
-  dialect: sqlite              # durable; the file is /var/lib/weavster/weavster.db
+  dialect: postgres
+  dsn: postgres://weavster@db.internal:5432/weavster?sslmode=verify-full
+  maxConnections: 20
+  maxRetry: 10
+  retryWaitMs: 2000
 paths:
   dataDir: /var/lib/weavster
 auth:
@@ -242,7 +246,12 @@ stats:
   sampleIntervalMs: 60000
   retentionHours: 168
 </code></pre>
-<p>Keep the secrets out of the file, and start the server with them in its environment:</p>
+<p>Keep the secrets out of the file. The store's password goes in the server account's
+<code>~/.pgpass</code> (mode <code>0600</code>), on a line for the store's host only, so it is never sent to another
+database:</p>
+<pre><code class="language-text">db.internal:5432:weavster:weavster:the-store-password
+</code></pre>
+<p>Then start the server with the other secrets in its environment:</p>
 <pre><code class="language-bash">export WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE=/run/secrets/weavster-admin-password
 export WEAVSTER_DB_WAREHOUSE=&quot;postgres://loader:$(cat /run/secrets/warehouse-password)@warehouse.internal/dw?sslmode=verify-full&quot;
 weavster server --config /etc/weavster/weavster-server.yaml
@@ -258,8 +267,9 @@ password, so it would be sent to every database your flows read and write.</p>
 <ul>
 <li>Give the server a certificate from your CA, set <code>listen.address: ""</code>, and use
   <code>tls.minVersion: "1.3"</code> when every client supports it.</li>
-<li>Use <code>sslmode=verify-full</code> in every PostgreSQL <code>WEAVSTER_DB_…</code> connection string.</li>
-<li>Back up <code>paths.dataDir</code> (the SQLite store): it holds messages, flows, and users.</li>
+<li>Use PostgreSQL 16 with <code>sslmode=verify-full</code>, for the store and in every <code>WEAVSTER_DB_…</code>
+  connection string; keep the store's password in <code>~/.pgpass</code> of the server's account.</li>
+<li>Back up the store's database: it holds messages, flows, users, and settings.</li>
 <li>Set <code>WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE</code> for the first start, log in, change the password
   (a password you provide is not forced to change), remove the file, then create one account per
   person or system with only the permissions it needs.</li>

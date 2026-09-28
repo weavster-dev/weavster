@@ -173,7 +173,7 @@
 <h1 id="dynamic-lookups">Dynamic lookups</h1>
 <p>A <strong>lookup group</strong> is a named table of text keys and text values: facility codes to names,
 local codes to standard ones, and similar. Groups are stored with the flows (durable with
-<code>store.dialect: sqlite</code>) and managed over the API.</p>
+<code>store.dialect: postgres</code> or <code>sqlite</code>) and managed over the API.</p>
 <p>!!! note "Stored, not used by flows yet"
     Flows cannot read lookups yet. Today these endpoints store and serve them.</p>
 <h2 id="permissions">Permissions</h2>
@@ -192,7 +192,7 @@ other entries stay. Add <code>?replace=true</code> to make the body the whole gr
 <li>Group names are 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>.</li>
 <li>Keys are 1–512 characters of any text except control characters, <code>/</code> included. URL-encode
   them in paths (<code>RAD%2001</code>, <code>ICD%2F10</code>).</li>
-<li>Values are text of at most 64 KiB. A group exists while it has entries.</li>
+<li>Values are UTF-8 text of at most 64 KiB, without NUL characters. A group exists while it has entries.</li>
 </ul>
 <h2 id="requests">Requests</h2>
 <table>

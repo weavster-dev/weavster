@@ -302,7 +302,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Durable local users (password changes and lockout state included)</td>
 <td>Implemented (wired)</td>
-<td><code>TestUsersSurviveRestart</code>. Durable with <code>store.dialect: sqlite</code>; the first-run <code>admin</code> is created once per database.</td>
+<td><code>TestUsersSurviveRestart</code>. Durable with <code>store.dialect: postgres</code> or <code>sqlite</code>; the first-run <code>admin</code> is created once per database.</td>
 </tr>
 <tr>
 <td>User administration (<code>/api/v1/users</code>, CLI <code>user list/add/remove/changepw</code>)</td>
@@ -400,14 +400,14 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td></td>
 </tr>
 <tr>
-<td>Message store selection: <code>memory</code> (default), <code>sqlite</code>, <code>disabled</code></td>
+<td>Message store selection: <code>memory</code> (default), <code>sqlite</code>, <code>postgres</code>, <code>disabled</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestServerConfigStore</code>. SQLite creates <code>&lt;dataDir&gt;/weavster.db</code> and runs migrations at startup. <code>disabled</code> makes message search return <code>503</code> and message intake unavailable.</td>
+<td><code>TestServerConfigStore</code>. SQLite creates <code>&lt;dataDir&gt;/weavster.db</code> and runs migrations at startup; PostgreSQL migrates its tables on the first start (<code>TestServerOnPostgres</code>). <code>disabled</code> makes message search return <code>503</code> and message intake unavailable.</td>
 </tr>
 <tr>
-<td>PostgreSQL message store</td>
-<td>Unsupported</td>
-<td><code>store.dialect: postgres</code> is accepted, but startup fails after the retries because the schema uses SQLite-only SQL.</td>
+<td>PostgreSQL message store (<code>store.dialect: postgres</code>): messages, flows, users, config items, lookups, search, trends</td>
+<td>Implemented (wired)</td>
+<td><code>TestServerOnPostgres</code> (server with a restart), the store suite on PostgreSQL (<code>TestStoreCRUDAndSearch</code>, <code>TestFlowStore</code>, <code>TestUsers…</code>, <code>TestConfigItems</code>, <code>TestLookups</code>, <code>TestSearchFilterParity</code>, …), <code>TestRebind</code>, <code>TestDialectDetection</code>; run by the <code>postgres</code> CI job against PostgreSQL 16.</td>
 </tr>
 <tr>
 <td>Store connection retries (<code>store.maxRetry</code>, <code>store.retryWaitMs</code>)</td>
@@ -417,7 +417,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Durable flow definitions</td>
 <td>Implemented (wired)</td>
-<td><code>TestFlowsSurviveRestart</code>. Durable with <code>store.dialect: sqlite</code>. With <code>memory</code> or <code>disabled</code>, flows are lost on restart.</td>
+<td><code>TestFlowsSurviveRestart</code>. Durable with <code>store.dialect: postgres</code> or <code>sqlite</code>. With <code>memory</code> or <code>disabled</code>, flows are lost on restart.</td>
 </tr>
 <tr>
 <td>Server configuration file (<code>weavster server --config FILE</code>)</td>
@@ -584,12 +584,12 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>database</code> destination: inserts each message's JSON values into a table of PostgreSQL or SQLite (<code>driver</code>, <code>dsnEnv</code>, <code>table</code>, <code>columns</code>, <code>keyColumn</code>), with parameters, quoted identifiers, one statement (its own transaction) per message within <code>timeoutMs</code>, and no duplicate on retry with <code>keyColumn</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestDatabaseDestination</code> (SQLite file), <code>TestSQLSink</code>, <code>TestSQLSinkStatement</code> (PostgreSQL SQL), <code>TestSQLSinkErrors</code>, <code>TestSQLValue</code>, <code>TestDBPool</code>. Not yet run against a live PostgreSQL in CI (arrives with the PostgreSQL CI job). See <a href="../processing-messages/#write-rows-to-a-database">Write rows to a database</a>.</td>
+<td><code>TestDatabaseDestination</code> (SQLite file), <code>TestSQLSink</code>, <code>TestSQLSinkStatement</code> (PostgreSQL SQL), <code>TestSQLSinkErrors</code>, <code>TestSQLValue</code>, <code>TestDBPool</code>. Run against PostgreSQL 16 by the <code>postgres</code> CI job (<code>TestPostgresDatabaseAdapters</code>). See <a href="../processing-messages/#write-rows-to-a-database">Write rows to a database</a>.</td>
 </tr>
 <tr>
 <td><code>database</code> source: runs a read-only <code>SELECT</code> every <code>pollIntervalMs</code> or on a cron <code>schedule</code> and turns each row into a JSON message (<code>driver</code>, <code>dsnEnv</code>, <code>query</code>, <code>idColumn</code>, <code>update</code>, <code>maxRows</code>, <code>timeoutMs</code>), then marks it with <code>update</code>; at-least-once</td>
 <td>Implemented (wired)</td>
-<td><code>TestDatabaseSource</code> (SQLite file), <code>TestDatabaseSourcePoll</code>, <code>TestQuerySQL</code>, <code>TestJSONValue</code>. Interval or cron <code>schedule</code>. Not yet run against a live PostgreSQL in CI. See <a href="../processing-messages/#read-rows-from-a-database">Read rows from a database</a>.</td>
+<td><code>TestDatabaseSource</code> (SQLite file), <code>TestDatabaseSourcePoll</code>, <code>TestQuerySQL</code>, <code>TestJSONValue</code>. Interval or cron <code>schedule</code>. Run against PostgreSQL 16 by the <code>postgres</code> CI job (<code>TestPostgresDatabaseAdapters</code>). See <a href="../processing-messages/#read-rows-from-a-database">Read rows from a database</a>.</td>
 </tr>
 <tr>
 <td>Other sources and destinations (SMTP, SOAP/REST web service, document)</td>
@@ -642,7 +642,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestRetryRecoversQueuedMessage</code>, <code>TestQueuedWorkSurvivesRestart</code>, <code>TestDeadLetterAfterMaxAttempts</code>. Dead letters can be listed, requeued, and removed (next row).</td>
 </tr>
 <tr>
-<td>Capacity, limits, and retention documented; secure defaults and a production configuration (HTTPS only, TLS 1.3, durable SQLite store, strict login policy)</td>
+<td>Capacity, limits, and retention documented; secure defaults and a production configuration (HTTPS only, TLS 1.3, PostgreSQL, strict login policy)</td>
 <td>Implemented (wired)</td>
 <td><code>TestProductionExample</code> starts the server from <code>docs/examples/production/weavster-server.yaml</code>. See <a href="../limits/">Capacity and limits</a> and <a href="../production/">Production setup</a>.</td>
 </tr>

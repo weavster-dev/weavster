@@ -348,8 +348,12 @@ and serves nothing.</p>
 <li><strong><code>sqlite</code></strong>: set <code>dsn</code> or <code>paths.dataDir</code>. <code>dsn</code> defaults to <code>&lt;paths.dataDir&gt;/weavster.db</code>.
   The parent directory is created (mode <code>0700</code>) if missing. Migrations run at startup. A SQLite
   failure is never retried.</li>
-<li><strong><code>postgres</code></strong>: <code>dsn</code> is required. <strong>PostgreSQL does not work yet:</strong> the schema uses
-  SQLite-only SQL, so startup fails after the retries.</li>
+<li><strong><code>postgres</code></strong>: <code>dsn</code> is required, for example
+  <code>postgres://weavster@db.internal:5432/weavster?sslmode=verify-full</code> (tested with PostgreSQL
+  16). The server creates and migrates its tables on the first start; the account needs to create
+  tables in the database (or in the schema named by <code>search_path</code> in the URL, for example
+  <code>…&amp;search_path=weavster</code>). Keep the password out of the file: put it in <code>~/.pgpass</code> of the
+  server's account, on a line for the database's host only.</li>
 <li><strong><code>disabled</code></strong>: runs with no message store. <code>GET /api/v1/messages</code> returns <code>503 messages unavailable</code>.
   Flow definitions and users are kept in memory.</li>
 </ul>
@@ -357,8 +361,8 @@ and serves nothing.</p>
 stops the server immediately with exit code <code>0</code>. When every attempt fails:</p>
 <pre><code class="language-text">Error: store: postgres: giving up after 4 attempts: ...
 </code></pre>
-<p>The store holds messages, flow definitions, and users. With <code>sqlite</code>, flows and users
-(including password changes and lockouts) survive a restart.</p>
+<p>The store holds messages, flow definitions, and users. With <code>sqlite</code> or <code>postgres</code>, flows and
+users (including password changes and lockouts) survive a restart.</p>
 <h3 id="delivery"><code>delivery</code></h3>
 <table>
 <thead>

@@ -223,7 +223,7 @@ If it doesn't, the server exits <code>1</code> with <code>Error: bootstrap: admi
 </thead>
 <tbody>
 <tr>
-<td><code>sqlite</code></td>
+<td><code>postgres</code>, <code>sqlite</code></td>
 <td>Kept. The first-start step runs only once per database. After that, the bootstrap variables are ignored and the printed password is never shown again.</td>
 </tr>
 <tr>
@@ -232,9 +232,9 @@ If it doesn't, the server exits <code>1</code> with <code>Error: bootstrap: admi
 </tr>
 </tbody>
 </table>
-<p>If you lose a generated password on a <code>sqlite</code> store, there is no API to reset it. Stop the
-server and delete the database file (this also deletes flows and messages), or keep the
-password somewhere safe when it is first printed.</p>
+<p>If you lose a generated password on a durable store, there is no API to reset it. Stop the
+server and delete the SQLite database file, or drop the server's PostgreSQL schema (either one
+also deletes flows and messages), or keep the password somewhere safe when it is first printed.</p>
 <h3 id="changing-a-generated-password">Changing a generated password</h3>
 <p>Until you change a generated password, every route except <code>/api/v1/auth/me</code>,
 <code>/api/v1/auth/password</code>, and <code>/api/v1/auth/logout</code> returns:</p>
@@ -291,7 +291,7 @@ endpoint and Basic credentials. While the account is locked, even the correct pa
 returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See <a href="../server-config/#auth">Server configuration</a>.</p>
 <p>!!! warning "Lockout can shut out the only admin"
     Anyone who can reach the API can lock <code>admin</code> by sending wrong passwords, and there is no
-    second account to unlock it. With <code>store.dialect: sqlite</code> the lockout also survives a
+    second account to unlock it. With <code>store.dialect: postgres</code> or <code>sqlite</code> the lockout also survives a
     restart, so you have to wait <code>lockoutPeriodSeconds</code>. Keep the server off untrusted
     networks. Setting <code>retryLimit: 0</code> removes this risk but allows unlimited password guessing.</p>
 <h2 id="permissions">Permissions</h2>
