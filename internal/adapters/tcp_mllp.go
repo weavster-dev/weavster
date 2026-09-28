@@ -131,7 +131,7 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 		return err
 	}
 	if s.noACK {
-		drain(conn)
+		drain(ctx, conn)
 		return nil
 	}
 	reply, err := readFramed(bufio.NewReader(conn), maxACKBytes, framing)
@@ -160,13 +160,21 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 const noACKDrain = time.Second
 
 // drain ends the sending side of conn and reads what the receiver still
-// sends for a moment, so closing conn does not reset it (a reset can drop
-// data not yet sent).
-func drain(conn net.Conn) {
+// sends for a moment (never past ctx's deadline, and not at all once ctx
+// is done), so closing conn does not reset it (a reset can drop data not
+// yet sent).
+func drain(ctx context.Context, conn net.Conn) {
 	if cw, ok := conn.(interface{ CloseWrite() error }); ok {
 		_ = cw.CloseWrite()
 	}
-	_ = conn.SetReadDeadline(time.Now().Add(noACKDrain))
+	deadline := time.Now().Add(noACKDrain)
+	if d, ok := ctx.Deadline(); ok && d.Before(deadline) {
+		deadline = d
+	}
+	_ = conn.SetReadDeadline(deadline)
+	if ctx.Err() != nil { // the cancel's deadline may have been replaced
+		return
+	}
 	_, _ = io.Copy(io.Discard, io.LimitReader(conn, maxACKBytes))
 }
 

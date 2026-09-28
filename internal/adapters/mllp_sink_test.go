@@ -177,3 +177,44 @@ func TestMLLPSinkMode(t *testing.T) {
 		t.Errorf("a body with the start byte: %v", err)
 	}
 }
+
+// TestMLLPSinkDrain: without ACKs, waiting for the receiver to close ends
+// at the delivery's deadline, or at once when the caller is gone.
+func TestMLLPSinkDrain(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			_, _ = conn.Write([]byte("hello")) // then never closes
+			t.Cleanup(func() { _ = conn.Close() })
+		}
+	}()
+	for _, tt := range []struct {
+		name    string
+		timeout time.Duration
+		cancel  bool
+	}{
+		{"deadline", 200 * time.Millisecond, false},
+		{"cancelled", 5 * time.Second, true},
+	} {
+		c, _ := net.Dial("tcp", ln.Addr().String())
+		ctx, cancel := context.WithTimeout(context.Background(), tt.timeout)
+		if tt.cancel {
+			cancel()
+		}
+		start := time.Now()
+		drain(ctx, c)
+		cancel()
+		_ = c.Close()
+		if time.Since(start) > 600*time.Millisecond {
+			t.Errorf("%s: drained for %s", tt.name, time.Since(start))
+		}
+	}
+}
