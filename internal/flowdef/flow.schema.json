@@ -300,7 +300,8 @@
         "type": {
           "enum": [
             "http",
-            "file"
+            "file",
+            "mllp"
           ]
         },
         "url": {
@@ -337,7 +338,7 @@
           ],
           "minimum": 1000,
           "maximum": 120000,
-          "description": "http: time allowed for one delivery request, including the response (default 30000)"
+          "description": "http, mllp: time allowed for one delivery, including the response or ACK (default 30000)"
         },
         "maxRedirects": {
           "type": [
@@ -347,28 +348,64 @@
           "minimum": 0,
           "maximum": 10,
           "description": "http: 307/308 redirects followed, never https to http (default 0: a redirect fails the delivery)"
+        },
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "mllp: host:port to deliver HL7 v2 to"
         }
       },
-      "if": {
-        "properties": {
-          "type": {
-            "const": "file"
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "file"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "type": "null"
+              },
+              "timeoutMs": {
+                "type": "null"
+              },
+              "maxRedirects": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "mllp"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "type": "null"
+              },
+              "maxRedirects": {
+                "type": "null"
+              },
+              "url": {
+                "type": "null"
+              },
+              "dir": {
+                "type": "null"
+              }
+            }
           }
         }
-      },
-      "then": {
-        "properties": {
-          "method": {
-            "type": "null"
-          },
-          "timeoutMs": {
-            "type": "null"
-          },
-          "maxRedirects": {
-            "type": "null"
-          }
-        }
-      }
+      ]
     },
     "Transform": {
       "type": [

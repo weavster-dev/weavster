@@ -1435,7 +1435,7 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 			return pf, fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
 		}
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{
-			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir,
+			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address,
 			Method: d.Method, Timeout: time.Duration(d.TimeoutMs) * time.Millisecond, MaxRedirects: d.MaxRedirects,
 			Stopped: stopped[d.Name], Transform: t, ResponseTransform: rt,
 		})
@@ -1582,6 +1582,8 @@ func newSink(d pipeline.Destination) (pipeline.Sink, error) {
 		})}, nil
 	case "file":
 		return adapterSink{adapters.NewFileSink(d.Dir)}, nil
+	case "mllp":
+		return adapterSink{adapters.NewMLLPSinkWith(d.Address, d.Timeout)}, nil
 	}
 	return nil, fmt.Errorf("unsupported destination type %q", d.Type)
 }

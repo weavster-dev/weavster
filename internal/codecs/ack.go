@@ -139,3 +139,41 @@ func x12Ack997(doc *EDIDocument) (*EDIDocument, error) {
 	}}
 	return ack, nil
 }
+
+// HL7ControlID is MSH-10 of the HL7 v2 message in ("" without one).
+func HL7ControlID(in []byte) string {
+	v, _ := HL7v2().Parse(in) // never fails
+	for _, seg := range v.(*HL7Message).Segments {
+		if seg.Name == "MSH" {
+			return hl7Value(&seg, 10)
+		}
+	}
+	return ""
+}
+
+// ParseHL7ACK reads an acknowledgment: its MSA-1 code (AA, AE, AR, or the
+// commit codes CA, CE, CR) and MSA-2, the control id it acknowledges. ok is
+// false when in has no MSA segment with a code.
+func ParseHL7ACK(in []byte) (code, controlID string, ok bool) {
+	v, _ := HL7v2().Parse(in) // never fails
+	for _, seg := range v.(*HL7Message).Segments {
+		if seg.Name != "MSA" {
+			continue
+		}
+		// MSA is not MSH: its field n is Fields[n-1].
+		if code = fieldText(seg, 0); code == "" {
+			return "", "", false
+		}
+		return code, fieldText(seg, 1), true
+	}
+	return "", "", false
+}
+
+// fieldText is the first component of the first repetition of
+// seg.Fields[i] ("" when absent).
+func fieldText(seg HL7Segment, i int) string {
+	if i >= len(seg.Fields) || len(seg.Fields[i]) == 0 || len(seg.Fields[i][0]) == 0 {
+		return ""
+	}
+	return seg.Fields[i][0][0]
+}

@@ -367,6 +367,8 @@ func TestOpenAPIFlowDestinationOptions(t *testing.T) {
 		{`{"name":"a","type":"http","url":"https://x","method":"PUT","timeoutMs":5000,"maxRedirects":2}`, true},
 		{`{"name":"a","type":"file","dir":"/out"}`, true},
 		{`{"name":"a","type":"file","dir":"/out","timeoutMs":5000}`, false},
+		{`{"name":"a","type":"mllp","address":"lab:2575","timeoutMs":5000}`, true},
+		{`{"name":"a","type":"mllp","address":"lab:2575","maxRedirects":1}`, false},
 		{`{"name":"a","type":"http","url":"https://x","method":"GET"}`, false},
 		{`{"name":"a","type":"http","url":"https://x","maxRedirects":11}`, false},
 	} {

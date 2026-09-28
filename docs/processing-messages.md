@@ -80,11 +80,12 @@ JSON view of an [HL7 v2 message](#transform-hl7-v2-messages),
 | Field | Meaning |
 |---|---|
 | `name` | Unique within the flow; 1–128 characters from `A-Z a-z 0-9 . _ -` (it appears in URLs). Used to report delivery results. |
-| `type` | `http` (send to `url`) or `file` (write one file per message into `dir`, named by message ID). |
+| `type` | `http` (send to `url`), `file` (write one file per message into `dir`, named by message ID), or `mllp` (send HL7 v2 to `address` over TCP; see [Send HL7 v2 over MLLP](#send-hl7-v2-over-mllp)). |
 | `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a request (`POST` unless `method` says otherwise) with `Content-Type: application/json` (transformed messages) or `application/octet-stream` (passthrough). The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`. Created if missing. |
+| `address` | Required for `mllp`: `host:port` of the receiving system, for example `lab.example.com:2575`. |
 | `method` | `http` only: `POST` (default), `PUT`, or `PATCH`. |
-| `timeoutMs` | `http` only: time allowed for one delivery request, including reading the response, 1000–120000 ms; default 30000. A request that takes longer is a failed attempt and is retried. Stopping or pausing the flow, and stopping the server, wait for deliveries in progress, so keep it as short as the receiver allows. |
+| `timeoutMs` | `http` and `mllp`: time allowed for one delivery, including reading the response or ACK, 1000–120000 ms; default 30000. A request that takes longer is a failed attempt and is retried. Stopping or pausing the flow, and stopping the server, wait for deliveries in progress, so keep it as short as the receiver allows. |
 | `maxRedirects` | `http` only: how many redirects to follow, 0–10; default 0. See [Redirects](#redirects). |
 | `transform` | Optional. This destination's own transform, with the same steps as the flow `transform`. See [Per-destination transforms and filters](#per-destination-transforms-and-filters). |
 | `responseTransform` | Optional. Transform applied to this destination's reply. See [Return a destination's reply](#return-a-destinations-reply). |
@@ -262,6 +263,33 @@ the transform sees:
 - The whole file is one message. A transform reaches rows by position (`rows.0`, `rows.1`); there
   are no loops yet, and splitting a file into one message per row comes later.
 - The transform's output is JSON, delivered as `application/json`.
+
+### Send HL7 v2 over MLLP
+
+An `mllp` destination sends each message to another HL7 system over TCP, framed with MLLP, and
+waits for its ACK:
+
+```json
+{
+  "id": "adt-to-lab",
+  "source": {"type": "mllp", "address": ":2575"},
+  "destinations": [{"name": "lab", "type": "mllp", "address": "lab.example.com:2575", "timeoutMs": 10000}]
+}
+```
+
+- The destination sends the flow's output as it is: the HL7 message as received when the flow
+  has no transform. (A flow with a transform outputs JSON, which an HL7 receiver will not accept;
+  conversion back to HL7 is not available yet.)
+- Each delivery opens its own connection, sends one frame, and waits for one framed reply within
+  `timeoutMs` (default 30 seconds; replies over 1 MiB are not read).
+- The delivery succeeds only on an ACK with `AA` (or `CA`) in MSA-1 whose MSA-2 is the message's
+  control id (MSH-10). An `AE`/`CE` or `AR`/`CR` ACK, a reply that is not an ACK, an ACK for
+  another control id, a closed connection, or no reply in time is a failed attempt: it is retried
+  and then dead-lettered like any other failure. The attempt's error names the ACK code (for
+  example `mllp: ACK AE (application error)`), never message content.
+- A lost ACK means the message is sent again: delivery is at least once, and MLLP has no field
+  for an idempotency key, so the receiver must tolerate a repeat.
+- Traffic is not encrypted; use a VPN or TLS tunnel between sites until TLS for MLLP is added.
 
 ### Redirects
 
@@ -1041,7 +1069,7 @@ again as a new message instead, use `reprocess`.
 - Statistics and events are kept in memory: they restart from zero when the server restarts,
   and only the newest 10,000 events are kept.
 - The first delivery attempt runs while your request waits; retries run in the background.
-- Only `http` and `file` destinations are available.
+- Only `http`, `file`, and `mllp` destinations are available.
 - Besides this API, messages enter only through [file sources](#read-files-from-a-directory) and
   [http sources](#receive-messages-over-http), and [mllp sources](#receive-hl7-v2-over-mllp);
   database sources are not available yet.

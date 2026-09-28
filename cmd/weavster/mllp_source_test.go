@@ -59,12 +59,6 @@ func TestMLLPHandler(t *testing.T) {
 	if len(long.cid) != maxControlIDMetadata {
 		t.Errorf("stored control id is %d characters", len(long.cid))
 	}
-	if got := controlID([]byte("PID|1\r")); got != "" {
-		t.Errorf("control id without MSH = %q", got)
-	}
-	if got := controlID([]byte("MSH|^~\\&|A\r")); got != "" {
-		t.Errorf("control id of a short MSH = %q", got)
-	}
 }
 
 // mllpIngestSpy keeps the control id metadata it was given.

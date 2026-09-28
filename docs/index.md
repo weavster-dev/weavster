@@ -13,7 +13,7 @@ Config-driven, message-oriented integration platform — a single static Go bina
 
 The server serves an authenticated REST API (HTTP, plus HTTPS when configured). Through it you
 define flows, send messages into them, transform messages with the YAML DSL, and deliver them
-to HTTP and file destinations with automatic retries; every message is stored with its status. See
+to HTTP, file, and MLLP (HL7 v2) destinations with automatic retries; every message is stored with its status. See
 [Processing messages](processing-messages.md). A flow can also read files from a directory, or
 listen on its own port for HTTP requests or HL7 v2 over MLLP. Database sources exist only as
 libraries in the source tree so far.
