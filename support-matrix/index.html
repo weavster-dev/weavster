@@ -516,9 +516,14 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestHTTPSource</code>, <code>TestHTTPSourceSecured</code>, <code>TestSourceHandler</code>, <code>TestSourceHandlerBasicAuth</code>, <code>TestCheckSource</code>. Optional HTTP Basic (<code>username</code>, <code>passwordEnv</code>), HTTPS (<code>certFile</code>, <code>keyFile</code>), and <code>readTimeoutMs</code> (<code>TestHTTPSourceReadTimeout</code>); one flow source per port; listed by <code>GET /api/v1/flows/ports-in-use</code>. See <a href="../processing-messages/#receive-messages-over-http">Receive messages over HTTP</a>.</td>
 </tr>
 <tr>
+<td>HL7 v2 input: <code>inputFormat: hl7v2</code> gives transforms the message as JSON (<code>PID.5.1</code>, repetitions, every segment in order)</td>
+<td>Implemented (wired)</td>
+<td><code>TestHL7Input</code>, <code>TestProcessHL7Input</code>, <code>TestHL7JSON</code>. Output is JSON; no conversion back to HL7 yet. See <a href="../processing-messages/#transform-hl7-v2-messages">Transform HL7 v2 messages</a>.</td>
+</tr>
+<tr>
 <td>MLLP source: a flow accepts HL7 v2 over TCP (<code>source: {type: mllp, address}</code>) while it is started and answers each message with an HL7 ACK (AA stored, AR refused, AE not stored)</td>
 <td>Implemented (wired)</td>
-<td><code>TestMLLPSource</code>, <code>TestMLLPHandler</code>, <code>TestMLLPServer</code>, <code>TestHL7ACKOptions</code>. No TLS or sender authentication yet; messages pass through unchanged (transforms need JSON). See <a href="../processing-messages/#receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</a>.</td>
+<td><code>TestMLLPSource</code>, <code>TestMLLPHandler</code>, <code>TestMLLPServer</code>, <code>TestHL7ACKOptions</code>. No TLS or sender authentication yet; set <code>inputFormat: hl7v2</code> to transform the messages. See <a href="../processing-messages/#receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</a>.</td>
 </tr>
 <tr>
 <td>Other sources and destinations (MLLP destination, database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>
@@ -725,9 +730,10 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'PASSWORD' -s smoke.txt
 <p>There are <strong>no</strong> OIDC/SAML, OPA/Cedar, SIEM, Kubernetes, Redis/NATS, or object-storage stubs.
 Those are Enterprise items with no code in the source tree.</p>
 <h2 id="codecs">Codecs</h2>
-<p>Codecs are library-only: the server does not convert messages between formats. The one
-exception is HL7 v2 acknowledgment: an <a href="../processing-messages/#receive-hl7-v2-over-mllp">mllp source</a>
-reads a message's MSH segment to build its ACK. You can exercise the codecs with <code>weavster test</code>,
+<p>Codecs are library-only except HL7 v2, which the server uses to read HL7 messages for
+transforms (<a href="../processing-messages/#transform-hl7-v2-messages"><code>inputFormat: hl7v2</code></a>) and to
+acknowledge messages an <a href="../processing-messages/#receive-hl7-v2-over-mllp">mllp source</a> receives.
+No other format is converted. You can exercise the codecs with <code>weavster test</code>,
 which covers HL7 v2, JSON, XML, and raw.</p>
 <!-- codec-table: every cell is checked against codecs.CoverageMatrix() by TestSupportMatrixCodecs -->
 <table>
