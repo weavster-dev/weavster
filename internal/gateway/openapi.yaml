@@ -560,25 +560,37 @@ paths:
   /api/v1/messages:
     get:
       summary: Search stored messages, newest first by default (requires messages:view; audited)
+      description: "X-Total-Count gives the number of matches without limit and offset. Filter by metadata with metadata.KEY=VALUE (for example metadata.source.file=a.hl7), up to 10, each given once; every one must match."
       parameters:
         - {name: flowId, in: query, schema: {type: string}}
         - {name: status, in: query, schema: {type: string}, description: "received, transformed, queued, sent, filtered, errored, or dead-lettered"}
         - {name: from, in: query, schema: {type: string, format: date-time}, description: Received at or after (RFC 3339)}
         - {name: to, in: query, schema: {type: string, format: date-time}, description: Received at or before (RFC 3339)}
+        - {name: idFrom, in: query, schema: {type: string}, description: Message id at or after (byte order)}
+        - {name: idTo, in: query, schema: {type: string}, description: Message id at or before (byte order)}
+        - {name: contentType, in: query, schema: {type: string}, description: "The message's format, as its contentType shows (for example raw, hl7v2)"}
+        - {name: minAttempts, in: query, schema: {type: integer, minimum: 1, maximum: 1000}, description: Some destination took at least this many attempts}
+        - {name: maxAttempts, in: query, schema: {type: integer, minimum: 1, maximum: 1000}, description: Some destination took at most this many attempts}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 100}}
         - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
         - {name: sort, in: query, schema: {type: string, enum: [-receivedAt, receivedAt, id, -id], default: -receivedAt}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "200": {description: "[{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Message"}}}}}
+        "200": {description: "[{id, flowId, status, contentType, receivedAt, updatedAt, attempts, metadata}]", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}, X-Total-Count: {description: "Messages matching the filters, without limit and offset (counted separately from the page; absent when the count failed)", schema: {type: integer}}}, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/Message"}}}}}
         "400": {description: A filter or paging parameter is invalid, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     delete:
       summary: "Remove every message matching the filters; all=true is required when no filter is given (requires messages:delete)"
+      description: "The search filters apply. Filter by metadata with metadata.KEY=VALUE (for example metadata.source.file=a.hl7), up to 10, each given once; every one must match."
       parameters:
         - {name: flowId, in: query, schema: {type: string}}
         - {name: status, in: query, schema: {type: string}}
         - {name: from, in: query, schema: {type: string, format: date-time}, description: Received at or after (RFC 3339)}
         - {name: to, in: query, schema: {type: string, format: date-time}, description: Received at or before (RFC 3339)}
+        - {name: idFrom, in: query, schema: {type: string}, description: Message id at or after (byte order)}
+        - {name: idTo, in: query, schema: {type: string}, description: Message id at or before (byte order)}
+        - {name: contentType, in: query, schema: {type: string}, description: "The message's format, as its contentType shows (for example raw, hl7v2)"}
+        - {name: minAttempts, in: query, schema: {type: integer, minimum: 1, maximum: 1000}, description: Some destination took at least this many attempts}
+        - {name: maxAttempts, in: query, schema: {type: integer, minimum: 1, maximum: 1000}, description: Some destination took at most this many attempts}
         - {name: all, in: query, schema: {type: boolean}, description: Remove every message (needed when no filter is given)}
         - {name: restart, in: query, schema: {type: boolean}, description: "Stop the started flows in scope first, and start them again afterwards"}
       responses:
@@ -1172,11 +1184,17 @@ paths:
   /api/v1/messages/export:
     get:
       summary: An archive of the complete messages matching the search filters (requires messages:content; audited)
+      description: "Filter by metadata with metadata.KEY=VALUE (for example metadata.source.file=a.hl7), up to 10, each given once; every one must match."
       parameters:
         - {name: flowId, in: query, schema: {type: string}}
         - {name: status, in: query, schema: {type: string}}
         - {name: from, in: query, schema: {type: string, format: date-time}}
         - {name: to, in: query, schema: {type: string, format: date-time}}
+        - {name: idFrom, in: query, schema: {type: string}, description: Message id at or after (byte order)}
+        - {name: idTo, in: query, schema: {type: string}, description: Message id at or before (byte order)}
+        - {name: contentType, in: query, schema: {type: string}, description: "The message's format, as its contentType shows (for example raw, hl7v2)"}
+        - {name: minAttempts, in: query, schema: {type: integer, minimum: 1, maximum: 1000}, description: Some destination took at least this many attempts}
+        - {name: maxAttempts, in: query, schema: {type: integer, minimum: 1, maximum: 1000}, description: Some destination took at most this many attempts}
         - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 10000, default: 10000}}
         - {name: offset, in: query, schema: {type: integer, minimum: 0, default: 0}}
         - {name: sort, in: query, schema: {type: string, enum: [-receivedAt, receivedAt, id, -id], default: -receivedAt}}

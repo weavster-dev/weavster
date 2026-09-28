@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,8 +34,19 @@ func (s *Server) handleMessagesSearch(w http.ResponseWriter, r *http.Request) {
 		writeBackendError(w, err)
 		return
 	}
+	// The total is a second query: when it fails the page is still
+	// answered, without X-Total-Count.
+	if total, err := s.cfg.Messages.Count(r.Context(), q); err == nil {
+		w.Header().Set("X-Total-Count", strconv.Itoa(total))
+	}
 	writeJSON(w, http.StatusOK, msgs)
 }
+
+// Search filter limits.
+const (
+	maxMetadataFilters = 10
+	maxAttemptsFilter  = 1000
+)
 
 // messageQuery reads the search parameters (limit up to maxLimit); on a bad
 // value it answers 400 and returns false.
@@ -61,6 +73,45 @@ func messageQuery(w http.ResponseWriter, r *http.Request, maxLimit int) (Message
 			return bad("offset must be 0 or more")
 		}
 		q.Offset = n
+	}
+	q.IDFrom, q.IDTo, q.ContentType = v.Get("idFrom"), v.Get("idTo"), v.Get("contentType")
+	if q.IDFrom != "" && q.IDTo != "" && q.IDFrom > q.IDTo {
+		return bad("idFrom must not be after idTo")
+	}
+	for _, p := range []struct {
+		name string
+		n    *int
+	}{{"minAttempts", &q.MinAttempts}, {"maxAttempts", &q.MaxAttempts}} {
+		if raw := v.Get(p.name); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 || n > maxAttemptsFilter {
+				return bad(fmt.Sprintf("%s must be between 1 and %d", p.name, maxAttemptsFilter))
+			}
+			*p.n = n
+		}
+	}
+	if q.MinAttempts > 0 && q.MaxAttempts > 0 && q.MinAttempts > q.MaxAttempts {
+		return bad("minAttempts must not be more than maxAttempts")
+	}
+	var names []string
+	for name := range v {
+		if strings.HasPrefix(name, "metadata.") {
+			names = append(names, name)
+		}
+	}
+	if len(names) > maxMetadataFilters {
+		return bad(fmt.Sprintf("at most %d metadata filters", maxMetadataFilters))
+	}
+	sort.Strings(names) // the same parameter is named on every request
+	for _, name := range names {
+		key := strings.TrimPrefix(name, "metadata.")
+		if key == "" || len(v[name]) != 1 {
+			return bad(fmt.Sprintf("%s must name a metadata key and be given once", name))
+		}
+		if q.Metadata == nil {
+			q.Metadata = map[string]string{}
+		}
+		q.Metadata[key] = v[name][0]
 	}
 	if raw := v.Get("sort"); raw != "" {
 		switch raw {
@@ -283,9 +334,8 @@ func (s *Server) handleMessagesDelete(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusServiceUnavailable, "flow lifecycle unavailable")
 		return
 	}
-	filtered := q.FlowID != "" || q.Status != "" || !q.From.IsZero() || !q.To.IsZero()
-	if !filtered && all != "true" {
-		writeStatusError(w, http.StatusBadRequest, "give a filter (flowId, status, from, to), or all=true to remove every message")
+	if !q.HasFilter() && all != "true" {
+		writeStatusError(w, http.StatusBadRequest, "give a filter (the search filters: flowId, status, from, to, idFrom, idTo, contentType, minAttempts, maxAttempts, metadata.KEY), or all=true to remove every message")
 		return
 	}
 	res := MessagesDeleted{Restarted: []string{}}

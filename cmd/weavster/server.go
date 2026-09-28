@@ -2322,6 +2322,8 @@ func toStateQuery(q gateway.MessageQuery) state.Query {
 	}
 	return state.Query{
 		FlowID: q.FlowID, Status: state.Status(q.Status), From: q.From, To: q.To,
+		IDFrom: q.IDFrom, IDTo: q.IDTo, ContentType: q.ContentType,
+		MinAttempts: q.MinAttempts, MaxAttempts: q.MaxAttempts, Metadata: q.Metadata,
 		Limit: q.Limit, Offset: q.Offset, Sort: sort,
 	}
 }
@@ -2347,7 +2349,8 @@ var deletePage = 500
 // the filters again while the pipeline holds it, so one that changed since
 // the search (a queued message delivered meanwhile) is kept.
 func (m messageAdapter) DeleteMatching(ctx context.Context, q gateway.MessageQuery) (deleted, busy int, err error) {
-	sq := toStateQuery(gateway.MessageQuery{FlowID: q.FlowID, Status: q.Status, From: q.From, To: q.To, Sort: "id"})
+	q.Sort, q.Offset = "id", 0 // every filter, paged by id
+	sq := toStateQuery(q)
 	sq.Limit = deletePage
 	for {
 		page, err := m.store.Search(ctx, sq)
@@ -2382,8 +2385,7 @@ func (m messageAdapter) removeIfMatching(ctx context.Context, id string, sq stat
 	if err != nil {
 		return false, err
 	}
-	if (sq.FlowID != "" && msg.FlowID != sq.FlowID) || (sq.Status != "" && msg.Status != sq.Status) ||
-		(!sq.From.IsZero() && msg.ReceivedAt.Before(sq.From)) || (!sq.To.IsZero() && msg.ReceivedAt.After(sq.To)) {
+	if !sq.Matches(msg) { // every filter, as the search applied them
 		return false, nil
 	}
 	if err := m.store.Delete(ctx, id); err != nil && !errors.Is(err, state.ErrNotFound) {
@@ -2438,6 +2440,11 @@ func (m messageAdapter) Search(ctx context.Context, q gateway.MessageQuery) ([]g
 		out = append(out, toGatewayMessage(msg))
 	}
 	return out, nil
+}
+
+// Count is how many stored messages match q's filters.
+func (m messageAdapter) Count(ctx context.Context, q gateway.MessageQuery) (int, error) {
+	return m.store.Count(ctx, toStateQuery(q))
 }
 
 func (m messageAdapter) Get(ctx context.Context, id string) (gateway.Message, error) {

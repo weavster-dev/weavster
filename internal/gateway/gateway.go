@@ -213,12 +213,26 @@ type MessageAttempt struct {
 // MessageQuery narrows a message search; the store applies every filter
 // before Limit and Offset.
 type MessageQuery struct {
-	Status   string
-	FlowID   string
-	From, To time.Time // receive time, inclusive; zero = open
-	Limit    int
-	Offset   int
-	Sort     string // receivedAt or id, "-" prefix for descending
+	Status       string
+	FlowID       string
+	From, To     time.Time // receive time, inclusive; zero = open
+	IDFrom, IDTo string    // id range, inclusive; "" = open
+	ContentType  string    // the message's format, e.g. hl7v2
+	// MinAttempts/MaxAttempts: some destination took between them (0 = no
+	// bound).
+	MinAttempts, MaxAttempts int
+	Metadata                 map[string]string // every key has this value
+	Limit                    int
+	Offset                   int
+	Sort                     string // receivedAt or id, "-" prefix for descending
+}
+
+// HasFilter reports whether q narrows the messages at all (paging and sort
+// aside).
+func (q MessageQuery) HasFilter() bool {
+	return q.FlowID != "" || q.Status != "" || !q.From.IsZero() || !q.To.IsZero() ||
+		q.IDFrom != "" || q.IDTo != "" || q.ContentType != "" || q.MinAttempts > 0 || q.MaxAttempts > 0 ||
+		len(q.Metadata) > 0
 }
 
 // MessageContent is one stored part of a message.
@@ -230,6 +244,8 @@ type MessageContent struct {
 // MessageStore reads and manages stored messages.
 type MessageStore interface {
 	Search(ctx context.Context, q MessageQuery) ([]Message, error)
+	// Count is how many messages match q's filters (paging ignored).
+	Count(ctx context.Context, q MessageQuery) (int, error)
 	// Get returns one message (ErrMessageNotFound).
 	Get(ctx context.Context, id string) (Message, error)
 	// Content returns a part of a message: "raw" or "transformed".

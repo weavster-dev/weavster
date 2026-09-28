@@ -87,6 +87,9 @@ type Store interface {
 	Get(ctx context.Context, id string) (Message, error)
 	Delete(ctx context.Context, id string) error
 	Search(ctx context.Context, q Query) ([]Message, error)
+	// Count is how many messages match q's filters (Limit, Offset, and
+	// Sort ignored).
+	Count(ctx context.Context, q Query) (int, error)
 	// MessageTrends counts messages per time bucket and status.
 	MessageTrends(ctx context.Context, q TrendQuery) (TrendCounts, error)
 	Close() error
@@ -271,6 +274,14 @@ func (s *sqlStore) Delete(ctx context.Context, id string) error {
 		}
 	}
 	return tx.Commit()
+}
+
+func (s *sqlStore) Count(ctx context.Context, q Query) (int, error) {
+	ctx = s.bind(ctx)
+	where, args := buildWhere(q)
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM messages `+where, args...).Scan(&n)
+	return n, err
 }
 
 func (s *sqlStore) Search(ctx context.Context, q Query) ([]Message, error) {
