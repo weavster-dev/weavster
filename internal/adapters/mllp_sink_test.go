@@ -3,7 +3,11 @@ package adapters
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -79,5 +83,53 @@ func TestMLLPSinkACK(t *testing.T) {
 	}
 	if s := NewMLLPSinkWith("x:1", -time.Second); s.timeout != MLLPSinkTimeout {
 		t.Errorf("negative timeout gave %v", s.timeout)
+	}
+}
+
+// TestMLLPSinkTLS: a TLS sink delivers to a receiver it trusts and refuses
+// one whose certificate it cannot verify, before sending anything.
+func TestMLLPSinkTLS(t *testing.T) {
+	ts := httptest.NewUnstartedServer(nil) // for its 127.0.0.1 certificate
+	ts.StartTLS()
+	serverTLS, roots := ts.TLS.Clone(), ts.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
+	ts.Close()
+	msg := "MSH|^~\\&|A|B|C|D|1||ADT^A01|C1|P|2.5\rPID|1\r"
+	for _, tt := range []struct {
+		name  string
+		roots *x509.CertPool
+		want  string
+	}{
+		{"trusted", roots, ""},
+		{"untrusted", x509.NewCertPool(), "certificate"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ln, err := tls.Listen("tcp", "127.0.0.1:0", serverTLS)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = ln.Close() })
+			got := make(chan bool, 1) // whether the receiver read a frame
+			go func() {
+				conn, err := ln.Accept()
+				if err != nil {
+					got <- false
+					return
+				}
+				defer func() { _ = conn.Close() }()
+				_, err = readFrame(bufio.NewReader(conn), 1<<20)
+				got <- err == nil
+				if err == nil {
+					_, _ = conn.Write(frameMLLP([]byte("MSH|^~\\&|C|D|A|B|2||ACK^A01|X|P|2.5\rMSA|AA|C1\r")))
+				}
+			}()
+			cfg := &tls.Config{RootCAs: tt.roots, ServerName: "127.0.0.1", MinVersion: tls.VersionTLS12}
+			err = NewMLLPSinkTLS(ln.Addr().String(), 5*time.Second, cfg).Write(context.Background(), Message{Body: []byte(msg)})
+			if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
+				t.Errorf("Write = %v, want %q", err, tt.want)
+			}
+			if read := <-got; read != (tt.want == "") {
+				t.Errorf("the receiver read a frame: %v", read)
+			}
+		})
 	}
 }

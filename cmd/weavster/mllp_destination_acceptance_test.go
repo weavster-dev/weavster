@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"crypto/tls"
 	"net"
 	"net/http"
 	"strings"
@@ -17,6 +18,7 @@ type mllpReceiver struct {
 	codes    []string
 	wrongID  bool
 	received []string
+	tls      *tls.Config // accepts MLLP over TLS when set
 }
 
 func (r *mllpReceiver) serve(t *testing.T) string {
@@ -24,6 +26,9 @@ func (r *mllpReceiver) serve(t *testing.T) string {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
+	}
+	if r.tls != nil {
+		ln = tls.NewListener(ln, r.tls)
 	}
 	t.Cleanup(func() { _ = ln.Close() })
 	go func() {

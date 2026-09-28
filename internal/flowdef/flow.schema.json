@@ -204,7 +204,31 @@
               "type": "string",
               "minLength": 1,
               "description": "host:port the flow accepts HL7 v2 over MLLP on while it is started, e.g. 127.0.0.1:2575 or :2575"
+            },
+            "certFile": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Absolute path of the PEM certificate chain; the port accepts MLLP over TLS only (with keyFile)"
+            },
+            "keyFile": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Absolute path of the PEM private key (with certFile)"
             }
+          },
+          "dependentRequired": {
+            "certFile": [
+              "keyFile"
+            ],
+            "keyFile": [
+              "certFile"
+            ]
           }
         }
       ]
@@ -364,6 +388,21 @@
           ],
           "description": "mllp: host:port to deliver HL7 v2 to"
         },
+        "tls": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "mllp: connect over TLS, verifying the receiver's certificate and host name (default false)"
+        },
+        "caFile": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "description": "mllp with tls: absolute path of the PEM CA certificates trusted instead of the system's"
+        },
         "flow": {
           "type": [
             "string",
@@ -397,6 +436,12 @@
                 "type": "null"
               },
               "flow": {
+                "type": "null"
+              },
+              "tls": {
+                "type": "null"
+              },
+              "caFile": {
                 "type": "null"
               }
             }
@@ -448,6 +493,12 @@
               },
               "flow": {
                 "type": "null"
+              },
+              "tls": {
+                "type": "null"
+              },
+              "caFile": {
+                "type": "null"
               }
             }
           }
@@ -482,6 +533,34 @@
               },
               "maxRedirects": {
                 "type": "null"
+              },
+              "tls": {
+                "type": "null"
+              },
+              "caFile": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "caFile"
+            ],
+            "properties": {
+              "caFile": {
+                "type": "string"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tls"
+            ],
+            "properties": {
+              "tls": {
+                "const": true
               }
             }
           }

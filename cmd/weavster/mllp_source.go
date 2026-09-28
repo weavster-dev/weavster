@@ -22,6 +22,10 @@ const mllpIdleTimeout = 5 * time.Minute
 // (10 MiB over a slow link takes minutes).
 const mllpFrameTimeout = 15 * time.Minute
 
+// mllpHandshakeTimeout bounds the TLS handshake of an mllp source with a
+// certificate.
+const mllpHandshakeTimeout = 30 * time.Second
+
 // maxControlIDMetadata caps the MSH-10 kept as metadata; HL7 allows at most
 // 199 characters, most versions 20.
 const maxControlIDMetadata = 199

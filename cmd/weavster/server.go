@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -120,7 +121,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	var sourcePorts gateway.SourcePorts
 	retry := func(context.Context) {}
 	if store != nil {
-		sinks := &sinkFactory{logger: logger, delivered: func(ctx context.Context, flowID, key string) (string, error) {
+		sinks := &sinkFactory{logger: logger, tlsOpts: tlsOptions(cfg), delivered: func(ctx context.Context, flowID, key string) (string, error) {
 			found, err := store.Search(ctx, state.Query{FlowID: flowID, Metadata: map[string]string{flowKeyMetadata: key}, Limit: 1})
 			if err != nil || len(found) == 0 {
 				return "", err
@@ -1528,7 +1529,7 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 			return pf, fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
 		}
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{
-			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address, Flow: d.Flow,
+			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address, TLS: d.TLS, CAFile: d.CAFile, Flow: d.Flow,
 			Method: d.Method, Timeout: time.Duration(d.TimeoutMs) * time.Millisecond, MaxRedirects: d.MaxRedirects,
 			Stopped: stopped[d.Name], Transform: t, ResponseTransform: rt,
 		})
@@ -1675,13 +1676,16 @@ type sinkFactory struct {
 	// ("" when there is none).
 	delivered func(ctx context.Context, flowID, key string) (string, error)
 	logger    *slog.Logger
+	// tlsOpts are the server's TLS settings, also used by mllp
+	// destinations with tls.
+	tlsOpts gateway.TLSOptions
 }
 
 func (s *sinkFactory) build(d pipeline.Destination) (pipeline.Sink, error) {
 	if d.Type == "flow" {
 		return flowSink{target: d.Flow, factory: s}, nil
 	}
-	return newSink(d)
+	return buildSink(d, s.tlsOpts)
 }
 
 // flowKeyMetadata stores a flow delivery's idempotency key with the target
@@ -1717,6 +1721,12 @@ func (s flowSink) Write(ctx context.Context, d pipeline.Delivery) error {
 
 // newSink builds the adapter for a flow destination.
 func newSink(d pipeline.Destination) (pipeline.Sink, error) {
+	return buildSink(d, gateway.DefaultTLSOptions())
+}
+
+// buildSink builds the adapter for a destination; an mllp destination
+// with tls uses tlsOpts (the server's minimum version and ciphers).
+func buildSink(d pipeline.Destination, tlsOpts gateway.TLSOptions) (pipeline.Sink, error) {
 	switch d.Type {
 	case "http":
 		return httpSink{adapters.NewHTTPSinkWith(d.URL, adapters.HTTPSinkOptions{
@@ -1725,9 +1735,40 @@ func newSink(d pipeline.Destination) (pipeline.Sink, error) {
 	case "file":
 		return adapterSink{adapters.NewFileSink(d.Dir)}, nil
 	case "mllp":
-		return adapterSink{adapters.NewMLLPSinkWith(d.Address, d.Timeout)}, nil
+		if !d.TLS {
+			return adapterSink{adapters.NewMLLPSinkWith(d.Address, d.Timeout)}, nil
+		}
+		cfg, err := mllpClientTLS(d, tlsOpts)
+		if err != nil {
+			return nil, err
+		}
+		return adapterSink{adapters.NewMLLPSinkTLS(d.Address, d.Timeout, cfg)}, nil
 	}
 	return nil, fmt.Errorf("unsupported destination type %q", d.Type)
+}
+
+// mllpClientTLS verifies an mllp destination's receiver: its certificate
+// against the system's roots, or only CAFile's when set, and its host name
+// (the dialer takes it from the address), with the server's TLS settings
+// (#107 D-71). CAFile is read for each message, so a replaced file takes
+// effect without a restart.
+func mllpClientTLS(d pipeline.Destination, opts gateway.TLSOptions) (*tls.Config, error) {
+	cfg, err := gateway.BuildTLSConfig(opts)
+	if err != nil {
+		return nil, err
+	}
+	if d.CAFile == "" {
+		return cfg, nil
+	}
+	pem, err := os.ReadFile(d.CAFile)
+	if err != nil {
+		return nil, fmt.Errorf("caFile: %w", err)
+	}
+	cfg.RootCAs = x509.NewCertPool()
+	if !cfg.RootCAs.AppendCertsFromPEM(pem) {
+		return nil, errors.New("caFile: no PEM certificate in the file")
+	}
+	return cfg, nil
 }
 
 // flowErr translates state's flow errors into the gateway's.

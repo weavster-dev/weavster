@@ -315,7 +315,26 @@ waits for its ACK:
   example `mllp: ACK AE (application error)`), never message content.
 - A lost ACK means the message is sent again: delivery is at least once, and MLLP has no field
   for an idempotency key, so the receiver must tolerate a repeat.
-- Traffic is not encrypted; use a VPN or TLS tunnel between sites until TLS for MLLP is added.
+- Traffic is not encrypted unless you set `tls` (below).
+
+To send over TLS, set `"tls": true`. The destination checks the receiver's certificate and that it
+is issued for the host in `address`; there is no setting to skip the check. By default the
+system's trusted certificate authorities are used. For a receiver whose certificate comes from a
+private CA, set `caFile` to a PEM file with that CA's certificate (for a self-signed receiver, the
+certificate itself); only the certificates in `caFile` are then trusted:
+
+```json
+{"name": "lab", "type": "mllp", "address": "lab.example.com:2576", "tls": true, "caFile": "/etc/weavster/lab-ca.pem"}
+```
+
+- `caFile` must be an absolute path on the server and needs `"tls": true`. It is read for each
+  message, so a replaced file is used without a restart.
+- The server's `tls.minVersion` applies (TLS 1.2 by default). A receiver whose certificate cannot be verified, or a missing or
+  unreadable `caFile`, fails the attempt before anything is sent; the attempt's error says why
+  (for example `x509: certificate signed by unknown authority`), and it is retried like any
+  other failure.
+- `tls` and `caFile` apply only to mllp destinations; an http destination uses TLS with an
+  `https://` URL.
 
 ### Redirects
 
@@ -847,6 +866,7 @@ layer protocol (MLLP), while it is started, and answers every message with an HL
 |---|---|
 | `type` | `mllp`. |
 | `address` | Required. `host:port` to listen on, for example `127.0.0.1:2575`, or `:2575` for every interface. |
+| `certFile`, `keyFile` | Optional, together. Absolute paths of a PEM certificate chain and its private key; the port then accepts MLLP over TLS only (see below). |
 
 Point the sending system (an interface engine, a lab or ADT feed) at the address. Each message
 is a frame: the byte `0x0B`, the HL7 message, then `0x1C 0x0D`. For example, with a small test
@@ -887,8 +907,34 @@ MSA|AA|MSG1
   flow source per port, never the server's own ports, `source.mllp.failed` events when the port
   cannot be opened, and `flow:<id>` in `weavster flow ports`. Stopping the flow or the server
   answers the message being handled, then closes the connections.
-- Messages cross the network unencrypted and senders are not authenticated. Listen on
-  `127.0.0.1` or a private network, or use a VPN or TLS tunnel, until TLS for MLLP is added.
+- Without `certFile` and `keyFile`, messages cross the network unencrypted. Senders are not
+  authenticated either way: listen on `127.0.0.1` or a private network, or allow only the
+  senders' addresses in your firewall.
+
+To accept MLLP over TLS, give the source a certificate and key:
+
+```json
+{
+  "id": "adt",
+  "source": {"type": "mllp", "address": "0.0.0.0:2576", "certFile": "/etc/weavster/adt.crt", "keyFile": "/etc/weavster/adt.key"},
+  "destinations": [{"name": "archive", "type": "file", "dir": "/var/lib/weavster/out/adt"}]
+}
+```
+
+Test it with `openssl s_client`:
+
+```bash
+printf '\x0bMSH|^~\\&|LAB|HOSP|WEAVSTER|HOSP|20260927120000||ADT^A01|MSG1|P|2.5\rPID|1||12345||DOE^JOHN\r\x1c\r' \
+  | openssl s_client -quiet -connect 127.0.0.1:2576 -CAfile /etc/weavster/adt-ca.pem | tr '\r' '\n'
+```
+
+- The port accepts TLS connections only; a sender connecting without TLS gets no ACK and is
+  disconnected, as is one that does not finish the TLS handshake within 30 seconds. The server's `tls.minVersion` applies (TLS 1.2 by default).
+- The certificate and key are read when the port opens; after replacing the files, stop and
+  start the flow. A source whose files cannot be loaded stays closed (it never falls back to
+  plain TCP) and records a `source.mllp.failed` event with the reason, as an
+  [http source](#receive-messages-over-http) does. The server's own TLS key is refused.
+- Client certificates (mutual TLS) are not requested.
 
 ## 2. Deploy and start the flow
 

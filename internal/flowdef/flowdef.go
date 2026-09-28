@@ -131,8 +131,15 @@ func (f Flow) Dependencies() []string {
 func CheckDestinations(f Flow) error {
 	for _, d := range f.Destinations {
 		// An empty dir is reported as required when the flow is used.
-		if d.Type == "file" && d.Dir != "" && !filepath.IsAbs(d.Dir) {
+		switch {
+		case d.Type == "file" && d.Dir != "" && !filepath.IsAbs(d.Dir):
 			return fmt.Errorf("destination %s: dir must be an absolute path, got %q", d.Name, d.Dir)
+		case (d.TLS || d.CAFile != "") && d.Type != "mllp":
+			return fmt.Errorf("destination %s: tls and caFile apply only to mllp destinations", d.Name)
+		case d.CAFile != "" && !d.TLS:
+			return fmt.Errorf("destination %s: caFile needs tls: true", d.Name)
+		case d.CAFile != "" && !filepath.IsAbs(d.CAFile):
+			return fmt.Errorf("destination %s: caFile must be an absolute path, got %q", d.Name, d.CAFile)
 		}
 	}
 	return nil
@@ -183,7 +190,8 @@ type Source struct {
 	// PasswordEnv when the port opens (#107 D-58).
 	Username    string `json:"username,omitempty"`
 	PasswordEnv string `json:"passwordEnv,omitempty"`
-	// CertFile and KeyFile make an http source serve HTTPS.
+	// CertFile and KeyFile make an http source serve HTTPS, and an mllp
+	// source accept MLLP over TLS (#107 D-71).
 	CertFile string `json:"certFile,omitempty"`
 	KeyFile  string `json:"keyFile,omitempty"`
 	// ReadTimeoutMs bounds reading one request on an http source
@@ -199,6 +207,11 @@ type Destination struct {
 	Dir  string `json:"dir,omitempty"`
 	// Address is the host:port an mllp destination delivers to (#107 D-64).
 	Address string `json:"address,omitempty"`
+	// TLS makes an mllp destination connect over TLS, trusting the
+	// system's roots or, when set, only the certificates in CAFile (#107
+	// D-71).
+	TLS    bool   `json:"tls,omitempty"`
+	CAFile string `json:"caFile,omitempty"`
 	// Flow is the id of the flow a flow destination hands messages to
 	// (#107 D-70).
 	Flow string `json:"flow,omitempty"`
@@ -216,19 +229,15 @@ type Destination struct {
 
 // CheckSource checks what the schema cannot: a file source's directories
 // are absolute and distinct, and its pattern is a valid file-name glob; an
-// http source's address is host:port with a non-zero port.
+// http or mllp source's address is host:port with a non-zero port.
 func CheckSource(s *Source) error {
 	if s == nil {
 		return nil
 	}
-	if s.Type == "mllp" {
-		if *s != (Source{Type: "mllp", Address: s.Address}) {
-			return errors.New("an mllp source takes only type and address")
-		}
-		_, err := SourcePort(s)
-		return err
+	if s.Type == "mllp" && *s != (Source{Type: "mllp", Address: s.Address, CertFile: s.CertFile, KeyFile: s.KeyFile}) {
+		return errors.New("an mllp source takes only type, address, certFile, and keyFile")
 	}
-	if s.Type == "http" {
+	if s.Listens() {
 		switch {
 		case (s.Username == "") != (s.PasswordEnv == ""):
 			return errors.New("source.username and source.passwordEnv go together")

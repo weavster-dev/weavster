@@ -54,6 +54,10 @@ type Destination struct {
 	Dir     string // file
 	Address string // mllp: host:port
 	Flow    string // flow: the target flow's id
+	// TLS and CAFile make an mllp destination connect over TLS, trusting
+	// CAFile's certificates instead of the system's when set.
+	TLS    bool
+	CAFile string
 	// Method, Timeout, and MaxRedirects shape http requests (zero: defaults).
 	Method       string
 	Timeout      time.Duration
