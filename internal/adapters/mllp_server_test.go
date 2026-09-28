@@ -12,6 +12,38 @@ import (
 	"time"
 )
 
+type timeoutAcceptError struct{}
+
+func (timeoutAcceptError) Error() string   { return "accept timeout" }
+func (timeoutAcceptError) Timeout() bool   { return true }
+func (timeoutAcceptError) Temporary() bool { return true }
+
+type timeoutThenConnListener struct {
+	conn    net.Conn
+	accepts int
+	closed  chan struct{}
+	close   sync.Once
+}
+
+func (l *timeoutThenConnListener) Accept() (net.Conn, error) {
+	l.accepts++
+	switch l.accepts {
+	case 1:
+		return nil, timeoutAcceptError{}
+	case 2:
+		return l.conn, nil
+	default:
+		<-l.closed
+		return nil, net.ErrClosed
+	}
+}
+
+func (l *timeoutThenConnListener) Close() error {
+	l.close.Do(func() { close(l.closed) })
+	return nil
+}
+func (*timeoutThenConnListener) Addr() net.Addr { return &net.TCPAddr{} }
+
 func TestReadFrame(t *testing.T) {
 	for _, tt := range []struct {
 		name, in, want string
@@ -57,6 +89,37 @@ func readReply(t *testing.T, r *bufio.Reader) string {
 		t.Fatalf("reply: %v", err)
 	}
 	return string(got)
+}
+
+func TestMLLPServerRetriesAcceptTimeout(t *testing.T) {
+	serverConn, clientConn := net.Pipe()
+	listener := &timeoutThenConnListener{conn: serverConn, closed: make(chan struct{})}
+	srv := ServeMLLP(listener, func(frame []byte, _ error) []byte {
+		return append([]byte("ack "), frame...)
+	}, MLLPOptions{MaxFrame: 100, IdleTimeout: time.Second, FrameTimeout: time.Second})
+	t.Cleanup(func() {
+		_ = clientConn.Close()
+		_ = srv.Close()
+	})
+
+	if err := clientConn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := clientConn.Write(frameMLLP([]byte("after timeout"))); err != nil {
+		t.Fatal(err)
+	}
+	if got := readReply(t, bufio.NewReader(clientConn)); got != "ack after timeout" {
+		t.Errorf("reply = %q", got)
+	}
+	if err := clientConn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := srv.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if listener.accepts != 3 {
+		t.Errorf("Accept calls = %d, want 3", listener.accepts)
+	}
 }
 
 // TestMLLPServer: frames on a connection are answered in order, several
