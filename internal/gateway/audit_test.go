@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"net/http"
+	"net/http/httptest"
 	"sync"
 	"testing"
 )
@@ -110,5 +111,30 @@ func TestAuditUnversionedRouteAction(t *testing.T) {
 	serve(s, http.MethodDelete, "/api/flows/a", "", func(r *http.Request) { r.SetBasicAuth("viewer", "pw") })
 	if len(sink.events) != 1 || sink.events[0].Action != "DELETE /api/flows/{id}" || sink.events[0].Resource != "/api/flows/a" {
 		t.Errorf("events = %+v; want the unversioned route recorded", sink.events)
+	}
+}
+
+// TestAuditDisclosed: a read's audit record names how many messages it
+// disclosed and every id, as a JSON array (an id with a comma stays one).
+func TestAuditDisclosed(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		ids       []string
+		count     string
+		idsDetail string
+	}{
+		{"none", []string{}, "0", `[]`},
+		{"two", []string{"m0", "m1"}, "2", `["m0","m1"]`},
+		{"an id with a comma", []string{"a1,b2"}, "1", `["a1,b2"]`},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			info := &auditInfo{}
+			r := httptest.NewRequest(http.MethodGet, "/api/v1/messages", nil)
+			r = r.WithContext(context.WithValue(r.Context(), auditKey{}, info))
+			New(Config{}).auditDisclosed(r, tt.ids)
+			if info.detail["messages"] != tt.count || info.detail["messages.ids"] != tt.idsDetail {
+				t.Errorf("detail = %v, want messages %s and messages.ids %s", info.detail, tt.count, tt.idsDetail)
+			}
+		})
 	}
 }
