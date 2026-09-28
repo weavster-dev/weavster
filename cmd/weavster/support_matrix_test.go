@@ -296,11 +296,8 @@ func TestSupportMatrixCodecs(t *testing.T) {
 	var want []string
 	for _, e := range codecs.CoverageMatrix() {
 		tier, ack := "Library-only", "no"
-		switch {
-		case e.Enterprise:
+		if e.Enterprise {
 			tier = "Enterprise-deferred"
-		case e.Server != "":
-			tier = "Implemented (wired)"
 		}
 		if e.Acknowledgment {
 			ack = "yes"
@@ -314,9 +311,10 @@ func TestSupportMatrixCodecs(t *testing.T) {
 	}
 }
 
-// TestSupportMatrixDeliveryKeys keeps the delivery-guarantee table's
-// "Sends idempotency key" column in line with outbox.SemanticsForAdapter:
-// "yes" exactly for adapters that are not plain at-least-once.
+// TestSupportMatrixDeliveryKeys keeps the delivery-guarantee table in line
+// with outbox.SemanticsForAdapter: "Sends idempotency key" is yes exactly
+// for key-sending adapters, and every wired sink's guarantee is stated as
+// at-least-once (no sink is exactly-once).
 func TestSupportMatrixDeliveryKeys(t *testing.T) {
 	data, err := os.ReadFile("../../docs/support-matrix.md")
 	if err != nil {
@@ -341,8 +339,11 @@ func TestSupportMatrixDeliveryKeys(t *testing.T) {
 		}
 		seen++
 		sends := strings.HasPrefix(strings.TrimSpace(cells[5]), "yes")
-		if keyed := outbox.SemanticsForAdapter(adapter) != outbox.SemanticsAtLeastOnce; sends != keyed {
+		if keyed := outbox.SemanticsForAdapter(adapter) == outbox.SemanticsKeySent; sends != keyed {
 			t.Errorf("%s: table says key sent=%v, SemanticsForAdapter says %s", cells[1], sends, outbox.SemanticsForAdapter(adapter))
+		}
+		if strings.TrimSpace(cells[3]) == "wired" && !strings.HasPrefix(strings.TrimSpace(cells[4]), "at-least-once") {
+			t.Errorf("%s: a wired sink's guarantee must start with at-least-once, got %q", cells[1], cells[4])
 		}
 	}
 	if seen != len(adapters) {

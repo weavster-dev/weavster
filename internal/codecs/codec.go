@@ -90,21 +90,22 @@ type CoverageEntry struct {
 	Acknowledgment bool
 	Enterprise     bool
 	Notes          string
-	// Server says where the server uses the codec ("" when only the
-	// library and weavster test do).
+	// Server says how the server itself handles the format, with its own
+	// readers and writers ("" when it does not); the other fields describe
+	// this library codec, which the server does not call.
 	Server string
 }
 
 // CoverageMatrix returns the explicit codec coverage matrix (gap #12).
 func CoverageMatrix() []CoverageEntry {
 	return []CoverageEntry{
-		{Name: "delimited", Versions: "any (configurable delimiter)", Notes: "tab/pipe/comma; optional header", Server: "inputFormat delimited (RFC 4180 quoting)"},
-		{Name: "hl7v2", Versions: "2.x segment/field/component/repetition", Acknowledgment: true, Notes: "MSH/MSA ACK", Server: "inputFormat hl7v2; build format hl7v2; MLLP ACKs"},
-		{Name: "json", Versions: "RFC 8259", Notes: "stdlib encoding/json", Server: "transform input and output (the default)"},
-		{Name: "xml", Versions: "XML 1.0 (XXE-safe)", Notes: "no DTD/external-entity resolution by construction", Server: "inputFormat xml; build format xml"},
+		{Name: "delimited", Versions: "any (configurable delimiter)", Notes: "tab/pipe/comma; optional header", Server: "reads it for transforms (inputFormat delimited): RFC 4180 quoting, one-character delimiter"},
+		{Name: "hl7v2", Versions: "2.x segment/field/component/repetition", Acknowledgment: true, Notes: "MSH/MSA ACK", Server: "reads it for transforms (inputFormat hl7v2), writes it (build format hl7v2), acknowledges MLLP messages"},
+		{Name: "json", Versions: "RFC 8259", Notes: "stdlib encoding/json", Server: "reads and writes it for transforms (the default)"},
+		{Name: "xml", Versions: "XML 1.0 (XXE-safe)", Notes: "no DTD/external-entity resolution by construction", Server: "reads it for transforms (inputFormat xml), writes it (build format xml)"},
 		{Name: "x12", Versions: "ISA/GS/ST envelope", Acknowledgment: true, Notes: "997 functional acknowledgment"},
 		{Name: "ncpdp", Versions: "Telecommunication (FS/GS/RS delimiters)", Notes: "fixed-width amount formatting; response limited"},
-		{Name: "raw", Versions: "any binary", Notes: "passthrough", Server: "flows without transforms pass messages through"},
+		{Name: "raw", Versions: "any binary", Notes: "passthrough", Server: "passes messages through unchanged (flows without transforms)"},
 		{Name: "dicom", Enterprise: true, Notes: "requires a licensed library; interface stub only (gap #12)"},
 	}
 }
