@@ -140,6 +140,9 @@ func (s *portSources) start(id string, src gateway.FlowSource) {
 	delete(s.failed, id)
 	l := &sourceListener{src: src, port: port}
 	if src.Type == "mllp" {
+		if tlsCfg != nil {
+			ln = tls.NewListener(ln, tlsCfg) // MLLP over TLS only (#107 D-71)
+		}
 		srv := adapters.ServeMLLP(ln, mllpHandler(id, s.ingest), adapters.MLLPOptions{
 			MaxFrame: gateway.MaxMessageBytes, IdleTimeout: mllpIdleTimeout, FrameTimeout: mllpFrameTimeout,
 		})
@@ -191,7 +194,7 @@ func serveHTTPSource(id string, src gateway.FlowSource, ln net.Listener, passwor
 }
 
 // listen opens src's port, reads its Basic password from the environment,
-// and loads its certificate (#107 D-58). A secured source whose password
+// and loads its certificate (#107 D-58, D-71). A secured source whose password
 // or certificate is missing stays closed rather than open without.
 func (s *portSources) listen(src gateway.FlowSource, port int) (net.Listener, string, *tls.Config, error) {
 	if name := s.reserved[port]; name != "" {

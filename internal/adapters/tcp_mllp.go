@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -89,6 +90,17 @@ func NewMLLPSinkWith(addr string, timeout time.Duration) *MLLPSink {
 		var d net.Dialer
 		return d.DialContext(ctx, "tcp", addr)
 	}}
+}
+
+// NewMLLPSinkTLS returns an MLLP sink for addr that connects over TLS with
+// cfg; deliveries take at most timeout, as for NewMLLPSinkWith.
+func NewMLLPSinkTLS(addr string, timeout time.Duration, cfg *tls.Config) *MLLPSink {
+	s := NewMLLPSinkWith(addr, timeout)
+	s.dialer = func(ctx context.Context, addr string) (net.Conn, error) {
+		d := tls.Dialer{Config: cfg}
+		return d.DialContext(ctx, "tcp", addr) // includes the handshake
+	}
+	return s
 }
 
 func (s *MLLPSink) Name() string { return "tcp" }

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -1528,7 +1529,7 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 			return pf, fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
 		}
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{
-			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address, Flow: d.Flow,
+			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address, TLS: d.TLS, CAFile: d.CAFile, Flow: d.Flow,
 			Method: d.Method, Timeout: time.Duration(d.TimeoutMs) * time.Millisecond, MaxRedirects: d.MaxRedirects,
 			Stopped: stopped[d.Name], Transform: t, ResponseTransform: rt,
 		})
@@ -1725,9 +1726,37 @@ func newSink(d pipeline.Destination) (pipeline.Sink, error) {
 	case "file":
 		return adapterSink{adapters.NewFileSink(d.Dir)}, nil
 	case "mllp":
-		return adapterSink{adapters.NewMLLPSinkWith(d.Address, d.Timeout)}, nil
+		if !d.TLS {
+			return adapterSink{adapters.NewMLLPSinkWith(d.Address, d.Timeout)}, nil
+		}
+		cfg, err := mllpClientTLS(d)
+		if err != nil {
+			return nil, err
+		}
+		return adapterSink{adapters.NewMLLPSinkTLS(d.Address, d.Timeout, cfg)}, nil
 	}
 	return nil, fmt.Errorf("unsupported destination type %q", d.Type)
+}
+
+// mllpClientTLS verifies an mllp destination's receiver: its certificate
+// against the system's roots, or only CAFile's when set, and its host name
+// (#107 D-71). CAFile is read for each message, so a replaced file takes
+// effect without a restart.
+func mllpClientTLS(d pipeline.Destination) (*tls.Config, error) {
+	host, _, _ := net.SplitHostPort(d.Address) // validated with the flow
+	cfg := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: host}
+	if d.CAFile == "" {
+		return cfg, nil
+	}
+	pem, err := os.ReadFile(d.CAFile)
+	if err != nil {
+		return nil, fmt.Errorf("caFile: %w", err)
+	}
+	cfg.RootCAs = x509.NewCertPool()
+	if !cfg.RootCAs.AppendCertsFromPEM(pem) {
+		return nil, errors.New("caFile: no PEM certificate in the file")
+	}
+	return cfg, nil
 }
 
 // flowErr translates state's flow errors into the gateway's.

@@ -35,7 +35,10 @@ func TestCheckSource(t *testing.T) {
 		{"http port too big", &Source{Type: "http", Address: ":70000"}, "port from 1 to 65535"},
 		{"mllp", &Source{Type: "mllp", Address: ":2575"}, ""},
 		{"mllp without port", &Source{Type: "mllp", Address: "localhost"}, "source.address must be host:port"},
-		{"mllp with TLS fields", &Source{Type: "mllp", Address: ":2575", CertFile: "/c", KeyFile: "/k"}, "takes only type and address"},
+		{"mllp with TLS", &Source{Type: "mllp", Address: ":2575", CertFile: "/c", KeyFile: "/k"}, ""},
+		{"mllp cert without key", &Source{Type: "mllp", Address: ":2575", CertFile: "/c"}, "go together"},
+		{"mllp relative key", &Source{Type: "mllp", Address: ":2575", CertFile: "/c", KeyFile: "k"}, "must be absolute paths"},
+		{"mllp with a path", &Source{Type: "mllp", Address: ":2575", Path: "/x"}, "takes only type, address, certFile, and keyFile"},
 		{"http secured", &Source{Type: "http", Address: ":9001", Username: "lab", PasswordEnv: "WEAVSTER_SOURCE_LAB", CertFile: "/tls/c.pem", KeyFile: "/tls/k.pem"}, ""},
 		{"http user without password", &Source{Type: "http", Address: ":9001", Username: "lab"}, "go together"},
 		{"http password without user", &Source{Type: "http", Address: ":9001", PasswordEnv: "LAB_PW"}, "go together"},
@@ -62,6 +65,9 @@ func TestCheckSource(t *testing.T) {
 		{`{"id":"a","source":{"type":"mllp","address":":2575"}}`, true},
 		{`{"id":"a","source":{"type":"mllp"}}`, false},
 		{`{"id":"a","source":{"type":"mllp","address":":2575","path":"/x"}}`, false},
+		{`{"id":"a","source":{"type":"mllp","address":":2575","certFile":"/c","keyFile":"/k"}}`, true},
+		{`{"id":"a","source":{"type":"mllp","address":":2575","certFile":"/c"}}`, false},
+		{`{"id":"a","source":{"type":"mllp","address":":2575","username":"lab","passwordEnv":"WEAVSTER_SOURCE_LAB"}}`, false},
 		{`{"id":"a","source":{"type":"http","address":":9001","path":"/adt","method":"PUT"}}`, true},
 		{`{"id":"a","source":{"type":"http"}}`, false},
 		{`{"id":"a","source":{"type":"http","address":":9001","path":"adt"}}`, false},
@@ -193,6 +199,11 @@ func TestCheckDestinations(t *testing.T) {
 		{Destination{Name: "a", Type: "file", Dir: "out"}, `destination a: dir must be an absolute path, got "out"`},
 		{Destination{Name: "a", Type: "file", Dir: "../etc"}, "must be an absolute path"},
 		{Destination{Name: "a", Type: "http", URL: "https://x"}, ""},
+		{Destination{Name: "a", Type: "mllp", TLS: true}, ""},
+		{Destination{Name: "a", Type: "mllp", TLS: true, CAFile: "/tls/ca.pem"}, ""},
+		{Destination{Name: "a", Type: "mllp", CAFile: "/tls/ca.pem"}, "caFile needs tls: true"},
+		{Destination{Name: "a", Type: "mllp", TLS: true, CAFile: "ca.pem"}, "caFile must be an absolute path"},
+		{Destination{Name: "a", Type: "http", URL: "https://x", TLS: true}, "apply only to mllp destinations"},
 	} {
 		err := CheckDestinations(Flow{Destinations: []Destination{tt.dest}})
 		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {

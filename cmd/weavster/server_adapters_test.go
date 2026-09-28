@@ -5,7 +5,9 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -389,5 +391,36 @@ func TestFlowSink(t *testing.T) {
 	}
 	if _, err := (&sinkFactory{}).build(pipeline.Destination{Type: "ftp"}); err == nil {
 		t.Error("an unknown type built a sink")
+	}
+}
+
+// TestMLLPClientTLS: an mllp destination verifies its receiver's host name,
+// against caFile's certificates when set; an unreadable caFile or one
+// without a certificate fails the delivery.
+func TestMLLPClientTLS(t *testing.T) {
+	dir := t.TempDir()
+	certFile, keyFile, _ := selfSignedCert(t, dir)
+	for _, tt := range []struct {
+		name, caFile, want string
+		roots              bool
+	}{
+		{"system roots", "", "", false},
+		{"caFile", certFile, "", true},
+		{"missing caFile", filepath.Join(dir, "none.pem"), "caFile:", false},
+		{"caFile without a certificate", keyFile, "no PEM certificate", false},
+	} {
+		cfg, err := mllpClientTLS(pipeline.Destination{Type: "mllp", Address: "lab.example:2575", TLS: true, CAFile: tt.caFile})
+		switch {
+		case (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)):
+			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
+		case err == nil && (cfg.ServerName != "lab.example" || (cfg.RootCAs != nil) != tt.roots):
+			t.Errorf("%s: ServerName %q, roots %v", tt.name, cfg.ServerName, cfg.RootCAs != nil)
+		}
+	}
+	if _, err := newSink(pipeline.Destination{Type: "mllp", Address: "lab:2575", TLS: true, CAFile: filepath.Join(dir, "none.pem")}); err == nil {
+		t.Error("newSink with a missing caFile: want error")
+	}
+	if _, err := newSink(pipeline.Destination{Type: "mllp", Address: "lab:2575", TLS: true}); err != nil {
+		t.Errorf("newSink over TLS: %v", err)
 	}
 }
