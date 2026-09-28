@@ -775,17 +775,22 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'PASSWORD' -s smoke.txt
 <p>There are <strong>no</strong> OIDC/SAML, OPA/Cedar, SIEM, Kubernetes, Redis/NATS, or object-storage stubs.
 Those are Enterprise items with no code in the source tree.</p>
 <h2 id="codecs">Codecs</h2>
-<p>Codecs are library-only except HL7 v2, XML, and delimited text. The server reads HL7 v2
-messages, XML documents, and delimited text for transforms (<a href="../processing-messages/#transform-hl7-v2-messages"><code>inputFormat</code></a>) and
-acknowledges messages an <a href="../processing-messages/#receive-hl7-v2-over-mllp">mllp source</a> receives;
-transform output is always JSON. You can exercise the codecs with <code>weavster test</code>,
-which covers HL7 v2, JSON, XML, and raw.</p>
+<p>The codecs below are libraries (tier, versions, and notes describe them); you can exercise them
+with <code>weavster test</code>, which covers HL7 v2, JSON, XML, and raw. The server handles HL7 v2, XML,
+delimited text, JSON, and raw bytes with its own readers and writers, as the "Server use" column
+says: to read messages for transforms
+(<a href="../processing-messages/#transform-hl7-v2-messages"><code>inputFormat</code></a>), to write
+<a href="../processing-messages/#build-the-output-build"><code>build</code></a> output, and to acknowledge messages an
+<a href="../processing-messages/#receive-hl7-v2-over-mllp">mllp source</a> receives. Where they differ, the
+processing docs describe the server's behavior; for example the server's delimited reader
+handles RFC 4180 quoting, which the library codec does not.</p>
 <!-- codec-table: every cell is checked against codecs.CoverageMatrix() by TestSupportMatrixCodecs -->
 <table>
 <thead>
 <tr>
 <th>Codec</th>
 <th>Tier</th>
+<th>Server use</th>
 <th>Versions / segments</th>
 <th>Acknowledgment</th>
 <th>Notes</th>
@@ -795,6 +800,7 @@ which covers HL7 v2, JSON, XML, and raw.</p>
 <tr>
 <td><code>delimited</code></td>
 <td>Library-only</td>
+<td>reads it for transforms (inputFormat delimited): RFC 4180 quoting, one-character delimiter</td>
 <td>any (configurable delimiter)</td>
 <td>no</td>
 <td>tab/pipe/comma; optional header</td>
@@ -802,6 +808,7 @@ which covers HL7 v2, JSON, XML, and raw.</p>
 <tr>
 <td><code>hl7v2</code></td>
 <td>Library-only</td>
+<td>reads it for transforms (inputFormat hl7v2), writes it (build format hl7v2), acknowledges MLLP messages</td>
 <td>2.x segment/field/component/repetition</td>
 <td>yes</td>
 <td>MSH/MSA ACK</td>
@@ -809,6 +816,7 @@ which covers HL7 v2, JSON, XML, and raw.</p>
 <tr>
 <td><code>json</code></td>
 <td>Library-only</td>
+<td>reads and writes it for transforms (the default)</td>
 <td>RFC 8259</td>
 <td>no</td>
 <td>stdlib encoding/json</td>
@@ -816,6 +824,7 @@ which covers HL7 v2, JSON, XML, and raw.</p>
 <tr>
 <td><code>xml</code></td>
 <td>Library-only</td>
+<td>reads it for transforms (inputFormat xml), writes it (build format xml)</td>
 <td>XML 1.0 (XXE-safe)</td>
 <td>no</td>
 <td>no DTD/external-entity resolution by construction</td>
@@ -823,6 +832,7 @@ which covers HL7 v2, JSON, XML, and raw.</p>
 <tr>
 <td><code>x12</code></td>
 <td>Library-only</td>
+<td></td>
 <td>ISA/GS/ST envelope</td>
 <td>yes</td>
 <td>997 functional acknowledgment</td>
@@ -830,6 +840,7 @@ which covers HL7 v2, JSON, XML, and raw.</p>
 <tr>
 <td><code>ncpdp</code></td>
 <td>Library-only</td>
+<td></td>
 <td>Telecommunication (FS/GS/RS delimiters)</td>
 <td>no</td>
 <td>fixed-width amount formatting; response limited</td>
@@ -837,6 +848,7 @@ which covers HL7 v2, JSON, XML, and raw.</p>
 <tr>
 <td><code>raw</code></td>
 <td>Library-only</td>
+<td>passes messages through unchanged (flows without transforms)</td>
 <td>any binary</td>
 <td>no</td>
 <td>passthrough</td>
@@ -844,6 +856,7 @@ which covers HL7 v2, JSON, XML, and raw.</p>
 <tr>
 <td><code>dicom</code></td>
 <td>Enterprise-deferred</td>
+<td></td>
 <td></td>
 <td>no</td>
 <td>requires a licensed library; interface stub only (gap #12)</td>
@@ -854,9 +867,9 @@ which covers HL7 v2, JSON, XML, and raw.</p>
 <p>A failed destination is retried until <code>delivery.maxAttempts</code> (then <code>dead-lettered</code>), so wired
 destinations are at-least-once: an attempt whose response was lost is sent again. The HTTP
 destination sends the same <code>Idempotency-Key</code> on every attempt, so a receiver that honors it
-sees each message once. Rows marked "library" describe adapters the server does not use yet. The
-outbox library's <code>SemanticsForAdapter</code> labels non-TCP sinks "exactly-once", but that label is
-not yet true.</p>
+sees each message once. Rows marked "library" describe adapters the server does not use yet. No
+destination is exactly-once (that is deferred from the MVP); HTTP is the only one that gives the
+receiver a key to drop repeats with.</p>
 <table>
 <thead>
 <tr>
@@ -877,7 +890,7 @@ not yet true.</p>
 </tr>
 <tr>
 <td>HTTP</td>
-<td>library</td>
+<td>wired</td>
 <td>wired</td>
 <td>at-least-once; effectively once when the receiver honors <code>Idempotency-Key</code></td>
 <td>yes: <code>Idempotency-Key</code> header, the same for every attempt</td>
