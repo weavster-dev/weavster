@@ -58,6 +58,9 @@ type Destination struct {
 	// CAFile's certificates instead of the system's when set.
 	TLS    bool
 	CAFile string
+	// FrameStart, FrameEnd (hex), and AckMode set an mllp destination's
+	// framing and whether it waits for ACKs.
+	FrameStart, FrameEnd, AckMode string
 	// Method, Timeout, and MaxRedirects shape http requests (zero: defaults).
 	Method       string
 	Timeout      time.Duration

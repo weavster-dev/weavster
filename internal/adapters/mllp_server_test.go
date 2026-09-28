@@ -224,3 +224,66 @@ func TestMLLPServerTLS(t *testing.T) {
 		t.Errorf("a client that never shakes hands: %v after %s", err, time.Since(start))
 	}
 }
+
+// TestMLLPFraming: other start and end bytes delimit frames, a one-byte end
+// ends the frame at once, and a lone first end byte inside the message is
+// kept.
+func TestMLLPFraming(t *testing.T) {
+	for _, tt := range []struct {
+		name, in string
+		f        MLLPFraming
+		want     []string
+	}{
+		{"default", "\x0bone\x1c\r\x0btwo\x1c\r", MLLPFraming{}, []string{"one", "two"}},
+		{"one end byte", "\x02one\x03junk\x02two\x03", MLLPFraming{Start: 0x02, End: []byte{0x03}}, []string{"one", "two"}},
+		{"two end bytes", "\x02a\x03b\x03\n", MLLPFraming{Start: 0x02, End: []byte{0x03, '\n'}}, []string{"a\x03b"}},
+	} {
+		r := bufio.NewReader(strings.NewReader(tt.in))
+		var got []string
+		for {
+			frame, err := readFramed(r, 100, tt.f)
+			if err != nil {
+				break
+			}
+			got = append(got, string(frame))
+		}
+		if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
+		}
+		if w := tt.f.wrap([]byte("x")); string(w[1:2]) != "x" || (len(tt.f.End) > 0 && !bytes.HasSuffix(w, tt.f.End)) {
+			t.Errorf("%s: wrap = %q", tt.name, w)
+		}
+	}
+	if _, err := readFramed(bufio.NewReader(strings.NewReader("\x02"+strings.Repeat("x", 200)+"\x03")), 100, MLLPFraming{Start: 0x02, End: []byte{0x03}}); !errors.Is(err, ErrMLLPFrameTooLarge) {
+		t.Errorf("an oversize frame with a one-byte end: %v", err)
+	}
+}
+
+// TestMLLPServerNoReply: with NoReply the handler runs for every frame but
+// nothing is written back.
+func TestMLLPServerNoReply(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handled := make(chan string, 2)
+	f := MLLPFraming{Start: 0x02, End: []byte{0x03}}
+	srv := ServeMLLP(ln, func(frame []byte, _ error) []byte { handled <- string(frame); return []byte("ack") },
+		MLLPOptions{MaxFrame: 100, IdleTimeout: time.Minute, FrameTimeout: time.Minute, Framing: f, NoReply: true})
+	defer func() { _ = srv.Close() }()
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_, _ = conn.Write(append(f.wrap([]byte("one")), f.wrap([]byte("two"))...))
+	for _, want := range []string{"one", "two"} {
+		if got := <-handled; got != want {
+			t.Errorf("handled %q, want %q", got, want)
+		}
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	if n, _ := conn.Read(make([]byte, 10)); n != 0 {
+		t.Errorf("a reply was sent (%d bytes)", n)
+	}
+}

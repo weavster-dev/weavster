@@ -1343,13 +1343,13 @@ components:
     FlowSource:
       example: {"type": "file", "dir": "/var/lib/weavster/in/adt", "pattern": "*.json", "pollIntervalMs": 1000, "moveTo": "/var/lib/weavster/done/adt"}
       type: object
-      description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs, and moveTo; an http source takes address, path, method, username with passwordEnv, certFile with keyFile, and readTimeoutMs; an mllp source takes address and certFile with keyFile."
+      description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs, and moveTo; an http source takes address, path, method, username with passwordEnv, certFile with keyFile, and readTimeoutMs; an mllp source takes address, certFile with keyFile, frameStart, frameEnd, and ackMode."
       required: [type]
       additionalProperties: false
       oneOf:
         - required: [dir]
           properties: {type: {enum: [file]}}
-          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}]}
+          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
         - required: [address]
           properties: {type: {enum: [mllp]}}
           not:
@@ -1375,6 +1375,9 @@ components:
               - {required: [pollIntervalMs]}
               - {required: [moveTo]}
               - {required: [recursive]}
+              - {required: [frameStart]}
+              - {required: [frameEnd]}
+              - {required: [ackMode]}
               - {required: [username], not: {required: [passwordEnv]}}
               - {required: [passwordEnv], not: {required: [username]}}
               - {required: [certFile], not: {required: [keyFile]}}
@@ -1394,16 +1397,19 @@ components:
         certFile: {type: string, minLength: 1, description: "http, mllp: absolute path of the PEM certificate chain; the port serves HTTPS or MLLP over TLS only (with keyFile)"}
         readTimeoutMs: {type: integer, minimum: 1000, maximum: 600000, description: "http: time allowed to read one request (default 60000)"}
         keyFile: {type: string, minLength: 1, description: "http, mllp: absolute path of the PEM private key (with certFile)"}
+        frameStart: {type: string, pattern: "^[0-9A-Fa-f]{2}$", description: "mllp: byte before each message, in hex (default 0B, MLLP's VT)"}
+        frameEnd: {type: string, pattern: "^([0-9A-Fa-f]{2}){1,2}$", description: "mllp: one or two bytes after each message, in hex (default 1C0D, MLLP's FS CR)"}
+        ackMode: {type: string, enum: [original, none], description: "mllp: original (default): answer each message with an HL7 ACK; none: send no reply"}
     FlowDestination:
       example: {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}
       type: object
       required: [name, type]
-      description: "url, method, and maxRedirects apply to http destinations; dir to file; address, tls, and caFile to mllp; flow (required) to flow; timeoutMs to http and mllp."
+      description: "url, method, and maxRedirects apply to http destinations; dir to file; address, tls, caFile, frameStart, frameEnd, and ackMode to mllp; flow (required) to flow; timeoutMs to http and mllp."
       anyOf:
         - properties: {type: {enum: [http]}}
-          not: {anyOf: [{required: [address]}, {required: [dir]}, {required: [flow]}, {required: [tls]}, {required: [caFile]}]}
+          not: {anyOf: [{required: [address]}, {required: [dir]}, {required: [flow]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
         - properties: {type: {enum: [file]}}
-          not: {anyOf: [{required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [address]}, {required: [flow]}, {required: [tls]}, {required: [caFile]}]}
+          not: {anyOf: [{required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [address]}, {required: [flow]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
         - properties: {type: {enum: [mllp]}}
           not:
             anyOf:
@@ -1415,7 +1421,7 @@ components:
               - {required: [caFile], not: {required: [tls], properties: {tls: {enum: [true]}}}}
         - properties: {type: {enum: [flow]}}
           required: [flow]
-          not: {anyOf: [{required: [url]}, {required: [dir]}, {required: [address]}, {required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [tls]}, {required: [caFile]}]}
+          not: {anyOf: [{required: [url]}, {required: [dir]}, {required: [address]}, {required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
       properties:
         name: {type: string}
         type: {type: string, enum: [file, http, mllp, flow]}
@@ -1424,6 +1430,9 @@ components:
         address: {type: string, description: "mllp: host:port to deliver HL7 v2 to"}
         tls: {type: boolean, description: "mllp: connect over TLS, verifying the receiver's certificate and host name (default false)"}
         caFile: {type: string, minLength: 1, description: "mllp with tls: absolute path of the PEM CA certificates trusted instead of the system's"}
+        frameStart: {type: string, pattern: "^[0-9A-Fa-f]{2}$", description: "mllp: byte before each message, in hex (default 0B, MLLP's VT)"}
+        frameEnd: {type: string, pattern: "^([0-9A-Fa-f]{2}){1,2}$", description: "mllp: one or two bytes after each message, in hex (default 1C0D, MLLP's FS CR)"}
+        ackMode: {type: string, enum: [original, none], description: "mllp: original (default): wait for the receiver's HL7 ACK; none: delivered once written"}
         flow: {type: string, description: "flow: id of the flow to hand messages to"}
         method: {type: string, enum: [POST, PUT, PATCH], description: "http: request method (default POST)"}
         timeoutMs: {type: integer, minimum: 1000, maximum: 120000, description: "http, mllp: time allowed for one delivery, including the response or ACK (default 30000)"}

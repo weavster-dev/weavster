@@ -79,11 +79,13 @@ func firstSegment(frame []byte) []byte {
 	return frame
 }
 
-// withoutFraming drops MLLP's start and end bytes from seg, so values the
-// ACK echoes from it can never end the ACK's frame early.
+// withoutFraming drops control bytes other than tab from seg (a first
+// segment has no line breaks), so values the ACK echoes from it can never
+// end the ACK's frame early, whatever the source's framing (#107 D-72: its
+// start and first end byte are such control bytes).
 func withoutFraming(seg []byte) []byte {
 	return bytes.Map(func(r rune) rune {
-		if r == 0x0b || r == 0x1c {
+		if (r < 0x20 && r != '\t') || r == 0x7f {
 			return -1
 		}
 		return r

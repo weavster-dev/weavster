@@ -71,7 +71,7 @@ func TestMLLPSinkACK(t *testing.T) {
 	if err := NewMLLPSink("127.0.0.1:1").Write(context.Background(), Message{Body: []byte(msg)}); err == nil {
 		t.Error("delivery to a closed port succeeded")
 	}
-	if err := NewMLLPSink("127.0.0.1:1").Write(context.Background(), Message{Body: []byte("MSH|^~\\&|A\x1c\rPID|1")}); err == nil || !strings.Contains(err.Error(), "MLLP end bytes") {
+	if err := NewMLLPSink("127.0.0.1:1").Write(context.Background(), Message{Body: []byte("MSH|^~\\&|A\x1c\rPID|1")}); err == nil || !strings.Contains(err.Error(), "end bytes (1C0D)") {
 		t.Errorf("a body with FS CR: %v", err)
 	}
 	// Cancelling the caller stops the wait for the ACK at once.
@@ -131,5 +131,46 @@ func TestMLLPSinkTLS(t *testing.T) {
 				t.Errorf("the receiver read a frame: %v", read)
 			}
 		})
+	}
+}
+
+// TestMLLPSinkMode: a sink with other framing sends and reads the ACK in
+// it; without ACKs a written message is delivered.
+func TestMLLPSinkMode(t *testing.T) {
+	msg := "MSH|^~\\&|A|B|C|D|1||ADT^A01|C1|P|2.5\rPID|1\r"
+	f := MLLPFraming{Start: 0x02, End: []byte{0x03}}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	got := make(chan string, 2)
+	go func() {
+		for i := 0; i < 2; i++ {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			frame, err := readFramed(bufio.NewReader(conn), 1<<20, f)
+			got <- string(frame)
+			if err == nil && i == 0 {
+				_, _ = conn.Write(f.wrap([]byte("MSH|^~\\&|C|D|A|B|2||ACK^A01|X|P|2.5\rMSA|AA|C1\r")))
+			}
+			_ = conn.Close()
+		}
+	}()
+	if err := NewMLLPSinkWith(ln.Addr().String(), 5*time.Second).WithMode(f, false).Write(context.Background(), Message{Body: []byte(msg)}); err != nil {
+		t.Errorf("framed delivery: %v", err)
+	}
+	if err := NewMLLPSinkWith(ln.Addr().String(), 5*time.Second).WithMode(f, true).Write(context.Background(), Message{Body: []byte(msg)}); err != nil {
+		t.Errorf("delivery without an ACK: %v", err)
+	}
+	for i := 0; i < 2; i++ {
+		if m := <-got; m != msg {
+			t.Errorf("received %q", m)
+		}
+	}
+	if err := NewMLLPSink("127.0.0.1:1").WithMode(f, true).Write(context.Background(), Message{Body: []byte("a\x03b")}); err == nil || !strings.Contains(err.Error(), "end bytes (03)") {
+		t.Errorf("a body with the end byte: %v", err)
 	}
 }

@@ -220,6 +220,30 @@
               ],
               "minLength": 1,
               "description": "Absolute path of the PEM private key (with certFile)"
+            },
+            "frameStart": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9A-Fa-f]{2}$",
+              "description": "Byte before each message, in hex (default 0B, MLLP's VT)"
+            },
+            "frameEnd": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^([0-9A-Fa-f]{2}){1,2}$",
+              "description": "One or two bytes after each message, in hex (default 1C0D, MLLP's FS CR)"
+            },
+            "ackMode": {
+              "enum": [
+                "original",
+                "none",
+                null
+              ],
+              "description": "original (default): answer each message with an HL7 ACK; none: send no reply"
             }
           },
           "dependentRequired": {
@@ -403,6 +427,30 @@
           "minLength": 1,
           "description": "mllp with tls: absolute path of the PEM CA certificates trusted instead of the system's"
         },
+        "frameStart": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9A-Fa-f]{2}$",
+          "description": "mllp: byte before each message, in hex (default 0B, MLLP's VT)"
+        },
+        "frameEnd": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([0-9A-Fa-f]{2}){1,2}$",
+          "description": "mllp: one or two bytes after each message, in hex (default 1C0D, MLLP's FS CR)"
+        },
+        "ackMode": {
+          "enum": [
+            "original",
+            "none",
+            null
+          ],
+          "description": "mllp: original (default): wait for the receiver's HL7 ACK; none: delivered once written"
+        },
         "flow": {
           "type": [
             "string",
@@ -442,6 +490,15 @@
                 "type": "null"
               },
               "caFile": {
+                "type": "null"
+              },
+              "frameStart": {
+                "type": "null"
+              },
+              "frameEnd": {
+                "type": "null"
+              },
+              "ackMode": {
                 "type": "null"
               }
             }
@@ -499,6 +556,15 @@
               },
               "caFile": {
                 "type": "null"
+              },
+              "frameStart": {
+                "type": "null"
+              },
+              "frameEnd": {
+                "type": "null"
+              },
+              "ackMode": {
+                "type": "null"
               }
             }
           }
@@ -538,6 +604,15 @@
                 "type": "null"
               },
               "caFile": {
+                "type": "null"
+              },
+              "frameStart": {
+                "type": "null"
+              },
+              "frameEnd": {
+                "type": "null"
+              },
+              "ackMode": {
                 "type": "null"
               }
             }

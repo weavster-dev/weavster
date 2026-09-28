@@ -1529,7 +1529,8 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 			return pf, fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
 		}
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{
-			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address, TLS: d.TLS, CAFile: d.CAFile, Flow: d.Flow,
+			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address, TLS: d.TLS, CAFile: d.CAFile,
+			FrameStart: d.FrameStart, FrameEnd: d.FrameEnd, AckMode: d.AckMode, Flow: d.Flow,
 			Method: d.Method, Timeout: time.Duration(d.TimeoutMs) * time.Millisecond, MaxRedirects: d.MaxRedirects,
 			Stopped: stopped[d.Name], Transform: t, ResponseTransform: rt,
 		})
@@ -1735,16 +1736,27 @@ func buildSink(d pipeline.Destination, tlsOpts gateway.TLSOptions) (pipeline.Sin
 	case "file":
 		return adapterSink{adapters.NewFileSink(d.Dir)}, nil
 	case "mllp":
-		if !d.TLS {
-			return adapterSink{adapters.NewMLLPSinkWith(d.Address, d.Timeout)}, nil
-		}
-		cfg, err := mllpClientTLS(d, tlsOpts)
+		framing, err := mllpFraming(d.FrameStart, d.FrameEnd)
 		if err != nil {
 			return nil, err
 		}
-		return adapterSink{adapters.NewMLLPSinkTLS(d.Address, d.Timeout, cfg)}, nil
+		sink := adapters.NewMLLPSinkWith(d.Address, d.Timeout)
+		if d.TLS {
+			cfg, err := mllpClientTLS(d, tlsOpts)
+			if err != nil {
+				return nil, err
+			}
+			sink = adapters.NewMLLPSinkTLS(d.Address, d.Timeout, cfg)
+		}
+		return adapterSink{sink.WithMode(framing, d.AckMode == "none")}, nil
 	}
 	return nil, fmt.Errorf("unsupported destination type %q", d.Type)
+}
+
+// mllpFraming is an mllp source's or destination's framing (#107 D-72).
+func mllpFraming(start, end string) (adapters.MLLPFraming, error) {
+	s, e, err := flowdef.MLLPFraming(start, end)
+	return adapters.MLLPFraming{Start: s, End: e}, err
 }
 
 // mllpClientTLS verifies an mllp destination's receiver: its certificate

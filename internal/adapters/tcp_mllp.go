@@ -75,6 +75,8 @@ type MLLPSink struct {
 	addr    string
 	timeout time.Duration
 	dialer  func(ctx context.Context, addr string) (net.Conn, error)
+	framing MLLPFraming
+	noACK   bool
 }
 
 // NewMLLPSink returns an MLLP sink for addr with the default timeout.
@@ -103,14 +105,23 @@ func NewMLLPSinkTLS(addr string, timeout time.Duration, cfg *tls.Config) *MLLPSi
 	return s
 }
 
+// WithMode sets the sink's framing (zero: MLLP's) and whether it waits for
+// an ACK; with noACK a message is delivered once it is written.
+func (s *MLLPSink) WithMode(framing MLLPFraming, noACK bool) *MLLPSink {
+	s.framing, s.noACK = framing, noACK
+	return s
+}
+
 func (s *MLLPSink) Name() string { return "tcp" }
 
 // Write sends m and waits for its ACK: AA or CA delivers it; any other code,
 // a reply that is not an ACK, an ACK for another control id, or no reply
 // in time is an error. Errors name the ACK code, never message content.
+// Without ACKs (WithMode), m is delivered once it is written.
 func (s *MLLPSink) Write(ctx context.Context, m Message) error {
-	if bytes.Contains(m.Body, mllpEnd) {
-		return errors.New("mllp: the message contains the MLLP end bytes (FS CR) and cannot be framed")
+	framing := s.framing.orDefault()
+	if bytes.Contains(m.Body, framing.End) {
+		return fmt.Errorf("mllp: the message contains the frame's end bytes (%X) and cannot be framed", framing.End)
 	}
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
@@ -125,10 +136,13 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 	// A cancelled caller stops a blocked write or ACK read at once.
 	stop := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
 	defer stop()
-	if _, err := conn.Write(frameMLLP(m.Body)); err != nil {
+	if _, err := conn.Write(framing.wrap(m.Body)); err != nil {
 		return err
 	}
-	reply, err := readFrame(bufio.NewReader(conn), maxACKBytes)
+	if s.noACK {
+		return nil
+	}
+	reply, err := readFramed(bufio.NewReader(conn), maxACKBytes, framing)
 	if err != nil {
 		return fmt.Errorf("mllp: no ACK: %w", err)
 	}
