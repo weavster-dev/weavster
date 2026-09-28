@@ -44,6 +44,12 @@
                                 <a href="../server-config/" class="nav-link">Server Configuration</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../production/" class="nav-link">Production Setup</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../limits/" class="nav-link">Capacity and Limits</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../authentication/" class="nav-link">Authentication</a>
                             </li>
                             <li class="nav-item">
@@ -634,6 +640,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Delivery retries with persisted backoff, <code>dead-lettered</code> status, restart recovery</td>
 <td>Implemented (wired)</td>
 <td><code>TestRetryRecoversQueuedMessage</code>, <code>TestQueuedWorkSurvivesRestart</code>, <code>TestDeadLetterAfterMaxAttempts</code>. Dead letters can be listed, requeued, and removed (next row).</td>
+</tr>
+<tr>
+<td>Capacity, limits, and retention documented; secure defaults and a production configuration (HTTPS only, TLS 1.3, durable SQLite store, strict login policy)</td>
+<td>Implemented (wired)</td>
+<td><code>TestProductionExample</code> starts the server from <code>docs/examples/production/weavster-server.yaml</code>. See <a href="../limits/">Capacity and limits</a> and <a href="../production/">Production setup</a>.</td>
 </tr>
 <tr>
 <td>Bounded processing: at most <code>processing.maxConcurrent</code> messages at once across the API and sources; busy senders get <code>503</code> + <code>Retry-After</code> (API, http), <code>AE</code> (mllp), or a later poll (file, database) after <code>processing.waitMs</code></td>

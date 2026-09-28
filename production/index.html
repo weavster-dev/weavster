@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/lookups/">
+        <link rel="canonical" href="https://docs.weavster.dev/production/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Dynamic Lookups - Weavster</title>
+        <title>Production Setup - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -44,7 +44,7 @@
                                 <a href="../server-config/" class="nav-link">Server Configuration</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../production/" class="nav-link">Production Setup</a>
+                                <a href="./" class="nav-link active" aria-current="page">Production Setup</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../limits/" class="nav-link">Capacity and Limits</a>
@@ -83,7 +83,7 @@
                                 <a href="../alerts/" class="nav-link">Alerts</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Dynamic Lookups</a>
+                                <a href="../lookups/" class="nav-link">Dynamic Lookups</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../config-transfer/" class="nav-link">Configuration Export and Import</a>
@@ -118,17 +118,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../alerts/" class="nav-link">
+                                <a rel="prev" href="../server-config/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../config-transfer/" class="nav-link">
+                                <a rel="next" href="../limits/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/lookups.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/production.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -149,17 +149,17 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#dynamic-lookups" class="nav-link">Dynamic lookups</a>
+            <li class="nav-item" data-bs-level="1"><a href="#production-setup" class="nav-link">Production setup</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#permissions" class="nav-link">Permissions</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#load-a-group" class="nav-link">Load a group</a>
+            <li class="nav-item" data-bs-level="2"><a href="#secure-defaults" class="nav-link">Secure defaults</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#requests" class="nav-link">Requests</a>
+            <li class="nav-item" data-bs-level="2"><a href="#a-production-configuration" class="nav-link">A production configuration</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#checklist" class="nav-link">Checklist</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -170,82 +170,107 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="dynamic-lookups">Dynamic lookups</h1>
-<p>A <strong>lookup group</strong> is a named table of text keys and text values: facility codes to names,
-local codes to standard ones, and similar. Groups are stored with the flows (durable with
-<code>store.dialect: sqlite</code>) and managed over the API.</p>
-<p>!!! note "Stored, not used by flows yet"
-    Flows cannot read lookups yet. Today these endpoints store and serve them.</p>
-<h2 id="permissions">Permissions</h2>
-<p>Reading (list, match, get, batch, exists) needs <code>lookups:view</code>; changing (import, put, delete)
-needs <code>lookups:edit</code>.</p>
-<h2 id="load-a-group">Load a group</h2>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
-  http://127.0.0.1:8080/api/v1/lookups/facility/import \
-  -d '{&quot;LAB-01&quot;:&quot;Central Lab&quot;,&quot;LAB-02&quot;:&quot;North Lab&quot;,&quot;RAD 01&quot;:&quot;Radiology&quot;}'
-</code></pre>
-<pre><code class="language-json">{&quot;imported&quot;:3}
-</code></pre>
-<p>The body is a JSON object of key to text value. Entries are created or replaced, all or nothing;
-other entries stay. Add <code>?replace=true</code> to make the body the whole group.</p>
+<h1 id="production-setup">Production setup</h1>
+<p>What the server does by default to stay safe, and a configuration for running it in production.</p>
+<h2 id="secure-defaults">Secure defaults</h2>
+<p>Without any configuration the server:</p>
 <ul>
-<li>Group names are 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>.</li>
-<li>Keys are 1–512 characters of any text except control characters, <code>/</code> included. URL-encode
-  them in paths (<code>RAD%2001</code>, <code>ICD%2F10</code>).</li>
-<li>Values are text of at most 64 KiB. A group exists while it has entries.</li>
+<li>listens only on <code>127.0.0.1:8080</code>, so nothing outside the machine can reach it until you set
+  <code>listen.address</code> or <code>listen.tlsAddress</code>;</li>
+<li>requires the <code>X-Weavster-CSRF</code> header on every API call (<code>listen.requireMarkerHeader: true</code>), so
+  a web page cannot make a browser call it;</li>
+<li>has no default credentials: the first <code>admin</code> password comes from
+  <code>WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD</code> or <code>WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE</code>, or is generated
+  and printed once; a generated password must be changed at the first login, a password you
+  provide is not forced to change (change it yourself, see the checklist and
+  <a href="../authentication/">Authentication</a>);</li>
+<li>enforces a password policy (8 characters with upper case, lower case, and a digit) and locks an
+  account for 5 minutes after 5 failed logins;</li>
+<li>accepts TLS 1.2 or later only, with modern cipher suites, when HTTPS is on;</li>
+<li>never follows HTTP redirects to a destination unless <code>maxRedirects</code> allows it, and never from
+  <code>https</code> to <code>http</code>;</li>
+<li>verifies the certificate of every <code>https://</code> http destination and every mllp destination with
+  <code>tls: true</code>, with no option to skip the check (database connections use TLS as their connection
+  string's <code>sslmode</code> says: use <code>sslmode=verify-full</code>);</li>
+<li>reads secrets used by flows only from environment variables whose names start with
+  <code>WEAVSTER_SOURCE_</code> or <code>WEAVSTER_DB_</code>, never from the flow definitions;</li>
+<li>refuses to run as root unless <code>WEAVSTER_ALLOW_ROOT=1</code> is set.</li>
 </ul>
-<h2 id="requests">Requests</h2>
-<table>
-<thead>
-<tr>
-<th>Request</th>
-<th>What it does</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>GET /api/v1/lookups</code></td>
-<td>Every group with its number of entries: <code>[{"name":"facility","entries":3}]</code>.</td>
-</tr>
-<tr>
-<td><code>GET /api/v1/lookups/{group}?prefix=LAB-&amp;limit=100</code></td>
-<td>Entries whose key starts with <code>prefix</code> (all without it), the first <code>limit</code> (1–10000, default 1000) in key order, as <code>{key: value}</code>.</td>
-</tr>
-<tr>
-<td><code>GET /api/v1/lookups/{group}/{key}</code></td>
-<td>One entry: <code>{"key":…,"value":…}</code>, or <code>404</code>.</td>
-</tr>
-<tr>
-<td><code>GET /api/v1/lookups/{group}/{key}/exists</code></td>
-<td><code>{"exists": true}</code> or <code>{"exists": false}</code> (never <code>404</code>).</td>
-</tr>
-<tr>
-<td><code>POST /api/v1/lookups/{group}/batch</code></td>
-<td>Body <code>{"keys": [...]}</code> (1–1000 keys): <code>{"found": {key: value}, "missing": [keys]}</code>.</td>
-</tr>
-<tr>
-<td><code>PUT /api/v1/lookups/{group}/{key}</code></td>
-<td>Body <code>{"value": "text"}</code>: creates or replaces one entry.</td>
-</tr>
-<tr>
-<td><code>DELETE /api/v1/lookups/{group}/{key}</code></td>
-<td>Deletes one entry (<code>204</code>, or <code>404</code>).</td>
-</tr>
-<tr>
-<td><code>DELETE /api/v1/lookups/{group}</code></td>
-<td>Deletes the whole group (<code>204</code>, or <code>404</code> when it has no entries).</td>
-</tr>
-<tr>
-<td><code>POST /api/v1/lookups/{group}/import[?replace=true]</code></td>
-<td>Stores many entries, as above.</td>
-</tr>
-</tbody>
-</table>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
-  http://127.0.0.1:8080/api/v1/lookups/facility/batch -d '{&quot;keys&quot;:[&quot;LAB-01&quot;,&quot;XX&quot;]}'
+<h2 id="a-production-configuration">A production configuration</h2>
+<p>HTTPS only with TLS 1.3, a durable SQLite store, a stricter login policy, and more retries.
+(PostgreSQL is not supported as the server's store; see the
+<a href="../support-matrix/">support matrix</a>. Flows can already read and write PostgreSQL databases.) This is the file
+<a href="https://github.com/weavster-dev/weavster/blob/main/docs/examples/production/weavster-server.yaml"><code>docs/examples/production/weavster-server.yaml</code></a>
+from the repository, which a test starts the server from:</p>
+<pre><code class="language-yaml"># Production server configuration: HTTPS only, a durable store, strict login
+# policy. See docs/production.md. Secrets are not in this file: the first admin
+# password comes from WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE, and flow
+# connection strings from WEAVSTER_DB_* / WEAVSTER_SOURCE_* variables.
+listen:
+  address: &quot;&quot;                  # no cleartext listener
+  tlsAddress: 0.0.0.0:8443
+  requireMarkerHeader: true    # the X-Weavster-CSRF header (CSRF protection)
+  shutdownTimeoutMs: 30000
+tls:
+  certFile: /etc/weavster/tls/server.crt
+  keyFile: /etc/weavster/tls/server.key
+  minVersion: &quot;1.3&quot;
+store:
+  dialect: sqlite              # durable; the file is /var/lib/weavster/weavster.db
+paths:
+  dataDir: /var/lib/weavster
+auth:
+  passwordPolicy:
+    minLength: 14
+    minUpper: 1
+    minLower: 1
+    minNumeric: 1
+    minSpecial: 1
+  lockout:
+    retryLimit: 5
+    lockoutPeriodSeconds: 900
+delivery:
+  maxAttempts: 10
+  backoffBaseMs: 2000
+  retryIntervalMs: 1000
+processing:
+  maxConcurrent: 64
+  waitMs: 5000
+flows:
+  deployOnStartup: true
+stats:
+  sampleIntervalMs: 60000
+  retentionHours: 168
 </code></pre>
-<pre><code class="language-json">{&quot;found&quot;:{&quot;LAB-01&quot;:&quot;Central Lab&quot;},&quot;missing&quot;:[&quot;XX&quot;]}
-</code></pre></div>
+<p>Keep the secrets out of the file, and start the server with them in its environment:</p>
+<pre><code class="language-bash">export WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE=/run/secrets/weavster-admin-password
+export WEAVSTER_DB_WAREHOUSE=&quot;postgres://loader:$(cat /run/secrets/warehouse-password)@warehouse.internal/dw?sslmode=verify-full&quot;
+weavster server --config /etc/weavster/weavster-server.yaml
+</code></pre>
+<p>Put each database's password in its own <code>WEAVSTER_DB_…</code> connection string. Do not set
+<code>PGPASSWORD</code> for the server: PostgreSQL clients use it for every connection string without a
+password, so it would be sent to every database your flows read and write.</p>
+<p>Clients then call the API over HTTPS with the marker header:</p>
+<pre><code class="language-bash">curl --cacert /etc/weavster/tls/ca.crt -u 'admin:…' -H 'X-Weavster-CSRF: 1' \
+  https://weavster.internal:8443/api/v1/system
+</code></pre>
+<h2 id="checklist">Checklist</h2>
+<ul>
+<li>Give the server a certificate from your CA, set <code>listen.address: ""</code>, and use
+  <code>tls.minVersion: "1.3"</code> when every client supports it.</li>
+<li>Use <code>sslmode=verify-full</code> in every PostgreSQL <code>WEAVSTER_DB_…</code> connection string.</li>
+<li>Back up <code>paths.dataDir</code> (the SQLite store): it holds messages, flows, and users.</li>
+<li>Set <code>WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE</code> for the first start, log in, change the password
+  (a password you provide is not forced to change), remove the file, then create one account per
+  person or system with only the permissions it needs.</li>
+<li>Run as an unprivileged account; keep <code>/etc/weavster</code> and <code>paths.dataDir</code> readable only by it.</li>
+<li>Give flows' http and mllp sources their own certificates (<code>certFile</code>, <code>keyFile</code>) and, for http
+  sources, credentials (<code>username</code>, <code>passwordEnv</code>).</li>
+<li>Collect stderr: it holds the audit log and warnings such as a reached processing limit.</li>
+<li>Plan retention: messages are kept until you remove them (see <a href="../limits/#retention">Capacity and limits</a>).</li>
+<li>Review the limits in <a href="../limits/">Capacity and limits</a>, especially <code>processing.maxConcurrent</code>,
+  <code>delivery.maxAttempts</code>, and each destination's <code>timeoutMs</code>.</li>
+</ul></div>
             </div>
         </div>
 

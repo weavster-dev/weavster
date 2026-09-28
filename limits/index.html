@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/lookups/">
+        <link rel="canonical" href="https://docs.weavster.dev/limits/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Dynamic Lookups - Weavster</title>
+        <title>Capacity and Limits - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -47,7 +47,7 @@
                                 <a href="../production/" class="nav-link">Production Setup</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../limits/" class="nav-link">Capacity and Limits</a>
+                                <a href="./" class="nav-link active" aria-current="page">Capacity and Limits</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../authentication/" class="nav-link">Authentication</a>
@@ -83,7 +83,7 @@
                                 <a href="../alerts/" class="nav-link">Alerts</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Dynamic Lookups</a>
+                                <a href="../lookups/" class="nav-link">Dynamic Lookups</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../config-transfer/" class="nav-link">Configuration Export and Import</a>
@@ -118,17 +118,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../alerts/" class="nav-link">
+                                <a rel="prev" href="../production/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../config-transfer/" class="nav-link">
+                                <a rel="next" href="../authentication/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/lookups.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/limits.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -149,17 +149,25 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#dynamic-lookups" class="nav-link">Dynamic lookups</a>
+            <li class="nav-item" data-bs-level="1"><a href="#capacity-and-limits" class="nav-link">Capacity and limits</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#permissions" class="nav-link">Permissions</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#load-a-group" class="nav-link">Load a group</a>
+            <li class="nav-item" data-bs-level="2"><a href="#messages" class="nav-link">Messages</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#requests" class="nav-link">Requests</a>
+            <li class="nav-item" data-bs-level="2"><a href="#sources" class="nav-link">Sources</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#formats" class="nav-link">Formats</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#api-and-cli" class="nav-link">API and CLI</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#retention" class="nav-link">Retention</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -170,82 +178,271 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="dynamic-lookups">Dynamic lookups</h1>
-<p>A <strong>lookup group</strong> is a named table of text keys and text values: facility codes to names,
-local codes to standard ones, and similar. Groups are stored with the flows (durable with
-<code>store.dialect: sqlite</code>) and managed over the API.</p>
-<p>!!! note "Stored, not used by flows yet"
-    Flows cannot read lookups yet. Today these endpoints store and serve them.</p>
-<h2 id="permissions">Permissions</h2>
-<p>Reading (list, match, get, batch, exists) needs <code>lookups:view</code>; changing (import, put, delete)
-needs <code>lookups:edit</code>.</p>
-<h2 id="load-a-group">Load a group</h2>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
-  http://127.0.0.1:8080/api/v1/lookups/facility/import \
-  -d '{&quot;LAB-01&quot;:&quot;Central Lab&quot;,&quot;LAB-02&quot;:&quot;North Lab&quot;,&quot;RAD 01&quot;:&quot;Radiology&quot;}'
-</code></pre>
-<pre><code class="language-json">{&quot;imported&quot;:3}
-</code></pre>
-<p>The body is a JSON object of key to text value. Entries are created or replaced, all or nothing;
-other entries stay. Add <code>?replace=true</code> to make the body the whole group.</p>
-<ul>
-<li>Group names are 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>.</li>
-<li>Keys are 1–512 characters of any text except control characters, <code>/</code> included. URL-encode
-  them in paths (<code>RAD%2001</code>, <code>ICD%2F10</code>).</li>
-<li>Values are text of at most 64 KiB. A group exists while it has entries.</li>
-</ul>
-<h2 id="requests">Requests</h2>
+<h1 id="capacity-and-limits">Capacity and limits</h1>
+<p>Every limit the server applies, its default, and what happens when it is reached. Limits you can
+change are marked with their configuration key or flow field.</p>
+<h2 id="messages">Messages</h2>
 <table>
 <thead>
 <tr>
-<th>Request</th>
-<th>What it does</th>
+<th>What</th>
+<th>Limit</th>
+<th>At the limit</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>GET /api/v1/lookups</code></td>
-<td>Every group with its number of entries: <code>[{"name":"facility","entries":3}]</code>.</td>
+<td>Message body (API, every source)</td>
+<td>10 MiB</td>
+<td>API and http source <code>413</code>; mllp source <code>AR</code>; file source moves the file to <code>moveTo/rejected</code> (or skips it); database source reports the row as <code>source.database.refused</code> and leaves it unmarked.</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/lookups/{group}?prefix=LAB-&amp;limit=100</code></td>
-<td>Entries whose key starts with <code>prefix</code> (all without it), the first <code>limit</code> (1–10000, default 1000) in key order, as <code>{key: value}</code>.</td>
+<td>Messages processed at once</td>
+<td>32 — <code>processing.maxConcurrent</code> (1–10000)</td>
+<td>A new message waits up to <code>processing.waitMs</code> (default 5000, up to 60000), then is refused as busy: API/http <code>503</code> + <code>Retry-After: 1</code>, mllp <code>AE</code>, file and database sources try again a moment later. See <a href="../server-config/#processing"><code>processing</code></a>.</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/lookups/{group}/{key}</code></td>
-<td>One entry: <code>{"key":…,"value":…}</code>, or <code>404</code>.</td>
+<td>Delivery attempts per destination</td>
+<td>5 — <code>delivery.maxAttempts</code> (1–1000)</td>
+<td>The message is <code>dead-lettered</code>; requeue it when the destination is back.</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/lookups/{group}/{key}/exists</code></td>
-<td><code>{"exists": true}</code> or <code>{"exists": false}</code> (never <code>404</code>).</td>
+<td>Retry delay</td>
+<td>1 s — <code>delivery.backoffBaseMs</code>, doubling per attempt, at most 1 minute</td>
+<td>—</td>
 </tr>
 <tr>
-<td><code>POST /api/v1/lookups/{group}/batch</code></td>
-<td>Body <code>{"keys": [...]}</code> (1–1000 keys): <code>{"found": {key: value}, "missing": [keys]}</code>.</td>
+<td>HTTP destination reply</td>
+<td>1 MiB read</td>
+<td>Larger replies still count as delivered; the reply is not stored or used.</td>
 </tr>
 <tr>
-<td><code>PUT /api/v1/lookups/{group}/{key}</code></td>
-<td>Body <code>{"value": "text"}</code>: creates or replaces one entry.</td>
-</tr>
-<tr>
-<td><code>DELETE /api/v1/lookups/{group}/{key}</code></td>
-<td>Deletes one entry (<code>204</code>, or <code>404</code>).</td>
-</tr>
-<tr>
-<td><code>DELETE /api/v1/lookups/{group}</code></td>
-<td>Deletes the whole group (<code>204</code>, or <code>404</code> when it has no entries).</td>
-</tr>
-<tr>
-<td><code>POST /api/v1/lookups/{group}/import[?replace=true]</code></td>
-<td>Stores many entries, as above.</td>
+<td>Destination timeout</td>
+<td>30 s — <code>timeoutMs</code> per http, mllp, or database destination (1000–120000)</td>
+<td>The attempt fails with <code>lastCode</code> <code>net:timeout</code> and is retried.</td>
 </tr>
 </tbody>
 </table>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
-  http://127.0.0.1:8080/api/v1/lookups/facility/batch -d '{&quot;keys&quot;:[&quot;LAB-01&quot;,&quot;XX&quot;]}'
-</code></pre>
-<pre><code class="language-json">{&quot;found&quot;:{&quot;LAB-01&quot;:&quot;Central Lab&quot;},&quot;missing&quot;:[&quot;XX&quot;]}
-</code></pre></div>
+<h2 id="sources">Sources</h2>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Limit</th>
+<th>At the limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>http source request read</td>
+<td>60 s — <code>readTimeoutMs</code> (1000–600000); headers within 10 s</td>
+<td>The connection is closed.</td>
+</tr>
+<tr>
+<td>mllp source connection idle</td>
+<td>5 minutes</td>
+<td>The connection is closed; the sender reconnects.</td>
+</tr>
+<tr>
+<td>mllp source frame</td>
+<td>15 minutes to arrive once started; 10 MiB</td>
+<td>Larger frames are read to their end and answered <code>AR</code>.</td>
+</tr>
+<tr>
+<td>mllp TLS handshake</td>
+<td>30 s</td>
+<td>The connection is closed.</td>
+</tr>
+<tr>
+<td>mllp destination ACK</td>
+<td>1 MiB</td>
+<td><code>mllp:ack-too-large</code>; retried.</td>
+</tr>
+<tr>
+<td>File source files per poll</td>
+<td>100</td>
+<td>The rest are read in back-to-back polls.</td>
+</tr>
+<tr>
+<td>File source recursion</td>
+<td>32 directory levels</td>
+<td>Deeper directories are not read.</td>
+</tr>
+<tr>
+<td>File source settle time</td>
+<td>1 s unchanged before a file is read</td>
+<td>The file is read once it stops changing.</td>
+</tr>
+<tr>
+<td>File source interval</td>
+<td>1 s — <code>pollIntervalMs</code> (100–3600000), or a cron <code>schedule</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Database source rows per poll</td>
+<td>100 — <code>maxRows</code> (1–10000), and at most 64 MiB of row data</td>
+<td>The rest are read in back-to-back polls.</td>
+</tr>
+<tr>
+<td>Database source interval</td>
+<td>5 s — <code>pollIntervalMs</code> (1000–3600000), or a cron <code>schedule</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>Database query or update</td>
+<td>30 s — <code>timeoutMs</code> (1000–120000)</td>
+<td>The poll fails (<code>source.database.failed</code>) and is retried.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="formats">Formats</h2>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Limit</th>
+<th>At the limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>XML nesting / elements</td>
+<td>256 levels / 100,000 elements</td>
+<td>The message is refused as not well-formed XML (<code>400</code>, <code>AR</code>).</td>
+</tr>
+<tr>
+<td>Delimited text</td>
+<td>100,000 rows / 1,000,000 values</td>
+<td>The message is refused as not valid delimited text.</td>
+</tr>
+<tr>
+<td>HL7 v2 versions</td>
+<td>2.1–2.9 (with <code>inputFormat: hl7v2</code>)</td>
+<td>The message is refused (<code>400</code>, <code>AR</code>).</td>
+</tr>
+</tbody>
+</table>
+<h2 id="api-and-cli">API and CLI</h2>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Limit</th>
+<th>At the limit</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Message search page</td>
+<td><code>limit</code> 1–1000 (default 100)</td>
+<td><code>400</code>; use <code>offset</code> for the next page.</td>
+</tr>
+<tr>
+<td>Message archive export / import</td>
+<td>10,000 messages per export; imports up to 100 MiB (512 MiB uncompressed)</td>
+<td><code>400</code> / <code>413</code>.</td>
+</tr>
+<tr>
+<td>Flow import, bulk update, config documents</td>
+<td>50 MiB per request or file</td>
+<td><code>413</code>.</td>
+</tr>
+<tr>
+<td>Config map, scripts, settings bodies</td>
+<td>10 MiB</td>
+<td><code>413</code>.</td>
+</tr>
+<tr>
+<td>User administration bodies</td>
+<td>1 MiB</td>
+<td><code>413</code>.</td>
+</tr>
+<tr>
+<td>Lookup keys / values</td>
+<td>512 characters / 64 KiB</td>
+<td><code>400</code>.</td>
+</tr>
+<tr>
+<td>Lookup batch</td>
+<td>1–1000 keys</td>
+<td><code>400</code>.</td>
+</tr>
+<tr>
+<td>Lookup entries per request</td>
+<td>1000 by default, <code>limit</code> up to 10000</td>
+<td><code>400</code> above 10000.</td>
+</tr>
+<tr>
+<td>Events per request</td>
+<td>1000 by default</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Statistics series</td>
+<td>1000 points per request by default, <code>limit</code> up to 10000</td>
+<td><code>400</code> above 10000.</td>
+</tr>
+<tr>
+<td>Message trends</td>
+<td>1000 buckets per request</td>
+<td><code>400</code>; use a longer interval.</td>
+</tr>
+<tr>
+<td><code>weavster deadletter list</code></td>
+<td>1000 messages per call</td>
+<td>—</td>
+</tr>
+<tr>
+<td>CLI shell and batch-script lines</td>
+<td>1 MiB per line</td>
+<td>The shell stops with an error.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="retention">Retention</h2>
+<table>
+<thead>
+<tr>
+<th>Data</th>
+<th>Where</th>
+<th>Kept</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Messages, their content, metadata, and attempt records</td>
+<td>The store (<code>store.dialect</code>)</td>
+<td>Until you remove them (<code>DELETE /api/v1/messages/{id}</code>, or <a href="../processing-messages/#remove-many-messages">many at once</a>). Nothing is pruned automatically: size your database for your traffic, and remove old messages on a schedule of your own, for example with a nightly <code>DELETE /api/v1/messages?to=…</code>. With <code>memory</code>, until the server stops.</td>
+</tr>
+<tr>
+<td>Flow definitions, users, config items</td>
+<td>The store</td>
+<td>Until changed or removed.</td>
+</tr>
+<tr>
+<td>Events</td>
+<td>Server memory</td>
+<td>The latest 10,000; lost on restart.</td>
+</tr>
+<tr>
+<td>Statistics (current, lifetime)</td>
+<td>Server memory</td>
+<td>Until reset or restart.</td>
+</tr>
+<tr>
+<td>Statistics over time</td>
+<td>Server memory</td>
+<td><code>stats.retentionHours</code> (default 24, up to 8760), at most 100,000 samples per flow and 1,000,000 in all.</td>
+</tr>
+<tr>
+<td>Audit log</td>
+<td>Server stderr</td>
+<td>As long as your log collection keeps it.</td>
+</tr>
+</tbody>
+</table>
+<p>To estimate the store's size, count each message's body several times: the original, the stored
+received form, the transformed output, and a reply when a destination returns one.</p></div>
             </div>
         </div>
 

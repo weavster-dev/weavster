@@ -65,6 +65,10 @@
          <lastmod>2026-09-28</lastmod>
     </url>
     <url>
+         <loc>https://docs.weavster.dev/limits/</loc>
+         <lastmod>2026-09-28</lastmod>
+    </url>
+    <url>
          <loc>https://docs.weavster.dev/lookups/</loc>
          <lastmod>2026-09-28</lastmod>
     </url>
@@ -74,6 +78,10 @@
     </url>
     <url>
          <loc>https://docs.weavster.dev/processing-messages/</loc>
+         <lastmod>2026-09-28</lastmod>
+    </url>
+    <url>
+         <loc>https://docs.weavster.dev/production/</loc>
          <lastmod>2026-09-28</lastmod>
     </url>
     <url>
