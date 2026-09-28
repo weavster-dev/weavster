@@ -148,6 +148,7 @@ Expected output: the `/api/v1/system` JSON document, followed by one line per fl
 |---|---|---|
 | Static `CGO_ENABLED=0` builds for `linux/amd64`, `linux/arm64`, `darwin/arm64` | Implemented (wired) | CI `cross-build` job. No release binaries are published yet. |
 | Distroless non-root container image | Implemented (wired) | CI `docker` job. Build it yourself with `docker build -t weavster .`. No image is published. |
+| Docker Compose for local development: the server with PostgreSQL 16 (`docker-compose.yml`, `docker/weavster.yaml`) | Implemented (wired) | `TestDockerCompose`, CI `compose` job (`scripts/compose-smoke.sh`: a flow survives a server restart). Development credentials only. See [Local development with Docker Compose](docker-compose.md). |
 | Signed releases, `curl \| bash` installer | Unsupported | |
 | Terraform / Pulumi samples (`iac/`) | Library-only | The binary does not read any value the samples emit. |
 
