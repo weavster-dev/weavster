@@ -42,7 +42,8 @@ func Classify(err error) error {
 
 // ErrorCode is err's protocol-specific code: the code a sink attached, or a
 // network or TLS failure's kind ("net:timeout", "net:refused",
-// "net:reset", "net:dns", "tls:certificate"); "" when it has none.
+// "net:reset", "net:dns", "net:connect" for other failed connects,
+// "tls:certificate"); "" when it has none.
 func ErrorCode(err error) string {
 	var c coded
 	if errors.As(err, &c) {
@@ -50,6 +51,7 @@ func ErrorCode(err error) string {
 	}
 	var dns *net.DNSError
 	var ne net.Error
+	var op *net.OpError
 	var unknownCA x509.UnknownAuthorityError
 	var invalid x509.CertificateInvalidError
 	var host x509.HostnameError
@@ -67,6 +69,8 @@ func ErrorCode(err error) string {
 		return "net:reset"
 	case errors.Is(err, context.DeadlineExceeded), errors.As(err, &ne) && ne.Timeout():
 		return "net:timeout"
+	case errors.As(err, &op) && op.Op == "dial":
+		return "net:connect" // unreachable network or host, and other connect failures
 	}
 	return ""
 }
