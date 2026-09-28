@@ -908,6 +908,19 @@ func (p *Pipeline) retryOne(ctx context.Context, m state.Message, lookup FlowLoo
 	if p.opts.Gate != nil {
 		defer p.opts.Gate.ProcessFlow(m.FlowID)()
 	}
+	// m comes from a search page read before this message was claimed: its
+	// first processing may have finished since (and let go of it), so work
+	// only from what is stored now, and leave a finished message alone.
+	latest, err := p.store.Get(ctx, m.ID)
+	if err != nil {
+		return false, err
+	}
+	switch latest.Status {
+	case state.StatusQueued, state.StatusTransformed, state.StatusReceived:
+		m = latest
+	default:
+		return false, nil
+	}
 	f, err := lookup(ctx, m.FlowID)
 	if errors.Is(err, ErrFlowGone) {
 		// No observer call: the flow's counters were cleared on delete.
