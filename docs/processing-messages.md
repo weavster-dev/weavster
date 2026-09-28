@@ -150,16 +150,28 @@ For `MSH|^~\&|LAB|HOSP|W|H|20260927120000||ADT^A01|MSG1|P|2.5` and
 - Fields use HL7 numbers. For MSH, `MSH.9` is MSH-9 (MSH-1, the field separator, is not
   included; MSH-2 holds the encoding characters).
 - A field is an object of its components, even with one component: `PID.8.1`, not `PID.8`.
-  Subcomponents stay in the component's text, with their `&`.
+- A component with subcomponents (`&`) is an object of subcomponent numbers: for
+  `123^^^HOSP&1.2.3&ISO`, `PID.3.4.1` is `HOSP` and `PID.3.4.2` is `1.2.3`. A component
+  without subcomponents is a string (`PID.3.4` is `MRN` above), so check the messages you receive
+  when a component can have both forms.
 - A field that repeats (`~`) shows its first repetition, plus `repetitions` with every
   repetition in order; an empty repetition is `{}`, so positions never shift (`~456` has no
   `PID.3.1`, and `PID.3.repetitions.1.1` is `456`).
 - Escape sequences (`\F\`, `\S\`, `\R\`, `\T\`, `\E\`, written with the message's escape
-  character) are decoded to the message's own delimiters; empty fields and components are left
-  out, so a missing value compares equal to `''`. An escaped `\T\` becomes the subcomponent
-  separator (`&`), so it cannot be told apart from a subcomponent boundary in the text.
-- The message's own delimiters (MSH-1 and MSH-2) are used; line breaks `\n` or `\r\n` between
-  segments are accepted.
+  character) are decoded to the message's own delimiters after the value is split, so an escaped
+  delimiter is text, never a separator: `O\T\BRIEN` is `O&BRIEN`. Other escape sequences
+  (`\X0D\`, `\H\`, `\.br\`, …) are kept as written. Empty fields, components, and
+  subcomponents are left out, so a missing value compares equal to `''`.
+- The message's own delimiters (MSH-1 and MSH-2) are used, for example `MSH#$%!@` for field `#`,
+  component `$`, repetition `%`, escape `!`, and subcomponent `@`; the view is the same as for
+  the standard `|^~\&`. When MSH-2 declares no subcomponent character (`MSH|^~\|`), components
+  are not split into subcomponents; when it declares no escape character either (`MSH|^~|`),
+  nothing is decoded. Batch headers (FHS, BHS) declare delimiters the same way. Line breaks `\n` or `\r\n` between segments are
+  accepted.
+- HL7 v2.1 to 2.9 are read (MSH-12, with a minor release such as `2.5.1`; surrounding spaces are
+  ignored); a message without a version is read too. Any other version is refused: `400` over the API, `AR` over MLLP, with
+  `unsupported HL7 version (MSH-12 must be 2.1 to 2.9)`. A `build` step with `format: hl7v2`
+  must produce a supported version as well.
 - The transform's output is JSON (the view above with your changes), unless it ends with a
   [`build`](#build-the-output-build) step, which can produce HL7 v2 again. A flow without
   transforms delivers the HL7 message unchanged.
@@ -886,7 +898,9 @@ MSA|AA|MSG1
 
 - The ACK swaps the sending and receiving application and facility, carries the time it was made
   (MSH-7), `ACK^<trigger>` (MSH-9), its own control id (MSH-10), and the message's processing id
-  and version; MSA-2 is the message's control id (MSH-10).
+  and version; MSA-2 is the message's control id (MSH-10). The ACK always uses the standard
+  delimiters `|^~\&`; values echoed from a message with other delimiters are rewritten for them
+  (a literal `|` becomes `\F\`). The `source.mllp.controlId` metadata is the decoded control id.
 - `AA`: the message is stored and processed like one sent with the API (same checks, transform,
   delivery, and 10 MiB limit), with the metadata `source.mllp.controlId`. Delivery problems after
   that are retried and do not change the ACK.

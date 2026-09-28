@@ -96,6 +96,7 @@ All notable changes to this project are documented here, following
 - Flow destinations (#333): a destination `{type: flow, flow: <id>}` hands each message to another flow in the same server as a new message of it (`source.flow` and `source.message` metadata); the delivery succeeds once the target stored it. A flow that sends to another depends on it, with the `dependsOn` rules: the target must exist, no cycles, no deleting a target in use, and targets deploy first.
 - MLLP over TLS (#335): an mllp source with `certFile` and `keyFile` accepts MLLP over TLS only (the server's `tls.minVersion`; a source whose certificate cannot load stays closed), and an mllp destination with `tls: true` connects over TLS, verifying the receiver's certificate and host name against the system's roots or only the certificates in `caFile`.
 - MLLP framing and ACK modes (#339): mllp sources and destinations take `frameStart` (one byte, hex, default `0B`) and `frameEnd` (one or two bytes, default `1C0D`) for systems that frame messages differently, and `ackMode: none` for systems that exchange no ACKs (the source replies nothing; the destination counts a written message as delivered).
+- HL7 v2 codec (#341): with `inputFormat: hl7v2`, a component with subcomponents is an object (`PID.3.4.2`), escape sequences are decoded after splitting (an escaped `\T\` is a literal `&`), and versions other than 2.1–2.9 are refused; ACKs to messages with custom delimiters echo their values correctly; a parsed message serializes back byte for byte.
 
 ### Changed
 

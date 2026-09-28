@@ -464,10 +464,7 @@ func decodeInput(f Flow, body []byte) (map[string]any, error) {
 	switch f.InputFormat {
 	case "hl7v2":
 		doc, err := codecs.HL7JSON(body)
-		if err != nil {
-			return nil, invalid("body must be an HL7 v2 message (MSH segment first)")
-		}
-		return doc, nil
+		return doc, refused("body must be an HL7 v2 message (MSH segment first)", err)
 	case "xml":
 		doc, err := codecs.XMLJSON(body)
 		return doc, refused("body must be a single well-formed XML document", err)

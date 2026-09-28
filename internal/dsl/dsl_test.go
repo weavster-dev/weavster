@@ -291,6 +291,8 @@ func TestBuild(t *testing.T) {
 		{"json broken", `build: { template: '{"a": "{{last}}"' }`, "", "the result is not a JSON object"},
 		{"xml other encoding", `build: { format: xml, template: '<?xml version="1.0" encoding="ISO-8859-1"?><p>{{last}}</p>' }`, "", `the XML declaration says encoding "ISO-8859-1"`},
 		{"xml broken", `build: { format: xml, template: '<a>{{last}}' }`, "", "the result is not a well-formed XML document"},
+		{"hl7v2 unsupported version", "build: { format: hl7v2, template: \"MSH|^~\\\\&|W|H|LAB|H|20260927||ADT^A01|1|P|3.0\\nPID|1||{{last}}\\n\" }",
+			"", "the result is not a readable HL7 v2 message: unsupported HL7 version (MSH-12 must be 2.1 to 2.9)"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			prog := compileYAML(t, "name: t\nsteps:\n  - set: { field: seen, expr: yes }\n  - "+tt.step+"\n")
