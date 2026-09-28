@@ -53,11 +53,11 @@ func (o *Outbox) Receive(ctx context.Context, m state.Message) error {
 }
 
 // SetTransformed stores out as the message's transformed content (transform
-// -> persist result, gap #5) and sets metadata (an empty value removes the
-// key), in one write, so what the transform decided (such as excluded
+// -> persist result, gap #5), its content type (unchanged when empty), and
+// metadata (an empty value removes the key), in one write, so what the transform decided (such as excluded
 // destinations) is never stored without its output or the other way round.
 // It returns the stored message.
-func (o *Outbox) SetTransformed(ctx context.Context, id string, out []byte, metadata map[string]string) (state.Message, error) {
+func (o *Outbox) SetTransformed(ctx context.Context, id string, out []byte, contentType string, metadata map[string]string) (state.Message, error) {
 	m, err := o.store.Get(ctx, id)
 	if err != nil {
 		return state.Message{}, err
@@ -73,6 +73,9 @@ func (o *Outbox) SetTransformed(ctx context.Context, id string, out []byte, meta
 		}
 	}
 	m.Transformed = out
+	if contentType != "" {
+		m.ContentType = contentType
+	}
 	m.Status = state.StatusTransformed
 	return m, o.store.Put(ctx, m)
 }

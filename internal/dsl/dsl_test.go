@@ -2,7 +2,6 @@ package dsl
 
 import (
 	"encoding/json"
-	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -147,7 +146,7 @@ steps:
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, filtered, err := p.Run(doc(t, tt.in))
+			out, filtered, err := run(p, doc(t, tt.in))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -166,7 +165,14 @@ func TestCompileErrors(t *testing.T) {
 	tests := []struct {
 		name, transform, want string
 	}{
-		{"build unsupported", "name: t\nsteps:\n  - build: { template: x }", "build: dsl: step not supported yet"},
+		{"build not last", "name: t\nsteps:\n  - build: { template: '{}' }\n  - set: { field: a, expr: b }", "step 1: build must be the last step"},
+		{"build format", "name: t\nsteps:\n  - build: { template: x, format: csv }", "build.format must be json, hl7v2, xml, or text"},
+		{"build empty", "name: t\nsteps:\n  - build: { template: '  ' }", "build.template is empty"},
+		{"build bad placeholder", "name: t\nsteps:\n  - build: { template: '{{a..b}}' }", "build.template: invalid path"},
+		{"build json unquoted", "name: t\nsteps:\n  - build: { template: '{\"n\": {{n}}}' }", "every {{path}} must be inside a string"},
+		{"build json after a string", "name: t\nsteps:\n  - build: { template: '{\"a\": \"x\", \"n\": {{n}}}' }", "every {{path}} must be inside a string"},
+		{"build hl7 without MSH", "name: t\nsteps:\n  - build: { format: hl7v2, template: 'PID|1' }", "must start with MSH|^~\\&"},
+		{"build hl7 custom delimiters", "name: t\nsteps:\n  - build: { format: hl7v2, template: 'MSH*^~\\&*A' }", "must start with MSH|^~\\&"},
 		{"destinationSet include", "name: t\nsteps:\n  - destinationSet: { include: [a] }", "destinationSet.include is not supported"},
 		{"destinationSet empty", "name: t\nsteps:\n  - destinationSet: { exclude: [] }", "destinationSet.exclude must name at least one destination"},
 		{"destinationSet bad when", "name: t\nsteps:\n  - destinationSet: { exclude: [a], when: 'a == b == c' }", "destinationSet.when: invalid operand"},
@@ -190,9 +196,6 @@ func TestCompileErrors(t *testing.T) {
 			}
 		})
 	}
-	if _, err := Compile(mustParse(t, "name: t\nsteps:\n  - build: { template: x }")); !errors.Is(err, ErrUnsupportedStep) {
-		t.Errorf("err = %v, want ErrUnsupportedStep", err)
-	}
 }
 
 func TestRunErrors(t *testing.T) {
@@ -211,7 +214,7 @@ func TestRunErrors(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, _, err := p.Run(doc(t, tt.in)); err == nil || !strings.Contains(err.Error(), tt.want) {
+			if _, _, err := run(p, doc(t, tt.in)); err == nil || !strings.Contains(err.Error(), tt.want) {
 				t.Errorf("err = %v, want containing %q", err, tt.want)
 			}
 		})
@@ -241,9 +244,6 @@ steps:
   - set: { field: routed, expr: yes }
   - destinationSet: { exclude: [lab], when: routed }
 `)
-	if _, _, err := prog.Run(map[string]any{}); !errors.Is(err, ErrRoutesElsewhere) {
-		t.Errorf("Run of a routing program: %v", err)
-	}
 	for _, tt := range []struct {
 		in   map[string]any
 		want string
@@ -251,14 +251,14 @@ steps:
 		{map[string]any{"kind": "adt"}, "archive,lab"},
 		{map[string]any{"kind": "orm"}, "archive,ehr,lab"},
 	} {
-		out, filtered, excluded, err := prog.RunRouted(tt.in)
-		if err != nil || filtered || strings.Join(excluded, ",") != tt.want || out["routed"] != "yes" {
-			t.Errorf("%v: out %v, filtered %v, excluded %v, err %v; want %s", tt.in, out, filtered, excluded, err, tt.want)
+		o, err := prog.Execute(tt.in)
+		if err != nil || o.Filtered || strings.Join(o.Excluded, ",") != tt.want || o.Doc["routed"] != "yes" {
+			t.Errorf("%v: %+v, err %v; want %s", tt.in, o, err, tt.want)
 		}
 	}
 	dropped := compileYAML(t, "name: t\nsteps:\n  - destinationSet: { exclude: [a] }\n  - filter: { when: x, action: accept }\n")
-	if _, filtered, excluded, err := dropped.RunRouted(map[string]any{}); err != nil || !filtered || excluded != nil {
-		t.Errorf("filtered message: %v %v %v", filtered, excluded, err)
+	if o, err := dropped.Execute(map[string]any{}); err != nil || !o.Filtered || o.Excluded != nil {
+		t.Errorf("filtered message: %+v %v", o, err)
 	}
 
 }
@@ -271,4 +271,83 @@ func compileYAML(t *testing.T, yaml string) *Program {
 		t.Fatal(err)
 	}
 	return p
+}
+
+// TestBuild: the build step renders the template with values escaped for
+// the format, checks the result, and Run refuses it.
+func TestBuild(t *testing.T) {
+	doc := map[string]any{"last": "O'BRIEN|JR", "note": "a < b & \"c\"\nnext", "n": json.Number("42")}
+	for _, tt := range []struct {
+		name, step, want, err string
+	}{
+		{"json", `build: { template: '{"name": "{{last}}", "note": "{{note}}", "n": "{{n}}", "q": "\"{{last}}\""}' }`,
+			`{"name": "O'BRIEN|JR", "note": "a \u003c b \u0026 \"c\"\nnext", "n": "42", "q": "\"O'BRIEN|JR\""}`, ""},
+		{"hl7v2", "build: { format: hl7v2, template: \"MSH|^~\\\\&|W|H|LAB|H|20260927||ADT^A01|1|P|2.5\\nPID|1||123||{{last}}\\nNTE|1||{{note}}\\n\" }",
+			"MSH|^~\\&|W|H|LAB|H|20260927||ADT^A01|1|P|2.5\rPID|1||123||O'BRIEN\\F\\JR\rNTE|1||a < b \\T\\ \"c\"\\X0A\\next\r", ""},
+		{"xml", `build: { format: xml, template: '<p name="{{last}}"><note>{{note}}</note></p>' }`,
+			"<p name=\"O&apos;BRIEN|JR\"><note>a &lt; b &amp; &quot;c&quot;\nnext</note></p>", ""},
+		{"text", `build: { format: text, template: 'Dear {{last}}' }`, "Dear O'BRIEN|JR", ""},
+		{"json not an object", `build: { template: '"{{last}}"' }`, "", "the result is not a JSON object"},
+		{"json broken", `build: { template: '{"a": "{{last}}"' }`, "", "the result is not a JSON object"},
+		{"xml other encoding", `build: { format: xml, template: '<?xml version="1.0" encoding="ISO-8859-1"?><p>{{last}}</p>' }`, "", `the XML declaration says encoding "ISO-8859-1"`},
+		{"xml broken", `build: { format: xml, template: '<a>{{last}}' }`, "", "the result is not a well-formed XML document"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			prog := compileYAML(t, "name: t\nsteps:\n  - set: { field: seen, expr: yes }\n  - "+tt.step+"\n")
+			o, err := prog.Execute(doc)
+			if tt.err != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.err) || !strings.Contains(err.Error(), "step 2: build") {
+					t.Errorf("err = %v, want %q", err, tt.err)
+				}
+				return
+			}
+			if err != nil || string(o.Body) != tt.want || o.Format != tt.name || o.Doc["seen"] != "yes" {
+				t.Errorf("got %q (%s), %v\nwant %q", o.Body, o.Format, err, tt.want)
+			}
+		})
+	}
+	framed, err := compileYAML(t, "name: t\nsteps:\n  - build: { format: hl7v2, template: \"MSH|^~\\\\&|{{v}}\" }\n").Execute(map[string]any{"v": "a\x0b\x1c\rb"})
+	if err != nil || string(framed.Body) != "MSH|^~\\&|a\\X0B\\\\X1C\\\\X0D\\b\r" {
+		t.Errorf("framing bytes: %q %v", framed.Body, err)
+	}
+	if p := compileYAML(t, "name: t\nsteps:\n  - set: { field: a, expr: b }\n"); p.Format() != "" {
+		t.Errorf("Format without build = %q", p.Format())
+	}
+	if p := compileYAML(t, "name: t\nsteps:\n  - build: { template: '{}' }\n"); p.Format() != "json" {
+		t.Errorf("Format of a default build = %q", p.Format())
+	}
+	if o, err := compileYAML(t, "name: t\nsteps:\n  - filter: { when: x, action: accept }\n  - build: { template: '{}' }\n").Execute(nil); err != nil || !o.Filtered || o.Body != nil {
+		t.Errorf("filtered before build: %+v %v", o, err)
+	}
+}
+
+// run is Execute returning the document and whether it was filtered.
+func run(p *Program, in map[string]any) (map[string]any, bool, error) {
+	o, err := p.Execute(in)
+	return o.Doc, o.Filtered, err
+}
+
+// TestBuildXMLContexts: XML placeholders are allowed in element text and
+// quoted attribute values only.
+func TestBuildXMLContexts(t *testing.T) {
+	for _, tt := range []struct {
+		template string
+		ok       bool
+	}{
+		{`<a>{{x}}</a>`, true},
+		{`<a b="{{x}}" c='{{x}}'>t {{x}}</a>`, true},
+		{`<?xml version="1.0"?><!-- note --><a x="1>2">{{x}}<![CDATA[ c ]]></a>`, true},
+		{`<!-- {{x}} --><a/>`, false},
+		{`<a><![CDATA[{{x}}]]></a>`, false},
+		{`<{{x}}/>`, false},
+		{`<a {{x}}="1"/>`, false},
+		{`<a b={{x}}/>`, false},
+		{`<?pi {{x}}?><a/>`, false},
+		{`<!DOCTYPE {{x}}><a/>`, false},
+	} {
+		_, err := Compile(compiler.Transform{Name: "t", Steps: []compiler.Step{{Build: &compiler.BuildStep{Template: tt.template, Format: "xml"}}}})
+		if (err == nil) != tt.ok || (err != nil && !strings.Contains(err.Error(), "element text or a quoted attribute value")) {
+			t.Errorf("%s: %v, want ok=%v", tt.template, err, tt.ok)
+		}
+	}
 }

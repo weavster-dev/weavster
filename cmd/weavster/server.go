@@ -2128,11 +2128,7 @@ func (m messageAdapter) Content(ctx context.Context, id, part string) (gateway.M
 		if msg.Transformed == nil {
 			return gateway.MessageContent{}, fmt.Errorf("%w: message %s has no transformed content (status %s)", gateway.ErrNoContent, id, msg.Status)
 		}
-		ct := "application/octet-stream"
-		if msg.ContentType == "json" {
-			ct = "application/json"
-		}
-		return gateway.MessageContent{Body: msg.Transformed, ContentType: ct}, nil
+		return gateway.MessageContent{Body: msg.Transformed, ContentType: pipeline.MimeType(msg.ContentType)}, nil
 	}
 	return gateway.MessageContent{Body: msg.Raw, ContentType: "application/octet-stream"}, nil
 }

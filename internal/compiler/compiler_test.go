@@ -104,7 +104,8 @@ func TestValidateAcceptsValidTransform(t *testing.T) {
 // TestValidateRefuses: the schema describes exactly what runs.
 func TestValidateRefuses(t *testing.T) {
 	for name, doc := range map[string]string{
-		"build":                     "steps:\n  - build: { template: x }",
+		"build format":              "steps:\n  - build: { template: x, format: csv }",
+		"build blank":               "steps:\n  - build: { template: ' ' }",
 		"destinationSet include":    "steps:\n  - destinationSet: { include: [a] }",
 		"destinationSet empty":      "steps:\n  - destinationSet: { exclude: [] }",
 		"destinationSet blank when": "steps:\n  - destinationSet: { exclude: [a], when: ' ' }",
@@ -132,9 +133,8 @@ func TestValidateRefuses(t *testing.T) {
 }
 
 // TestSchemaPublishedAndMatchesTypes: agent-docs holds the embedded schema,
-// and its properties are the Go types' JSON fields (build is not run yet,
-// and destination sets are exclusion only, so the schema leaves out build
-// and include).
+// and its properties are the Go types' JSON fields (destination sets are
+// exclusion only, so the schema leaves out include).
 func TestSchemaPublishedAndMatchesTypes(t *testing.T) {
 	published, err := os.ReadFile("../../agent-docs/schemas/transform.schema.json")
 	if err != nil || !bytes.Equal(published, Schema) {
@@ -160,13 +160,13 @@ func TestSchemaPublishedAndMatchesTypes(t *testing.T) {
 		sort.Strings(out)
 		return out
 	}
-	for name, v := range map[string]any{"Transform": Transform{}, "MapStep": MapStep{}, "SetStep": SetStep{}, "FilterStep": FilterStep{}, "Step": Step{}, "DestinationSetStep": DestinationSetStep{}} {
+	for name, v := range map[string]any{"Transform": Transform{}, "MapStep": MapStep{}, "SetStep": SetStep{}, "FilterStep": FilterStep{}, "Step": Step{}, "DestinationSetStep": DestinationSetStep{}, "BuildStep": BuildStep{}} {
 		var got []string
 		for k := range s.Defs[name].Properties {
 			got = append(got, k)
 		}
 		sort.Strings(got)
-		if want := fields(v, "build", "include"); !slices.Equal(got, want) {
+		if want := fields(v, "include"); !slices.Equal(got, want) {
 			t.Errorf("$defs/%s properties %v, Go fields %v", name, got, want)
 		}
 	}

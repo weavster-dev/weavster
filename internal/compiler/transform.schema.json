@@ -53,7 +53,7 @@
       "additionalProperties": false,
       "minProperties": 1,
       "maxProperties": 1,
-      "description": "Exactly one of map, set, filter, or destinationSet",
+      "description": "Exactly one of map, set, filter, destinationSet, or build (build only as the last step)",
       "properties": {
         "map": {
           "$ref": "#/$defs/MapStep"
@@ -66,6 +66,9 @@
         },
         "destinationSet": {
           "$ref": "#/$defs/DestinationSetStep"
+        },
+        "build": {
+          "$ref": "#/$defs/BuildStep"
         }
       }
     },
@@ -162,6 +165,30 @@
           "type": "string",
           "pattern": "\\S",
           "description": "Condition, as in filter.when"
+        }
+      }
+    },
+    "BuildStep": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "template"
+      ],
+      "description": "Renders the output from template, replacing each {{path}} with that value escaped for format; the last step of a flow's or destination's transform",
+      "properties": {
+        "template": {
+          "type": "string",
+          "pattern": "\\S",
+          "description": "The output, with {{path}} placeholders; HL7 v2 segments may be written on separate lines"
+        },
+        "format": {
+          "enum": [
+            "json",
+            "hl7v2",
+            "xml",
+            "text"
+          ],
+          "description": "Output format (default json); the result must be a valid document of it"
         }
       }
     }

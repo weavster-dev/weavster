@@ -18,17 +18,23 @@ import (
 	"github.com/weavster-dev/weavster/internal/compiler"
 )
 
-// ErrUnsupportedStep is returned by Compile for step kinds the interpreter
-// does not execute yet.
-var ErrUnsupportedStep = errors.New("dsl: step not supported yet")
-
 // Program is a validated transform ready to run.
 type Program struct {
 	name  string
 	steps []step
-	// routes: the program has destinationSet steps, which only a flow's
-	// transform may use (RunRouted); Run refuses it.
-	routes bool
+	// build, the last step when present, renders the output.
+	build *buildStep
+}
+
+// Output is what a program produced.
+type Output struct {
+	Doc      map[string]any // the document after the steps
+	Filtered bool           // a filter step dropped the message
+	Excluded []string       // destinations excluded by destinationSet steps, sorted
+	// Body and Format are the build step's rendered output (nil and "" when
+	// the program has no build step: the output is Doc as JSON).
+	Body   []byte
+	Format string
 }
 
 type step interface {
@@ -41,14 +47,18 @@ type step interface {
 func Compile(t compiler.Transform) (*Program, error) {
 	p := &Program{name: t.Name}
 	for i, s := range t.Steps {
+		if s.Build != nil && i != len(t.Steps)-1 {
+			return nil, fmt.Errorf("dsl: %s: step %d: build must be the last step", t.Name, i+1)
+		}
 		st, err := compileStep(s)
 		if err != nil {
 			return nil, fmt.Errorf("dsl: %s: step %d: %w", t.Name, i+1, err)
 		}
-		p.steps = append(p.steps, st)
-		if _, ok := st.(destinationSetStep); ok {
-			p.routes = true
+		if b, ok := st.(buildStep); ok {
+			p.build = &b
+			continue
 		}
+		p.steps = append(p.steps, st)
 	}
 	return p, nil
 }
@@ -71,32 +81,26 @@ func compileStep(s compiler.Step) (step, error) {
 	case s.Filter != nil:
 		return compileFilter(*s.Filter)
 	case s.Build != nil:
-		return nil, fmt.Errorf("build: %w", ErrUnsupportedStep)
+		return compileBuild(*s.Build)
 	default:
 		return compileDestinationSet(*s.DestinationSet)
 	}
 }
 
-// ErrRoutesElsewhere is returned by Run for a program with destinationSet
-// steps: only a flow's transform decides destinations (RunRouted).
-var ErrRoutesElsewhere = errors.New("destinationSet can only be used in a flow's transform")
-
-// Run applies the program to a copy of in and returns the result; in is
-// never modified. A nil in is treated as an empty object. filtered reports
-// that a filter step dropped the message; no later steps run. A program
-// with destinationSet steps is refused (ErrRoutesElsewhere), so exclusions
-// are never silently dropped.
-func (p *Program) Run(in map[string]any) (out map[string]any, filtered bool, err error) {
-	if p.routes {
-		return nil, false, fmt.Errorf("dsl: %s: %w", p.name, ErrRoutesElsewhere)
+// Format is the program's output format: its build step's, or "" when it
+// has none (the output is the document as JSON).
+func (p *Program) Format() string {
+	if p.build == nil {
+		return ""
 	}
-	out, filtered, _, err = p.RunRouted(in)
-	return out, filtered, err
+	return p.build.format
 }
 
-// RunRouted is Run that also returns, sorted, the destinations its
-// destinationSet steps excluded for this message.
-func (p *Program) RunRouted(in map[string]any) (out map[string]any, filtered bool, excluded []string, err error) {
+// Execute runs every step on a copy of in (never modified; nil is an empty
+// object) and returns what they produced: the document, whether a filter
+// dropped it (no later steps run), the excluded destinations, and the build
+// step's rendered output.
+func (p *Program) Execute(in map[string]any) (Output, error) {
 	doc, _ := deepCopy(in).(map[string]any)
 	if doc == nil {
 		doc = map[string]any{}
@@ -105,17 +109,25 @@ func (p *Program) RunRouted(in map[string]any) (out map[string]any, filtered boo
 	for i, st := range p.steps {
 		dropped, err := st.apply(doc, skip)
 		if err != nil {
-			return nil, false, nil, fmt.Errorf("dsl: %s: step %d: %w", p.name, i+1, err)
+			return Output{}, fmt.Errorf("dsl: %s: step %d: %w", p.name, i+1, err)
 		}
 		if dropped {
-			return doc, true, nil, nil
+			return Output{Doc: doc, Filtered: true}, nil
 		}
 	}
+	out := Output{Doc: doc}
 	for name := range skip {
-		excluded = append(excluded, name)
+		out.Excluded = append(out.Excluded, name)
 	}
-	sort.Strings(excluded)
-	return doc, false, excluded, nil
+	sort.Strings(out.Excluded)
+	if p.build != nil {
+		body, err := p.build.render(doc)
+		if err != nil {
+			return Output{}, fmt.Errorf("dsl: %s: step %d: build: %w", p.name, len(p.steps)+1, err)
+		}
+		out.Body, out.Format = body, p.build.format
+	}
+	return out, nil
 }
 
 // deepCopy copies JSON-shaped values so no two fields share an object or
@@ -335,31 +347,44 @@ func compileSet(s compiler.SetStep) (step, error) {
 	if err != nil {
 		return nil, fmt.Errorf("set.field: %w", err)
 	}
-	var parts []templatePart
-	last := 0
-	for _, m := range placeholder.FindAllStringSubmatchIndex(s.Expr, -1) {
-		p, err := parsePath(s.Expr[m[2]:m[3]])
-		if err != nil {
-			return nil, fmt.Errorf("set.expr: %w", err)
-		}
-		parts = append(parts, templatePart{literal: s.Expr[last:m[0]]}, templatePart{ref: p})
-		last = m[1]
+	parts, err := compileTemplate(s.Expr)
+	if err != nil {
+		return nil, fmt.Errorf("set.expr: %w", err)
 	}
-	parts = append(parts, templatePart{literal: s.Expr[last:]})
 	return setStep{field: field, parts: parts}, nil
 }
 
-func (s setStep) apply(doc map[string]any, _ map[string]bool) (bool, error) {
+// compileTemplate splits a template into literal and {{path}} parts.
+func compileTemplate(tmpl string) ([]templatePart, error) {
+	var parts []templatePart
+	last := 0
+	for _, m := range placeholder.FindAllStringSubmatchIndex(tmpl, -1) {
+		p, err := parsePath(tmpl[m[2]:m[3]])
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, templatePart{literal: tmpl[last:m[0]]}, templatePart{ref: p})
+		last = m[1]
+	}
+	return append(parts, templatePart{literal: tmpl[last:]}), nil
+}
+
+// fill renders parts from doc, passing each value through escape.
+func fill(parts []templatePart, doc map[string]any, escape func(string) string) string {
 	var b strings.Builder
-	for _, part := range s.parts {
+	for _, part := range parts {
 		if part.ref == nil {
 			b.WriteString(part.literal)
 			continue
 		}
 		v, _ := part.ref.get(doc)
-		b.WriteString(text(v))
+		b.WriteString(escape(text(v)))
 	}
-	return false, s.field.set(doc, b.String())
+	return b.String()
+}
+
+func (s setStep) apply(doc map[string]any, _ map[string]bool) (bool, error) {
+	return false, s.field.set(doc, fill(s.parts, doc, func(v string) string { return v }))
 }
 
 // --- filter ---

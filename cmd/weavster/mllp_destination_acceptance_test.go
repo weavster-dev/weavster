@@ -106,7 +106,7 @@ func TestMLLPDestination(t *testing.T) {
 
 	for body, want := range map[string]string{
 		`{"id":"x","inputFormat":"hl7v2","destinations":[{"name":"lab","type":"mllp","address":"lab.example"}]}`: "address must be host:port",
-		`{"id":"x","destinations":[{"name":"lab","type":"mllp","address":"lab.example:2575"}]}`:                  "needs inputFormat hl7v2",
+		`{"id":"x","destinations":[{"name":"lab","type":"mllp","address":"lab.example:2575"}]}`:                  "needs an HL7 v2 message",
 		`{"id":"x","destinations":[{"name":"out","type":"http","url":"https://x","address":"lab:2575"}]}`:        "flow.schema.json",
 		`{"id":"x","destinations":[{"name":"lab","type":"mllp","address":"lab.example:2575","method":"PUT"}]}`:   "flow.schema.json",
 	} {
