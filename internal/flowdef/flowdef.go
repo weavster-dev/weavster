@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -112,6 +113,18 @@ func excluded(raw json.RawMessage) []string {
 	return out
 }
 
+// Dependencies lists the flows f needs: its dependsOn, then the targets
+// of its flow destinations (#107 D-70), each once.
+func (f Flow) Dependencies() []string {
+	out := append([]string(nil), f.DependsOn...)
+	for _, d := range f.Destinations {
+		if d.Type == "flow" && d.Flow != "" && !slices.Contains(out, d.Flow) {
+			out = append(out, d.Flow)
+		}
+	}
+	return out
+}
+
 // CheckDestinations checks what the schema cannot about destinations: a
 // file destination's dir is an absolute path, so where files go never
 // depends on the server's working directory (#107 D-69).
@@ -186,6 +199,9 @@ type Destination struct {
 	Dir  string `json:"dir,omitempty"`
 	// Address is the host:port an mllp destination delivers to (#107 D-64).
 	Address string `json:"address,omitempty"`
+	// Flow is the id of the flow a flow destination hands messages to
+	// (#107 D-70).
+	Flow string `json:"flow,omitempty"`
 	// Method, TimeoutMs, and MaxRedirects shape an http destination's
 	// request: POST, 30 s, and no redirects followed by default (#107 D-59).
 	Method       string `json:"method,omitempty"`

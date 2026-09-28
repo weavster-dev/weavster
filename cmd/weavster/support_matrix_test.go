@@ -326,7 +326,7 @@ func TestSupportMatrixDeliveryKeys(t *testing.T) {
 	}
 	table, _, _ = strings.Cut(table, "\n\n")
 	adapters := map[string]string{"File": "file", "HTTP": "http", "TCP/MLLP": "mllp", "Database": "database", "SMTP": "smtp",
-		"Web service (SOAP/REST)": "web-service", "Document": "document", "In-process inter-flow": "interflow"}
+		"Web service (SOAP/REST)": "web-service", "Document": "document", "In-process inter-flow (`flow` destination)": "interflow"}
 	seen := 0
 	for _, line := range strings.Split(table, "\n") {
 		cells := strings.Split(line, "|")

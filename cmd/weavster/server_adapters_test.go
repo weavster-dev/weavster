@@ -339,3 +339,40 @@ func TestMessageAdapterDeleteMatching(t *testing.T) {
 		t.Errorf("search error = %v", err)
 	}
 }
+
+// flowIngest answers IngestFrom with res and err and records the call.
+type flowIngest struct {
+	res      gateway.IngestResult
+	err      error
+	target   string
+	metadata map[string]string
+}
+
+func (f *flowIngest) IngestFrom(_ context.Context, flowID string, _ []byte, md map[string]string) (gateway.IngestResult, error) {
+	f.target, f.metadata = flowID, md
+	return f.res, f.err
+}
+
+// TestFlowSink: a flow delivery succeeds once the target stored the
+// message (even if processing then failed) and fails otherwise.
+func TestFlowSink(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		in   flowIngest
+		ok   bool
+	}{
+		{"stored", flowIngest{res: gateway.IngestResult{ID: "m2"}}, true},
+		{"stored, then failed", flowIngest{res: gateway.IngestResult{ID: "m2"}, err: errors.New("disk full")}, true},
+		{"not running", flowIngest{err: gateway.ErrFlowNotRunning}, false},
+	} {
+		in := tt.in
+		sink, _ := (&sinkFactory{ingest: &in}).build(pipeline.Destination{Type: "flow", Flow: "next"})
+		err := sink.Write(context.Background(), pipeline.Delivery{FlowID: "from", MessageID: "m1", Body: []byte("{}")})
+		if (err == nil) != tt.ok || in.target != "next" || in.metadata["source.flow"] != "from" || in.metadata["source.message"] != "m1" {
+			t.Errorf("%s: %v, target %s, metadata %v", tt.name, err, in.target, in.metadata)
+		}
+	}
+	if _, err := (&sinkFactory{}).build(pipeline.Destination{Type: "ftp"}); err == nil {
+		t.Error("an unknown type built a sink")
+	}
+}

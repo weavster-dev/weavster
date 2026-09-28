@@ -93,7 +93,8 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | XML input: `inputFormat: xml` gives transforms the document as JSON (`order.@id`, `order.patient.name.#text`, repeated names as lists, `#ns`); DTDs never processed and declared entities never expanded (predefined ones such as `&amp;` are decoded) | Implemented (wired) | `TestXMLInput`, `TestProcessXMLInput`, `TestXMLJSON`. Output is JSON unless a `build` step produces XML; order between different child names and mixed-content position not kept; at most 256 levels and 100,000 elements. See [Transform XML documents](processing-messages.md#transform-xml-documents). |
 | HL7 v2 input: `inputFormat: hl7v2` gives transforms the message as JSON (`PID.5.1`, repetitions, every segment in order) | Implemented (wired) | `TestHL7Input`, `TestProcessHL7Input`, `TestHL7JSON`. Output is JSON unless a `build` step produces HL7 v2 again. See [Transform HL7 v2 messages](processing-messages.md#transform-hl7-v2-messages). |
 | MLLP source: a flow accepts HL7 v2 over TCP (`source: {type: mllp, address}`) while it is started and answers each message with an HL7 ACK (AA stored, AR refused, AE not stored) | Implemented (wired) | `TestMLLPSource`, `TestMLLPHandler`, `TestMLLPServer`, `TestHL7ACKOptions`. No TLS or sender authentication yet; set `inputFormat: hl7v2` to transform the messages. See [Receive HL7 v2 over MLLP](processing-messages.md#receive-hl7-v2-over-mllp). |
-| Other sources and destinations (database, SMTP, SOAP/REST web service, document, in-process inter-flow) | Library-only | Only file, http, and mllp sources and http, file, and mllp destinations are wired. |
+| `flow` destination: hands a message to another flow in-process (`flow: <id>`), with `source.flow`/`source.message` metadata; targets follow the `dependsOn` rules | Implemented (wired) | `TestFlowDestination`, `TestFlowSink`, `TestDependencies`. At-least-once. See [Send to another flow](processing-messages.md#send-to-another-flow). |
+| Other sources and destinations (database, SMTP, SOAP/REST web service, document) | Library-only | Only file, http, and mllp sources and http, file, mllp, and flow destinations are wired. |
 | Per-flow and per-destination statistics (`GET /api/v1/flows/{id}/stats`) | Implemented (wired) | `TestStatsEventsTopology`. In memory; reset, dump, and time series are not available. |
 | Event log with processing events (`GET /api/v1/events`) | Implemented (wired) | `TestStatsEventsTopology`. In memory, newest 10,000. Filters, get, count, max id, and export: see the Events row above. |
 | Topology flow-node `activity` from real counters, zeros included | Implemented (wired) | `TestStatsEventsTopology`. Edge activity is not reported. |
@@ -200,5 +201,5 @@ receiver a key to drop repeats with.
 | SMTP | — | library | not wired | no |
 | Web service (SOAP/REST) | — | library | not wired | no |
 | Document | — | library | not wired | no |
-| In-process inter-flow | library | library | not wired | no |
+| In-process inter-flow (`flow` destination) | — | wired | at-least-once: the delivery succeeds once the target stored its message; a lost success is retried | no |
 | Broker, DICOM | Enterprise-deferred | Enterprise-deferred | — | — |

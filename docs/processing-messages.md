@@ -88,7 +88,7 @@ VS Code, for example, mistakes are underlined and fields are completed:
 | `id` | Required. 1–128 characters from `A-Z a-z 0-9 . _ -`. `export`, `import`, `redeploy-all`, `connector-names`, `ports-in-use`, `stats`, and `deploy-all`, `undeploy-all`, `start-all`, `stop-all`, `pause-all`, `halt-all`, `resume-all` are reserved. |
 | `name`, `sourceType` | Free text shown in lists. |
 | `enabled`, `initialState` | Automatic deployment at startup; see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
-| `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). |
+| `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). Flows it [sends to](#send-to-another-flow) count too. |
 | `responseSelector` | The destination whose reply is returned to the sender; see [Return a destination's reply](#return-a-destinations-reply). |
 | `inputFormat` | How transforms read a message: `json` (default), `hl7v2`, `xml`, or `delimited`; see [Transform HL7 v2 messages](#transform-hl7-v2-messages), [Transform XML documents](#transform-xml-documents), and [Transform delimited text](#transform-delimited-text-csv). |
 | `delimited` | Options of `inputFormat: delimited`: `delimiter` and `header`. |
@@ -99,10 +99,11 @@ VS Code, for example, mistakes are underlined and fields are completed:
 | Field | Meaning |
 |---|---|
 | `name` | Unique within the flow; 1–128 characters from `A-Z a-z 0-9 . _ -` (it appears in URLs). Used to report delivery results. |
-| `type` | `http` (send to `url`), `file` (write one file per message into `dir`, named by message ID), or `mllp` (send HL7 v2 to `address` over TCP; see [Send HL7 v2 over MLLP](#send-hl7-v2-over-mllp)). |
+| `type` | `http` (send to `url`), `file` (write one file per message into `dir`, named by message ID), `mllp` (send HL7 v2 to `address` over TCP; see [Send HL7 v2 over MLLP](#send-hl7-v2-over-mllp)), or `flow` (hand the message to another flow; see [Send to another flow](#send-to-another-flow)). |
 | `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a request (`POST` unless `method` says otherwise) with `Content-Type: application/json` (transformed messages), the [`build`](#build-the-output-build) format's type, or `application/octet-stream` (passthrough). The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`: an absolute path, created if missing. |
 | `address` | Required for `mllp`: `host:port` of the receiving system, for example `lab.example.com:2575`. |
+| `flow` | Required for `flow`: the id of the flow that gets the message. |
 | `method` | `http` only: `POST` (default), `PUT`, or `PATCH`. |
 | `timeoutMs` | `http` and `mllp`: time allowed for one delivery, including reading the response or ACK, 1000–120000 ms; default 30000. A request that takes longer is a failed attempt and is retried. Stopping or pausing the flow, and stopping the server, wait for deliveries in progress, so keep it as short as the receiver allows. |
 | `maxRedirects` | `http` only: how many redirects to follow, 0–10; default 0. See [Redirects](#redirects). |
@@ -456,6 +457,39 @@ in the documents you receive:
   step to drop documents without what the template needs, for example
   `{"filter": {"when": "order.item.1.@sku", "action": "accept"}}`, and a third item is simply not
   copied.
+
+### Send to another flow
+
+A `flow` destination hands each message to another flow in the same server, as a new message of
+that flow. Use it to split work into flows you can deploy, stop, and monitor on their own, for
+example one flow that receives and cleans up messages and one per system that sends them on:
+
+```json
+{"id": "intake", "source": {"type": "mllp", "address": ":2575"}, "inputFormat": "hl7v2",
+ "transform": {"steps": [{"map": {"from": "PID.5.1", "to": "lastName"}}]},
+ "destinations": [{"name": "to-ehr", "type": "flow", "flow": "ehr-out"}]}
+```
+
+```json
+{"id": "ehr-out",
+ "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/inbound"}]}
+```
+
+- The target flow gets what this destination sends (the flow's output, or this destination's
+  own `transform` output), read the way the target's `inputFormat` says, and processes it like
+  any other message: its own transform, destinations, retries, and statistics. Its message has the
+  metadata `source.flow` (the sending flow) and `source.message` (the sending message's id).
+- The delivery succeeds once the target has stored its message. If the target is stopped or
+  paused, refuses the message (for example it is not HL7 v2 and the target expects HL7), or fails
+  before storing it, the attempt fails and is retried, then dead-lettered like any other; starting
+  a stopped target lets the retries through. A lost success is retried too, so the target may
+  get a message twice (at-least-once).
+- A flow that sends to another flow depends on it, with the same rules as
+  [`dependsOn`](flow-lifecycle.md): the target must exist, a flow cannot send to itself or back
+  to itself through others, the target cannot be deleted while a flow sends to it, and deploying
+  the sending flow deploys the target first.
+- The sending flow waits while the target processes the message, so a message's time in the
+  sending flow includes the target's deliveries.
 
 ### Route by content (`destinationSet`)
 
@@ -1267,7 +1301,7 @@ again as a new message instead, use `reprocess`.
 - Statistics and events are kept in memory: they restart from zero when the server restarts,
   and only the newest 10,000 events are kept.
 - The first delivery attempt runs while your request waits; retries run in the background.
-- Only `http`, `file`, and `mllp` destinations are available.
+- Only `http`, `file`, `mllp`, and `flow` destinations are available.
 - Besides this API, messages enter only through [file sources](#read-files-from-a-directory) and
   [http sources](#receive-messages-over-http), and [mllp sources](#receive-hl7-v2-over-mllp);
   database sources are not available yet.

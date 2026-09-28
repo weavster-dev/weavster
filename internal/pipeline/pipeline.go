@@ -53,6 +53,7 @@ type Destination struct {
 	URL     string // http
 	Dir     string // file
 	Address string // mllp: host:port
+	Flow    string // flow: the target flow's id
 	// Method, Timeout, and MaxRedirects shape http requests (zero: defaults).
 	Method       string
 	Timeout      time.Duration
@@ -85,6 +86,7 @@ type Flow struct {
 
 // Delivery is one message sent to one destination.
 type Delivery struct {
+	FlowID         string // the flow delivering it
 	MessageID      string
 	Body           []byte
 	ContentType    string // MIME type of Body
@@ -200,8 +202,10 @@ func Validate(f Flow) error {
 			return fmt.Errorf("destination %s: an mllp destination needs an HL7 v2 message: the HL7 v2 message as received (inputFormat hl7v2 and no transforms), or a build step with format hl7v2 at the end of the flow's or this destination's transform", d.Name)
 		case d.Transform != nil && flowOutput(f) == "text":
 			return fmt.Errorf("destination %s: transform: the flow's build step outputs text, which a transform cannot read", d.Name)
-		case d.Type != "http" && d.Type != "file" && d.Type != "mllp":
-			return fmt.Errorf("destination %s: type must be http, file, or mllp, got %q", d.Name, d.Type)
+		case d.Type == "flow" && d.Flow == "":
+			return fmt.Errorf("destination %s: flow is required for type flow", d.Name)
+		case d.Type != "http" && d.Type != "file" && d.Type != "mllp" && d.Type != "flow":
+			return fmt.Errorf("destination %s: type must be http, file, mllp, or flow, got %q", d.Name, d.Type)
 		}
 		if d.Transform != nil {
 			if _, err := dsl.Compile(*d.Transform); err != nil {
@@ -780,7 +784,7 @@ func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]desti
 			}
 			body, destMime = out.body, MimeType(out.format)
 		}
-		d := Delivery{MessageID: m.ID, Body: body, ContentType: destMime, IdempotencyKey: key}
+		d := Delivery{FlowID: f.ID, MessageID: m.ID, Body: body, ContentType: destMime, IdempotencyKey: key}
 		if rs, ok := b.sink.(ResponseSink); ok && reply != nil && dest == f.ResponseSelector {
 			r, err := rs.WriteResponse(ctx, d)
 			if err == nil {

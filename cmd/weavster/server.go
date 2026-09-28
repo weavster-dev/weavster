@@ -120,12 +120,14 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	var sourcePorts gateway.SourcePorts
 	retry := func(context.Context) {}
 	if store != nil {
-		pipe := pipeline.New(store, newSink, processingObserver{stats, events}, pipeline.Options{
+		sinks := &sinkFactory{}
+		pipe := pipeline.New(store, sinks.build, processingObserver{stats, events}, pipeline.Options{
 			MaxAttempts: cfg.Delivery.MaxAttempts,
 			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
 			Gate:        flows.locks,
 		})
 		ia := ingestAdapter{flows: flows, pipe: pipe}
+		sinks.ingest = ia // flow destinations hand messages to other flows (#107 D-70)
 		ingest = ia
 		ma := messageAdapter{store: store, pipe: pipe, ingest: ia}
 		messages, deadLetters = ma, ma
@@ -687,7 +689,7 @@ func (a flowAdapter) deployDependencies(ctx context.Context, root gateway.Flow, 
 	closure := map[string]gateway.Flow{}
 	var collect func(f gateway.Flow) error
 	collect = func(f gateway.Flow) error {
-		for _, depID := range f.DependsOn {
+		for _, depID := range f.Dependencies() {
 			if _, seen := closure[depID]; seen || depID == root.ID {
 				continue
 			}
@@ -939,7 +941,7 @@ func (a flowAdapter) UpdateMany(ctx context.Context, changes []gateway.FlowChang
 		} else if err != nil {
 			return updated, err
 		}
-		withDeps = withDeps || len(f.DependsOn) > 0
+		withDeps = withDeps || len(f.Dependencies()) > 0
 	}
 	if len(missing) > 0 {
 		return updated, fmt.Errorf("%w: %s", gateway.ErrFlowNotFound, strings.Join(missing, ", "))
@@ -1197,7 +1199,7 @@ func checkDependencies(all map[string]gateway.Flow, roots []string) error {
 			return nil
 		}
 		mark[id] = visiting
-		for _, dep := range all[id].DependsOn {
+		for _, dep := range all[id].Dependencies() {
 			if dep == id {
 				return fmt.Errorf("flow %s cannot depend on itself", id)
 			}
@@ -1236,7 +1238,7 @@ func dependencyOrder(all map[string]gateway.Flow, ids []string) []string {
 			return
 		}
 		seen[id] = true
-		for _, dep := range all[id].DependsOn {
+		for _, dep := range all[id].Dependencies() {
 			visit(dep)
 		}
 		if want[id] {
@@ -1300,7 +1302,7 @@ func (a flowAdapter) validateDefinition(ctx context.Context, f gateway.Flow) err
 	if err := checkDefinition(f); err != nil {
 		return err
 	}
-	if len(f.DependsOn) == 0 && f.Source == nil {
+	if len(f.Dependencies()) == 0 && f.Source == nil {
 		return nil
 	}
 	all, err := a.withFlows(ctx, f)
@@ -1334,7 +1336,7 @@ func (a flowAdapter) Export(ctx context.Context, ids []string) ([]gateway.Flow, 
 			return fmt.Errorf("%w: %s", gateway.ErrFlowNotFound, id)
 		}
 		selected[id] = true
-		for _, dep := range f.DependsOn {
+		for _, dep := range f.Dependencies() {
 			if err := add(dep); err != nil {
 				return err
 			}
@@ -1467,7 +1469,7 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 			return pf, fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
 		}
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{
-			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address,
+			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address, Flow: d.Flow,
 			Method: d.Method, Timeout: time.Duration(d.TimeoutMs) * time.Millisecond, MaxRedirects: d.MaxRedirects,
 			Stopped: stopped[d.Name], Transform: t, ResponseTransform: rt,
 		})
@@ -1605,6 +1607,34 @@ func adapterMessage(d pipeline.Delivery) adapters.Message {
 	}}
 }
 
+// sinkFactory builds destination sinks; flow destinations need the
+// ingester, which exists only once the pipeline does.
+type sinkFactory struct {
+	ingest gateway.SourceIngester
+}
+
+func (s *sinkFactory) build(d pipeline.Destination) (pipeline.Sink, error) {
+	if d.Type == "flow" {
+		return flowSink{target: d.Flow, ingest: s.ingest}, nil
+	}
+	return newSink(d)
+}
+
+// flowSink hands a delivery to another flow as a new message of it (#107
+// D-70); it is delivered once the target stored the message.
+type flowSink struct {
+	target string
+	ingest gateway.SourceIngester
+}
+
+func (s flowSink) Write(ctx context.Context, d pipeline.Delivery) error {
+	res, err := s.ingest.IngestFrom(ctx, s.target, d.Body, map[string]string{"source.flow": d.FlowID, "source.message": d.MessageID})
+	if err != nil && res.ID == "" {
+		return fmt.Errorf("flow %s: %w", s.target, err)
+	}
+	return nil // stored: the target flow has the message
+}
+
 // newSink builds the adapter for a flow destination.
 func newSink(d pipeline.Destination) (pipeline.Sink, error) {
 	switch d.Type {
@@ -1701,7 +1731,7 @@ func (a flowAdapter) Delete(ctx context.Context, id string) error {
 		if err := json.Unmarshal(d.Document, &f); err != nil {
 			return fmt.Errorf("cannot check dependents: flow %s is unreadable: %w", d.ID, err)
 		}
-		if slices.Contains(f.DependsOn, id) {
+		if slices.Contains(f.Dependencies(), id) {
 			dependents = append(dependents, f.ID)
 		}
 	}

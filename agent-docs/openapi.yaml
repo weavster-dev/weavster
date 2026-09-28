@@ -1388,17 +1388,21 @@ components:
       description: "url, method, and maxRedirects apply to http destinations; dir to file; address to mllp; timeoutMs to http and mllp."
       anyOf:
         - properties: {type: {enum: [http]}}
-          not: {anyOf: [{required: [address]}, {required: [dir]}]}
+          not: {anyOf: [{required: [address]}, {required: [dir]}, {required: [flow]}]}
         - properties: {type: {enum: [file]}}
-          not: {anyOf: [{required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [address]}]}
+          not: {anyOf: [{required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [address]}, {required: [flow]}]}
         - properties: {type: {enum: [mllp]}}
-          not: {anyOf: [{required: [method]}, {required: [maxRedirects]}, {required: [url]}, {required: [dir]}]}
+          not: {anyOf: [{required: [method]}, {required: [maxRedirects]}, {required: [url]}, {required: [dir]}, {required: [flow]}]}
+        - properties: {type: {enum: [flow]}}
+          required: [flow]
+          not: {anyOf: [{required: [url]}, {required: [dir]}, {required: [address]}, {required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}]}
       properties:
         name: {type: string}
-        type: {type: string, enum: [file, http, mllp]}
+        type: {type: string, enum: [file, http, mllp, flow]}
         url: {type: string}
         dir: {type: string}
         address: {type: string, description: "mllp: host:port to deliver HL7 v2 to"}
+        flow: {type: string, description: "flow: id of the flow to hand messages to"}
         method: {type: string, enum: [POST, PUT, PATCH], description: "http: request method (default POST)"}
         timeoutMs: {type: integer, minimum: 1000, maximum: 120000, description: "http, mllp: time allowed for one delivery, including the response or ACK (default 30000)"}
         maxRedirects: {type: integer, minimum: 0, maximum: 10, description: "http: 307/308 redirects followed, never https to http (default 0: a redirect fails the delivery)"}
