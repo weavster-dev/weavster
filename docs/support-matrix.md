@@ -160,23 +160,24 @@ Those are Enterprise items with no code in the source tree.
 
 ## Codecs
 
-Codecs are library-only except HL7 v2, XML, and delimited text. The server reads HL7 v2
-messages, XML documents, and delimited text for transforms ([`inputFormat`](processing-messages.md#transform-hl7-v2-messages)) and
-acknowledges messages an [mllp source](processing-messages.md#receive-hl7-v2-over-mllp) receives;
-transform output is always JSON. You can exercise the codecs with `weavster test`,
-which covers HL7 v2, JSON, XML, and raw.
+"Implemented (wired)" codecs are used by the server as the table says: to read messages for
+transforms ([`inputFormat`](processing-messages.md#transform-hl7-v2-messages)), to write
+[`build`](processing-messages.md#build-the-output-build) output, and to acknowledge messages an
+[mllp source](processing-messages.md#receive-hl7-v2-over-mllp) receives. The others exist as
+libraries only. You can exercise the codecs with `weavster test`, which covers HL7 v2, JSON,
+XML, and raw.
 
 <!-- codec-table: every cell is checked against codecs.CoverageMatrix() by TestSupportMatrixCodecs -->
-| Codec | Tier | Versions / segments | Acknowledgment | Notes |
-|---|---|---|---|---|
-| `delimited` | Library-only | any (configurable delimiter) | no | tab/pipe/comma; optional header |
-| `hl7v2` | Library-only | 2.x segment/field/component/repetition | yes | MSH/MSA ACK |
-| `json` | Library-only | RFC 8259 | no | stdlib encoding/json |
-| `xml` | Library-only | XML 1.0 (XXE-safe) | no | no DTD/external-entity resolution by construction |
-| `x12` | Library-only | ISA/GS/ST envelope | yes | 997 functional acknowledgment |
-| `ncpdp` | Library-only | Telecommunication (FS/GS/RS delimiters) | no | fixed-width amount formatting; response limited |
-| `raw` | Library-only | any binary | no | passthrough |
-| `dicom` | Enterprise-deferred |  | no | requires a licensed library; interface stub only (gap #12) |
+| Codec | Tier | Server use | Versions / segments | Acknowledgment | Notes |
+|---|---|---|---|---|---|
+| `delimited` | Implemented (wired) | inputFormat delimited (RFC 4180 quoting) | any (configurable delimiter) | no | tab/pipe/comma; optional header |
+| `hl7v2` | Implemented (wired) | inputFormat hl7v2; build format hl7v2; MLLP ACKs | 2.x segment/field/component/repetition | yes | MSH/MSA ACK |
+| `json` | Implemented (wired) | transform input and output (the default) | RFC 8259 | no | stdlib encoding/json |
+| `xml` | Implemented (wired) | inputFormat xml; build format xml | XML 1.0 (XXE-safe) | no | no DTD/external-entity resolution by construction |
+| `x12` | Library-only |  | ISA/GS/ST envelope | yes | 997 functional acknowledgment |
+| `ncpdp` | Library-only |  | Telecommunication (FS/GS/RS delimiters) | no | fixed-width amount formatting; response limited |
+| `raw` | Implemented (wired) | flows without transforms pass messages through | any binary | no | passthrough |
+| `dicom` | Enterprise-deferred |  |  | no | requires a licensed library; interface stub only (gap #12) |
 
 ## Delivery guarantees per adapter
 
@@ -184,15 +185,16 @@ A failed destination is retried until `delivery.maxAttempts` (then `dead-lettere
 destinations are at-least-once: an attempt whose response was lost is sent again. The HTTP
 destination sends the same `Idempotency-Key` on every attempt, so a receiver that honors it
 sees each message once. Rows marked "library" describe adapters the server does not use yet. The
-outbox library's `SemanticsForAdapter` labels non-TCP sinks "exactly-once", but that label is
-not yet true.
+"Sends idempotency key" column matches the outbox library's `SemanticsForAdapter`: only the
+database sink, which upserts rows on the message id, is exactly-once; HTTP sends the key; every
+other adapter is at-least-once.
 
 | Adapter | Source | Sink | Guarantee | Sends idempotency key |
 |---|---|---|---|---|
 | File | wired | wired | at-least-once (a retry rewrites the same file name; a source file is read again if the server stops between storing the message and removing the file) | no |
-| HTTP | library | wired | at-least-once; effectively once when the receiver honors `Idempotency-Key` | yes: `Idempotency-Key` header, the same for every attempt |
+| HTTP | wired | wired | at-least-once; effectively once when the receiver honors `Idempotency-Key` | yes: `Idempotency-Key` header, the same for every attempt |
 | TCP/MLLP | wired | wired | at-least-once: the source sends `AA` once the message is stored, and the destination repeats a delivery whose ACK was lost; either way the receiver may see a message twice | no (the protocol has no field for one) |
-| Database | library | library | not wired | no |
+| Database | library | library | not wired (when wired: exactly-once, rows upserted on the key) | yes: rows are upserted on the message id |
 | SMTP | — | library | not wired | no |
 | Web service (SOAP/REST) | — | library | not wired | no |
 | Document | — | library | not wired | no |

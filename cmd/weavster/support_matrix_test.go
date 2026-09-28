@@ -19,6 +19,7 @@ import (
 
 	"github.com/weavster-dev/weavster/internal/codecs"
 	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/outbox"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 )
 
@@ -283,29 +284,68 @@ func TestSupportMatrixCodecs(t *testing.T) {
 	var documented []string
 	for _, line := range strings.Split(table, "\n") {
 		cells := strings.Split(line, "|")
-		if len(cells) != 7 || !strings.HasPrefix(strings.TrimSpace(cells[1]), "`") {
+		if len(cells) != 8 || !strings.HasPrefix(strings.TrimSpace(cells[1]), "`") {
 			continue
 		}
 		for i := range cells {
 			cells[i] = strings.TrimSpace(cells[i])
 		}
-		documented = append(documented, strings.Join([]string{strings.Trim(cells[1], "`"), cells[2], cells[3], cells[4], cells[5]}, " | "))
+		documented = append(documented, strings.Join([]string{strings.Trim(cells[1], "`"), cells[2], cells[3], cells[4], cells[5], cells[6]}, " | "))
 	}
 
 	var want []string
 	for _, e := range codecs.CoverageMatrix() {
 		tier, ack := "Library-only", "no"
-		if e.Enterprise {
+		switch {
+		case e.Enterprise:
 			tier = "Enterprise-deferred"
+		case e.Server != "":
+			tier = "Implemented (wired)"
 		}
 		if e.Acknowledgment {
 			ack = "yes"
 		}
-		want = append(want, strings.Join([]string{e.Name, tier, e.Versions, ack, e.Notes}, " | "))
+		want = append(want, strings.Join([]string{e.Name, tier, e.Server, e.Versions, ack, e.Notes}, " | "))
 	}
 	sort.Strings(documented)
 	sort.Strings(want)
 	if got, exp := strings.Join(documented, "\n"), strings.Join(want, "\n"); got != exp {
 		t.Errorf("docs codec table:\n%s\nCoverageMatrix:\n%s", got, exp)
+	}
+}
+
+// TestSupportMatrixDeliveryKeys keeps the delivery-guarantee table's
+// "Sends idempotency key" column in line with outbox.SemanticsForAdapter:
+// "yes" exactly for adapters that are not plain at-least-once.
+func TestSupportMatrixDeliveryKeys(t *testing.T) {
+	data, err := os.ReadFile("../../docs/support-matrix.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, table, ok := strings.Cut(string(data), "| Adapter | Source | Sink | Guarantee | Sends idempotency key |")
+	if !ok {
+		t.Fatal("delivery guarantee table not found")
+	}
+	table, _, _ = strings.Cut(table, "\n\n")
+	adapters := map[string]string{"File": "file", "HTTP": "http", "TCP/MLLP": "mllp", "Database": "database", "SMTP": "smtp",
+		"Web service (SOAP/REST)": "web-service", "Document": "document", "In-process inter-flow": "interflow"}
+	seen := 0
+	for _, line := range strings.Split(table, "\n") {
+		cells := strings.Split(line, "|")
+		if len(cells) != 7 {
+			continue
+		}
+		adapter, ok := adapters[strings.TrimSpace(cells[1])]
+		if !ok {
+			continue
+		}
+		seen++
+		sends := strings.HasPrefix(strings.TrimSpace(cells[5]), "yes")
+		if keyed := outbox.SemanticsForAdapter(adapter) != outbox.SemanticsAtLeastOnce; sends != keyed {
+			t.Errorf("%s: table says key sent=%v, SemanticsForAdapter says %s", cells[1], sends, outbox.SemanticsForAdapter(adapter))
+		}
+	}
+	if seen != len(adapters) {
+		t.Errorf("checked %d adapter rows, want %d", seen, len(adapters))
 	}
 }

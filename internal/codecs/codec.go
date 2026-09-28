@@ -90,18 +90,21 @@ type CoverageEntry struct {
 	Acknowledgment bool
 	Enterprise     bool
 	Notes          string
+	// Server says where the server uses the codec ("" when only the
+	// library and weavster test do).
+	Server string
 }
 
 // CoverageMatrix returns the explicit codec coverage matrix (gap #12).
 func CoverageMatrix() []CoverageEntry {
 	return []CoverageEntry{
-		{Name: "delimited", Versions: "any (configurable delimiter)", Notes: "tab/pipe/comma; optional header"},
-		{Name: "hl7v2", Versions: "2.x segment/field/component/repetition", Acknowledgment: true, Notes: "MSH/MSA ACK"},
-		{Name: "json", Versions: "RFC 8259", Notes: "stdlib encoding/json"},
-		{Name: "xml", Versions: "XML 1.0 (XXE-safe)", Notes: "no DTD/external-entity resolution by construction"},
+		{Name: "delimited", Versions: "any (configurable delimiter)", Notes: "tab/pipe/comma; optional header", Server: "inputFormat delimited (RFC 4180 quoting)"},
+		{Name: "hl7v2", Versions: "2.x segment/field/component/repetition", Acknowledgment: true, Notes: "MSH/MSA ACK", Server: "inputFormat hl7v2; build format hl7v2; MLLP ACKs"},
+		{Name: "json", Versions: "RFC 8259", Notes: "stdlib encoding/json", Server: "transform input and output (the default)"},
+		{Name: "xml", Versions: "XML 1.0 (XXE-safe)", Notes: "no DTD/external-entity resolution by construction", Server: "inputFormat xml; build format xml"},
 		{Name: "x12", Versions: "ISA/GS/ST envelope", Acknowledgment: true, Notes: "997 functional acknowledgment"},
 		{Name: "ncpdp", Versions: "Telecommunication (FS/GS/RS delimiters)", Notes: "fixed-width amount formatting; response limited"},
-		{Name: "raw", Versions: "any binary", Notes: "passthrough"},
+		{Name: "raw", Versions: "any binary", Notes: "passthrough", Server: "flows without transforms pass messages through"},
 		{Name: "dicom", Enterprise: true, Notes: "requires a licensed library; interface stub only (gap #12)"},
 	}
 }
