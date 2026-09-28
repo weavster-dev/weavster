@@ -36,6 +36,12 @@ password: A-Strong-Passw0rd
 
 Keep it readable only by you (`chmod 600`), because it holds a password.
 
+Use the final API address in `-a` or the connection file, for example
+`https://weavster.example.com`. The client refuses HTTP redirects and reports the
+original `3xx` status as an error, so credentials and request bodies cannot be
+forwarded by a redirect. If your proxy redirects to a different address, configure
+that final address directly.
+
 ## Interactive shell
 
 The shell prints the prompt `weavster> `, runs each command you type, and shows errors without
