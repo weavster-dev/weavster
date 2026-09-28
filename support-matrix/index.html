@@ -273,9 +273,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestSupportMatrixWired/topology-*</code>. The graph is built from the stored flows above. Status is whatever the flow record says. Flow nodes carry real activity counters (see below). An unknown <code>flowId</code> returns <code>404</code>.</td>
 </tr>
 <tr>
-<td><code>GET /api/v1/messages</code> search (<code>flowId</code>, <code>status</code>, <code>from</code>/<code>to</code>, <code>limit</code>/<code>offset</code>, <code>sort</code>), <code>GET /api/v1/messages/{id}</code>, <code>/content</code>, <code>DELETE</code>, <code>POST …/reprocess</code></td>
+<td><code>GET /api/v1/messages</code> search (<code>flowId</code>, <code>status</code>, <code>from</code>/<code>to</code>, <code>idFrom</code>/<code>idTo</code>, <code>contentType</code>, <code>minAttempts</code>/<code>maxAttempts</code>, <code>metadata.KEY</code>, <code>limit</code>/<code>offset</code>, allow-listed <code>sort</code>; <code>X-Total-Count</code>), <code>GET /api/v1/messages/{id}</code>, <code>/content</code>, <code>DELETE</code>, <code>POST …/reprocess</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestSupportMatrixWired/messages</code>, <code>TestPipelineEndToEnd</code>, <code>TestMessagesAPI</code>. Filters run in the store before paging. Content needs <code>messages:content</code>; search, read, and content are audited. Export/import (<code>GET /api/v1/messages/export</code>, <code>POST /api/v1/messages/import</code>, gzip, optional AES-256-GCM, <code>TestMessageArchive</code>; CLI <code>exportmessages</code>/<code>importmessages</code>). See <a href="../processing-messages/#4-find-processed-messages">Processing messages</a>.</td>
+<td><code>TestSupportMatrixWired/messages</code>, <code>TestPipelineEndToEnd</code>, <code>TestMessagesAPI</code>, <code>TestMessageSearch</code>, <code>TestSearchFilterParity</code> (memory, SQLite, PostgreSQL). Filters run in the store before paging; the same filters apply to export and bulk removal. Content needs <code>messages:content</code>; search, read, and content are audited. Export/import (<code>GET /api/v1/messages/export</code>, <code>POST /api/v1/messages/import</code>, gzip, optional AES-256-GCM, <code>TestMessageArchive</code>; CLI <code>exportmessages</code>/<code>importmessages</code>). See <a href="../processing-messages/#4-find-processed-messages">Processing messages</a>.</td>
 </tr>
 <tr>
 <td>Authentication (Basic or Bearer token) on every <code>/api/v1</code> route except login</td>
@@ -323,7 +323,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestSnippets</code>. Stored and managed only: flows do not run snippets yet. See <a href="../snippets/">Code snippets and libraries</a>.</td>
 </tr>
 <tr>
-<td>Bulk message removal (<code>DELETE /api/v1/messages</code> by <code>flowId</code>/<code>status</code>/<code>from</code>/<code>to</code>, <code>all=true</code>, <code>restart=true</code>); CLI <code>clearallmessages</code>, <code>dump stats</code>, <code>dump events</code></td>
+<td>Bulk message removal (<code>DELETE /api/v1/messages</code> by the search filters, <code>all=true</code>, <code>restart=true</code>); CLI <code>clearallmessages</code>, <code>dump stats</code>, <code>dump events</code></td>
 <td>Implemented (wired)</td>
 <td><code>TestBulkMessageRemoval</code>. Messages being processed are kept and counted as <code>busy</code>. See <a href="../processing-messages/#remove-many-messages">Processing messages</a>.</td>
 </tr>

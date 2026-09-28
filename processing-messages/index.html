@@ -1661,6 +1661,22 @@ framed, a delivery cut short by a server shutdown) has no <code>lastCode</code>.
 <td>Received at or after / at or before this time (RFC 3339, for example <code>2026-09-26T12:00:00Z</code>); <code>from</code> must not be after <code>to</code>.</td>
 </tr>
 <tr>
+<td><code>idFrom</code>, <code>idTo</code></td>
+<td>Message ids at or after / at or before these, compared byte by byte; <code>idFrom</code> must not be after <code>idTo</code>.</td>
+</tr>
+<tr>
+<td><code>contentType</code></td>
+<td>Only messages of this format, as their <code>contentType</code> shows (for example <code>hl7v2</code>, <code>json</code>, <code>raw</code>).</td>
+</tr>
+<tr>
+<td><code>minAttempts</code>, <code>maxAttempts</code></td>
+<td>Only messages where some destination took at least / at most this many attempts (1–1000). A delivered message counts its successful attempt, so <code>minAttempts=2</code> finds messages that needed a retry.</td>
+</tr>
+<tr>
+<td><code>metadata.KEY</code></td>
+<td>Only messages whose metadata <code>KEY</code> has exactly this value, for example <code>metadata.source.file=a.hl7</code> or <code>metadata.source.mllp.controlId=MSG00042</code>. Up to 10, each given once; all must match.</td>
+</tr>
+<tr>
 <td><code>limit</code></td>
 <td>Messages per page, 1–1000 (default 100).</td>
 </tr>
@@ -1670,13 +1686,23 @@ framed, a delivery cut short by a server shutdown) has no <code>lastCode</code>.
 </tr>
 <tr>
 <td><code>sort</code></td>
-<td><code>-receivedAt</code> (newest first, default), <code>receivedAt</code>, <code>id</code>, or <code>-id</code>.</td>
+<td><code>-receivedAt</code> (newest first, default), <code>receivedAt</code>, <code>id</code>, or <code>-id</code>. Other values are refused (<code>400</code>).</td>
 </tr>
 </tbody>
 </table>
 <p>The filters are applied before <code>limit</code> and <code>offset</code>, so every page holds only matching messages,
 and messages received in the same instant are ordered by id, so pages neither repeat nor skip
 messages while no new ones arrive.</p>
+<p>The <code>X-Total-Count</code> response header gives how many messages match the filters in all, whatever
+<code>limit</code> and <code>offset</code> are, so you can show "page 2 of 7":</p>
+<pre><code class="language-bash">curl -si -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/messages?metadata.source.file=a.hl7&amp;minAttempts=2&amp;limit=1' | grep -i x-total-count
+</code></pre>
+<pre><code class="language-text">X-Total-Count: 3
+</code></pre>
+<p>The total is counted separately from the page, so a message that arrives or is removed in
+between can make the two differ by that much. If the count fails, the page is still returned,
+without <code>X-Total-Count</code>.</p>
 <h3 id="message-trends">Message trends</h3>
 <p><code>GET /api/v1/messages/trends</code> (permission <code>messages:view</code>) counts the messages received in each
 hour or day of a range, by their current status. It returns counts only, never content.</p>
@@ -1756,7 +1782,9 @@ recorded in the <a href="../audit-log/">audit log</a> as <code>phi.access</code>
 </code></pre>
 <h3 id="remove-many-messages">Remove many messages</h3>
 <p><code>DELETE /api/v1/messages</code> (permission <code>messages:delete</code>) removes every message that matches the
-search filters <code>flowId</code>, <code>status</code>, <code>from</code>, and <code>to</code>. There is no limit: every match is removed.</p>
+<a href="#4-find-processed-messages">search filters</a> (<code>flowId</code>, <code>status</code>, <code>from</code>, <code>to</code>, <code>idFrom</code>, <code>idTo</code>,
+<code>contentType</code>, <code>minAttempts</code>, <code>maxAttempts</code>, <code>metadata.KEY</code>). There is no limit: every match is
+removed.</p>
 <pre><code class="language-bash"># Every errored message of one flow
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X DELETE \
   'http://127.0.0.1:8080/api/v1/messages?flowId=adt&amp;status=errored'
@@ -1777,7 +1805,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X DELETE \
 </tr>
 <tr>
 <td><code>restart=true</code></td>
-<td>Stops the started flows first (only the <code>flowId</code> flow, when given), removes the messages, then starts those flows again. <code>restarted</code> lists them. Stopping waits for the messages those flows are processing, so they are removed too. Paused and halted flows are left as they are.</td>
+<td>Stops the started flows first (only the <code>flowId</code> flow, when given; other filters do not narrow which flows are stopped), removes the messages, then starts those flows again. <code>restarted</code> lists them. Stopping waits for the messages those flows are processing, so they are removed too. Paused and halted flows are left as they are.</td>
 </tr>
 </tbody>
 </table>
