@@ -1376,8 +1376,9 @@ messages every `intervalMinutes`. A pass first removes the messages received mor
 `maxAgeHours` ago, then, while more than `maxMessages` are stored, the oldest ones (a few more
 when several were received in the same millisecond). Only messages that are done (`sent`,
 `filtered`, `errored`, `dead-lettered`) are removed; `received`, `transformed`, and `queued`
-messages are left alone and are not counted anywhere, so a store full of queued messages can
-stay above `maxMessages`. A finished message that is being worked on at that moment (for
+messages are never removed. They still count toward `maxMessages`, because the limit is on the
+store's size: finished messages are removed first to make room, even the newest, and a store
+whose excess is all unfinished messages stays above `maxMessages` until they finish. A finished message that is being worked on at that moment (for
 example requeued or reprocessed) is skipped and counted once in `busy`; the next pass takes it.
 Removed messages are gone for good, so [export](#export-and-import-messages) the ones you must
 keep first.

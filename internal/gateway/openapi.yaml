@@ -119,8 +119,8 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "202": {description: "Started; the prune status", content: {application/json: {schema: {$ref: "#/components/schemas/PruneStatus"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
-        "409": {description: "A pass is already running, or pruning is not configured (no prune.maxAgeHours or prune.maxMessages); 503 while the server starts or stops", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
-        "503": {description: No message store, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "409": {description: "A pass is already running, or pruning is not configured (no prune.maxAgeHours or prune.maxMessages)", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: "No message store, or the server is starting or shutting down", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/system/prune/stop:
     post:
       summary: "Stop the running prune pass; the reply comes once it has stopped (requires messages:delete)"

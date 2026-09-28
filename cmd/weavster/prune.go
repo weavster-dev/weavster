@@ -84,10 +84,10 @@ func (p *pruner) Start() error {
 	switch {
 	case !p.cfg.Enabled():
 		return gateway.ErrPruneOff
+	case p.base == nil || p.base.Err() != nil: // starting, or shutting down
+		return gateway.ErrPruneUnavailable
 	case p.cancel != nil:
 		return gateway.ErrPruneRunning
-	case p.base == nil:
-		return gateway.ErrPruneUnavailable
 	}
 	ctx, cancel := context.WithCancel(p.base)
 	run := &gateway.PruneRun{StartedAt: p.now().UTC()}
@@ -199,13 +199,11 @@ func (p *pruner) prune(ctx context.Context) (removed, busy int, err error) {
 func (p *pruner) countCutoff(ctx context.Context, n int) (cutoff time.Time, ok bool, err error) {
 	var times []time.Time
 	for _, st := range finalStatuses {
-		page, err := p.msgs.store.Search(ctx, state.Query{Status: st, Sort: "received_at", Limit: n})
+		page, err := p.msgs.store.ReceivedTimes(ctx, state.Query{Status: st, Sort: "received_at", Limit: n})
 		if err != nil {
 			return time.Time{}, false, err
 		}
-		for _, m := range page {
-			times = append(times, m.ReceivedAt)
-		}
+		times = append(times, page...)
 	}
 	if len(times) == 0 {
 		return time.Time{}, false, nil

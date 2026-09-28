@@ -237,7 +237,7 @@ Off by default.
 | Key | Default | Description |
 |---|---|---|
 | `maxAgeHours` | `0` (off) | Remove messages received more than this many hours ago (1–876000). |
-| `maxMessages` | `0` (off) | Keep at most this many messages; the oldest are removed first. |
+| `maxMessages` | `0` (off) | Keep at most this many messages in the store; the oldest finished ones are removed first. Unfinished messages count toward the limit but are never removed. |
 | `intervalMinutes` | `60` | How often a pass runs (1–10080, one week). The first pass runs one interval after the server starts. |
 
 ```yaml

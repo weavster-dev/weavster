@@ -173,6 +173,12 @@ func TestPruneControl(t *testing.T) {
 	if err := idle.Start(); !errors.Is(err, gateway.ErrPruneUnavailable) {
 		t.Errorf("Start before the loop = %v", err)
 	}
+	ended, cancelEnded := context.WithCancel(context.Background())
+	cancelEnded()
+	idle.base = ended // shutting down, before the loop has noticed
+	if err := idle.Start(); !errors.Is(err, gateway.ErrPruneUnavailable) {
+		t.Errorf("Start while shutting down = %v", err)
+	}
 
 	failing, _, events := testPruner(failingCountStore{state.NewMemStore()}, on, now)
 	if run := runPass(t, failing); run.Error != "count failed" {
