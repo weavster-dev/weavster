@@ -54,6 +54,7 @@ JSON view of an [HL7 v2 message](#transform-hl7-v2-messages),
 | `map` | `from`, `to`, optional `type` (`string`, `number`, `boolean`) | Copies the value at `from` to `to`, converting it if `type` is set. A missing `from` leaves `to` unchanged. |
 | `set` | `field`, `expr` | Sets `field` to `expr`, replacing each `{{path}}` with that value (an empty string when missing). |
 | `filter` | `when`, `action` (`reject` or `accept`) | `reject` drops the message when `when` is true; `accept` drops it when `when` is false. |
+| `build` | `template`, optional `format` (`json`, `hl7v2`, `xml`, `text`) | Renders the output from `template`, replacing each `{{path}}`. Last step only; see [Build the output](#build-the-output-build). |
 | `destinationSet` | `exclude` (destination names), optional `when` | Excludes those destinations for this message when `when` is true (always without `when`). Flow `transform` only; see [Route by content](#route-by-content-destinationset). |
 
 - **Paths** use dots: `patient.lastName`. A number indexes an array: `items.0.code`.
@@ -61,7 +62,6 @@ JSON view of an [HL7 v2 message](#transform-hl7-v2-messages),
   or `<operand> == <operand>` / `<operand> != <operand>`. An operand is a path, a quoted string
   (`'x'` or `"x"`), a number (`3`, `-1.5`), or `true`/`false`. A missing path compares equal
   to `''`. No other operators exist.
-- `build` steps are not supported yet.
 - Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.
 
 The transform format is published as
@@ -159,9 +159,9 @@ For `MSH|^~\&|LAB|HOSP|W|H|20260927120000||ADT^A01|MSG1|P|2.5` and
   separator (`&`), so it cannot be told apart from a subcomponent boundary in the text.
 - The message's own delimiters (MSH-1 and MSH-2) are used; line breaks `\n` or `\r\n` between
   segments are accepted.
-- The transform's output is JSON: the view above with your changes. Destinations receive it as
-  `application/json`; there is no conversion back to HL7 yet. A flow without transforms delivers
-  the HL7 message unchanged.
+- The transform's output is JSON (the view above with your changes), unless it ends with a
+  [`build`](#build-the-output-build) step, which can produce HL7 v2 again. A flow without
+  transforms delivers the HL7 message unchanged.
 - Destination transforms read the same view when the flow itself has no transform (otherwise they
   read the flow's JSON output).
 - A message that does not start with an MSH segment is refused: `400` over the API, `AR` over
@@ -219,8 +219,9 @@ the transform sees:
   joined into the parent's `#text`.
 - Any character set the document declares (`encoding="ISO-8859-1"`, `windows-1252`, …) is
   accepted, and a leading UTF-8 byte order mark is skipped.
-- The transform's output is JSON, delivered as `application/json`; there is no conversion back to
-  XML yet. The stored original is the document as received.
+- The transform's output is JSON, delivered as `application/json`, unless it ends with a
+  [`build`](#build-the-output-build) step (for example `format: xml`). The stored original is the
+  document as received.
 - Only well-formed documents with one root element are accepted, with at most 256 levels of
   nesting and 100,000 elements, every namespace prefix declared, no attribute twice, the XML
   declaration (if any) first, and at most one `DOCTYPE` before the root. Anything else is refused
@@ -281,7 +282,8 @@ the transform sees:
   like any other change to a flow's definition.
 - The whole file is one message. A transform reaches rows by position (`rows.0`, `rows.1`); there
   are no loops yet, and splitting a file into one message per row comes later.
-- The transform's output is JSON, delivered as `application/json`.
+- The transform's output is JSON, delivered as `application/json`, unless it ends with a
+  [`build`](#build-the-output-build) step.
 
 ### Send HL7 v2 over MLLP
 
@@ -297,10 +299,11 @@ waits for its ACK:
 }
 ```
 
-- The destination sends the HL7 message as received. The flow must have `"inputFormat":
-  "hl7v2"` (so only HL7 v2 messages are accepted), and neither the flow nor the destination may
-  have a `transform`: transforms output JSON, which an HL7 receiver cannot take, and conversion
-  back to HL7 is not available yet. Such a flow is refused when you create it.
+- The destination must receive an HL7 v2 message: either the message as received (the flow has
+  `"inputFormat": "hl7v2"` and neither the flow nor the destination has a `transform`), or the
+  output of a [`build`](#build-the-output-build) step with `"format": "hl7v2"` at the end of the
+  flow's or the destination's transform. Anything else (JSON, XML) is refused when you create the
+  flow.
 - A message containing the MLLP end bytes (`0x1C 0x0D`) cannot be framed; its delivery fails.
 - Each delivery opens its own connection, sends one frame, and waits for one framed reply within
   `timeoutMs` (default 30 seconds; replies over 1 MiB are not read).
@@ -340,7 +343,8 @@ Each message goes through these stages, in this order:
    [XML](#transform-xml-documents), or [delimited](#transform-delimited-text-csv) view). Each
    step sees what the steps before it produced. If a `filter` drops the message it is
    `filtered`; if a step fails (for example `"x" is not a number`) it is `errored`. Either way
-   nothing is delivered.
+   nothing is delivered. A final [`build`](#build-the-output-build) step turns the result into
+   the output (HL7 v2, XML, text, or JSON); otherwise the output is the document as JSON.
 2. **Destination transform**: for each destination, its own
    [`transform`](#per-destination-transforms-and-filters) steps in order, on the flow's output
    (not the original message). A `filter` here drops the message for that destination only. A
@@ -367,6 +371,45 @@ Written the other way round, the filter runs before the `map`, so it sees only w
 itself carries: a message without an `adult` field (a missing value compares equal to `''`) is
 filtered, whatever `age.flag` says. A destination's filter on `adult`, by contrast, always sees
 the flow's finished output, including what the `map` set.
+
+### Build the output (`build`)
+
+A `build` step, as the **last** step of a flow's or destination's `transform`, writes the output
+from a template instead of sending the document as JSON. This is how a flow sends HL7 v2 (or XML,
+or text) again. For example, receive ADT over MLLP and relay a reshaped message to a lab:
+
+```json
+{
+  "id": "adt-relay",
+  "inputFormat": "hl7v2",
+  "source": {"type": "mllp", "address": ":2575"},
+  "transform": {"steps": [
+    {"set": {"field": "name", "expr": "{{PID.5.1}}^{{PID.5.2}}"}},
+    {"build": {"format": "hl7v2", "template": "MSH|^~\\&|WEAVSTER|H|LAB|H|{{MSH.7.1}}||ADT^A08|{{MSH.10.1}}|P|2.5\nPID|1||{{PID.3.1}}^^^MRN||{{name}}"}}
+  ]},
+  "destinations": [{"name": "lab", "type": "mllp", "address": "lab.example.com:2575"}]
+}
+```
+
+| `format` | Output | Content-Type |
+|---|---|---|
+| `json` (default) | The template must render valid JSON. | `application/json` |
+| `hl7v2` | Segments may be written on separate lines; they are sent separated by CR. The result must start with an MSH segment. | `x-application/hl7-v2+er7` |
+| `xml` | The template must render a well-formed XML document. | `application/xml` |
+| `text` | Any text. | `text/plain; charset=utf-8` |
+
+- Each `{{path}}` is replaced by that value (an empty string when missing), **escaped for the
+  format**, so a value can never change the output's structure: in `hl7v2`, `| ^ ~ \ &` become
+  `\F\ \S\ \R\ \E\ \T\` and line breaks `\X0D\`/`\X0A\` (in the example above, the
+  `^` in `name` is sent as `\S\`, so the name stays one field); in `xml`, `& < > " '` become
+  entities; in `json`, values are escaped as the inside of a JSON string (write the quotes in the
+  template: `"name": "{{name}}"`). `text` inserts values as they are.
+- If the result is not a valid document of its format, the step fails and the message is
+  `errored`.
+- A destination transform after a flow `build` reads that output's view: HL7 v2 paths after
+  `format: hl7v2`, XML paths after `format: xml`. After `format: text` a destination transform
+  cannot read it and is refused.
+- A `responseTransform` cannot use `build`: the reply returned to the sender is JSON.
 
 ### Route by content (`destinationSet`)
 

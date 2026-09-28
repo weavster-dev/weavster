@@ -69,9 +69,13 @@ func TestValidate(t *testing.T) {
 		{"file without dir", Flow{Destinations: []Destination{{Name: "a", Type: "file"}}}, "dir is required"},
 		{"bad type", Flow{Destinations: []Destination{{Name: "a", Type: "smtp"}}}, "type must be http, file, or mllp"},
 		{"mllp", Flow{InputFormat: "hl7v2", Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, ""},
-		{"mllp from json", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, "needs inputFormat hl7v2"},
-		{"mllp after a transform", Flow{InputFormat: "hl7v2", Transform: &compiler.Transform{Name: "t"}, Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, "may have a transform"},
-		{"mllp with its own transform", Flow{InputFormat: "hl7v2", Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575", Transform: &compiler.Transform{Name: "t"}}}}, "may have a transform"},
+		{"mllp from json", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, "needs an HL7 v2 message"},
+		{"mllp after a transform", Flow{InputFormat: "hl7v2", Transform: &compiler.Transform{Name: "t"}, Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, "needs an HL7 v2 message"},
+		{"mllp with its own transform", Flow{InputFormat: "hl7v2", Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575", Transform: &compiler.Transform{Name: "t"}}}}, "needs an HL7 v2 message"},
+		{"mllp after an hl7v2 build", Flow{Transform: buildTo("hl7v2"), Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, ""},
+		{"mllp with its own hl7v2 build", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575", Transform: buildTo("hl7v2")}}}, ""},
+		{"mllp after an xml build", Flow{Transform: buildTo("xml"), Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, "needs an HL7 v2 message"},
+		{"transform after a text build", Flow{Transform: buildTo("text"), Destinations: []Destination{{Name: "a", Type: "file", Dir: "d", Transform: &compiler.Transform{Name: "t"}}}}, "outputs text, which a transform cannot read"},
 		{"mllp without port", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example"}}}, "address must be host:port"},
 		{"mllp without host", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: ":2575"}}}, "address must be host:port"},
 		{"mllp port zero", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "x:0"}}}, "address must be host:port"},
@@ -500,5 +504,53 @@ func TestProcessDestinationSet(t *testing.T) {
 	}
 	if m, _ = store.Get(ctx, res.ID); m.Status != state.StatusSent || len(sinks["ehr"].bodies) != 3 {
 		t.Errorf("after retry: status %s, ehr deliveries %d (want sent, 3: ehr stays excluded)", m.Status, len(sinks["ehr"].bodies))
+	}
+}
+
+// buildTo is a transform whose only step builds format.
+func buildTo(format string) *compiler.Transform {
+	return &compiler.Transform{Name: "b", Steps: []compiler.Step{{Build: &compiler.BuildStep{Template: "MSH|^~\\&|A", Format: format}}}}
+}
+
+// TestProcessBuild: a flow's build step makes the output (with its
+// Content-Type); a destination transform reads that output's view; a
+// destination can build its own format.
+func TestProcessBuild(t *testing.T) {
+	ctx := context.Background()
+	sinks := map[string]*recordingSink{"lab": {}, "ehr": {}, "raw": {}}
+	store := state.NewMemStore()
+	p := New(store, func(d Destination) (Sink, error) { return sinks[d.Name], nil }, nil, Options{})
+	f := Flow{ID: "f", InputFormat: "hl7v2",
+		Transform: transform(t, "name: t\nsteps:\n  - map: { from: PID.5.1, to: last }\n  - build: { format: hl7v2, template: \"MSH|^~\\\\&|W|H|LAB|H|1||ADT^A08|{{MSH.10.1}}|P|2.5\\nPID|1||||{{last}}\" }"),
+		Destinations: []Destination{
+			{Name: "lab", Type: "file", Dir: "d"},
+			{Name: "ehr", Type: "file", Dir: "d", Transform: transform(t, "name: d\nsteps:\n  - build: { format: xml, template: \"<p last='{{PID.5.1}}' type='{{MSH.9.2}}'/>\" }")},
+			{Name: "raw", Type: "file", Dir: "d", Transform: transform(t, "name: j\nsteps:\n  - map: { from: PID.5.1, to: name }")},
+		}}
+	res, err := p.Process(ctx, f, []byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|C7|P|2.5\rPID|1||123||DOE^JOHN\r"))
+	if err != nil || res.Status != state.StatusSent {
+		t.Fatalf("%+v %v", res, err)
+	}
+	for name, want := range map[string]string{
+		"lab": "x-application/hl7-v2+er7 MSH|^~\\&|W|H|LAB|H|1||ADT^A08|C7|P|2.5\rPID|1||||DOE\r",
+		"ehr": "application/xml <p last='DOE' type='A08'/>",
+		"raw": `application/json {"MSH":`,
+	} {
+		if got := sinks[name].types[0] + " " + sinks[name].bodies[0]; !strings.HasPrefix(got, want) {
+			t.Errorf("%s got %q, want %q", name, got, want)
+		}
+	}
+	if m, _ := store.Get(ctx, res.ID); m.ContentType != "hl7v2" {
+		t.Errorf("stored content type %q", m.ContentType)
+	}
+	// A build that cannot produce its format errors the message.
+	bad := Flow{ID: "b", Transform: transform(t, "name: t\nsteps:\n  - build: { format: xml, template: '<a>{{x}}' }"), Destinations: []Destination{{Name: "lab", Type: "file", Dir: "d"}}}
+	if res, err := p.Process(ctx, bad, []byte(`{"x":1}`)); err != nil || res.Status != state.StatusErrored {
+		t.Errorf("broken build: %+v %v", res, err)
+	}
+	for format, want := range map[string]string{"text": "text/plain; charset=utf-8", "raw": "application/octet-stream"} {
+		if got := mimeType(format); got != want {
+			t.Errorf("mimeType(%s) = %s", format, got)
+		}
 	}
 }

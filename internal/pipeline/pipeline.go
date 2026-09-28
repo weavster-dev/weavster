@@ -196,9 +196,10 @@ func Validate(f Flow) error {
 			return fmt.Errorf("destination %s: dir is required for type file", d.Name)
 		case d.Type == "mllp" && !validAddress(d.Address):
 			return fmt.Errorf("destination %s: address must be host:port with a port from 1 to 65535, got %q", d.Name, d.Address)
-		case d.Type == "mllp" && (f.InputFormat != "hl7v2" || f.Transform != nil || d.Transform != nil):
-			// Transforms output JSON, which an HL7 receiver cannot take.
-			return fmt.Errorf("destination %s: an mllp destination sends the HL7 v2 message as received, so the flow needs inputFormat hl7v2 and neither the flow nor the destination may have a transform", d.Name)
+		case d.Type == "mllp" && receives(f, d) != "hl7v2":
+			return fmt.Errorf("destination %s: an mllp destination needs an HL7 v2 message: the HL7 v2 message as received (inputFormat hl7v2 and no transforms), or a build step with format hl7v2 at the end of the flow's or this destination's transform", d.Name)
+		case d.Transform != nil && flowOutput(f) == "text":
+			return fmt.Errorf("destination %s: transform: the flow's build step outputs text, which a transform cannot read", d.Name)
 		case d.Type != "http" && d.Type != "file" && d.Type != "mllp":
 			return fmt.Errorf("destination %s: type must be http, file, or mllp, got %q", d.Name, d.Type)
 		}
@@ -225,6 +226,43 @@ func Validate(f Flow) error {
 		return fmt.Errorf("responseSelector: destination %s is type %s, which sends no reply; select an http destination", f.ResponseSelector, kind)
 	}
 	return nil
+}
+
+// builds reports a transform's build format ("" when it has no build step).
+func builds(t *compiler.Transform) string {
+	if t == nil || len(t.Steps) == 0 || t.Steps[len(t.Steps)-1].Build == nil {
+		return ""
+	}
+	if format := t.Steps[len(t.Steps)-1].Build.Format; format != "" {
+		return format
+	}
+	return "json"
+}
+
+// flowOutput is the format of f's output: its build format, json after
+// any other transform, or the input as received ("hl7v2", or "" for other
+// input).
+func flowOutput(f Flow) string {
+	switch {
+	case f.Transform == nil && f.InputFormat == "hl7v2":
+		return "hl7v2"
+	case f.Transform == nil:
+		return ""
+	case builds(f.Transform) != "":
+		return builds(f.Transform)
+	}
+	return "json"
+}
+
+// receives is the format of what destination d is sent.
+func receives(f Flow, d Destination) string {
+	switch {
+	case d.Transform == nil:
+		return flowOutput(f)
+	case builds(d.Transform) != "":
+		return builds(d.Transform)
+	}
+	return "json"
 }
 
 // validAddress reports whether s is host:port with a numeric port 1–65535.
@@ -466,6 +504,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 		// is cleared ("") unless the flow transform sets it, so one carried
 		// over (a reprocessed message keeps its metadata) never applies.
 		routed := map[string]string{ExcludedMetadata: ""}
+		contentType := "" // kept unless a build step sets the output's format
 		if f.Transform != nil {
 			prog, err := dsl.Compile(*f.Transform)
 			if err != nil {
@@ -475,19 +514,21 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 			if err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
-			out, filtered, excluded, err := prog.RunRouted(doc)
+			out, err := prog.Execute(doc)
 			if err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
-			if filtered {
+			if out.Filtered {
 				return p.complete(ctx, id, state.StatusFiltered, nil, retry, nil)
 			}
-			if transformed, err = json.Marshal(out); err != nil {
+			if out.Body != nil { // a build step rendered the output
+				transformed, contentType = out.Body, out.Format
+			} else if transformed, err = json.Marshal(out.Doc); err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
-			routed[ExcludedMetadata] = strings.Join(excluded, ",")
+			routed[ExcludedMetadata] = strings.Join(out.Excluded, ",")
 		}
-		stored, err := ob.SetTransformed(ctx, id, transformed, routed)
+		stored, err := ob.SetTransformed(ctx, id, transformed, contentType, routed)
 		if err != nil {
 			return Result{}, err
 		}
@@ -540,7 +581,10 @@ func responseOutput(f Flow, r *Reply) json.RawMessage {
 		}
 	}
 	if t != nil {
-		out, _, err := destinationOutput(*t, Flow{}, r.Body) // replies are read as JSON
+		out, format, _, err := destinationOutput(*t, Flow{}, r.Body) // replies are read as JSON
+		if format != "json" {
+			return nil // the reply returned to the sender is JSON
+		}
 		if err != nil || isJSONNull(out) {
 			return nil
 		}
@@ -570,8 +614,25 @@ func isJSONType(contentType string) bool {
 // the transform's error (a delivery failure).
 type destinationResult struct {
 	body     []byte
+	format   string // the body's format: "json", or a build step's
 	filtered bool
 	err      error
+}
+
+// mimeType is the Content-Type of a delivery whose body has format (a
+// message's content type or a build step's format).
+func mimeType(format string) string {
+	switch format {
+	case "json":
+		return "application/json"
+	case "hl7v2":
+		return "x-application/hl7-v2+er7"
+	case "xml":
+		return "application/xml"
+	case "text":
+		return "text/plain; charset=utf-8"
+	}
+	return "application/octet-stream"
 }
 
 // destinationOutputs runs, once, the transform of every destination of f
@@ -587,8 +648,11 @@ func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 	// Changed input options (delimiter, header) apply to messages still
 	// waiting, like any other definition change.
 	format := f
-	if m.ContentType == "json" {
+	switch m.ContentType {
+	case "json":
 		format = Flow{}
+	case "hl7v2", "xml": // a flow build step's output
+		format = Flow{InputFormat: m.ContentType}
 	}
 	excluded := excludedSet(m)
 	for _, d := range f.Destinations {
@@ -597,7 +661,7 @@ func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 			continue
 		}
 		var r destinationResult
-		r.body, r.filtered, r.err = destinationOutput(*d.Transform, format, m.Transformed)
+		r.body, r.format, r.filtered, r.err = destinationOutput(*d.Transform, format, m.Transformed)
 		outs[d.Name] = r
 	}
 	return outs
@@ -605,21 +669,24 @@ func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 
 // destinationOutput runs transform t over body, the flow's output, read the
 // way format's input options say.
-func destinationOutput(t compiler.Transform, format Flow, body []byte) (out []byte, filtered bool, err error) {
+func destinationOutput(t compiler.Transform, format Flow, body []byte) (out []byte, outFormat string, filtered bool, err error) {
 	prog, err := dsl.Compile(t)
 	if err != nil {
-		return nil, false, err
+		return nil, "", false, err
 	}
 	doc, err := decodeInput(format, body)
 	if err != nil {
-		return nil, false, err
+		return nil, "", false, err
 	}
-	res, filtered, err := prog.Run(doc)
-	if err != nil || filtered {
-		return nil, filtered, err
+	res, err := prog.Execute(doc)
+	if err != nil || res.Filtered {
+		return nil, "", res.Filtered, err
 	}
-	out, err = json.Marshal(res)
-	return out, false, err
+	if res.Body != nil { // a build step rendered the output
+		return res.Body, res.Format, false, nil
+	}
+	out, err = json.Marshal(res.Doc)
+	return out, "json", false, err
 }
 
 // ExcludedMetadata is the message metadata listing (comma-separated) the
@@ -669,10 +736,7 @@ func (p *Pipeline) pending(a state.DestinationAttempt, now time.Time) bool {
 // When reply is set, the reply to a successful delivery to the flow's
 // response selector is stored there.
 func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]destinationResult, reply **Reply) outbox.DeliverFunc {
-	mime := "application/octet-stream"
-	if contentType == "json" {
-		mime = "application/json"
-	}
+	mime := mimeType(contentType)
 	type built struct {
 		transformed bool
 		sink        Sink
@@ -697,7 +761,7 @@ func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]desti
 			case out.err != nil:
 				return fmt.Errorf("destination transform: %w", out.err)
 			}
-			body, destMime = out.body, "application/json"
+			body, destMime = out.body, mimeType(out.format)
 		}
 		d := Delivery{MessageID: m.ID, Body: body, ContentType: destMime, IdempotencyKey: key}
 		if rs, ok := b.sink.(ResponseSink); ok && reply != nil && dest == f.ResponseSelector {

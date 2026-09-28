@@ -58,8 +58,9 @@ type Delimited struct {
 }
 
 // CheckTransforms checks what the schema cannot about transforms (#107
-// D-66): destinationSet steps belong in the flow's transform only, and
-// every destination they exclude is a destination of the flow.
+// D-66, D-67): destinationSet steps belong in the flow's transform only,
+// every destination they exclude is a destination of the flow, and a
+// response transform has no build step.
 func CheckTransforms(f Flow) error {
 	names := map[string]bool{}
 	for _, d := range f.Destinations {
@@ -69,6 +70,9 @@ func CheckTransforms(f Flow) error {
 				return fmt.Errorf("destination %s: %s: destinationSet can only be used in the flow's transform", d.Name, field)
 			}
 		}
+		if hasBuild(d.ResponseTransform) {
+			return fmt.Errorf("destination %s: responseTransform: build cannot be used here: the reply returned to the sender is JSON", d.Name)
+		}
 	}
 	for _, name := range excluded(f.Transform) {
 		if !names[name] {
@@ -76,6 +80,20 @@ func CheckTransforms(f Flow) error {
 		}
 	}
 	return nil
+}
+
+// hasBuild reports whether a transform has a build step.
+func hasBuild(raw json.RawMessage) bool {
+	var t compiler.Transform
+	if len(raw) == 0 || json.Unmarshal(raw, &t) != nil {
+		return false
+	}
+	for _, s := range t.Steps {
+		if s.Build != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // excluded lists the names a transform's destinationSet steps exclude

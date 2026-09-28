@@ -45,7 +45,7 @@ func writeStep(b *bytes.Buffer, s Step) {
 	case s.Filter != nil:
 		fmt.Fprintf(b, "{kind: %q, expr: %q, to: %q}", "filter", s.Filter.When, s.Filter.Action)
 	case s.Build != nil:
-		fmt.Fprintf(b, "{kind: %q, expr: %q}", "build", s.Build.Template)
+		fmt.Fprintf(b, "{kind: %q, expr: %q, to: %q}", "build", s.Build.Template, s.Build.Format)
 	case s.DestinationSet != nil:
 		fmt.Fprintf(b, "{kind: %q, expr: %q, to: %q}", "destinationSet", s.DestinationSet.When, joinComma(s.DestinationSet.Exclude))
 	default:
