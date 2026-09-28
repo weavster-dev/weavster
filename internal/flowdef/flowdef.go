@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/robfig/cron/v3"
+
 	"github.com/weavster-dev/weavster/internal/adapters"
 	"github.com/weavster-dev/weavster/internal/compiler"
 	"github.com/weavster-dev/weavster/internal/dsl"
@@ -196,13 +198,31 @@ func checkDatabase(d Destination) error {
 	return nil
 }
 
+// checkSchedule checks a source's schedule (#107 D-77): a standard cron
+// expression or descriptor, on a file or database source, not together
+// with pollIntervalMs.
+func checkSchedule(s *Source) error {
+	switch {
+	case s.Schedule == "":
+		return nil
+	case s.Type != "file" && s.Type != "database":
+		return errors.New("source.schedule applies only to file and database sources")
+	case s.PollIntervalMs != 0:
+		return errors.New("source.schedule and source.pollIntervalMs cannot both be set")
+	}
+	if _, err := cron.ParseStandard(s.Schedule); err != nil {
+		return fmt.Errorf("source.schedule %q is not a cron expression (minute hour day-of-month month day-of-week, or @hourly, @daily, @every 30s, …; optionally CRON_TZ=Area/City first)", s.Schedule)
+	}
+	return nil
+}
+
 // checkDatabaseSource checks a database source (#107 D-76).
 func checkDatabaseSource(s *Source) error {
 	other := Source{Type: s.Type, Driver: s.Driver, DSNEnv: s.DSNEnv, Query: s.Query, IDColumn: s.IDColumn, Update: s.Update,
-		MaxRows: s.MaxRows, TimeoutMs: s.TimeoutMs, PollIntervalMs: s.PollIntervalMs}
+		MaxRows: s.MaxRows, TimeoutMs: s.TimeoutMs, PollIntervalMs: s.PollIntervalMs, Schedule: s.Schedule}
 	switch {
 	case *s != other:
-		return errors.New("a database source takes only type, driver, dsnEnv, query, idColumn, update, pollIntervalMs, maxRows, and timeoutMs")
+		return errors.New("a database source takes only type, driver, dsnEnv, query, idColumn, update, pollIntervalMs or schedule, maxRows, and timeoutMs")
 	case s.Driver != "postgres" && s.Driver != "sqlite":
 		return fmt.Errorf("source.driver must be postgres or sqlite, got %q", s.Driver)
 	case !dsnEnvName.MatchString(s.DSNEnv):
@@ -310,6 +330,9 @@ type Source struct {
 	Pattern string `json:"pattern,omitempty"`
 	// PollIntervalMs is how often the directory is read (default 1000).
 	PollIntervalMs int `json:"pollIntervalMs,omitempty"`
+	// Schedule polls a file or database source at cron times instead of
+	// every PollIntervalMs (#107 D-77).
+	Schedule string `json:"schedule,omitempty"`
 	// MoveTo is an absolute directory processed files are moved to
 	// (default: they are deleted).
 	MoveTo string `json:"moveTo,omitempty"`
@@ -417,6 +440,9 @@ func CheckSource(s *Source) error {
 		}
 	} else if s.FrameStart != "" || s.FrameEnd != "" || s.AckMode != "" {
 		return errors.New("source.frameStart, frameEnd, and ackMode apply only to mllp sources")
+	}
+	if err := checkSchedule(s); err != nil {
+		return err
 	}
 	if s.Type == "database" {
 		return checkDatabaseSource(s)

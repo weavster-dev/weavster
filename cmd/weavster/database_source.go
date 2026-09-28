@@ -67,8 +67,8 @@ func (s *databaseSources) loop(ctx context.Context) {
 	}
 }
 
-// pass starts a poll for every started flow with a database source whose
-// interval has passed and whose last poll finished; the flow list is read
+// pass starts a poll for every started flow with a database source that
+// is due (pollDue) and whose last poll finished; the flow list is read
 // at most once per flowRefresh. State of flows that stopped or went away
 // is dropped.
 func (s *databaseSources) pass(ctx context.Context) {
@@ -92,14 +92,10 @@ func (s *databaseSources) pass(ctx context.Context) {
 			continue
 		}
 		active[f.ID] = true
-		interval := defaultDBPollInterval
-		if src.PollIntervalMs > 0 {
-			interval = time.Duration(src.PollIntervalMs) * time.Millisecond
-		}
-		if s.running[f.ID] || now.Sub(s.last[f.ID]) < interval {
+		if s.running[f.ID] || !pollDue(src, s.last, f.ID, now, defaultDBPollInterval) {
 			continue
 		}
-		s.last[f.ID], s.running[f.ID] = now, true
+		s.running[f.ID] = true
 		s.polls.Add(1)
 		go func(f gateway.Flow) {
 			defer s.polls.Done()

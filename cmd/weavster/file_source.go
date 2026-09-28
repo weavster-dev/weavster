@@ -90,8 +90,8 @@ func (s *fileSources) loop(ctx context.Context) {
 	}
 }
 
-// pass polls every started flow with a file source whose interval has
-// passed. The flow list is read at most once per flowRefresh; a flow that
+// pass polls every started flow with a file source that is due (its
+// interval passed, or its schedule's time came; pollDue). The flow list is read at most once per flowRefresh; a flow that
 // stopped meanwhile refuses the messages (ErrFlowNotRunning), so no file
 // is taken after a stop.
 func (s *fileSources) pass(ctx context.Context) {
@@ -113,14 +113,9 @@ func (s *fileSources) pass(ctx context.Context) {
 			delete(s.lastErr, f.ID)
 			continue
 		}
-		interval := defaultPollInterval
-		if src.PollIntervalMs > 0 {
-			interval = time.Duration(src.PollIntervalMs) * time.Millisecond
-		}
-		if now.Sub(s.last[f.ID]) < interval {
+		if !pollDue(src, s.last, f.ID, now, defaultPollInterval) {
 			continue
 		}
-		s.last[f.ID] = now
 		s.poll(ctx, f, now)
 		if ctx.Err() != nil {
 			return

@@ -803,6 +803,7 @@ the flow as a message, and then deletes it (or moves it into `moveTo`):
 | `dir` | Required. Absolute directory to read. It does not have to exist yet. |
 | `pattern` | File-name glob (`*.json`, `ADT_*.hl7`); default `*`. No path separators. |
 | `pollIntervalMs` | How often the directory is read: 100–3600000, default 1000. |
+| `schedule` | Instead of `pollIntervalMs`: read the directory at cron times; see [Poll on a schedule](#poll-on-a-schedule). |
 | `moveTo` | Absolute directory processed files are moved into (created if missing; a name that is already there gets the message id appended). Without it, processed files are deleted. |
 | `recursive` | `true` also reads the subdirectories of `dir` (default `false`); see below. |
 
@@ -972,6 +973,7 @@ each new order becomes a message such as:
 | `idColumn` | Required. The column of the result that identifies a row: the value `update` matches `key` against, kept with the message as the metadata `source.database.id`. |
 | `update` | Required. `table` (or `schema.table`), `key` (the table's column holding the row id), and `set` (column → value) mark each row once its message is stored: `UPDATE table SET … WHERE key = <id>`. |
 | `pollIntervalMs` | How often the query runs, 1000–3600000 (default 5000). |
+| `schedule` | Instead of `pollIntervalMs`: run the query at cron times; see [Poll on a schedule](#poll-on-a-schedule). |
 | `maxRows` | Rows read per poll, 1–10000 (default 100): the query runs with `LIMIT maxRows`, and the rest come with the next polls once these are marked. A poll also stops reading once the rows it holds reach 64 MiB. |
 | `timeoutMs` | Time allowed for the query and for each update, 1000–120000 (default 30000). |
 
@@ -996,7 +998,34 @@ each new order becomes a message such as:
   `database: environment variable WEAVSTER_DB_HIS is not set`; it is retried at every interval.
 - Give the database user only what the source needs: `SELECT` on the query's tables, and
   `UPDATE` on the marked columns.
-- Cron schedules are not available yet; the query runs every `pollIntervalMs`.
+
+### Poll on a schedule
+
+File and database sources poll every `pollIntervalMs`, or, with `schedule`, at the times a cron
+expression names. For example, read a drop directory every 15 minutes during office hours, and
+export orders at 06:00 Berlin time:
+
+```json
+{"type": "file", "dir": "/var/lib/weavster/in/claims", "schedule": "*/15 7-19 * * MON-FRI"}
+```
+
+```json
+{"type": "database", "driver": "postgres", "dsnEnv": "WEAVSTER_DB_HIS", "query": "SELECT …", "idColumn": "id",
+ "update": {"table": "orders", "key": "id", "set": {"exported": "true"}},
+ "schedule": "CRON_TZ=Europe/Berlin 0 6 * * *"}
+```
+
+- The expression has five fields: minute, hour, day of month, month, day of week (`*`, lists
+  `1,15`, ranges `7-19`, steps `*/15`, and names `MON-FRI`, `JAN`). Descriptors work too:
+  `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`, and `@every 30s` (an interval).
+- Times are in the server's time zone, unless the expression starts with `CRON_TZ=Area/City `
+  (an IANA zone such as `Europe/Berlin` or `America/New_York`; daylight saving is followed).
+- The first poll is at the first scheduled time after the flow starts (not at once, as with
+  `pollIntervalMs`); a poll that runs past the next scheduled time is followed by one poll, not
+  one per missed time.
+- `schedule` and `pollIntervalMs` cannot both be set, and `schedule` applies only to file and
+  database sources. An invalid expression is refused when you create the flow:
+  `source.schedule "every day" is not a cron expression (…)`.
 
 ### Receive HL7 v2 over MLLP
 

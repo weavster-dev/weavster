@@ -94,7 +94,21 @@
                 "null"
               ],
               "description": "Also read subdirectories of dir (default false); symbolic links are not followed"
+            },
+            "schedule": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Cron schedule instead of pollIntervalMs: minute hour day-of-month month day-of-week (*/15 7-19 * * MON-FRI), or @hourly, @daily, @every 30s; optionally CRON_TZ=Area/City first (default: the server's time zone)"
             }
+          },
+          "not": {
+            "required": [
+              "pollIntervalMs",
+              "schedule"
+            ]
           }
         },
         {
@@ -349,7 +363,21 @@
               "minimum": 1000,
               "maximum": 120000,
               "description": "Time allowed for the query or one update (default 30000)"
+            },
+            "schedule": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Cron schedule instead of pollIntervalMs: minute hour day-of-month month day-of-week (*/15 7-19 * * MON-FRI), or @hourly, @daily, @every 30s; optionally CRON_TZ=Area/City first (default: the server's time zone)"
             }
+          },
+          "not": {
+            "required": [
+              "pollIntervalMs",
+              "schedule"
+            ]
           }
         }
       ]
