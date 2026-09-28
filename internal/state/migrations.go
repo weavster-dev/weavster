@@ -118,6 +118,17 @@ func Migrations() []Migration {
 				return err
 			},
 		},
+		{
+			// Search and counts by status (the common filter) without a scan.
+			// Metadata values are not indexed: they can be long (errors), and
+			// a PostgreSQL btree entry is limited to about 2.7 KB.
+			Version: 10,
+			Name:    "messages-by-status-index",
+			Apply: func(ctx context.Context, tx *sql.Tx) error {
+				_, err := tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS messages_status_received ON messages (status, received_at, id)`)
+				return err
+			},
+		},
 	}
 }
 

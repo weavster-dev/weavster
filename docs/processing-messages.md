@@ -1254,13 +1254,33 @@ framed, a delivery cut short by a server shutdown) has no `lastCode`. A successf
 |---|---|
 | `flowId`, `status` | Only messages of this flow / with this status. |
 | `from`, `to` | Received at or after / at or before this time (RFC 3339, for example `2026-09-26T12:00:00Z`); `from` must not be after `to`. |
+| `idFrom`, `idTo` | Message ids at or after / at or before these, compared byte by byte; `idFrom` must not be after `idTo`. |
+| `contentType` | Only messages of this format, as their `contentType` shows (for example `hl7v2`, `json`, `raw`). |
+| `minAttempts`, `maxAttempts` | Only messages where some destination took at least / at most this many attempts (1–1000). A delivered message counts its successful attempt, so `minAttempts=2` finds messages that needed a retry. |
+| `metadata.KEY` | Only messages whose metadata `KEY` has exactly this value, for example `metadata.source.file=a.hl7` or `metadata.source.mllp.controlId=MSG00042`. Up to 10, each given once; all must match. |
 | `limit` | Messages per page, 1–1000 (default 100). |
 | `offset` | Messages to skip, for the next pages. |
-| `sort` | `-receivedAt` (newest first, default), `receivedAt`, `id`, or `-id`. |
+| `sort` | `-receivedAt` (newest first, default), `receivedAt`, `id`, or `-id`. Other values are refused (`400`). |
 
 The filters are applied before `limit` and `offset`, so every page holds only matching messages,
 and messages received in the same instant are ordered by id, so pages neither repeat nor skip
 messages while no new ones arrive.
+
+The `X-Total-Count` response header gives how many messages match the filters in all, whatever
+`limit` and `offset` are, so you can show "page 2 of 7":
+
+```bash
+curl -si -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/messages?metadata.source.file=a.hl7&minAttempts=2&limit=1' | grep -i x-total-count
+```
+
+```text
+X-Total-Count: 3
+```
+
+The total is counted separately from the page, so a message that arrives or is removed in
+between can make the two differ by that much. If the count fails, the page is still returned,
+without `X-Total-Count`.
 
 ### Message trends
 
@@ -1309,7 +1329,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v
 ### Remove many messages
 
 `DELETE /api/v1/messages` (permission `messages:delete`) removes every message that matches the
-search filters `flowId`, `status`, `from`, and `to`. There is no limit: every match is removed.
+[search filters](#4-find-processed-messages) (`flowId`, `status`, `from`, `to`, `idFrom`, `idTo`,
+`contentType`, `minAttempts`, `maxAttempts`, `metadata.KEY`). There is no limit: every match is
+removed.
 
 ```bash
 # Every errored message of one flow
@@ -1324,7 +1346,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X DELETE \
 | Parameter | What it does |
 |---|---|
 | `all=true` | Required when you give no filter: removes every message. Without it, a request with no filter returns `400`, so a missing parameter never clears the store by accident. |
-| `restart=true` | Stops the started flows first (only the `flowId` flow, when given), removes the messages, then starts those flows again. `restarted` lists them. Stopping waits for the messages those flows are processing, so they are removed too. Paused and halted flows are left as they are. |
+| `restart=true` | Stops the started flows first (only the `flowId` flow, when given; other filters do not narrow which flows are stopped), removes the messages, then starts those flows again. `restarted` lists them. Stopping waits for the messages those flows are processing, so they are removed too. Paused and halted flows are left as they are. |
 
 - A message being processed or retried at that moment is kept and counted in `busy`. Run the
   request again, or use `restart=true`.

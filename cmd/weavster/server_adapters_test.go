@@ -305,7 +305,8 @@ func TestMessageAdapterDeleteMatching(t *testing.T) {
 	deletePage = 2
 	ctx := context.Background()
 	store := state.NewMemStore()
-	for _, m := range []state.Message{{ID: "a1", FlowID: "a"}, {ID: "a2", FlowID: "a"}, {ID: "a3", FlowID: "a"}, {ID: "a4", FlowID: "a"}, {ID: "a5", FlowID: "a"}, {ID: "b1", FlowID: "b"}} {
+	for _, m := range []state.Message{{ID: "a1", FlowID: "a"}, {ID: "a2", FlowID: "a"}, {ID: "a3", FlowID: "a"}, {ID: "a4", FlowID: "a"}, {ID: "a5", FlowID: "a"},
+		{ID: "b1", FlowID: "b", Attempts: map[string]state.DestinationAttempt{"out": {Attempts: 2}}}} {
 		m.Status = state.StatusSent
 		_ = store.Put(ctx, m)
 	}
@@ -330,6 +331,10 @@ func TestMessageAdapterDeleteMatching(t *testing.T) {
 		{"other status", state.Query{Status: state.StatusQueued}},
 		{"received earlier", state.Query{From: time.Now().Add(time.Hour)}},
 		{"received later", state.Query{To: time.Unix(0, 0)}},
+		{"other content type", state.Query{ContentType: "hl7v2"}},
+		{"more attempts now", state.Query{MaxAttempts: 1}},
+		{"other metadata", state.Query{Metadata: map[string]string{"source.file": "a.hl7"}}},
+		{"outside the id range", state.Query{IDTo: "a9"}},
 	} {
 		if removed, err := ma.removeIfMatching(ctx, "b1", tt.q); removed || err != nil {
 			t.Errorf("%s: removed = %v, %v; want kept", tt.name, removed, err)

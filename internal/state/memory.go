@@ -77,6 +77,18 @@ func (s *MemStore) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+func (s *MemStore) Count(_ context.Context, q Query) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	n := 0
+	for _, m := range s.m {
+		if matches(m, q) {
+			n++
+		}
+	}
+	return n, nil
+}
+
 func (s *MemStore) Search(_ context.Context, q Query) ([]Message, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

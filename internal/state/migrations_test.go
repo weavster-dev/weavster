@@ -155,7 +155,7 @@ func TestMigrateNewerSchemaRefused(t *testing.T) {
 	all := Migrations()
 	for _, tt := range []struct{ name, writer, want string }{
 		{"recorded writer", "9.9.9", "(written by weavster 9.9.9), newer than this release supports"},
-		{"unknown writer", "", "(written by an unknown weavster release), newer than this release supports (8): run a newer weavster release,"},
+		{"unknown writer", "", fmt.Sprintf("(written by an unknown weavster release), newer than this release supports (%d): run a newer weavster release,", len(Migrations())-1)},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			db := openTestDB(t)

@@ -82,6 +82,10 @@ func buildOrderSort(sortBy string) string {
 	return "ORDER BY " + field + " " + dir + ", id /*C*/ " + dir // stable pages
 }
 
+// Matches reports whether m passes q's filters (paging and sort aside), as
+// the stores' searches decide it.
+func (q Query) Matches(m Message) bool { return matches(m, q) }
+
 // matches applies a Query predicate to a single message (in-memory search).
 func matches(m Message, q Query) bool {
 	if q.IDFrom != "" && m.ID < q.IDFrom {
@@ -122,7 +126,7 @@ func matches(m Message, q Query) bool {
 		}
 	}
 	for k, v := range q.Metadata {
-		if m.Metadata[k] != v {
+		if got, ok := m.Metadata[k]; !ok || got != v { // as SQL: the key must be there
 			return false
 		}
 	}
