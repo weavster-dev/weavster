@@ -1179,6 +1179,9 @@ func checkRoutes(all map[string]gateway.Flow, ids []string) error {
 				continue
 			}
 			sends, reads := pipeline.Receives(pf, d), readsFormat(target)
+			if sends == "" && d.Transform == nil && pf.Transform == nil {
+				sends = pf.InputFormat // passthrough keeps the input's declared format
+			}
 			if !formatFits(sends, reads) {
 				return fmt.Errorf("flow %s: destination %s sends %s, which flow %s (inputFormat %s) cannot read", id, d.Name, sends, d.Flow, reads)
 			}

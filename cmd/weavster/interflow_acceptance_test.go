@@ -77,6 +77,9 @@ func TestFlowDestination(t *testing.T) {
 	if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"json-out","transform":{"steps":[{"set":{"field":"a","expr":"b"}}]},"destinations":[{"name":"x","type":"flow","flow":"hl7-in"}]}`, admin); code != http.StatusBadRequest || !strings.Contains(resp, "sends json, which flow hl7-in (inputFormat hl7v2) cannot read") {
 		t.Errorf("json to an hl7v2 flow: %d %s", code, resp)
 	}
+	if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"xml-pass","inputFormat":"xml","destinations":[{"name":"x","type":"flow","flow":"hl7-in"}]}`, admin); code != http.StatusBadRequest || !strings.Contains(resp, "sends xml, which flow hl7-in (inputFormat hl7v2) cannot read") {
+		t.Errorf("xml passthrough to an hl7v2 flow: %d %s", code, resp)
+	}
 	if code, resp, _ := c.do(http.MethodPut, "/api/v1/flows/store", `{"id":"store","inputFormat":"xml","destinations":[{"name":"out","type":"file","dir":"`+out+`"}]}`, admin); code != http.StatusBadRequest || !strings.Contains(resp, "which flow store (inputFormat xml) cannot read") {
 		t.Errorf("changing the target's format under a sender: %d %s", code, resp)
 	}
