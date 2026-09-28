@@ -15,8 +15,14 @@ import (
 // destination hands its message on inside the sender's slot, so a chain of
 // flows still works with a single slot.
 func TestBackpressure(t *testing.T) {
-	release := make(chan struct{})
-	slow := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { <-release }))
+	release, arrived := make(chan struct{}), make(chan struct{}, 1)
+	slow := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		select {
+		case arrived <- struct{}{}: // the first message holds its slot now
+		default:
+		}
+		<-release
+	}))
 	defer slow.Close()
 	defer func() {
 		select {
@@ -50,18 +56,16 @@ func TestBackpressure(t *testing.T) {
 		_ = resp.Body.Close()
 		first <- resp.StatusCode
 	}()
-	// Wait until the first message holds the slot (its delivery is blocked).
-	deadline := time.Now().Add(10 * time.Second)
-	var code int
-	var body string
-	var header http.Header
-	for {
-		code, body, header = c.do(http.MethodPost, "/api/v1/flows/store/messages", `{"n":2}`, admin)
-		if code == http.StatusServiceUnavailable || time.Now().After(deadline) {
-			break
-		}
-		time.Sleep(20 * time.Millisecond) // accepted: the first had not taken the slot yet
+	// Wait until the first message holds the slot: its delivery reached
+	// the slow destination.
+	select {
+	case <-arrived:
+	case code := <-first:
+		t.Fatalf("the first message finished early: %d", code)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the first message never reached its destination")
 	}
+	code, body, header := c.do(http.MethodPost, "/api/v1/flows/store/messages", `{"n":2}`, admin)
 	if code != http.StatusServiceUnavailable || header.Get("Retry-After") != "1" || !strings.Contains(body, "the server is busy") {
 		t.Fatalf("second message while busy: %d %v %s", code, header, body)
 	}
