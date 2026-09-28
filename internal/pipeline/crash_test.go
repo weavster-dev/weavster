@@ -52,6 +52,14 @@ func TestCrashAtEveryWrite(t *testing.T) {
 					if crash <= tt.writes {
 						t.Fatalf("crash at write %d did not come: the message needs fewer writes than %d", crash, tt.writes)
 					}
+					// No crash: the control run; a failing destination leaves it queued.
+					want := tt.final
+					if tt.failB {
+						want = state.StatusQueued
+					}
+					if err != nil || res.Status != want {
+						t.Errorf("without a crash: %+v, %v; want %s", res, err, want)
+					}
 					continue // every write point was covered
 				}
 				covered++

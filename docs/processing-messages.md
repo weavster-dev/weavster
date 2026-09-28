@@ -1295,7 +1295,7 @@ counts once, in its current status.
 | `GET /api/v1/messages/{id}` | `messages:view` | The message as in the search results. |
 | `GET /api/v1/messages/{id}/content?part=raw` | `messages:content` | The content as received (`part=transformed`: after the flow transform), as bytes. A message with no transformed content (for example one that errored in its transform) returns `404` for `part=transformed`. |
 | `POST /api/v1/messages/{id}/requeue` | `messages:view`, `messages:send` | Gives a dead-lettered message another round of delivery attempts; see [Dead-lettered messages](#dead-lettered-messages). |
-| `POST /api/v1/messages/{id}/reprocess` | `messages:send` | Sends the original content through the message's flow again. The new message (`202`, same reply as sending) keeps the old message's metadata (except its `error`) and adds `reprocessedFrom` with the old id. The flow must be `started` (`409` otherwise). |
+| `POST /api/v1/messages/{id}/reprocess` | `messages:send` | Sends the original content through the message's flow again. The new message (`202`, same reply as sending, also `202` with status `received` when a later step failed after it was stored) keeps the old message's metadata (except its `error`) and adds `reprocessedFrom` with the old id. The flow must be `started` (`409` otherwise). |
 | `DELETE /api/v1/messages/{id}` | `messages:delete` | Removes the message (`204`). A message that is being processed or retried right now returns `409`; try again. |
 
 An unknown id returns `404`. Message content can hold protected health information, so

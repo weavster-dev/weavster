@@ -1298,7 +1298,7 @@ paths:
         - {name: id, in: path, required: true, schema: {type: string}}
       responses:
         default: {$ref: "#/components/responses/Error"}
-        "202": {description: "The new message: {id, status, response?}", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/IngestResult"}}}}
+        "202": {description: "The new message: {id, status, response?}. Also when a later step failed after the new message was stored (status received): the server finishes it, so do not reprocess again", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/IngestResult"}}}}
         "400": {description: The flow now needs a JSON object and the content is not one, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown message or its flow no longer exists, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: The flow is not started, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
