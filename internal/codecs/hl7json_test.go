@@ -123,6 +123,9 @@ func TestHL7JSONSubcomponents(t *testing.T) {
 		{"custom delimiters", "MSH#$%!@#A#B#C#D#1##ADT$A01#C1#P#2.4\rPID#1##123$$$H@O!T!X!F!\r", map[string]any{
 			"PID.3.4.1": "H", "PID.3.4.2": "O@X#", "MSH.2.4": "@",
 		}},
+		{"no subcomponent separator declared", "MSH|^~#|A|B|C|D|1||ADT^A01|C1|P|2.5\rPID|1||1||O&BRIEN^A#T#B#F#\r", map[string]any{
+			"PID.5.1": "O&BRIEN", "PID.5.2": "A#T#B|",
+		}},
 		{"kept sequences", "MSH|^~\\&|A|B|C|D|1||ADT^A01|C1|P|2.3\rNTE|1||line\\.br\\two \\H\\bold\\N\\\r", map[string]any{
 			"NTE.3.1": "line\\.br\\two \\H\\bold\\N\\",
 		}},
@@ -148,7 +151,8 @@ func TestHL7JSONVersions(t *testing.T) {
 	for ver, ok := range map[string]bool{
 		"2.1": true, "2.3.1": true, "2.5": true, "2.5.1": true, "2.8.2": true, "2.9": true, "": true,
 		"2.5^^2.5": true, // VID.1 is the version
-		"3.0":      false, "2": false, "2.0": false, "2.10": false, "V2.5": false, "2.5.1.1": false,
+		"2.3.0":    true, " 2.5 ": true, "2.5.10": true,
+		"3.0": false, "2": false, "2.0": false, "2.10": false, "V2.5": false, "2.5.1.1": false,
 	} {
 		_, err := HL7JSON([]byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|C1|P|" + ver + "\r"))
 		var r *RefusedError
@@ -168,6 +172,7 @@ func TestHL7RoundTrip(t *testing.T) {
 		"MSH|^~\\&|A|B|C|D|1||ADT^A01|C1|P|2.5\rPID|1||123^^^HOSP&1.2.3&ISO~9||A\\T\\B^J\\S\\K\\X0D\\\rNTE|1||\\.br\\\r",
 		"MSH#$%!@#A#B#C#D#1##ADT$A01#C1#P#2.4\rPID#1##1$$$H@O%2###a!F!b\r",
 		"MSH|^~\\&|A\rZZ1|||~~|\r",
+		"FHS|^~\\&|F\rMSH#$%!@#A#1$2\rPID#1##a$b\rMSH|^~\\&|B|1^2\rPID|1||c^d\r", // a batch: each MSH its own delimiters
 	} {
 		c := HL7v2()
 		v, err := c.Parse([]byte(msg))
@@ -197,5 +202,30 @@ func TestHL7ACKCustomDelimiters(t *testing.T) {
 	}
 	if code, id, ok := ParseHL7ACK(ack); !ok || code != "AA" || id != "C#1" {
 		t.Errorf("ParseHL7ACK = %q %q %v", code, id, ok)
+	}
+}
+
+// TestHL7ACKEscapesItsValues: the ACK's own text and control id are
+// escaped, and control ids are read decoded on both sides.
+func TestHL7ACKEscapesItsValues(t *testing.T) {
+	ack, err := HL7ACK([]byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|X\\F\\1|P|2.5\r"), HL7AckOptions{Code: AckApplicationReject, Text: "bad MSH|^~\\&", ControlID: "A|1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	segs := strings.Split(strings.TrimSuffix(string(ack), "\r"), "\r")
+	if f := strings.Split(segs[0], "|"); len(f) < 10 || f[9] != "A\\F\\1" {
+		t.Errorf("ACK MSH = %q", segs[0])
+	}
+	if segs[1] != "MSA|AR|X\\F\\1|bad MSH\\F\\\\S\\\\R\\\\E\\\\T\\" {
+		t.Errorf("ACK MSA = %q", segs[1])
+	}
+	if code, id, ok := ParseHL7ACK(ack); !ok || code != "AR" || id != "X|1" {
+		t.Errorf("ParseHL7ACK = %q %q %v", code, id, ok)
+	}
+	if id := HL7ControlID([]byte("MSH#$%!@#A#B#C#D#1##ADT$A01#M!F!2#P#2.4\r")); id != "M#2" {
+		t.Errorf("HL7ControlID = %q, want the decoded M#2", id)
+	}
+	if _, _, ok := ParseHL7ACK([]byte("MSH|^~\\&|A\r")); ok {
+		t.Error("an ACK without MSA was read")
 	}
 }

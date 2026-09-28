@@ -2,17 +2,20 @@ package codecs
 
 import (
 	"errors"
+	"maps"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // ErrNotHL7 reports input that is not an HL7 v2 message (no MSH segment
 // first).
 var ErrNotHL7 = errors.New("not an HL7 v2 message (no MSH segment first)")
 
-// hl7Version matches the HL7 v2 versions read (MSH-12): 2.1 to 2.9, with
-// an optional minor release (2.3.1, 2.5.1, 2.8.2).
-var hl7Version = regexp.MustCompile(`^2\.[1-9](\.[1-9])?$`)
+// hl7Version matches the HL7 v2 versions read (MSH-12, surrounding spaces
+// ignored): 2.1 to 2.9, with an optional minor release (2.3.1, 2.5.1,
+// 2.3.0).
+var hl7Version = regexp.MustCompile(`^2\.[1-9](\.[0-9]+)?$`)
 
 // HL7JSON parses an HL7 v2 message into the JSON view the DSL reads (#107
 // D-61): each segment name holds its first occurrence, and "segments" holds
@@ -34,10 +37,9 @@ func HL7JSON(in []byte) (map[string]any, error) {
 	if len(segs) == 0 || segs[0].Name != "MSH" || len(segs[0].Field(2)) == 0 { // MSH-2 encoding characters
 		return nil, ErrNotHL7
 	}
-	if ver := msg.Delimiters.Decode(hl7Value(&segs[0], 12)); ver != "" && !hl7Version.MatchString(ver) {
+	if ver := strings.TrimSpace(segs[0].Delimiters.Decode(hl7Value(&segs[0], 12))); ver != "" && !hl7Version.MatchString(ver) {
 		return nil, &RefusedError{Err: ErrNotHL7, Reason: "unsupported HL7 version (MSH-12 must be 2.1 to 2.9)"}
 	}
-	d := msg.Delimiters
 	doc := map[string]any{}
 	var all []any
 	for _, seg := range segs {
@@ -51,7 +53,7 @@ func HL7JSON(in []byte) (map[string]any, error) {
 				obj["2"] = componentsJSON(field[0], func(c string) any { return c })
 				continue
 			}
-			if f := fieldJSON(field, d); f != nil {
+			if f := fieldJSON(field, seg.Delimiters); f != nil {
 				obj[strconv.Itoa(first+i)] = f
 			}
 		}
@@ -79,10 +81,11 @@ func fieldJSON(reps [][]string, d HL7Delimiters) map[string]any {
 	if empty {
 		return nil
 	}
-	out := componentsJSON(reps[0], value) // a copy: repetitions holds its own
-	if len(reps) > 1 {
-		out["repetitions"] = objs
+	if len(reps) == 1 {
+		return objs[0].(map[string]any)
 	}
+	out := maps.Clone(objs[0].(map[string]any)) // repetitions holds its own
+	out["repetitions"] = objs
 	return out
 }
 

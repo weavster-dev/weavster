@@ -218,3 +218,13 @@ func TestMLLPSinkDrain(t *testing.T) {
 		}
 	}
 }
+
+// TestMLLPSinkACKDecoded: control ids are compared decoded, so an ACK in
+// the standard delimiters matches a message with its own.
+func TestMLLPSinkACKDecoded(t *testing.T) {
+	msg := "MSH#$%!@#A#B#C#D#1##ADT$A01#M!F!2#P#2.4\rPID#1\r"
+	peer := mllpPeer(t, "MSH|^~\\&|C|D|A|B|2||ACK^A01|X|P|2.4\rMSA|AA|M#2\r")
+	if err := NewMLLPSinkWith(peer, 5*time.Second).Write(context.Background(), Message{Body: []byte(msg)}); err != nil {
+		t.Errorf("Write = %v", err)
+	}
+}

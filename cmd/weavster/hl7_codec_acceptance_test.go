@@ -43,6 +43,9 @@ func TestHL7Codec(t *testing.T) {
 			t.Errorf("%s: ACK = %q", tt.name, ack)
 		}
 	}
+	if _, body, _ := c.do(http.MethodGet, "/api/v1/messages?flowId=adt", "", admin); !strings.Contains(body, `"source.mllp.controlId":"M#2"`) {
+		t.Errorf("the control id metadata is not decoded: %s", body)
+	}
 	entries, _ := os.ReadDir(out)
 	if len(entries) != 2 {
 		t.Fatalf("delivered %d files, want 2", len(entries))

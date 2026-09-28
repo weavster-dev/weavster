@@ -164,9 +164,11 @@ For `MSH|^~\&|LAB|HOSP|W|H|20260927120000||ADT^A01|MSG1|P|2.5` and
   subcomponents are left out, so a missing value compares equal to `''`.
 - The message's own delimiters (MSH-1 and MSH-2) are used, for example `MSH#$%!@` for field `#`,
   component `$`, repetition `%`, escape `!`, and subcomponent `@`; the view is the same as for
-  the standard `|^~\&`. Line breaks `\n` or `\r\n` between segments are accepted.
-- HL7 v2.1 to 2.9 are read (MSH-12, with a minor release such as `2.5.1`); a message without a
-  version is read too. Any other version is refused: `400` over the API, `AR` over MLLP, with
+  the standard `|^~\&`. When MSH-2 declares no escape or subcomponent character (for example
+  `MSH|^~\|`), nothing is decoded or split by it. Line breaks `\n` or `\r\n` between segments are
+  accepted.
+- HL7 v2.1 to 2.9 are read (MSH-12, with a minor release such as `2.5.1`; surrounding spaces are
+  ignored); a message without a version is read too. Any other version is refused: `400` over the API, `AR` over MLLP, with
   `unsupported HL7 version (MSH-12 must be 2.1 to 2.9)`. A `build` step with `format: hl7v2`
   must produce a supported version as well.
 - The transform's output is JSON (the view above with your changes), unless it ends with a
@@ -897,7 +899,7 @@ MSA|AA|MSG1
   (MSH-7), `ACK^<trigger>` (MSH-9), its own control id (MSH-10), and the message's processing id
   and version; MSA-2 is the message's control id (MSH-10). The ACK always uses the standard
   delimiters `|^~\&`; values echoed from a message with other delimiters are rewritten for them
-  (a literal `|` becomes `\F\`).
+  (a literal `|` becomes `\F\`). The `source.mllp.controlId` metadata is the decoded control id.
 - `AA`: the message is stored and processed like one sent with the API (same checks, transform,
   delivery, and 10 MiB limit), with the metadata `source.mllp.controlId`. Delivery problems after
   that are retried and do not change the ACK.
