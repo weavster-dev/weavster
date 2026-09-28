@@ -155,6 +155,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#startup-order" class="nav-link">Startup order</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#keys" class="nav-link">Keys</a>
               <ul class="nav flex-column">
               </ul>
@@ -211,6 +215,32 @@ auth:
     retryLimit: 5
     lockoutPeriodSeconds: 300
 </code></pre>
+<h2 id="startup-order">Startup order</h2>
+<p><code>weavster server</code> starts in this order:</p>
+<ol>
+<li>Checks its arguments (a bad flag or an extra argument exits <code>2</code>) and refuses to run as root
+   unless <code>WEAVSTER_ALLOW_ROOT=1</code> is set.</li>
+<li>Reads and checks the configuration file (a problem exits <code>1</code>).</li>
+<li>Opens the store and applies any pending schema migrations. A store left at an older version
+   by an earlier release is upgraded here, and the data in it is kept. With PostgreSQL, a failed
+   connection or migration is retried per <code>store.maxRetry</code> and <code>store.retryWaitMs</code>; run one
+   server at a time while it upgrades a database.</li>
+<li>Loads users and creates the first <code>admin</code> account when there are none (see
+   <a href="../authentication/">Authentication</a>).</li>
+<li>With <code>flows.deployOnStartup</code> (and a store), deploys every flow that is <code>enabled</code> and
+   <code>undeployed</code> into its <code>initialState</code> (see <a href="../flow-lifecycle/#enabled-flows-start-automatically">Flow lifecycle</a>).
+   Flows keep the status they had otherwise.</li>
+<li>Binds the API ports (<code>listen.address</code>, <code>listen.tlsAddress</code>). A port that is taken exits <code>1</code>
+   here, before anything below starts, so no source has taken a file or a message.</li>
+<li>Starts the background work, side by side: the recovery pass that resumes messages stored
+   before the last stop (queued deliveries, and messages that were still being processed) for
+   flows that are running, then retries every <code>delivery.retryIntervalMs</code>; and the running flows'
+   sources. New messages can therefore be processed while older ones are still being recovered.</li>
+<li>Answers API requests.</li>
+</ol>
+<p>Messages of a flow that is not running are not recovered at start; they are finished once the
+flow is started. The server keeps no jobs or leases of its own to reconcile: everything it must
+resume is a stored message, which the recovery pass picks up.</p>
 <h2 id="keys">Keys</h2>
 <p>Keys you leave out keep their default.</p>
 <h3 id="listen"><code>listen</code></h3>
