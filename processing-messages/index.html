@@ -1075,6 +1075,10 @@ the flow as a message, and then deletes it (or moves it into <code>moveTo</code>
 <td>How often the directory is read: 100–3600000, default 1000.</td>
 </tr>
 <tr>
+<td><code>schedule</code></td>
+<td>Instead of <code>pollIntervalMs</code>: read the directory at cron times; see <a href="#poll-on-a-schedule">Poll on a schedule</a>.</td>
+</tr>
+<tr>
 <td><code>moveTo</code></td>
 <td>Absolute directory processed files are moved into (created if missing; a name that is already there gets the message id appended). Without it, processed files are deleted.</td>
 </tr>
@@ -1283,8 +1287,12 @@ each new order becomes a message such as:</p>
 <td>How often the query runs, 1000–3600000 (default 5000).</td>
 </tr>
 <tr>
+<td><code>schedule</code></td>
+<td>Instead of <code>pollIntervalMs</code>: run the query at cron times; see <a href="#poll-on-a-schedule">Poll on a schedule</a>.</td>
+</tr>
+<tr>
 <td><code>maxRows</code></td>
-<td>Rows read per poll, 1–10000 (default 100): the query runs with <code>LIMIT maxRows</code>, and the rest come with the next polls once these are marked. A poll also stops reading once the rows it holds reach 64 MiB.</td>
+<td>Rows read per poll, 1–10000 (default 100): the query runs with <code>LIMIT maxRows</code>. When a poll stops at this limit (or once the rows it holds reach 64 MiB), the next poll runs at once, so a backlog is read without waiting for the next interval or scheduled time.</td>
 </tr>
 <tr>
 <td><code>timeoutMs</code></td>
@@ -1311,10 +1319,39 @@ each new order becomes a message such as:</p>
   once as a <code>source.database.refused</code> event with its id, and is skipped until the flow restarts.</li>
 <li>A failed poll (an unset variable, a query or update error) is logged and recorded once as a
   <code>source.database.failed</code> event with the reason, for example
-  <code>database: environment variable WEAVSTER_DB_HIS is not set</code>; it is retried at every interval.</li>
+  <code>database: environment variable WEAVSTER_DB_HIS is not set</code>; it is retried at every interval
+  (with a <code>schedule</code>, every 5 seconds until a poll succeeds).</li>
 <li>Give the database user only what the source needs: <code>SELECT</code> on the query's tables, and
   <code>UPDATE</code> on the marked columns.</li>
-<li>Cron schedules are not available yet; the query runs every <code>pollIntervalMs</code>.</li>
+</ul>
+<h3 id="poll-on-a-schedule">Poll on a schedule</h3>
+<p>File and database sources poll every <code>pollIntervalMs</code>, or, with <code>schedule</code>, at the times a cron
+expression names. For example, read a drop directory every 15 minutes during office hours, and
+export orders at 06:00 Berlin time:</p>
+<pre><code class="language-json">{&quot;type&quot;: &quot;file&quot;, &quot;dir&quot;: &quot;/var/lib/weavster/in/claims&quot;, &quot;schedule&quot;: &quot;*/15 7-19 * * MON-FRI&quot;}
+</code></pre>
+<pre><code class="language-json">{&quot;type&quot;: &quot;database&quot;, &quot;driver&quot;: &quot;postgres&quot;, &quot;dsnEnv&quot;: &quot;WEAVSTER_DB_HIS&quot;, &quot;query&quot;: &quot;SELECT …&quot;, &quot;idColumn&quot;: &quot;id&quot;,
+ &quot;update&quot;: {&quot;table&quot;: &quot;orders&quot;, &quot;key&quot;: &quot;id&quot;, &quot;set&quot;: {&quot;exported&quot;: &quot;true&quot;}},
+ &quot;schedule&quot;: &quot;CRON_TZ=Europe/Berlin 0 6 * * *&quot;}
+</code></pre>
+<ul>
+<li>The expression has five fields: minute, hour, day of month, month, day of week (<code>*</code>, lists
+  <code>1,15</code>, ranges <code>7-19</code>, steps <code>*/15</code>, and names <code>MON-FRI</code>, <code>JAN</code>). Descriptors work too:
+  <code>@hourly</code>, <code>@daily</code>, <code>@weekly</code>, <code>@monthly</code>, <code>@yearly</code>, and <code>@every 30s</code> (an interval).</li>
+<li>Times are in the server's time zone, unless the expression starts with <code>CRON_TZ=Area/City</code>
+  (an IANA zone such as <code>Europe/Berlin</code> or <code>America/New_York</code>; daylight saving is followed).</li>
+<li>The first poll is at the first scheduled time after the server starts watching the flow: when
+  the flow is started, or when the server starts with the flow already started. Times the flow
+  was stopped or the server was down are not made up. A poll that runs past the next scheduled
+  time is followed by one poll, not one per missed time.</li>
+<li>At a scheduled time the source finishes its work before waiting for the next one: a backlog
+  larger than one poll (100 files, or <code>maxRows</code> rows) is read in back-to-back polls; a file still
+  being written at that moment is read once it has been unchanged for a second; and a poll that
+  fails (a missing directory, a database error) is tried again every few seconds until it works.</li>
+<li><code>schedule</code> and <code>pollIntervalMs</code> cannot both be set, and <code>schedule</code> applies only to file and
+  database sources. An invalid expression, one that never runs (<code>0 0 30 2 *</code>), or <code>@every</code> below
+  one second (use <code>pollIntervalMs</code>) is refused when you create the flow, for example
+  <code>source.schedule "every day" is not a cron expression (…)</code>.</li>
 </ul>
 <h3 id="receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</h3>
 <p>A flow with an mllp <code>source</code> accepts HL7 v2 messages over TCP, framed with the minimal lower
