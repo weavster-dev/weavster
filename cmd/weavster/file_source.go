@@ -66,14 +66,14 @@ type fileSources struct {
 	now     func() time.Time
 	listed  time.Time
 	cached  []gateway.Flow
-	last    map[string]time.Time            // flow id -> last poll
+	clock   pollClock                       // when each flow polls
 	skip    map[string]map[string]fileStamp // flow id -> path -> version not to read again (done or refused)
 	lastErr map[string]string               // flow id -> last directory error logged
 }
 
 func newFileSources(flows flowLister, ingest messageIngester, events eventRecorder, logger *slog.Logger) *fileSources {
 	return &fileSources{flows: flows, ingest: ingest, events: events, logger: logger, now: time.Now,
-		last: map[string]time.Time{}, skip: map[string]map[string]fileStamp{}, lastErr: map[string]string{}}
+		clock: newPollClock(), skip: map[string]map[string]fileStamp{}, lastErr: map[string]string{}}
 }
 
 // loop polls until ctx is cancelled; a file in progress is finished first.
@@ -90,8 +90,8 @@ func (s *fileSources) loop(ctx context.Context) {
 	}
 }
 
-// pass polls every started flow with a file source whose interval has
-// passed. The flow list is read at most once per flowRefresh; a flow that
+// pass polls every started flow with a file source that is due (its
+// interval passed, or its schedule's time came; pollDue). The flow list is read at most once per flowRefresh; a flow that
 // stopped meanwhile refuses the messages (ErrFlowNotRunning), so no file
 // is taken after a stop.
 func (s *fileSources) pass(ctx context.Context) {
@@ -109,28 +109,41 @@ func (s *fileSources) pass(ctx context.Context) {
 	for _, f := range s.cached {
 		src := f.Source
 		if src == nil || src.Type != "file" || flowlife.Normalize(f.Status) != flowlife.Started {
-			delete(s.last, f.ID)
+			s.clock.forget(f.ID)
 			delete(s.lastErr, f.ID)
 			continue
 		}
-		interval := defaultPollInterval
-		if src.PollIntervalMs > 0 {
-			interval = time.Duration(src.PollIntervalMs) * time.Millisecond
+		due, err := s.clock.due(src, f.ID, now, defaultPollInterval)
+		if err != nil {
+			s.warnOnce(f.ID, "file source: not polling", err)
 		}
-		if now.Sub(s.last[f.ID]) < interval {
+		if !due {
 			continue
 		}
-		s.last[f.ID] = now
-		s.poll(ctx, f, now)
+		if again := s.poll(ctx, f, now); again >= 0 {
+			s.clock.retry(f.ID, now.Add(again))
+		}
 		if ctx.Err() != nil {
 			return
 		}
 	}
 }
 
+// warnOnce logs a flow's source problem once per distinct error.
+func (s *fileSources) warnOnce(flowID, msg string, err error) {
+	if s.lastErr[flowID] != err.Error() {
+		s.lastErr[flowID] = err.Error()
+		s.logger.Warn(msg, "flow", flowID, "error", err)
+	}
+}
+
 // poll reads up to maxFilesPerPoll files of one flow's directory, in name
-// order.
-func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
+// order. It returns when to poll again before the next regular time (-1
+// for no sooner): at once when files are left over, after fileSettle when
+// a file was still being written, and, for a scheduled source, after
+// defaultPollInterval when the directory could not be read or a file could
+// not be stored.
+func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) time.Duration {
 	src := f.Source
 	pattern := src.Pattern
 	if pattern == "" {
@@ -138,11 +151,11 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
 	}
 	files, skipped, err := listFiles(src.Dir, src.Recursive, pattern)
 	if err != nil {
-		if msg := err.Error(); s.lastErr[f.ID] != msg { // once per distinct error
-			s.lastErr[f.ID] = msg
-			s.logger.Warn("file source: cannot read the directory", "flow", f.ID, "error", err)
+		s.warnOnce(f.ID, "file source: cannot read the directory", err)
+		if src.Schedule != "" {
+			return defaultPollInterval // a scheduled poll is not skipped for a passing error
 		}
-		return
+		return -1
 	}
 	delete(s.lastErr, f.ID)
 	if msg := strings.Join(skipped, ", "); msg != s.lastErr[f.ID+"/subdirs"] { // once per distinct set
@@ -157,9 +170,10 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
 	skip := s.skip[f.ID]
 	present := map[string]bool{}
 	read := 0
+	again := time.Duration(-1)
 	for _, e := range files { // matching regular files, in path order
 		present[e.path] = true
-		if ctx.Err() != nil || read == maxFilesPerPoll {
+		if ctx.Err() != nil {
 			continue
 		}
 		info, err := e.d.Info()
@@ -167,12 +181,24 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
 			continue // removed meanwhile
 		}
 		stamp := fileStamp{size: info.Size(), mod: info.ModTime()}
-		if now.Sub(stamp.mod) < fileSettle || skip[e.path] == stamp {
-			continue // still being written, or unchanged since it was done or refused
+		switch {
+		case skip[e.path] == stamp:
+			continue // unchanged since it was done or refused
+		case now.Sub(stamp.mod) < fileSettle:
+			if again < 0 {
+				again = fileSettle // still being written: look again once it settles
+			}
+			continue
+		case read == maxFilesPerPoll:
+			again = 0 // more files: the next poll at once
+			continue
 		}
 		delete(skip, e.path)
 		read++
-		if !s.readFile(ctx, f, e.rel, e.path, stamp) {
+		if res := s.readFile(ctx, f, e.rel, e.path, stamp); res != readDone {
+			if res == readFailed && src.Schedule != "" && (again < 0 || again > defaultPollInterval) {
+				again = defaultPollInterval // a scheduled poll is not skipped for a passing error
+			}
 			break
 		}
 	}
@@ -181,6 +207,7 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
 			delete(skip, path)
 		}
 	}
+	return again
 }
 
 // listed is a file a source can read: its path, its path relative to the
@@ -257,35 +284,44 @@ func hidden(name, pattern string) bool {
 	return strings.HasPrefix(name, ".") && !strings.HasPrefix(pattern, ".")
 }
 
+// readResult is what reading one file means for the rest of the poll.
+type readResult int
+
+const (
+	readDone    readResult = iota // go on with the next file
+	readStopped                   // the flow stopped accepting messages: stop
+	readFailed                    // nothing was stored (the store failed): stop, try again later
+)
+
 // readFile sends one file through the flow and then removes it (moves it
-// to moveTo when set). It returns false when the flow stopped accepting
-// messages or the store failed, so the rest waits for the next poll.
-func (s *fileSources) readFile(ctx context.Context, f gateway.Flow, name, path string, stamp fileStamp) bool {
+// to moveTo when set). When it returns anything but readDone, the rest of
+// the files wait for a later poll.
+func (s *fileSources) readFile(ctx context.Context, f gateway.Flow, name, path string, stamp fileStamp) readResult {
 	tooLarge := fmt.Sprintf("larger than %d MiB", gateway.MaxMessageBytes>>20)
 	if stamp.size > gateway.MaxMessageBytes {
 		s.reject(f, name, path, stamp, tooLarge)
-		return true
+		return readDone
 	}
 	body, err := readAtMost(path, gateway.MaxMessageBytes)
 	if errors.Is(err, errTooLarge) { // it grew after the listing
 		s.reject(f, name, path, stamp, tooLarge)
-		return true
+		return readDone
 	}
 	if err != nil {
 		s.markSkip(f.ID, path, stamp) // not again until it changes
 		s.logger.Warn("file source: cannot read a file; skipped until it changes", "flow", f.ID, "file", name, "error", err)
-		return true
+		return readDone
 	}
 	res, err := s.ingest.ingest(ctx, f.ID, body, map[string]string{"source.file": name})
 	switch {
 	case errors.Is(err, gateway.ErrFlowNotRunning), errors.Is(err, gateway.ErrFlowNotFound):
-		return false
+		return readStopped
 	case errors.Is(err, gateway.ErrInvalidMessage):
 		s.reject(f, name, path, stamp, err.Error())
-		return true
+		return readDone
 	case err != nil && res.ID == "": // nothing stored: try again later
 		s.logger.Warn("file source: processing failed; the file is kept", "flow", f.ID, "file", name, "error", err)
-		return false
+		return readFailed
 	case err != nil: // stored, then failed: the message exists, so the file is done
 		s.logger.Warn("file source: the message was stored but processing failed", "flow", f.ID, "file", name, "message", res.ID, "error", err)
 	}
@@ -305,7 +341,7 @@ func (s *fileSources) readFile(ctx context.Context, f gateway.Flow, name, path s
 		s.markSkip(f.ID, path, stamp)
 		s.logger.Error("file source: the file was processed but could not be removed; it is skipped until it changes", "flow", f.ID, "file", name, "message", res.ID, "error", err)
 	}
-	return true
+	return readDone
 }
 
 // reject moves a file the flow refuses to moveTo/rejected, or leaves it

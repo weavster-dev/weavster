@@ -6,8 +6,8 @@ Message-oriented integration platform. The current server stores flow definition
 messages for a flow through its REST API, from files in a directory, on the flow's own HTTP
 port, from rows a database query returns, or as HL7 v2 over MLLP (optionally over TLS; acknowledged with HL7 ACKs), transforms them with a declarative YAML DSL (`map`/`set`/`filter`), and delivers them to
 HTTP, file, MLLP (HL7 v2 over TCP or TLS), and database (PostgreSQL, or SQLite for local use) destinations or to other flows, recording every message and its status;
-failed deliveries are retried with backoff and dead-lettered after a limit. Cron
-scheduling and WASM modules exist as libraries in the source tree that the server does not use.
+failed deliveries are retried with backoff and dead-lettered after a limit; file and database
+sources poll on an interval or a cron schedule. WASM modules exist as libraries in the source tree that the server does not use.
 See [What exists now](#what-exists-now) and the
 [support matrix](docs/support-matrix.md).
 

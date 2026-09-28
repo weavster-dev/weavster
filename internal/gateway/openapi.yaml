@@ -1343,13 +1343,13 @@ components:
     FlowSource:
       example: {"type": "file", "dir": "/var/lib/weavster/in/adt", "pattern": "*.json", "pollIntervalMs": 1000, "moveTo": "/var/lib/weavster/done/adt"}
       type: object
-      description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs, and moveTo; an http source takes address, path, method, username with passwordEnv, certFile with keyFile, and readTimeoutMs; an mllp source takes address, certFile with keyFile, frameStart, frameEnd, and ackMode; a database source takes driver, dsnEnv, query, idColumn, update, pollIntervalMs, maxRows, and timeoutMs."
+      description: "Where the flow receives messages on its own (see flow.schema.json): a file source takes dir, pattern, pollIntervalMs or schedule, moveTo, and recursive; an http source takes address, path, method, username with passwordEnv, certFile with keyFile, and readTimeoutMs; an mllp source takes address, certFile with keyFile, frameStart, frameEnd, and ackMode; a database source takes driver, dsnEnv, query, idColumn, update, pollIntervalMs or schedule, maxRows, and timeoutMs."
       required: [type]
       additionalProperties: false
       oneOf:
         - required: [dir]
           properties: {type: {enum: [file]}}
-          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}, {required: [driver]}, {required: [dsnEnv]}, {required: [query]}, {required: [idColumn]}, {required: [update]}, {required: [maxRows]}, {required: [timeoutMs]}]}
+          not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}, {required: [driver]}, {required: [dsnEnv]}, {required: [query]}, {required: [idColumn]}, {required: [update]}, {required: [maxRows]}, {required: [timeoutMs]}, {required: [pollIntervalMs, schedule]}]}
         - required: [address]
           properties: {type: {enum: [mllp]}}
           not:
@@ -1364,6 +1364,7 @@ components:
               - {required: [username]}
               - {required: [passwordEnv]}
               - {required: [readTimeoutMs]}
+              - {required: [schedule]}
               - {required: [driver]}
               - {required: [dsnEnv]}
               - {required: [query]}
@@ -1375,7 +1376,7 @@ components:
               - {required: [keyFile], not: {required: [certFile]}}
         - required: [driver, dsnEnv, query, idColumn, update]
           properties: {type: {enum: [database]}, pollIntervalMs: {minimum: 1000}}
-          not: {anyOf: [{required: [dir]}, {required: [pattern]}, {required: [moveTo]}, {required: [recursive]}, {required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
+          not: {anyOf: [{required: [dir]}, {required: [pattern]}, {required: [moveTo]}, {required: [recursive]}, {required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}, {required: [pollIntervalMs, schedule]}]}
         - required: [address]
           properties: {type: {enum: [http]}}
           not:
@@ -1388,6 +1389,7 @@ components:
               - {required: [frameStart]}
               - {required: [frameEnd]}
               - {required: [ackMode]}
+              - {required: [schedule]}
               - {required: [driver]}
               - {required: [dsnEnv]}
               - {required: [query]}
@@ -1404,6 +1406,7 @@ components:
         dir: {type: string, description: "file: absolute directory to poll"}
         pattern: {type: string, description: "file: file-name glob (default *)"}
         pollIntervalMs: {type: integer, minimum: 100, maximum: 3600000, description: "file: default 1000; database: at least 1000, default 5000"}
+        schedule: {type: string, minLength: 1, description: "file, database: cron schedule instead of pollIntervalMs: minute hour day-of-month month day-of-week (*/15 7-19 * * MON-FRI), or @hourly, @daily, @every 30s; optionally CRON_TZ=Area/City first (default: the server's time zone)"}
         moveTo: {type: string, description: "file: absolute directory processed files are moved to (default: deleted)"}
         recursive: {type: boolean, description: "file: also read subdirectories of dir (default false)"}
         address: {type: string, description: "http, mllp: host:port the flow listens on while it is started"}

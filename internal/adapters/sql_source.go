@@ -56,9 +56,30 @@ type SQLQueryOptions struct {
 // QuerySQL runs a database source's query read-only (a READ ONLY
 // transaction on PostgreSQL, PRAGMA query_only on SQLite, which ignores
 // read-only transactions) with LIMIT MaxRows, and returns the rows, as
-// many as fit in MaxSQLBatchBytes (at least one). Errors never quote
-// values.
-func QuerySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, error) {
+// many as fit in MaxSQLBatchBytes (at least one), and whether it stopped
+// at a limit (more rows may be waiting). Errors never quote values.
+func QuerySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, bool, error) {
+	if o.MaxRows <= 0 {
+		o.MaxRows = 100
+	}
+	rows, err := querySQL(ctx, db, o)
+	if err != nil {
+		return nil, false, err
+	}
+	return rows, len(rows) == o.MaxRows || batchBytes(rows) >= MaxSQLBatchBytes, nil
+}
+
+// batchBytes is the size of rows' JSON.
+func batchBytes(rows []SQLRow) int {
+	n := 0
+	for _, r := range rows {
+		n += len(r.Body)
+	}
+	return n
+}
+
+// querySQL is QuerySQL without the "more" answer.
+func querySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, error) {
 	if !ValidSelect(o.Query) {
 		return nil, errors.New("database: query must be one SELECT or WITH statement")
 	}
