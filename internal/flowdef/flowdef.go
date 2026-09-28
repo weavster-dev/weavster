@@ -10,11 +10,14 @@ import (
 	"fmt"
 	"net"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/weavster-dev/weavster/internal/adapters"
 	"github.com/weavster-dev/weavster/internal/compiler"
+	"github.com/weavster-dev/weavster/internal/dsl"
 )
 
 // Flow is a flow definition. Status and StoppedDestinations are runtime
@@ -147,6 +150,48 @@ func CheckDestinations(f Flow) error {
 		if err := checkMLLPMode(d.FrameStart, d.FrameEnd, d.AckMode); err != nil {
 			return fmt.Errorf("destination %s: %w", d.Name, err)
 		}
+		if err := checkDatabase(d); err != nil {
+			return fmt.Errorf("destination %s: %w", d.Name, err)
+		}
+	}
+	return nil
+}
+
+// dsnEnvName is the environment variable a database destination may read
+// its connection string from (only these, so a flows:edit user cannot use
+// the server's other secrets).
+var dsnEnvName = regexp.MustCompile(`^WEAVSTER_DB_[A-Z0-9_]+$`)
+
+// checkDatabase checks a database destination (#107 D-75): driver, dsnEnv,
+// table and column identifiers, and non-empty paths; the fields are
+// refused on other types.
+func checkDatabase(d Destination) error {
+	fields := d.Driver != "" || d.DSNEnv != "" || d.Table != "" || len(d.Columns) > 0 || d.KeyColumn != ""
+	switch {
+	case d.Type != "database" && fields:
+		return errors.New("driver, dsnEnv, table, columns, and keyColumn apply only to database destinations")
+	case d.Type != "database":
+		return nil
+	case d.Driver != "postgres" && d.Driver != "sqlite":
+		return fmt.Errorf("driver must be postgres or sqlite, got %q", d.Driver)
+	case !dsnEnvName.MatchString(d.DSNEnv):
+		return fmt.Errorf("dsnEnv must name an environment variable WEAVSTER_DB_..., got %q", d.DSNEnv)
+	case !adapters.ValidSQLIdentifier(d.Table, true):
+		return fmt.Errorf("table must be a name or schema.name of letters, digits, and _, got %q", d.Table)
+	case len(d.Columns) == 0:
+		return errors.New("columns must map at least one column to a path in the message")
+	case d.KeyColumn != "" && !adapters.ValidSQLIdentifier(d.KeyColumn, false):
+		return fmt.Errorf("keyColumn must be a column name of letters, digits, and _, got %q", d.KeyColumn)
+	}
+	for col, path := range d.Columns {
+		switch {
+		case !adapters.ValidSQLIdentifier(col, false):
+			return fmt.Errorf("column %q must be a name of letters, digits, and _", col)
+		case col == d.KeyColumn:
+			return fmt.Errorf("column %q is the keyColumn, which gets the idempotency key", col)
+		case dsl.CheckPath(path) != nil:
+			return fmt.Errorf("column %s: path must be dot-separated names, got %q", col, path)
+		}
 	}
 	return nil
 }
@@ -277,6 +322,14 @@ type Destination struct {
 	FrameStart string `json:"frameStart,omitempty"`
 	FrameEnd   string `json:"frameEnd,omitempty"`
 	AckMode    string `json:"ackMode,omitempty"`
+	// Driver, DSNEnv, Table, Columns (column -> path in the message), and
+	// KeyColumn describe a database destination's insert (#107 D-75); the
+	// connection string is the server environment variable DSNEnv.
+	Driver    string            `json:"driver,omitempty"`
+	DSNEnv    string            `json:"dsnEnv,omitempty"`
+	Table     string            `json:"table,omitempty"`
+	Columns   map[string]string `json:"columns,omitempty"`
+	KeyColumn string            `json:"keyColumn,omitempty"`
 	// Flow is the id of the flow a flow destination hands messages to
 	// (#107 D-70).
 	Flow string `json:"flow,omitempty"`

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -121,7 +122,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	var sourcePorts gateway.SourcePorts
 	retry := func(context.Context) {}
 	if store != nil {
-		sinks := &sinkFactory{logger: logger, tlsOpts: tlsOptions(cfg), delivered: func(ctx context.Context, flowID, key string) (string, error) {
+		sinks := &sinkFactory{logger: logger, tlsOpts: tlsOptions(cfg), dbs: newDBPool(), delivered: func(ctx context.Context, flowID, key string) (string, error) {
 			found, err := store.Search(ctx, state.Query{FlowID: flowID, Metadata: map[string]string{flowKeyMetadata: key}, Limit: 1})
 			if err != nil || len(found) == 0 {
 				return "", err
@@ -149,6 +150,10 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
 			<-polled
 			<-served
+		}
+		closeStore = func() error { // after the API drained: nothing delivers any more
+			sinks.dbs.close()
+			return store.Close()
 		}
 	}
 
@@ -1531,6 +1536,7 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{
 			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address, TLS: d.TLS, CAFile: d.CAFile,
 			FrameStart: d.FrameStart, FrameEnd: d.FrameEnd, AckMode: d.AckMode, Flow: d.Flow,
+			Driver: d.Driver, DSNEnv: d.DSNEnv, Table: d.Table, Columns: d.Columns, KeyColumn: d.KeyColumn,
 			Method: d.Method, Timeout: time.Duration(d.TimeoutMs) * time.Millisecond, MaxRedirects: d.MaxRedirects,
 			Stopped: stopped[d.Name], Transform: t, ResponseTransform: rt,
 		})
@@ -1680,13 +1686,15 @@ type sinkFactory struct {
 	// tlsOpts are the server's TLS settings, also used by mllp
 	// destinations with tls.
 	tlsOpts gateway.TLSOptions
+	// dbs are database destinations' connection pools.
+	dbs *dbPool
 }
 
 func (s *sinkFactory) build(d pipeline.Destination) (pipeline.Sink, error) {
 	if d.Type == "flow" {
 		return flowSink{target: d.Flow, factory: s}, nil
 	}
-	return buildSink(d, s.tlsOpts)
+	return buildSink(d, s.tlsOpts, s.dbs)
 }
 
 // flowKeyMetadata stores a flow delivery's idempotency key with the target
@@ -1722,13 +1730,16 @@ func (s flowSink) Write(ctx context.Context, d pipeline.Delivery) error {
 
 // newSink builds the adapter for a flow destination.
 func newSink(d pipeline.Destination) (pipeline.Sink, error) {
-	return buildSink(d, gateway.DefaultTLSOptions())
+	return buildSink(d, gateway.DefaultTLSOptions(), nil)
 }
 
 // buildSink builds the adapter for a destination; an mllp destination
-// with tls uses tlsOpts (the server's minimum version and ciphers).
-func buildSink(d pipeline.Destination, tlsOpts gateway.TLSOptions) (pipeline.Sink, error) {
+// with tls uses tlsOpts (the server's minimum version and ciphers), and a
+// database destination a connection from dbs.
+func buildSink(d pipeline.Destination, tlsOpts gateway.TLSOptions, dbs *dbPool) (pipeline.Sink, error) {
 	switch d.Type {
+	case "database":
+		return databaseSink(d, dbs)
 	case "http":
 		return httpSink{adapters.NewHTTPSinkWith(d.URL, adapters.HTTPSinkOptions{
 			Method: d.Method, Timeout: d.Timeout, MaxRedirects: d.MaxRedirects,
@@ -1753,6 +1764,94 @@ func buildSink(d pipeline.Destination, tlsOpts gateway.TLSOptions) (pipeline.Sin
 		return adapterSink{sink.WithMode(framing, d.AckMode == "none")}, nil
 	}
 	return nil, fmt.Errorf("unsupported destination type %q", d.Type)
+}
+
+// databaseSink builds a database destination's sink (#107 D-75): the
+// connection string is read from the server environment variable DSNEnv
+// for each message, so a changed value applies without a restart.
+func databaseSink(d pipeline.Destination, dbs *dbPool) (pipeline.Sink, error) {
+	if dbs == nil {
+		return nil, errors.New("database destinations need the server's connection pool")
+	}
+	dsn := os.Getenv(d.DSNEnv)
+	if dsn == "" {
+		return nil, fmt.Errorf("database: environment variable %s is not set", d.DSNEnv)
+	}
+	db, err := dbs.get(d.Driver, d.DSNEnv, dsn)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(d.Columns))
+	for n := range d.Columns {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	cols := make([]adapters.SQLColumn, len(names))
+	for i, n := range names {
+		cols[i] = adapters.SQLColumn{Name: n, Path: d.Columns[n]}
+	}
+	sink, err := adapters.NewSQLSink(db, adapters.SQLSinkOptions{Dialect: d.Driver, Table: d.Table, Columns: cols, KeyColumn: d.KeyColumn, Timeout: d.Timeout})
+	if err != nil {
+		return nil, err
+	}
+	return adapterSink{sink}, nil
+}
+
+// dbPool keeps one connection pool per driver and environment variable;
+// when the variable's connection string changes (a rotated password), the
+// old pool is closed and a new one opened.
+type dbPool struct {
+	mu     sync.Mutex
+	dbs    map[string]pooledDB
+	closed bool
+}
+
+// pooledDB is a pool and the connection string it was opened with.
+type pooledDB struct {
+	dsn string
+	db  *sql.DB
+}
+
+func newDBPool() *dbPool { return &dbPool{dbs: map[string]pooledDB{}} }
+
+// sqlDrivers are the database/sql drivers of the database destinations'
+// drivers.
+var sqlDrivers = map[string]string{adapters.DialectPostgres: "pgx", adapters.DialectSQLite: "sqlite"}
+
+// get returns the pool for driver and the variable env holding dsn.
+func (p *dbPool) get(driver, env, dsn string) (*sql.DB, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return nil, errors.New("database: the server is stopping")
+	}
+	key := driver + "\x00" + env
+	if old, ok := p.dbs[key]; ok {
+		if old.dsn == dsn {
+			return old.db, nil
+		}
+		_ = old.db.Close() // deliveries using it finish first (database/sql waits)
+	}
+	db, err := sql.Open(sqlDrivers[driver], dsn)
+	if err != nil {
+		return nil, errors.New("database: the connection string is not valid for the driver") // not the error: it can quote the string
+	}
+	if driver == adapters.DialectSQLite {
+		db.SetMaxOpenConns(1) // SQLite has one writer: deliveries take turns instead of failing SQLITE_BUSY
+	}
+	p.dbs[key] = pooledDB{dsn: dsn, db: db}
+	return db, nil
+}
+
+// close closes every pool; later gets fail.
+func (p *dbPool) close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.closed = true
+	for key, e := range p.dbs {
+		_ = e.db.Close()
+		delete(p.dbs, key)
+	}
 }
 
 // mllpFraming is an mllp source's or destination's framing (#107 D-72).

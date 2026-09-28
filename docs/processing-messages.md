@@ -99,7 +99,7 @@ VS Code, for example, mistakes are underlined and fields are completed:
 | Field | Meaning |
 |---|---|
 | `name` | Unique within the flow; 1–128 characters from `A-Z a-z 0-9 . _ -` (it appears in URLs). Used to report delivery results. |
-| `type` | `http` (send to `url`), `file` (write one file per message into `dir`, named by message ID), `mllp` (send HL7 v2 to `address` over TCP; see [Send HL7 v2 over MLLP](#send-hl7-v2-over-mllp)), or `flow` (hand the message to another flow; see [Send to another flow](#send-to-another-flow)). |
+| `type` | `http` (send to `url`), `file` (write one file per message into `dir`, named by message ID), `mllp` (send HL7 v2 to `address` over TCP; see [Send HL7 v2 over MLLP](#send-hl7-v2-over-mllp)), `flow` (hand the message to another flow; see [Send to another flow](#send-to-another-flow)), or `database` (insert a row into a table; see [Write rows to a database](#write-rows-to-a-database)). |
 | `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a request (`POST` unless `method` says otherwise) with `Content-Type: application/json` (transformed messages), the [`build`](#build-the-output-build) format's type, or `application/octet-stream` (passthrough). The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
 | `dir` | Required for `file`: an absolute path, created if missing. |
 | `address` | Required for `mllp`: `host:port` of the receiving system, for example `lab.example.com:2575`. |
@@ -490,6 +490,79 @@ in the documents you receive:
   step to drop documents without what the template needs, for example
   `{"filter": {"when": "order.item.1.@sku", "action": "accept"}}`, and a third item is simply not
   copied.
+
+### Write rows to a database
+
+A `database` destination inserts each message as one row of a table in PostgreSQL (or SQLite,
+for local use and tests). You choose which value of the message goes into which column:
+
+```json
+{
+  "id": "lab-results",
+  "inputFormat": "hl7v2",
+  "transform": {"name": "results", "steps": [
+    {"map": {"from": "PID.3.1", "to": "patient.mrn"}},
+    {"map": {"from": "OBX.3.2", "to": "result.test"}},
+    {"map": {"from": "OBX.5.1", "to": "result.value"}}
+  ]},
+  "destinations": [{
+    "name": "warehouse", "type": "database", "driver": "postgres", "dsnEnv": "WEAVSTER_DB_WAREHOUSE",
+    "table": "lab.results",
+    "columns": {"mrn": "patient.mrn", "test": "result.test", "value": "result.value"},
+    "keyColumn": "delivery_key"
+  }]
+}
+```
+
+Start the server with the connection string in the environment variable the destination names:
+
+```bash
+export WEAVSTER_DB_WAREHOUSE='postgres://weavster:secret@db.example.com:5432/warehouse?sslmode=verify-full'
+weavster server --config weavster.yaml
+```
+
+and create the table yourself, for example:
+
+```sql
+CREATE TABLE lab.results (mrn text, test text, value text, delivery_key text UNIQUE);
+```
+
+| Field | Meaning |
+|---|---|
+| `driver` | Required. `postgres`, or `sqlite` (the connection string is then a database file path). |
+| `dsnEnv` | Required. The server environment variable holding the connection string; its name must start with `WEAVSTER_DB_`. The connection string never appears in the flow. |
+| `table` | Required. `table` or `schema.table`: letters, digits, and `_`. |
+| `columns` | Required. Column name → path of its value in the message, such as `patient.mrn` (numbers index lists: `ids.0`). |
+| `keyColumn` | Optional. A column with a unique constraint that receives the delivery's idempotency key (see below). |
+| `timeoutMs` | Optional. Time allowed for one insert, 1000–120000 (default 30000). |
+
+- The destination needs JSON: the flow's or the destination's transform output, or JSON messages
+  passed through. A flow reading HL7 v2, XML, or delimited text without a transform, or ending
+  with a `build` to another format, is refused when you create it.
+- Values are sent as query parameters, never written into the SQL, so a quote in a value is just
+  data. Each value is sent as text and the database converts it to the column's type: in
+  PostgreSQL `42` into an `integer`, `5.40` into a `numeric` with every digit kept, `true` into a
+  `boolean`, `2026-09-28T10:00:00Z` into a `timestamptz`, an object into `jsonb`. `null` and
+  missing paths are `NULL`. A value the column cannot take fails the delivery
+  (`database: a value does not fit its column's type (SQLSTATE 22P02)`). SQLite converts by the
+  column's affinity (`true` stays the text `true`).
+- Table and column names are checked and written in double quotes, so in PostgreSQL they are
+  case-sensitive: use the names as the table has them (a table created without quotes has
+  lower-case names, so `Results` does not find `results`).
+- Each message is one `INSERT` statement, its own transaction, within `timeoutMs`. A failed
+  insert is retried like any other delivery and then dead-lettered.
+- With `keyColumn`, the insert is `ON CONFLICT (keyColumn) DO NOTHING`: a retry after a lost
+  success (the row was written but the reply never arrived) inserts nothing, so the message is
+  written once. The key is the same for every attempt to deliver that message to that
+  destination; reprocessing a message makes a new message with a new key. Without
+  `keyColumn`, a retry can insert the row twice.
+- The connection string is read for every message, so a changed variable (a rotated password)
+  applies without a restart: the old connections are closed and new ones opened. Connections
+  are pooled per variable; a SQLite database gets one connection, so its inserts take turns. An unset variable fails the delivery:
+  `database: environment variable WEAVSTER_DB_WAREHOUSE is not set`.
+- Errors never quote values: PostgreSQL errors are reported by kind and SQLSTATE (for example
+  `database: the table does not exist (SQLSTATE 42P01)`), and a failed connection as
+  `database: could not connect (check the host, credentials, and TLS settings in the connection string)`.
 
 ### Send to another flow
 

@@ -1404,12 +1404,12 @@ components:
       example: {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}
       type: object
       required: [name, type]
-      description: "url, method, and maxRedirects apply to http destinations; dir to file; address, tls, caFile, frameStart, frameEnd, and ackMode to mllp; flow (required) to flow; timeoutMs to http and mllp."
+      description: "url, method, and maxRedirects apply to http destinations; dir to file; address, tls, caFile, frameStart, frameEnd, and ackMode to mllp; driver, dsnEnv, table, columns (required), and keyColumn to database; flow (required) to flow; timeoutMs to http, mllp, and database."
       anyOf:
         - properties: {type: {enum: [http]}}
-          not: {anyOf: [{required: [address]}, {required: [dir]}, {required: [flow]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
+          not: {anyOf: [{required: [address]}, {required: [dir]}, {required: [flow]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}, {required: [driver]}, {required: [dsnEnv]}, {required: [table]}, {required: [columns]}, {required: [keyColumn]}]}
         - properties: {type: {enum: [file]}}
-          not: {anyOf: [{required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [address]}, {required: [flow]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
+          not: {anyOf: [{required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [address]}, {required: [flow]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}, {required: [driver]}, {required: [dsnEnv]}, {required: [table]}, {required: [columns]}, {required: [keyColumn]}]}
         - properties: {type: {enum: [mllp]}}
           not:
             anyOf:
@@ -1418,13 +1418,21 @@ components:
               - {required: [url]}
               - {required: [dir]}
               - {required: [flow]}
+              - {required: [driver]}
+              - {required: [dsnEnv]}
+              - {required: [table]}
+              - {required: [columns]}
+              - {required: [keyColumn]}
               - {required: [caFile], not: {required: [tls], properties: {tls: {enum: [true]}}}}
+        - properties: {type: {enum: [database]}}
+          required: [driver, dsnEnv, table, columns]
+          not: {anyOf: [{required: [url]}, {required: [dir]}, {required: [address]}, {required: [flow]}, {required: [method]}, {required: [maxRedirects]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
         - properties: {type: {enum: [flow]}}
           required: [flow]
-          not: {anyOf: [{required: [url]}, {required: [dir]}, {required: [address]}, {required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
+          not: {anyOf: [{required: [url]}, {required: [dir]}, {required: [address]}, {required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}, {required: [driver]}, {required: [dsnEnv]}, {required: [table]}, {required: [columns]}, {required: [keyColumn]}]}
       properties:
         name: {type: string}
-        type: {type: string, enum: [file, http, mllp, flow]}
+        type: {type: string, enum: [file, http, mllp, flow, database]}
         url: {type: string}
         dir: {type: string}
         address: {type: string, description: "mllp: host:port to deliver HL7 v2 to"}
@@ -1433,9 +1441,14 @@ components:
         frameStart: {type: string, pattern: "^[0-9A-Fa-f]{2}$", description: "mllp: byte before each message, in hex (default 0B, MLLP's VT)"}
         frameEnd: {type: string, pattern: "^([0-9A-Fa-f]{2}){1,2}$", description: "mllp: one or two bytes after each message, in hex (default 1C0D, MLLP's FS CR)"}
         ackMode: {type: string, enum: [original, none], description: "mllp: original (default): wait for the receiver's HL7 ACK; none: delivered once written"}
+        driver: {type: string, enum: [postgres, sqlite], description: "database: postgres, or sqlite (a database file; for local use and tests)"}
+        dsnEnv: {type: string, pattern: "^WEAVSTER_DB_[A-Z0-9_]+$", description: "database: name of the server environment variable holding the connection string, WEAVSTER_DB_..."}
+        table: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}(\\.[A-Za-z_][A-Za-z0-9_]{0,62})?$", description: "database: table (or schema.table) each message is inserted into"}
+        columns: {type: object, minProperties: 1, additionalProperties: {type: string, minLength: 1}, description: "database: column name -> path of its value in the message (e.g. patient.mrn); a missing path is NULL"}
+        keyColumn: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}$", description: "database: column (with a unique constraint) that gets the delivery's idempotency key, so a retry inserts nothing"}
         flow: {type: string, description: "flow: id of the flow to hand messages to"}
         method: {type: string, enum: [POST, PUT, PATCH], description: "http: request method (default POST)"}
-        timeoutMs: {type: integer, minimum: 1000, maximum: 120000, description: "http, mllp: time allowed for one delivery, including the response or ACK (default 30000)"}
+        timeoutMs: {type: integer, minimum: 1000, maximum: 120000, description: "http, mllp, database: time allowed for one delivery, including the response or ACK (default 30000)"}
         maxRedirects: {type: integer, minimum: 0, maximum: 10, description: "http: 307/308 redirects followed, never https to http (default 0: a redirect fails the delivery)"}
         transform: {description: A destination transform}
         responseTransform: {description: A response transform}

@@ -26,7 +26,7 @@ const (
 	// receiver honors the key.
 	SemanticsKeySent DeliverySemantics = "idempotency-key-sent"
 	// SemanticsAtLeastOnce sinks send no key (raw TCP/MLLP, file, SMTP,
-	// database, …); the receiver may see a message twice (gap #5).
+	// database without keyColumn, …); the receiver may see a message twice (gap #5).
 	SemanticsAtLeastOnce DeliverySemantics = "at-least-once"
 )
 

@@ -357,7 +357,8 @@
             "http",
             "file",
             "mllp",
-            "flow"
+            "flow",
+            "database"
           ]
         },
         "url": {
@@ -394,7 +395,7 @@
           ],
           "minimum": 1000,
           "maximum": 120000,
-          "description": "http, mllp: time allowed for one delivery, including the response or ACK (default 30000)"
+          "description": "http, mllp, database: time allowed for one delivery, including the response or ACK (default 30000)"
         },
         "maxRedirects": {
           "type": [
@@ -451,6 +452,53 @@
           ],
           "description": "mllp: original (default): wait for the receiver's HL7 ACK; none: delivered once written"
         },
+        "driver": {
+          "enum": [
+            "postgres",
+            "sqlite",
+            null
+          ],
+          "description": "database: postgres, or sqlite (a database file; for local use and tests)"
+        },
+        "dsnEnv": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^WEAVSTER_DB_[A-Z0-9_]+$",
+          "description": "database: name of the server environment variable holding the connection string, WEAVSTER_DB_..."
+        },
+        "table": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}(\\.[A-Za-z_][A-Za-z0-9_]{0,62})?$",
+          "description": "database: table (or schema.table) each message is inserted into"
+        },
+        "columns": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "database: column name -> path of its value in the message (e.g. patient.mrn); a missing path is NULL"
+        },
+        "keyColumn": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+          "description": "database: column (with a unique constraint) that gets the delivery's idempotency key, so a retry inserts nothing"
+        },
         "flow": {
           "type": [
             "string",
@@ -500,6 +548,21 @@
               },
               "ackMode": {
                 "type": "null"
+              },
+              "driver": {
+                "type": "null"
+              },
+              "dsnEnv": {
+                "type": "null"
+              },
+              "table": {
+                "type": "null"
+              },
+              "columns": {
+                "type": "null"
+              },
+              "keyColumn": {
+                "type": "null"
               }
             }
           }
@@ -527,6 +590,21 @@
                 "type": "null"
               },
               "flow": {
+                "type": "null"
+              },
+              "driver": {
+                "type": "null"
+              },
+              "dsnEnv": {
+                "type": "null"
+              },
+              "table": {
+                "type": "null"
+              },
+              "columns": {
+                "type": "null"
+              },
+              "keyColumn": {
                 "type": "null"
               }
             }
@@ -564,6 +642,21 @@
                 "type": "null"
               },
               "ackMode": {
+                "type": "null"
+              },
+              "driver": {
+                "type": "null"
+              },
+              "dsnEnv": {
+                "type": "null"
+              },
+              "table": {
+                "type": "null"
+              },
+              "columns": {
+                "type": "null"
+              },
+              "keyColumn": {
                 "type": "null"
               }
             }
@@ -614,6 +707,21 @@
               },
               "ackMode": {
                 "type": "null"
+              },
+              "driver": {
+                "type": "null"
+              },
+              "dsnEnv": {
+                "type": "null"
+              },
+              "table": {
+                "type": "null"
+              },
+              "columns": {
+                "type": "null"
+              },
+              "keyColumn": {
+                "type": "null"
               }
             }
           }
@@ -636,6 +744,58 @@
             "properties": {
               "tls": {
                 "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "database"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "driver",
+              "dsnEnv",
+              "table",
+              "columns"
+            ],
+            "properties": {
+              "url": {
+                "type": "null"
+              },
+              "dir": {
+                "type": "null"
+              },
+              "address": {
+                "type": "null"
+              },
+              "flow": {
+                "type": "null"
+              },
+              "method": {
+                "type": "null"
+              },
+              "maxRedirects": {
+                "type": "null"
+              },
+              "tls": {
+                "type": "null"
+              },
+              "caFile": {
+                "type": "null"
+              },
+              "frameStart": {
+                "type": "null"
+              },
+              "frameEnd": {
+                "type": "null"
+              },
+              "ackMode": {
+                "type": "null"
               }
             }
           }

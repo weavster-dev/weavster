@@ -61,6 +61,10 @@ type Destination struct {
 	// FrameStart, FrameEnd (hex), and AckMode set an mllp destination's
 	// framing and whether it waits for ACKs.
 	FrameStart, FrameEnd, AckMode string
+	// Driver, DSNEnv, Table, Columns, and KeyColumn describe a database
+	// destination's insert (#107 D-75).
+	Driver, DSNEnv, Table, KeyColumn string
+	Columns                          map[string]string
 	// Method, Timeout, and MaxRedirects shape http requests (zero: defaults).
 	Method       string
 	Timeout      time.Duration
@@ -211,8 +215,10 @@ func Validate(f Flow) error {
 			return fmt.Errorf("destination %s: transform: the flow's build step outputs text, which a transform cannot read", d.Name)
 		case d.Type == "flow" && d.Flow == "":
 			return fmt.Errorf("destination %s: flow is required for type flow", d.Name)
-		case d.Type != "http" && d.Type != "file" && d.Type != "mllp" && d.Type != "flow":
-			return fmt.Errorf("destination %s: type must be http, file, mllp, or flow, got %q", d.Name, d.Type)
+		case d.Type == "database" && !writesJSON(f, d):
+			return fmt.Errorf("destination %s: a database destination needs a JSON object: the flow's or this destination's transform output (without a build step to another format), or JSON messages passed through", d.Name)
+		case d.Type != "http" && d.Type != "file" && d.Type != "mllp" && d.Type != "flow" && d.Type != "database":
+			return fmt.Errorf("destination %s: type must be http, file, mllp, flow, or database, got %q", d.Name, d.Type)
 		}
 		if d.Transform != nil {
 			if _, err := dsl.Compile(*d.Transform); err != nil {
@@ -286,6 +292,18 @@ func receives(f Flow, d Destination) string {
 		return format
 	}
 	return "json"
+}
+
+// writesJSON reports whether destination d is sent JSON: transform output
+// without a build to another format, or passthrough of JSON input.
+func writesJSON(f Flow, d Destination) bool {
+	switch receives(f, d) {
+	case "json":
+		return true
+	case "": // passthrough: no transform on the way
+		return f.InputFormat == "" || f.InputFormat == "json"
+	}
+	return false
 }
 
 // validAddress reports whether s is host:port with a numeric port 1–65535.
