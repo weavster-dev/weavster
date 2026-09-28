@@ -55,8 +55,8 @@ func (messageOps) Reprocess(_ context.Context, id string) (IngestResult, error) 
 	return IngestResult{ID: "m2", Status: "sent"}, nil
 }
 
-func (messageOps) Export(_ context.Context, q MessageQuery, key []byte) ([]byte, int, error) {
-	return []byte(fmt.Sprintf("archive:%d:%t", q.Limit, key != nil)), 2, nil
+func (messageOps) Export(_ context.Context, q MessageQuery, key []byte) ([]byte, []string, error) {
+	return []byte(fmt.Sprintf("archive:%d:%t", q.Limit, key != nil)), []string{"m", "n"}, nil
 }
 
 func (messageOps) Import(_ context.Context, archive []byte, opts MessageImport) (MessageImportResult, error) {

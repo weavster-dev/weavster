@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -34,6 +35,11 @@ func (s *Server) handleMessagesSearch(w http.ResponseWriter, r *http.Request) {
 		writeBackendError(w, err)
 		return
 	}
+	ids := make([]string, len(msgs))
+	for i, m := range msgs {
+		ids[i] = m.ID
+	}
+	s.auditDisclosed(r, ids)
 	// The total is a second query: when it fails the page is still
 	// answered, without X-Total-Count.
 	if total, err := s.cfg.Messages.Count(r.Context(), q); err == nil {
@@ -184,7 +190,7 @@ func (s *Server) handleMessagesExport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	archive, count, err := s.cfg.Messages.Export(r.Context(), q, key)
+	archive, ids, err := s.cfg.Messages.Export(r.Context(), q, key)
 	if err != nil {
 		writeBackendError(w, err)
 		return
@@ -196,7 +202,8 @@ func (s *Server) handleMessagesExport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/gzip")
 		w.Header().Set("Content-Disposition", `attachment; filename="messages.json.gz"`)
 	}
-	w.Header().Set("Weavster-Message-Count", strconv.Itoa(count))
+	s.auditDisclosed(r, ids)
+	w.Header().Set("Weavster-Message-Count", strconv.Itoa(len(ids)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(archive)
 }
@@ -274,6 +281,7 @@ func (s *Server) handleMessageContent(w http.ResponseWriter, r *http.Request) {
 		writeFlowError(w, err)
 		return
 	}
+	s.auditDetail(r, "part", part) // disclosed
 	w.Header().Set("Content-Type", c.ContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
@@ -397,4 +405,12 @@ func (s *Server) handleMessageReprocess(w http.ResponseWriter, r *http.Request) 
 	}
 	res, err := s.cfg.Messages.Reprocess(r.Context(), r.PathValue("id"))
 	writeIngestResult(w, res, err)
+}
+
+// auditDisclosed records which messages a read disclosed (PHI access):
+// messages, how many, and messages.ids, every id as a JSON array (so an id
+// holding a comma stays one id).
+func (s *Server) auditDisclosed(r *http.Request, ids []string) {
+	list, _ := json.Marshal(ids) // strings always marshal
+	s.auditDetail(r, "messages", strconv.Itoa(len(ids)), "messages.ids", string(list))
 }

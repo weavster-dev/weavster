@@ -1318,9 +1318,15 @@ counts once, in its current status.
 | `POST /api/v1/messages/{id}/reprocess` | `messages:send` | Sends the original content through the message's flow again. The new message (`202`, same reply as sending, also `202` with status `received` when a later step failed after it was stored) keeps the old message's metadata (except its `error`) and adds `reprocessedFrom` with the old id. The flow must be `started` (`409` otherwise). |
 | `DELETE /api/v1/messages/{id}` | `messages:delete` | Removes the message (`204`). A message that is being processed or retried right now returns `409`; try again. |
 
+A message's stored content forms are `raw` (as received) and `transformed` (after the flow
+transform). What each destination was sent and what it answered are not stored as content:
+the reply returned to the sender is in the send response, and each destination's outcome is in
+`attempts`. Messages have no attachments.
+
 An unknown id returns `404`. Message content can hold protected health information, so
 `messages:content` is a separate permission and every search, read, and content request is
-recorded in the [audit log](audit-log.md) as `phi.access`.
+recorded in the [audit log](audit-log.md) as `phi.access`, with the messages or content part it
+disclosed.
 
 ```bash
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/messages/6f1c…/content?part=raw'

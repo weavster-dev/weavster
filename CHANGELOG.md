@@ -7,6 +7,7 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- `phi.access` audit entries record what a read disclosed (#373): a search or an export gives the number of messages and every id (`messages`, `messages.ids` as a JSON array), and a content read gives the part (`raw` when none was asked for).
 - Message search by id range (`idFrom`, `idTo`), format (`contentType`), attempts (`minAttempts`, `maxAttempts`), and metadata (`metadata.KEY=VALUE`, up to 10) as well as flow, status, and time, with the total number of matches in `X-Total-Count` (#371). Export and bulk removal take the same filters.
 - Safer schema upgrades (#369). Migrations must be numbered in order and each records the weavster release that applied it. A database already upgraded by a newer release is refused at startup, before anything in it changes: exit `1`, no retries, and a message naming both versions. The scheduler's `jobs` table is now created by a migration. Upgrades from every earlier schema version are tested on SQLite and PostgreSQL.
 - Docker Compose for local development (#367): `docker compose up -d --build --wait` runs the server with PostgreSQL 16, with data in a named volume and the API on `127.0.0.1:8080`. `scripts/compose-smoke.sh` checks that a flow survives a restart, and the CI `compose` job runs it.

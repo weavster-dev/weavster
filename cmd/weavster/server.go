@@ -2329,7 +2329,7 @@ func toStateQuery(q gateway.MessageQuery) state.Query {
 }
 
 // Export writes an archive of the messages matching q.
-func (m messageAdapter) Export(ctx context.Context, q gateway.MessageQuery, key []byte) ([]byte, int, error) {
+func (m messageAdapter) Export(ctx context.Context, q gateway.MessageQuery, key []byte) ([]byte, []string, error) {
 	return state.ExportArchive(ctx, m.store, state.ExportOptions{Query: toStateQuery(q), Key: key})
 }
 

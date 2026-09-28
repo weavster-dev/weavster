@@ -257,7 +257,7 @@ type MessageStore interface {
 	Reprocess(ctx context.Context, id string) (IngestResult, error)
 	// Export writes an archive of the matching messages (complete, every
 	// content part), encrypted when key is set.
-	Export(ctx context.Context, q MessageQuery, key []byte) (archive []byte, count int, err error)
+	Export(ctx context.Context, q MessageQuery, key []byte) (archive []byte, ids []string, err error)
 	// Import restores an archive: ErrInvalidArchive when it cannot be read,
 	// ErrFlowNotFound when it refers to a missing flow (nothing written),
 	// ErrMessageImportIncomplete when a write fails part-way (the result

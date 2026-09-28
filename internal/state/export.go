@@ -57,8 +57,9 @@ type ExportOptions struct {
 	Key   []byte
 }
 
-// ExportArchive writes an archive and returns how many messages it holds.
-func ExportArchive(ctx context.Context, s Store, opts ExportOptions) ([]byte, int, error) {
+// ExportArchive writes an archive and returns the ids of the messages it
+// holds.
+func ExportArchive(ctx context.Context, s Store, opts ExportOptions) ([]byte, []string, error) {
 	var msgs []Message
 	var err error
 	if len(opts.IDs) > 0 {
@@ -67,7 +68,11 @@ func ExportArchive(ctx context.Context, s Store, opts ExportOptions) ([]byte, in
 		msgs, err = s.Search(ctx, opts.Query)
 	}
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, err
+	}
+	ids := make([]string, len(msgs))
+	for i, m := range msgs {
+		ids[i] = m.ID
 	}
 	doc := archiveDocument{Format: archiveFormat, Items: make([]archiveItem, 0, len(msgs))}
 	for _, m := range msgs {
@@ -81,13 +86,13 @@ func ExportArchive(ctx context.Context, s Store, opts ExportOptions) ([]byte, in
 	}
 	raw, err := json.Marshal(doc)
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, err
 	}
 	out, err := gzipBytes(raw) // compress first: ciphertext does not compress
 	if err == nil && opts.Key != nil {
 		out, err = encrypt(out, opts.Key)
 	}
-	return out, len(msgs), err
+	return out, ids, err
 }
 
 func collectByID(ctx context.Context, s Store, ids []string) ([]Message, error) {
