@@ -567,6 +567,37 @@ instead of losing messages. To follow them, set <code>maxRedirects</code>:</p>
 <li>A redirect from <code>https://</code> to <code>http://</code> is never followed.</li>
 <li>Each redirect counts toward <code>maxRedirects</code>; one more is a failed delivery.</li>
 </ul>
+<h3 id="processing-order">Processing order</h3>
+<p>Each message goes through these stages, in this order:</p>
+<ol>
+<li><strong>Flow transform</strong>: the flow's <code>transform</code> steps, one after another in the order written, on
+   the message (or its <a href="#transform-hl7-v2-messages">HL7 v2</a>,
+   <a href="#transform-xml-documents">XML</a>, or <a href="#transform-delimited-text-csv">delimited</a> view). Each
+   step sees what the steps before it produced. If a <code>filter</code> drops the message it is
+   <code>filtered</code>; if a step fails (for example <code>"x" is not a number</code>) it is <code>errored</code>. Either way
+   nothing is delivered.</li>
+<li><strong>Destination transform</strong>: for each destination, its own
+   <a href="#per-destination-transforms-and-filters"><code>transform</code></a> steps in order, on the flow's output
+   (not the original message). A <code>filter</code> here drops the message for that destination only. A
+   <a href="../flow-lifecycle/#stopping-one-destination">stopped</a> destination holds the message and runs
+   its transform (as defined then) when it is started; a destination the message was already
+   delivered to is not run again.</li>
+<li><strong>Delivery</strong> to each destination that kept the message.</li>
+<li><strong>Response transform</strong>: if the flow has a
+   <a href="#return-a-destinations-reply"><code>responseSelector</code></a> and that destination was delivered to while
+   the sender waited, its <code>responseTransform</code> steps run in order on the reply, which is returned to
+   the sender. Retries, and a destination that dropped or held the message, return no reply.</li>
+</ol>
+<p>Step order matters. Here the <code>filter</code> reads <code>adult</code>, which the <code>map</code> step before it sets:</p>
+<pre><code class="language-json">&quot;transform&quot;: {&quot;steps&quot;: [
+  {&quot;map&quot;: {&quot;from&quot;: &quot;age.flag&quot;, &quot;to&quot;: &quot;adult&quot;}},
+  {&quot;filter&quot;: {&quot;when&quot;: &quot;adult == 'y'&quot;, &quot;action&quot;: &quot;accept&quot;}}
+]}
+</code></pre>
+<p>Written the other way round, the filter runs before the <code>map</code>, so it sees only what the message
+itself carries: a message without an <code>adult</code> field (a missing value compares equal to <code>''</code>) is
+filtered, whatever <code>age.flag</code> says. A destination's filter on <code>adult</code>, by contrast, always sees
+the flow's finished output, including what the <code>map</code> set.</p>
 <h3 id="per-destination-transforms-and-filters">Per-destination transforms and filters</h3>
 <p>A destination's <code>transform</code> runs on the flow's output, just before delivery to that
 destination. The other destinations are not affected. A <code>filter</code> step in it drops the message
