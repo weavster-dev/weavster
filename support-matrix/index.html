@@ -47,6 +47,9 @@
                                 <a href="../production/" class="nav-link">Production Setup</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../docker-compose/" class="nav-link">Local Development with Docker Compose</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../limits/" class="nav-link">Capacity and Limits</a>
                             </li>
                             <li class="nav-item">
@@ -772,6 +775,11 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'PASSWORD' -s smoke.txt
 <td>Distroless non-root container image</td>
 <td>Implemented (wired)</td>
 <td>CI <code>docker</code> job. Build it yourself with <code>docker build -t weavster .</code>. No image is published.</td>
+</tr>
+<tr>
+<td>Docker Compose for local development: the server with PostgreSQL 16 (<code>docker-compose.yml</code>, <code>docker/weavster.yaml</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestDockerCompose</code>, CI <code>compose</code> job (<code>scripts/compose-smoke.sh</code>: a flow survives a server restart). Development credentials only. See <a href="../docker-compose/">Local development with Docker Compose</a>.</td>
 </tr>
 <tr>
 <td>Signed releases, <code>curl \| bash</code> installer</td>

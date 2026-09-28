@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/api/">
+        <link rel="canonical" href="https://docs.weavster.dev/docker-compose/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>REST API - Weavster</title>
+        <title>Local Development with Docker Compose - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -47,7 +47,7 @@
                                 <a href="../production/" class="nav-link">Production Setup</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../docker-compose/" class="nav-link">Local Development with Docker Compose</a>
+                                <a href="./" class="nav-link active" aria-current="page">Local Development with Docker Compose</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../limits/" class="nav-link">Capacity and Limits</a>
@@ -59,7 +59,7 @@
                                 <a href="../cli/" class="nav-link">Command-line client</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">REST API</a>
+                                <a href="../api/" class="nav-link">REST API</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../api-errors/" class="nav-link">API errors</a>
@@ -121,17 +121,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../cli/" class="nav-link">
+                                <a rel="prev" href="../production/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../api-errors/" class="nav-link">
+                                <a rel="next" href="../limits/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/api.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/docker-compose.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -152,17 +152,21 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#rest-api" class="nav-link">REST API</a>
+            <li class="nav-item" data-bs-level="1"><a href="#local-development-with-docker-compose" class="nav-link">Local development with Docker Compose</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#versions" class="nav-link">Versions</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#contract" class="nav-link">Contract</a>
+            <li class="nav-item" data-bs-level="2"><a href="#start" class="nav-link">Start</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#errors" class="nav-link">Errors</a>
+            <li class="nav-item" data-bs-level="2"><a href="#stop-restart-reset" class="nav-link">Stop, restart, reset</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#check-the-stack" class="nav-link">Check the stack</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#common-problems" class="nav-link">Common problems</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -173,46 +177,109 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="rest-api">REST API</h1>
-<p>The server's REST API lives under <code>/api</code>. Every request needs credentials (see
-<a href="../authentication/">Authentication</a>) except login (<code>POST /api/v1/auth/login</code>, or its unversioned
-form <code>POST /api/auth/login</code>) and <code>GET /api/openapi.yaml</code>. Every request except
-<code>GET /api/openapi.yaml</code>, versioned or unversioned, needs the header <code>X-Weavster-CSRF: 1</code> unless
-<code>listen.requireMarkerHeader</code> is off.</p>
-<h2 id="versions">Versions</h2>
-<p>Each endpoint has a versioned path and an unversioned one:</p>
+<h1 id="local-development-with-docker-compose">Local development with Docker Compose</h1>
+<p><code>docker-compose.yml</code> in the repository runs the server with PostgreSQL 16 on your machine. It is
+for development and trying things out: its passwords are fixed and written in the repository,
+and the database connection is not encrypted. For a real deployment, see
+<a href="../production/">Production setup</a>.</p>
+<h2 id="start">Start</h2>
+<p>From the repository root:</p>
+<pre><code class="language-bash">docker compose up -d --build --wait
+</code></pre>
+<p>This builds the server image from the <code>Dockerfile</code>, starts PostgreSQL, waits until the database
+is ready, and starts the server with <code>docker/weavster.yaml</code>. <code>--wait</code> returns once the server's
+container runs; the server connects to the database and answers a moment later (on the first
+start, a few seconds). Wait for it, then use the API at <code>http://127.0.0.1:8080</code> (only on your
+machine):</p>
+<pre><code class="language-bash">until curl -fsS http://127.0.0.1:8080/api/openapi.yaml &gt;/dev/null; do sleep 1; done
+curl -s -u 'admin:Weavster-dev-1' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/flows
+</code></pre>
+<pre><code class="language-json">[]
+</code></pre>
 <table>
 <thead>
 <tr>
-<th>Path</th>
-<th>Serves</th>
+<th>What</th>
+<th>Value</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>/api/v1/flows</code></td>
-<td>Version 1. Use this in scripts and integrations: its behaviour will not change when a newer version appears.</td>
+<td>API</td>
+<td><code>http://127.0.0.1:8080</code></td>
 </tr>
 <tr>
-<td><code>/api/flows</code></td>
-<td>The latest version, today v1.</td>
+<td>First-run admin</td>
+<td><code>admin</code> / <code>Weavster-dev-1</code> (from <code>WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD</code> in the compose file)</td>
+</tr>
+<tr>
+<td>Database</td>
+<td><code>postgres://weavster:weavster@db:5432/weavster</code> inside the compose network; not published on your machine</td>
+</tr>
+<tr>
+<td>Server configuration</td>
+<td><code>docker/weavster.yaml</code>, mounted read-only at <code>/etc/weavster/weavster.yaml</code></td>
 </tr>
 </tbody>
 </table>
-<p>Both paths behave identically, including errors, and the <a href="../audit-log/">audit log</a> records the
-path you called. Every reply from a versioned or unversioned endpoint path carries the version that
-answered it (<code>GET /api/openapi.yaml</code> is not versioned and has no such header):</p>
-<pre><code class="language-bash">curl -si -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/flows | grep -i weavster-api-version
+<h2 id="stop-restart-reset">Stop, restart, reset</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Effect</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>docker compose logs -f weavster</code></td>
+<td>Follow the server's log.</td>
+</tr>
+<tr>
+<td><code>docker compose restart weavster</code></td>
+<td>Restart the server; flows, messages, and users are kept.</td>
+</tr>
+<tr>
+<td><code>docker compose up -d --build --wait</code></td>
+<td>Rebuild the server after a code change and restart it; the data is kept.</td>
+</tr>
+<tr>
+<td><code>docker compose down</code></td>
+<td>Stop and remove the containers; the data is kept in the <code>weavster_db-data</code> volume.</td>
+</tr>
+<tr>
+<td><code>docker compose down -v</code></td>
+<td>Stop and <strong>delete all data</strong> (the volume). The next start creates the admin account again.</td>
+</tr>
+</tbody>
+</table>
+<p>The server container restarts by itself if the server stops (for example, when the database
+was not reachable in time); <code>docker compose ps</code> shows its state.</p>
+<p>To change the server's settings, edit <code>docker/weavster.yaml</code> (see
+<a href="../server-config/">Server configuration</a>) and run <code>docker compose restart weavster</code>.</p>
+<h2 id="check-the-stack">Check the stack</h2>
+<p><code>scripts/compose-smoke.sh</code> starts the stack, creates a flow, restarts the server, and checks the
+flow is still there. CI runs it on every pull request:</p>
+<pre><code class="language-bash">scripts/compose-smoke.sh
 </code></pre>
-<pre><code class="language-text">Weavster-API-Version: v1
+<pre><code class="language-text">compose smoke test passed
 </code></pre>
-<p>A version that does not exist, such as <code>/api/v9/flows</code>, returns <code>404</code>.</p>
-<h2 id="contract">Contract</h2>
-<p>The full contract is served without credentials at <code>GET /api/openapi.yaml</code> (OpenAPI 3.1). It is the
-same file as <code>agent-docs/openapi.yaml</code> in the repository and documents every endpoint with its
-<code>/api/v1</code> path.</p>
-<h2 id="errors">Errors</h2>
-<p>Every error has the same JSON shape. See <a href="../api-errors/">API errors</a>.</p></div>
+<h2 id="common-problems">Common problems</h2>
+<ul>
+<li><strong>Port 8080 is taken.</strong> <code>docker compose up</code> fails with <code>port is already allocated</code>. Stop what uses
+  the port, or change the left side of <code>"127.0.0.1:8080:8080"</code> in <code>docker-compose.yml</code> (for
+  example <code>"127.0.0.1:9080:8080"</code>) and use that port in your requests.</li>
+<li><strong>The admin password changed and you lost it.</strong> Run <code>docker compose down -v</code> to start over
+  with the compose file's password (this deletes flows and messages too).</li>
+<li><strong>The server keeps restarting with <code>permission denied</code> in its log.</strong> The server runs as an
+  unprivileged user and reads <code>docker/weavster.yaml</code> through the mount, so the file must be
+  readable by everyone on your machine: <code>chmod 644 docker/weavster.yaml</code> (a checkout with a
+  strict <code>umask</code> can leave it <code>600</code>).</li>
+<li><strong><code>400</code> on every request.</strong> Add the <code>X-Weavster-CSRF: 1</code> header (see
+  <a href="../server-config/#listen"><code>listen.requireMarkerHeader</code></a>).</li>
+<li><strong>Don't reuse these settings in production.</strong> The passwords are public and <code>sslmode=disable</code>
+  sends database traffic unencrypted.</li>
+</ul></div>
             </div>
         </div>
 
