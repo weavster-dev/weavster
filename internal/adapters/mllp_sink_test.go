@@ -49,6 +49,7 @@ func TestMLLPSinkACK(t *testing.T) {
 		{"CA", ack("CA", "C1"), ""},
 		{"AE", ack("AE", "C1"), "mllp: ACK AE (application error)"},
 		{"CR", ack("CR", "C1"), "mllp: ACK CR (application reject)"},
+		{"AR without an id", ack("AR", ""), "mllp: ACK AR (application reject)"},
 		{"unknown code", ack("ZZ", "C1"), "mllp: ACK with an unknown code"},
 		{"other message", ack("AA", "C2"), "mllp: the ACK is for another message"},
 		{"not an ACK", "MSH|^~\\&|C\rPID|1\r", "mllp: the reply is not an HL7 ACK"},
@@ -63,6 +64,16 @@ func TestMLLPSinkACK(t *testing.T) {
 	}
 	if err := NewMLLPSink("127.0.0.1:1").Write(context.Background(), Message{Body: []byte(msg)}); err == nil {
 		t.Error("delivery to a closed port succeeded")
+	}
+	if err := NewMLLPSink("127.0.0.1:1").Write(context.Background(), Message{Body: []byte("MSH|^~\\&|A\x1c\rPID|1")}); err == nil || !strings.Contains(err.Error(), "MLLP end bytes") {
+		t.Errorf("a body with FS CR: %v", err)
+	}
+	// Cancelling the caller stops the wait for the ACK at once.
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(100*time.Millisecond, cancel)
+	start := time.Now()
+	if err := NewMLLPSinkWith(mllpPeer(t, ""), 10*time.Second).Write(ctx, Message{Body: []byte(msg)}); err == nil || time.Since(start) > 2*time.Second {
+		t.Errorf("cancelled delivery: %v after %v", err, time.Since(start))
 	}
 	if s := NewMLLPSinkWith("x:1", -time.Second); s.timeout != MLLPSinkTimeout {
 		t.Errorf("negative timeout gave %v", s.timeout)

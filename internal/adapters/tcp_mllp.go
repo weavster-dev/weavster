@@ -97,6 +97,9 @@ func (s *MLLPSink) Name() string { return "tcp" }
 // a reply that is not an ACK, an ACK for another control id, or no reply
 // in time is an error. Errors name the ACK code, never message content.
 func (s *MLLPSink) Write(ctx context.Context, m Message) error {
+	if bytes.Contains(m.Body, mllpEnd) {
+		return errors.New("mllp: the message contains the MLLP end bytes (FS CR) and cannot be framed")
+	}
 	ctx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
 	conn, err := s.dialer(ctx, s.addr)
@@ -107,6 +110,9 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = conn.SetDeadline(deadline)
 	}
+	// A cancelled caller stops a blocked write or ACK read at once.
+	stop := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
+	defer stop()
 	if _, err := conn.Write(frameMLLP(m.Body)); err != nil {
 		return err
 	}
@@ -118,16 +124,17 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 	switch {
 	case !ok:
 		return errors.New("mllp: the reply is not an HL7 ACK")
-	case acked != codecs.HL7ControlID(m.Body):
-		return errors.New("mllp: the ACK is for another message (MSA-2 does not match MSH-10)")
-	case code == "AA" || code == "CA":
-		return nil
-	case code == "AE" || code == "CE":
+	case code == codecs.AckApplicationError || code == codecs.AckCommitError:
 		return fmt.Errorf("mllp: ACK %s (application error)", code)
-	case code == "AR" || code == "CR":
+	case code == codecs.AckApplicationReject || code == codecs.AckCommitReject:
 		return fmt.Errorf("mllp: ACK %s (application reject)", code)
+	case code != codecs.AckApplicationAccept && code != codecs.AckCommitAccept:
+		return errors.New("mllp: ACK with an unknown code")
+	case acked != codecs.HL7ControlID(m.Body):
+		// An accept counts only for this message.
+		return errors.New("mllp: the ACK is for another message (MSA-2 does not match MSH-10)")
 	}
-	return errors.New("mllp: ACK with an unknown code")
+	return nil
 }
 
 func (s *MLLPSink) Close() error { return nil }

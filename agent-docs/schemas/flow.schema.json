@@ -376,6 +376,9 @@
               },
               "maxRedirects": {
                 "type": "null"
+              },
+              "address": {
+                "type": "null"
               }
             }
           }
@@ -397,6 +400,25 @@
                 "type": "null"
               },
               "url": {
+                "type": "null"
+              },
+              "dir": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "http"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "address": {
                 "type": "null"
               },
               "dir": {

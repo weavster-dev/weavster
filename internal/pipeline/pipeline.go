@@ -196,6 +196,9 @@ func Validate(f Flow) error {
 			return fmt.Errorf("destination %s: dir is required for type file", d.Name)
 		case d.Type == "mllp" && !validAddress(d.Address):
 			return fmt.Errorf("destination %s: address must be host:port with a port from 1 to 65535, got %q", d.Name, d.Address)
+		case d.Type == "mllp" && (f.InputFormat != "hl7v2" || f.Transform != nil || d.Transform != nil):
+			// Transforms output JSON, which an HL7 receiver cannot take.
+			return fmt.Errorf("destination %s: an mllp destination sends the HL7 v2 message as received, so the flow needs inputFormat hl7v2 and neither the flow nor the destination may have a transform", d.Name)
 		case d.Type != "http" && d.Type != "file" && d.Type != "mllp":
 			return fmt.Errorf("destination %s: type must be http, file, or mllp, got %q", d.Name, d.Type)
 		}

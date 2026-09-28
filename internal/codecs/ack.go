@@ -1,6 +1,9 @@
 package codecs
 
-import "time"
+import (
+	"bytes"
+	"time"
+)
 
 // Acknowledgment codes (HL7 MSA-1 and X12 AK9-1 equivalents).
 const (
@@ -10,6 +13,11 @@ const (
 	AckApplicationError = "AE"
 	// AckApplicationReject marks an application-level reject (HL7 "AR").
 	AckApplicationReject = "AR"
+	// AckCommitAccept, AckCommitError, and AckCommitReject are the
+	// enhanced-mode commit codes ("CA", "CE", "CR").
+	AckCommitAccept = "CA"
+	AckCommitError  = "CE"
+	AckCommitReject = "CR"
 )
 
 // findSegment returns the first segment with the given name, or nil.
@@ -140,15 +148,21 @@ func x12Ack997(doc *EDIDocument) (*EDIDocument, error) {
 	return ack, nil
 }
 
-// HL7ControlID is MSH-10 of the HL7 v2 message in ("" without one).
+// HL7ControlID is MSH-10 of the HL7 v2 message in ("" without one). Only
+// the first segment is parsed: MSH comes first.
 func HL7ControlID(in []byte) string {
-	v, _ := HL7v2().Parse(in) // never fails
-	for _, seg := range v.(*HL7Message).Segments {
-		if seg.Name == "MSH" {
-			return hl7Value(&seg, 10)
-		}
+	v, _ := HL7v2().Parse(firstSegmentLine(in)) // never fails
+	return hl7Value(findSegment(v.(*HL7Message), "MSH"), 10)
+}
+
+// firstSegmentLine is in up to its first segment terminator, line breaks
+// before it skipped.
+func firstSegmentLine(in []byte) []byte {
+	in = bytes.TrimLeft(in, "\r\n")
+	if i := bytes.IndexAny(in, "\r\n"); i >= 0 {
+		return in[:i]
 	}
-	return ""
+	return in
 }
 
 // ParseHL7ACK reads an acknowledgment: its MSA-1 code (AA, AE, AR, or the
@@ -156,24 +170,12 @@ func HL7ControlID(in []byte) string {
 // false when in has no MSA segment with a code.
 func ParseHL7ACK(in []byte) (code, controlID string, ok bool) {
 	v, _ := HL7v2().Parse(in) // never fails
-	for _, seg := range v.(*HL7Message).Segments {
-		if seg.Name != "MSA" {
-			continue
-		}
-		// MSA is not MSH: its field n is Fields[n-1].
-		if code = fieldText(seg, 0); code == "" {
-			return "", "", false
-		}
-		return code, fieldText(seg, 1), true
+	msa := findSegment(v.(*HL7Message), "MSA")
+	// hl7Value numbers fields as MSH does (MSH-1 is the separator), so
+	// MSA-1 is its field 2 and MSA-2 its field 3.
+	code, controlID = hl7Value(msa, 2), hl7Value(msa, 3)
+	if code == "" {
+		return "", "", false
 	}
-	return "", "", false
-}
-
-// fieldText is the first component of the first repetition of
-// seg.Fields[i] ("" when absent).
-func fieldText(seg HL7Segment, i int) string {
-	if i >= len(seg.Fields) || len(seg.Fields[i]) == 0 || len(seg.Fields[i][0]) == 0 {
-		return ""
-	}
-	return seg.Fields[i][0][0]
+	return code, controlID, true
 }

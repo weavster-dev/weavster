@@ -1386,8 +1386,9 @@ components:
       description: "url, method, and maxRedirects apply to http destinations; dir to file; address to mllp; timeoutMs to http and mllp."
       anyOf:
         - properties: {type: {enum: [http]}}
+          not: {anyOf: [{required: [address]}, {required: [dir]}]}
         - properties: {type: {enum: [file]}}
-          not: {anyOf: [{required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}]}
+          not: {anyOf: [{required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [address]}]}
         - properties: {type: {enum: [mllp]}}
           not: {anyOf: [{required: [method]}, {required: [maxRedirects]}, {required: [url]}, {required: [dir]}]}
       properties:

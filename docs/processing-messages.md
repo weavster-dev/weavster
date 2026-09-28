@@ -272,14 +272,17 @@ waits for its ACK:
 ```json
 {
   "id": "adt-to-lab",
+  "inputFormat": "hl7v2",
   "source": {"type": "mllp", "address": ":2575"},
   "destinations": [{"name": "lab", "type": "mllp", "address": "lab.example.com:2575", "timeoutMs": 10000}]
 }
 ```
 
-- The destination sends the flow's output as it is: the HL7 message as received when the flow
-  has no transform. (A flow with a transform outputs JSON, which an HL7 receiver will not accept;
-  conversion back to HL7 is not available yet.)
+- The destination sends the HL7 message as received. The flow must have `"inputFormat":
+  "hl7v2"` (so only HL7 v2 messages are accepted), and neither the flow nor the destination may
+  have a `transform`: transforms output JSON, which an HL7 receiver cannot take, and conversion
+  back to HL7 is not available yet. Such a flow is refused when you create it.
+- A message containing the MLLP end bytes (`0x1C 0x0D`) cannot be framed; its delivery fails.
 - Each delivery opens its own connection, sends one frame, and waits for one framed reply within
   `timeoutMs` (default 30 seconds; replies over 1 MiB are not read).
 - The delivery succeeds only on an ACK with `AA` (or `CA`) in MSA-1 whose MSA-2 is the message's

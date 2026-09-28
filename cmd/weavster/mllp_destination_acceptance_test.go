@@ -79,7 +79,7 @@ func TestMLLPDestination(t *testing.T) {
 	msg := "MSH|^~\\&|W|H|LAB|H|20260927120000||ADT^A01|MSG1|P|2.5\rPID|1||123||DOE^JOHN\r"
 
 	ok := &mllpReceiver{codes: []string{"AA"}}
-	createFlow(t, c, `{"id":"ok","destinations":[{"name":"lab","type":"mllp","address":"`+ok.serve(t)+`","timeoutMs":5000}]}`)
+	createFlow(t, c, `{"id":"ok","inputFormat":"hl7v2","destinations":[{"name":"lab","type":"mllp","address":"`+ok.serve(t)+`","timeoutMs":5000}]}`)
 	if _, status := sendMessage(t, c, "ok", msg); status != "sent" {
 		t.Errorf("status = %s, want sent", status)
 	}
@@ -88,7 +88,7 @@ func TestMLLPDestination(t *testing.T) {
 	}
 
 	busy := &mllpReceiver{codes: []string{"AE", "AE", "AA"}}
-	createFlow(t, c, `{"id":"busy","destinations":[{"name":"lab","type":"mllp","address":"`+busy.serve(t)+`"}]}`)
+	createFlow(t, c, `{"id":"busy","inputFormat":"hl7v2","destinations":[{"name":"lab","type":"mllp","address":"`+busy.serve(t)+`"}]}`)
 	id, status := sendMessage(t, c, "busy", msg)
 	if status != "queued" {
 		t.Errorf("status after AE = %s, want queued", status)
@@ -99,14 +99,16 @@ func TestMLLPDestination(t *testing.T) {
 	}
 
 	wrong := &mllpReceiver{codes: []string{"AA"}, wrongID: true}
-	createFlow(t, c, `{"id":"wrong","destinations":[{"name":"lab","type":"mllp","address":"`+wrong.serve(t)+`"}]}`)
+	createFlow(t, c, `{"id":"wrong","inputFormat":"hl7v2","destinations":[{"name":"lab","type":"mllp","address":"`+wrong.serve(t)+`"}]}`)
 	if _, status := sendMessage(t, c, "wrong", msg); status != "queued" {
 		t.Errorf("status with an ACK for another message = %s, want queued", status)
 	}
 
 	for body, want := range map[string]string{
-		`{"id":"x","destinations":[{"name":"lab","type":"mllp","address":"lab.example"}]}`:                     "address must be host:port",
-		`{"id":"x","destinations":[{"name":"lab","type":"mllp","address":"lab.example:2575","method":"PUT"}]}`: "flow.schema.json",
+		`{"id":"x","inputFormat":"hl7v2","destinations":[{"name":"lab","type":"mllp","address":"lab.example"}]}`: "address must be host:port",
+		`{"id":"x","destinations":[{"name":"lab","type":"mllp","address":"lab.example:2575"}]}`:                  "needs inputFormat hl7v2",
+		`{"id":"x","destinations":[{"name":"out","type":"http","url":"https://x","address":"lab:2575"}]}`:        "flow.schema.json",
+		`{"id":"x","destinations":[{"name":"lab","type":"mllp","address":"lab.example:2575","method":"PUT"}]}`:   "flow.schema.json",
 	} {
 		if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows", body, admin); code != http.StatusBadRequest || !strings.Contains(resp, want) {
 			t.Errorf("%s: %d %s", body, code, resp)
