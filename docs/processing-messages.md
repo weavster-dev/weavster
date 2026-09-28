@@ -893,7 +893,9 @@ curl -s -X POST http://127.0.0.1:9001/adt -d '{"PID":{"5":{"1":"Doe"}}}'
   While the flow is stopping, or after it was removed, requests get `503`.
 - A message stored before a later failure is still answered `202` (the API answers `500`): the
   flow has it, and resending it would store it twice. A flow that is not running answers `503`
-  (the API answers `409`), so the sender tries again later.
+  (the API answers `409`), so the sender tries again later. A server processing as many messages
+  as [`processing.maxConcurrent`](server-config.md#processing) allows answers `503` with
+  `Retry-After: 1`, as the API does.
 - The port is open only while the flow is `started`. Starting, stopping, pausing, changing, or
   deleting the flow opens or closes it within about a second; stopping the server closes it.
 - A port can have one flow source; a second flow with the same port, or one using the port of
@@ -1081,8 +1083,9 @@ MSA|AA|MSG1
   [Transform HL7 v2 messages](#transform-hl7-v2-messages)); without it the transform expects JSON
   and every HL7 message is answered `AR`. A flow without transforms passes HL7 through unchanged.
 - A message the flow's filter drops is still answered `AA`: it was received and stored.
-- `AE` (error; try again later): the message was not stored, because the flow was stopping or
-  processing failed.
+- `AE` (error; try again later): the message was not stored, because the flow was stopping,
+  processing failed, or the server was busy (`server busy`; see
+  [`processing`](server-config.md#processing)).
 - MSA-3 says why in fixed words, never with message content.
 - Several systems can be connected at once; messages on one connection are handled one after
   another, in order, each answered before the next is read. A connection that sends nothing for
@@ -1210,6 +1213,7 @@ Errors:
 | `404` | Unknown flow. |
 | `409` | The flow is not `started`. |
 | `413` | Body larger than 10 MiB. |
+| `503` | The server is busy: [`processing.maxConcurrent`](server-config.md#processing) messages are being processed and none finished within `processing.waitMs`. The reply has `Retry-After: 1`; send the message again. |
 
 ## 4. Find processed messages
 

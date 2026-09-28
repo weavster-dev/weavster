@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -159,6 +160,27 @@ func TestUserHandlersUnavailableAndBadInput(t *testing.T) {
 		New(Config{}).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))
 		if rec.Code != tt.status {
 			t.Errorf("%s %s: %d, want %d", tt.method, tt.path, rec.Code, tt.status)
+		}
+	}
+}
+
+// TestBackendErrorStatus: a busy server answers 503 with Retry-After; a
+// request whose client left 503; other errors 500 without detail.
+func TestBackendErrorStatus(t *testing.T) {
+	for _, tt := range []struct {
+		err        error
+		status     int
+		retryAfter string
+		message    string
+	}{
+		{fmt.Errorf("ingest: %w", ErrBusy), http.StatusServiceUnavailable, "1", "the server is busy"},
+		{fmt.Errorf("acquire: %w", context.Canceled), http.StatusServiceUnavailable, "", "request cancelled"},
+		{errors.New("disk: /secret/path"), http.StatusInternalServerError, "", "internal error"},
+	} {
+		rec := httptest.NewRecorder()
+		writeBackendError(rec, tt.err)
+		if rec.Code != tt.status || rec.Header().Get("Retry-After") != tt.retryAfter || !strings.Contains(rec.Body.String(), tt.message) {
+			t.Errorf("%v: %d %v %s", tt.err, rec.Code, rec.Header(), rec.Body)
 		}
 	}
 }

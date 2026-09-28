@@ -17,7 +17,8 @@ func TestLoad(t *testing.T) {
 		{name: "empty file keeps defaults", yaml: "", check: func(t *testing.T, c Config) {
 			if c.Listen.Address != "127.0.0.1:8080" || c.Store.Dialect != DialectMemory || !c.Listen.RequireMarkerHeader ||
 				c.Listen.ShutdownTimeoutMs != 10000 || c.Delivery != (Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000}) ||
-				!c.Flows.DeployOnStartup || c.Stats != (Stats{SampleIntervalMs: 60000, RetentionHours: 24}) {
+				!c.Flows.DeployOnStartup || c.Stats != (Stats{SampleIntervalMs: 60000, RetentionHours: 24}) ||
+				c.Processing != (Processing{MaxConcurrent: 32, WaitMs: 5000}) {
 				t.Errorf("defaults not applied: %+v", c)
 			}
 		}},
@@ -58,6 +59,13 @@ auth:
 		{name: "negative retry", yaml: "store: {maxRetry: -1}\n", wantErr: "must be >= 0"},
 		{name: "zero shutdown timeout", yaml: "listen: {shutdownTimeoutMs: 0}\n", wantErr: "listen.shutdownTimeoutMs"},
 		{name: "huge shutdown timeout", yaml: "listen: {shutdownTimeoutMs: 600001}\n", wantErr: "listen.shutdownTimeoutMs"},
+		{name: "processing defaults and values", yaml: "processing: {maxConcurrent: 4, waitMs: 0}\n", check: func(t *testing.T, c Config) {
+			if c.Processing != (Processing{MaxConcurrent: 4, WaitMs: 0}) {
+				t.Errorf("processing = %+v", c.Processing)
+			}
+		}},
+		{name: "zero concurrency", yaml: "processing: {maxConcurrent: 0}\n", wantErr: "processing.maxConcurrent must be between 1 and 10000"},
+		{name: "negative wait", yaml: "processing: {waitMs: -1}\n", wantErr: "processing.waitMs must be between 0 and 60000"},
 		{name: "negative shutdown timeout", yaml: "listen: {shutdownTimeoutMs: -5}\n", wantErr: "listen.shutdownTimeoutMs"},
 		{name: "zero delivery attempts", yaml: "delivery: {maxAttempts: 0}\n", wantErr: "delivery.maxAttempts"},
 		{name: "huge retry interval", yaml: "delivery: {retryIntervalMs: 9223372036854775807}\n", wantErr: "delivery.retryIntervalMs must be between"},

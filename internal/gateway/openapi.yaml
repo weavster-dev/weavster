@@ -477,6 +477,7 @@ paths:
         "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: The flow is not started, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "413": {description: Body larger than 10 MiB, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: "The server is busy: processing.maxConcurrent messages are being processed and none finished within processing.waitMs (Retry-After: 1); send it again shortly", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}, Retry-After: {schema: {type: integer}, description: "Seconds to wait before sending again"}}}
   /api/v1/flows/{id}/stats:
     get:
       summary: Flow message counters (requires flows:view)
@@ -1301,6 +1302,7 @@ paths:
         "400": {description: The flow now needs a JSON object and the content is not one, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown message or its flow no longer exists, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "409": {description: The flow is not started, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: "The server is busy: processing.maxConcurrent messages are being processed and none finished within processing.waitMs (Retry-After: 1); send it again shortly", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}, Retry-After: {schema: {type: integer}, description: "Seconds to wait before sending again"}}}
 security:
   - basicAuth: []
     csrfMarker: []

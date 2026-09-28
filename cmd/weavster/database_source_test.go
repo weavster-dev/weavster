@@ -51,6 +51,7 @@ func TestDatabaseSourcePoll(t *testing.T) {
 		{name: "stored, processing failed: marked", ingest: &fakeIngest{id: "m", err: errors.New("transform failed")}, marked: 2, ingests: 2},
 		{name: "refused: reported once, not marked", ingest: &fakeIngest{err: gateway.ErrInvalidMessage}, events: []string{"source.database.refused", "source.database.refused"}, ingests: 2},
 		{name: "stopped flow", ingest: &fakeIngest{err: gateway.ErrFlowNotRunning}, ingests: 2},
+		{name: "busy: throttled, not failed, not marked", ingest: &fakeIngest{err: gateway.ErrBusy}, ingests: 2},
 		{name: "ingest failure", ingest: &fakeIngest{err: errors.New("disk full")}, events: []string{"source.database.failed"}, ingests: 2},
 		{name: "update failure", ingest: &fakeIngest{id: "m"}, update: &flowdef.SourceUpdate{Table: "nope", Key: "id", Set: map[string]string{"done": "1"}}, events: []string{"source.database.failed"}, ingests: 2},
 		{name: "over the size limit: refused", ingest: &fakeIngest{id: "m"}, query: "SELECT id, zeroblob(10485761) AS big FROM t WHERE done = 0", events: []string{"source.database.refused", "source.database.refused"}},

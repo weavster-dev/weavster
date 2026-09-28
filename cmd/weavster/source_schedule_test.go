@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"errors"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -191,5 +193,46 @@ func TestScheduledSourcesCatchUp(t *testing.T) {
 	ds.polls.Wait()
 	if at, ok := ds.clock.again["d"]; !ok || !at.Equal(six.Add(defaultDBPollInterval)) {
 		t.Errorf("a failed scheduled poll retries at %v (%v), want %v", at, ok, six.Add(defaultDBPollInterval))
+	}
+}
+
+// TestFileSourceBusy: a file the server was too busy to take stays in the
+// directory, is not reported as a failure, and is tried again a moment
+// later (also for a scheduled source).
+func TestFileSourceBusy(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		src  gateway.FlowSource
+	}{
+		{"interval", gateway.FlowSource{Type: "file"}},
+		{"scheduled", gateway.FlowSource{Type: "file", Schedule: "0 6 * * *"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := settled(t, dir, "a.json", "{}")
+			src := tt.src
+			src.Dir = dir
+			var logs bytes.Buffer
+			fs := newFileSources(&fakeFlowList{flows: []gateway.Flow{{ID: "f", Status: "started", Source: &src}}},
+				&fakeIngest{err: gateway.ErrBusy}, &fakeEvents{}, slog.New(slog.NewTextHandler(&logs, nil)))
+			y, m, d := time.Now().AddDate(0, 0, 1).Date()
+			now := time.Date(y, m, d, 6, 0, 0, 0, time.Local)
+			fs.now = func() time.Time { return now }
+			if tt.src.Schedule != "" {
+				now = now.Add(-time.Minute)
+				fs.pass(context.Background()) // first seen: waits for 06:00
+				now = now.Add(time.Minute)
+			}
+			fs.pass(context.Background())
+			if _, err := os.Stat(path); err != nil {
+				t.Errorf("the file was not kept: %v", err)
+			}
+			if strings.Contains(logs.String(), "processing failed") || strings.Contains(logs.String(), "level=WARN") {
+				t.Errorf("busy was reported as a failure: %s", logs.String())
+			}
+			if at, ok := fs.clock.again["f"]; !ok || !at.Equal(now.Add(defaultPollInterval)) {
+				t.Errorf("tried again at %v (%v), want %v", at, ok, now.Add(defaultPollInterval))
+			}
+		})
 	}
 }

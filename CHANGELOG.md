@@ -103,6 +103,7 @@ All notable changes to this project are documented here, following
 - Cron schedules for polling sources (#349): file and database sources take `schedule` instead of `pollIntervalMs` — a 5-field cron expression or a descriptor (`@hourly`, `@every 30s`), optionally with `CRON_TZ=Area/City`; the time zone database is built in.
 - Attempt codes (#351): each destination's attempt record keeps `lastCode` — the last failure's protocol-specific code (`http:503`, `mllp:AE`, `sqlstate:42P01`, `net:timeout`, `tls:certificate`, `flow:not-running`, …) — and `lastAttemptAt`; stored (migration 8) and shown with the message.
 - End-to-end acceptance test (#353): a file source, a transform with a filter, HTTP and file destinations, stored statuses, statistics, events, topology, and a queued delivery completing after a restart, all through the real server (`TestEndToEnd`).
+- Bounded processing (#355): server config `processing: {maxConcurrent, waitMs}` (defaults 32 and 5000) limits the messages received and processed at once; a message that finds no free slot in time is refused as busy — `503` with `Retry-After` from the API and http sources, `AE` from mllp sources, a later poll for file and database sources. Flow-to-flow handoffs share the sender's slot.
 
 ### Changed
 

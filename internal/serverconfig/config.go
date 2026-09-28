@@ -30,8 +30,11 @@ type Config struct {
 	Paths    Paths    `yaml:"paths"`
 	Auth     Auth     `yaml:"auth"`
 	Delivery Delivery `yaml:"delivery"`
-	Flows    Flows    `yaml:"flows"`
-	Stats    Stats    `yaml:"stats"`
+	// Processing bounds how many messages are processed at once (#107
+	// D-79).
+	Processing Processing `yaml:"processing"`
+	Flows      Flows      `yaml:"flows"`
+	Stats      Stats      `yaml:"stats"`
 }
 
 // Stats configures time-series statistics (spec §2.11.37): every flow's
@@ -57,6 +60,14 @@ type Delivery struct {
 	MaxAttempts     int `yaml:"maxAttempts"`
 	BackoffBaseMs   int `yaml:"backoffBaseMs"`
 	RetryIntervalMs int `yaml:"retryIntervalMs"`
+}
+
+// Processing bounds the messages received and processed at once, across
+// the API and every source; a message arriving while all are busy waits
+// up to WaitMs, then is refused as busy (#107 D-79).
+type Processing struct {
+	MaxConcurrent int `yaml:"maxConcurrent"`
+	WaitMs        int `yaml:"waitMs"`
 }
 
 // Listen configures the cleartext and TLS listeners.
@@ -122,9 +133,10 @@ func Default() Config {
 			PasswordPolicy: PasswordPolicy{MinLength: 8, MinUpper: 1, MinLower: 1, MinNumeric: 1},
 			Lockout:        Lockout{RetryLimit: 5, LockoutPeriodSeconds: 300},
 		},
-		Delivery: Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000},
-		Flows:    Flows{DeployOnStartup: true},
-		Stats:    Stats{SampleIntervalMs: 60000, RetentionHours: 24},
+		Delivery:   Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000},
+		Processing: Processing{MaxConcurrent: 32, WaitMs: 5000},
+		Flows:      Flows{DeployOnStartup: true},
+		Stats:      Stats{SampleIntervalMs: 60000, RetentionHours: 24},
 	}
 }
 
@@ -210,6 +222,14 @@ func (c Config) Validate() error {
 		if v < 1 || v > 3600000 {
 			return fmt.Errorf("config: %s must be between 1 and 3600000 (one hour)", key)
 		}
+	}
+	if p := c.Processing; p.MaxConcurrent < 1 || p.MaxConcurrent > 10000 {
+		return errors.New("config: processing.maxConcurrent must be between 1 and 10000")
+	}
+	if p := c.Processing; p.WaitMs < 0 || p.WaitMs > 60000 {
+		// Bounded low: a waiting http or mllp request cannot be cancelled by
+		// its sender, and stopping its flow's port waits for it.
+		return errors.New("config: processing.waitMs must be between 0 and 60000 (one minute)")
 	}
 	if st := c.Stats; st.SampleIntervalMs < 100 || st.SampleIntervalMs > 3600000 {
 		return errors.New("config: stats.sampleIntervalMs must be between 100 and 3600000 (one hour)")

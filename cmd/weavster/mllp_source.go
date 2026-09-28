@@ -66,6 +66,8 @@ func mllpHandler(id string, ingest gateway.SourceIngester, reply bool) adapters.
 			return ack(codecs.AckApplicationReject, "message refused by the flow")
 		case errors.Is(err, gateway.ErrFlowNotRunning), errors.Is(err, gateway.ErrFlowNotFound):
 			return ack(codecs.AckApplicationError, "flow is not accepting messages")
+		case errors.Is(err, gateway.ErrBusy):
+			return ack(codecs.AckApplicationError, "server busy")
 		default:
 			return ack(codecs.AckApplicationError, "message could not be processed")
 		}
