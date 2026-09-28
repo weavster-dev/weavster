@@ -100,16 +100,9 @@ func NewSQLSink(db *sql.DB, o SQLSinkOptions) (*SQLSink, error) {
 	params := make([]string, len(names))
 	for i, n := range names {
 		quoted[i] = quoteIdentifier(n)
-		params[i] = "?"
-		if o.Dialect == DialectPostgres {
-			params[i] = "$" + strconv.Itoa(i+1)
-		}
+		params[i] = placeholder(o.Dialect, i+1)
 	}
-	table := make([]string, 0, 2)
-	for _, p := range strings.SplitN(o.Table, ".", 2) {
-		table = append(table, quoteIdentifier(p))
-	}
-	insert := "INSERT INTO " + strings.Join(table, ".") + " (" + strings.Join(quoted, ", ") + ") VALUES (" + strings.Join(params, ", ") + ")"
+	insert := "INSERT INTO " + quoteTable(o.Table) + " (" + strings.Join(quoted, ", ") + ") VALUES (" + strings.Join(params, ", ") + ")"
 	if o.KeyColumn != "" {
 		insert += " ON CONFLICT (" + quoteIdentifier(o.KeyColumn) + ") DO NOTHING"
 	}
@@ -122,6 +115,23 @@ func NewSQLSink(db *sql.DB, o SQLSinkOptions) (*SQLSink, error) {
 // quoteIdentifier double-quotes a checked identifier (standard SQL, and
 // both dialects); quoted names are case-sensitive in PostgreSQL.
 func quoteIdentifier(name string) string { return `"` + name + `"` }
+
+// quoteTable quotes a checked table name, table or schema.table.
+func quoteTable(name string) string {
+	parts := strings.SplitN(name, ".", 2)
+	for i, p := range parts {
+		parts[i] = quoteIdentifier(p)
+	}
+	return strings.Join(parts, ".")
+}
+
+// placeholder is the dialect's i-th (1-based) statement parameter.
+func placeholder(dialect string, i int) string {
+	if dialect == DialectPostgres {
+		return "$" + strconv.Itoa(i)
+	}
+	return "?"
+}
 
 func (s *SQLSink) Name() string { return "database" }
 
@@ -197,11 +207,17 @@ func sqlValue(v any) any {
 // kind, and SQLite's by their message (it names tables and columns, not
 // values).
 func (s *SQLSink) dbError(ctx context.Context, err error) error {
+	return dbError(ctx, s.dialect, s.timeout, err)
+}
+
+// dbError describes err of a statement run with timeout on dialect (see
+// SQLSink.dbError).
+func dbError(ctx context.Context, dialect string, timeout time.Duration, err error) error {
 	var pg *pgconn.PgError
 	var connect *pgconn.ConnectError
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return fmt.Errorf("database: no result within %s", s.timeout)
+		return fmt.Errorf("database: no result within %s", timeout)
 	case ctx.Err() != nil:
 		return errors.New("database: the delivery was cancelled")
 	case errors.As(err, &connect):
@@ -209,7 +225,7 @@ func (s *SQLSink) dbError(ctx context.Context, err error) error {
 	case errors.Is(err, sql.ErrConnDone):
 		return errors.New("database: the connection was closed")
 	case errors.As(err, &pg):
-	case s.dialect == DialectPostgres:
+	case dialect == DialectPostgres:
 		return errors.New("database: the statement failed before reaching the database")
 	default:
 		return fmt.Errorf("database: %w", err)

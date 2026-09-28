@@ -51,6 +51,18 @@ func TestCheckSource(t *testing.T) {
 		{"mllp DEL start", &Source{Type: "mllp", Address: ":2575", FrameStart: "7F"}, ""},
 		{"mllp ackMode", &Source{Type: "mllp", Address: ":2575", AckMode: "enhanced"}, "ackMode must be original or none"},
 		{"http framing", &Source{Type: "http", Address: ":9001", AckMode: "none"}, "apply only to mllp sources"},
+		{"database without update", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id"}, "source.update is required"},
+		{"database with update", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id", Update: &SourceUpdate{Table: "his.t", Key: "id", Set: map[string]string{"done": "1"}}, MaxRows: 5, TimeoutMs: 2000, PollIntervalMs: 1000}, ""},
+		{"database with a dir", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id", Dir: "/in"}, "a database source takes only"},
+		{"database driver", &Source{Type: "database", Driver: "mysql", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT 1", IDColumn: "id"}, "source.driver must be"},
+		{"database dsnEnv", &Source{Type: "database", Driver: "sqlite", DSNEnv: "HOME", Query: "SELECT 1", IDColumn: "id"}, "source.dsnEnv must name"},
+		{"database query", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "DELETE FROM t", IDColumn: "id"}, "source.query must be one SELECT"},
+		{"database idColumn", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT 1"}, "source.idColumn is required"},
+		{"database update table", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id", Update: &SourceUpdate{Table: "a.b.c", Key: "id", Set: map[string]string{"d": "1"}}}, "source.update.table must be"},
+		{"database update key", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id", Update: &SourceUpdate{Table: "t", Key: "i d", Set: map[string]string{"d": "1"}}}, "source.update.key must be"},
+		{"database update set", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id", Update: &SourceUpdate{Table: "t", Key: "id"}}, "source.update.set must give"},
+		{"database update column", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id", Update: &SourceUpdate{Table: "t", Key: "id", Set: map[string]string{"a-b": "1"}}}, "source.update.set: column"},
+		{"file with a query", &Source{Type: "file", Dir: "/in", Query: "SELECT 1"}, "apply only to database sources"},
 		{"http secured", &Source{Type: "http", Address: ":9001", Username: "lab", PasswordEnv: "WEAVSTER_SOURCE_LAB", CertFile: "/tls/c.pem", KeyFile: "/tls/k.pem"}, ""},
 		{"http user without password", &Source{Type: "http", Address: ":9001", Username: "lab"}, "go together"},
 		{"http password without user", &Source{Type: "http", Address: ":9001", PasswordEnv: "LAB_PW"}, "go together"},
@@ -162,6 +174,8 @@ func TestCheckInput(t *testing.T) {
 		{Flow{InputFormat: "delimited", Delimited: &Delimited{Delimiter: ";", Header: &yes}}, ""},
 		{Flow{InputFormat: "json", Delimited: &Delimited{}}, "delimited applies only to inputFormat delimited"},
 		{Flow{Delimited: &Delimited{}}, "delimited applies only to inputFormat delimited"},
+		{Flow{InputFormat: "json", Source: &Source{Type: "database"}}, ""},
+		{Flow{InputFormat: "xml", Source: &Source{Type: "database"}}, "a database source sends JSON messages (one object per row): inputFormat must be json"},
 	} {
 		err := CheckInput(tt.f)
 		if (tt.want == "") != (err == nil) || (err != nil && err.Error() != tt.want) {

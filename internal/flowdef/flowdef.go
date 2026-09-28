@@ -196,6 +196,41 @@ func checkDatabase(d Destination) error {
 	return nil
 }
 
+// checkDatabaseSource checks a database source (#107 D-76).
+func checkDatabaseSource(s *Source) error {
+	other := Source{Type: s.Type, Driver: s.Driver, DSNEnv: s.DSNEnv, Query: s.Query, IDColumn: s.IDColumn, Update: s.Update,
+		MaxRows: s.MaxRows, TimeoutMs: s.TimeoutMs, PollIntervalMs: s.PollIntervalMs}
+	switch {
+	case *s != other:
+		return errors.New("a database source takes only type, driver, dsnEnv, query, idColumn, update, pollIntervalMs, maxRows, and timeoutMs")
+	case s.Driver != "postgres" && s.Driver != "sqlite":
+		return fmt.Errorf("source.driver must be postgres or sqlite, got %q", s.Driver)
+	case !dsnEnvName.MatchString(s.DSNEnv):
+		return fmt.Errorf("source.dsnEnv must name an environment variable WEAVSTER_DB_..., got %q", s.DSNEnv)
+	case !adapters.ValidSelect(s.Query):
+		return errors.New("source.query must be one SELECT or WITH statement (no ; inside it)")
+	case s.IDColumn == "":
+		return errors.New("source.idColumn is required: the column of the query's result that identifies a row")
+	case s.Update == nil:
+		return errors.New("source.update is required: it marks each row once stored, and the query must leave marked rows out")
+	}
+	u := s.Update
+	switch {
+	case !adapters.ValidSQLIdentifier(u.Table, true):
+		return fmt.Errorf("source.update.table must be a name or schema.name of letters, digits, and _, got %q", u.Table)
+	case !adapters.ValidSQLIdentifier(u.Key, false):
+		return fmt.Errorf("source.update.key must be a column name of letters, digits, and _, got %q", u.Key)
+	case len(u.Set) == 0:
+		return errors.New("source.update.set must give at least one column a value")
+	}
+	for col := range u.Set {
+		if !adapters.ValidSQLIdentifier(col, false) {
+			return fmt.Errorf("source.update.set: column %q must be a name of letters, digits, and _", col)
+		}
+	}
+	return nil
+}
+
 // MLLPFraming decodes an mllp source's or destination's frameStart and
 // frameEnd (hex; defaults 0B and 1C0D, MLLP's VT and FS CR).
 func MLLPFraming(start, end string) (byte, []byte, error) {
@@ -246,10 +281,13 @@ func frameByte(b byte) bool {
 }
 
 // CheckInput checks what the schema cannot: delimited options go with
-// inputFormat delimited only.
+// inputFormat delimited only, and a database source with JSON input.
 func CheckInput(f Flow) error {
 	if f.Delimited != nil && f.InputFormat != "delimited" {
 		return errors.New("delimited applies only to inputFormat delimited")
+	}
+	if f.Source != nil && f.Source.Type == "database" && f.InputFormat != "" && f.InputFormat != "json" {
+		return errors.New("a database source sends JSON messages (one object per row): inputFormat must be json")
 	}
 	return nil
 }
@@ -265,7 +303,7 @@ func (f Flow) SourceKind() string {
 
 // Source is a flow's own message source (#107 D-56).
 type Source struct {
-	Type string `json:"type"` // file, http, or mllp
+	Type string `json:"type"` // file, http, mllp, or database
 	// Dir is the absolute directory a file source polls.
 	Dir string `json:"dir,omitempty"`
 	// Pattern is a file-name glob (default "*").
@@ -302,6 +340,24 @@ type Source struct {
 	FrameStart string `json:"frameStart,omitempty"`
 	FrameEnd   string `json:"frameEnd,omitempty"`
 	AckMode    string `json:"ackMode,omitempty"`
+	// Driver, DSNEnv, Query, IDColumn, Update, MaxRows, and TimeoutMs
+	// describe a database source (#107 D-76): Query runs read-only every
+	// PollIntervalMs, each row becomes a message, and Update marks it.
+	Driver    string        `json:"driver,omitempty"`
+	DSNEnv    string        `json:"dsnEnv,omitempty"`
+	Query     string        `json:"query,omitempty"`
+	IDColumn  string        `json:"idColumn,omitempty"`
+	Update    *SourceUpdate `json:"update,omitempty"`
+	MaxRows   int           `json:"maxRows,omitempty"`
+	TimeoutMs int           `json:"timeoutMs,omitempty"`
+}
+
+// SourceUpdate marks a row a database source stored: UPDATE Table SET
+// each Set column to its value WHERE Key = the row's id.
+type SourceUpdate struct {
+	Table string            `json:"table"`
+	Key   string            `json:"key"`
+	Set   map[string]string `json:"set"`
 }
 
 // Destination is one delivery target of a flow.
@@ -361,6 +417,12 @@ func CheckSource(s *Source) error {
 		}
 	} else if s.FrameStart != "" || s.FrameEnd != "" || s.AckMode != "" {
 		return errors.New("source.frameStart, frameEnd, and ackMode apply only to mllp sources")
+	}
+	if s.Type == "database" {
+		return checkDatabaseSource(s)
+	}
+	if s.Driver != "" || s.DSNEnv != "" || s.Query != "" || s.IDColumn != "" || s.Update != nil || s.MaxRows != 0 || s.TimeoutMs != 0 {
+		return errors.New("source.driver, dsnEnv, query, idColumn, update, maxRows, and timeoutMs apply only to database sources")
 	}
 	if s.Listens() {
 		switch {
