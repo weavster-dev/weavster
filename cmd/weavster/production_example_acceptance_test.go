@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -24,11 +23,10 @@ import (
 const productionExample = "../../docs/examples/production/weavster-server.yaml"
 
 // TestProductionExample: the published production configuration is valid,
-// secure as documented (HTTPS only with TLS 1.3, PostgreSQL over verified
-// TLS with no password in the file, the marker header, a strict login
-// policy), and shown verbatim on the Production setup page; with test
-// certificates and SQLite in place of its paths and database, the server
-// starts from it, listens only on its HTTPS port, and refuses TLS 1.2,
+// secure as documented (HTTPS only with TLS 1.3, a durable store, the
+// marker header, a strict login policy), and shown verbatim on the
+// Production setup page; with test certificates, a free port, and a
+// temporary data directory in place of its own, the server starts from it, listens only on its HTTPS port, and refuses TLS 1.2,
 // requests without the marker header, and requests without credentials.
 func TestProductionExample(t *testing.T) {
 	raw, err := os.ReadFile(productionExample)
@@ -43,16 +41,14 @@ func TestProductionExample(t *testing.T) {
 		t.Error("docs/production.md does not show docs/examples/production/weavster-server.yaml verbatim")
 	}
 	cfg, err := serverconfig.Load(productionExample)
+	if err == nil {
+		err = cfg.Validate() // Load decodes; the server validates before it starts
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	dsn, err := url.Parse(cfg.Store.DSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, hasPassword := dsn.User.Password()
 	if cfg.Listen.Address != "" || cfg.Listen.TLSAddress == "" || !cfg.Listen.RequireMarkerHeader || cfg.TLS.MinVersion != "1.3" ||
-		cfg.Store.Dialect != serverconfig.DialectPostgres || dsn.Query().Get("sslmode") != "verify-full" || hasPassword ||
+		cfg.Store.Dialect != serverconfig.DialectSQLite || cfg.Store.DSN != "" || cfg.Paths.DataDir == "" ||
 		cfg.Auth.PasswordPolicy.MinLength < 12 || cfg.Auth.Lockout.RetryLimit < 1 {
 		t.Fatalf("the production example is not what docs/production.md says: %+v", cfg)
 	}
@@ -62,8 +58,10 @@ func TestProductionExample(t *testing.T) {
 	addr := freeAddr(t)
 	cfg.Listen.TLSAddress = addr
 	cfg.TLS.CertFile, cfg.TLS.KeyFile = certFile, keyFile
-	cfg.Store.Dialect, cfg.Store.DSN = serverconfig.DialectSQLite, filepath.Join(t.TempDir(), "weavster.db")
-	cfg.Paths.DataDir = t.TempDir()
+	cfg.Paths.DataDir = t.TempDir() // the store file goes here
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	local, err := yaml.Marshal(cfg)
 	if err != nil {
 		t.Fatal(err)

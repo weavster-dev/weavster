@@ -41,16 +41,21 @@ change are marked with their configuration key or flow field.
 
 ## API and CLI
 
-| What | Limit |
-|---|---|
-| Message search page | `limit` 1–1000 (default 100); use `offset` for the next page. |
-| Message archive export / import | 10,000 messages per export; imports up to 100 MiB (512 MiB uncompressed). |
-| Flow import, bulk update, config documents | 50 MiB per request or file. |
-| Config map, scripts, settings bodies | 10 MiB. |
-| Events per request | 1000 by default. |
-| Statistics series | 1000 points per request by default; `limit` up to 10000. |
-| Message trends | 1000 buckets per request. |
-| `weavster deadletter list` | 1000 messages per call. |
+| What | Limit | At the limit |
+|---|---|---|
+| Message search page | `limit` 1–1000 (default 100) | `400`; use `offset` for the next page. |
+| Message archive export / import | 10,000 messages per export; imports up to 100 MiB (512 MiB uncompressed) | `400` / `413`. |
+| Flow import, bulk update, config documents | 50 MiB per request or file | `413`. |
+| Config map, scripts, settings bodies | 10 MiB | `413`. |
+| User administration bodies | 1 MiB | `413`. |
+| Lookup keys / values | 512 characters / 64 KiB | `400`. |
+| Lookup batch | 1–1000 keys | `400`. |
+| Lookup entries per request | 1000 by default, `limit` up to 10000 | `400` above 10000. |
+| Events per request | 1000 by default | — |
+| Statistics series | 1000 points per request by default, `limit` up to 10000 | `400` above 10000. |
+| Message trends | 1000 buckets per request | `400`; use a longer interval. |
+| `weavster deadletter list` | 1000 messages per call | — |
+| CLI shell and batch-script lines | 1 MiB per line | The shell stops with an error. |
 
 ## Retention
 
