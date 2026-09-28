@@ -100,9 +100,27 @@ func Migrations() []Migration {
 	}
 }
 
+// migrationLock is the PostgreSQL advisory lock key Migrate holds.
+const migrationLock int64 = 0x7765617673746572 // "weavster"
+
 // Migrate runs pending forward-only migrations against db, recording the
 // applied version in schema_migrations (gap #7).
 func Migrate(ctx context.Context, db *sql.DB, migrations []Migration) error {
+	if isPostgres(db) {
+		// One server at a time: others wait here, then find the migrations
+		// applied (a session advisory lock on a connection of its own).
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = conn.Close() }()
+		if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrationLock); err != nil {
+			return err
+		}
+		defer func() {
+			_, _ = conn.ExecContext(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, migrationLock)
+		}()
+	}
 	if _, err := db.ExecContext(ctx,
 		`CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL)`); err != nil {
 		return err

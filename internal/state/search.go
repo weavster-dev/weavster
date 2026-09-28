@@ -8,11 +8,15 @@ func buildWhere(q Query) (string, []any) {
 	var args []any
 
 	if q.IDFrom != "" {
-		conds = append(conds, "id >= ?")
+		conds = append(conds, "id /*C*/ >= ?")
 		args = append(args, q.IDFrom)
 	}
+	if q.IDAfter != "" {
+		conds = append(conds, "id /*C*/ > ?")
+		args = append(args, q.IDAfter)
+	}
 	if q.IDTo != "" {
-		conds = append(conds, "id <= ?")
+		conds = append(conds, "id /*C*/ <= ?")
 		args = append(args, q.IDTo)
 	}
 	if q.FlowID != "" {
@@ -73,14 +77,17 @@ func buildOrderSort(sortBy string) string {
 		dir = "DESC"
 	}
 	if field == "id" {
-		return "ORDER BY id " + dir
+		return "ORDER BY id /*C*/ " + dir
 	}
-	return "ORDER BY " + field + " " + dir + ", id " + dir // stable pages
+	return "ORDER BY " + field + " " + dir + ", id /*C*/ " + dir // stable pages
 }
 
 // matches applies a Query predicate to a single message (in-memory search).
 func matches(m Message, q Query) bool {
 	if q.IDFrom != "" && m.ID < q.IDFrom {
+		return false
+	}
+	if q.IDAfter != "" && m.ID <= q.IDAfter {
 		return false
 	}
 	if q.IDTo != "" && m.ID > q.IDTo {

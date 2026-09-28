@@ -121,5 +121,5 @@ specs/           Phase 1/2 requirements and architecture
 
 ## Stack
 
-Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory or SQLite store. Library-only packages
+Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory, SQLite, or PostgreSQL store. Library-only packages
 also depend on wazero, SQLite/PostgreSQL drivers, Prometheus, and OpenTelemetry.

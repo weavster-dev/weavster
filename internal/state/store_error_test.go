@@ -30,7 +30,7 @@ func newMockSQLStore(t *testing.T) (*sqlStore, sqlmock.Sqlmock) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	return &sqlStore{db: newDialectDB(db)}, mock
+	return &sqlStore{db: &dialectDB{db: db}}, mock
 }
 
 // Normalized single-line forms of the SQL in store.go (used verbatim by the
@@ -123,7 +123,7 @@ func TestSQLStoreDeleteExecError(t *testing.T) {
 	ctx := context.Background()
 
 	mock.ExpectBegin()
-	mock.ExpectExec(metadataDeleteSQL).
+	mock.ExpectExec(`DELETE FROM messages WHERE id = ?`).
 		WithArgs("m1").
 		WillReturnError(errors.New("delete boom"))
 	mock.ExpectRollback()

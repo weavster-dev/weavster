@@ -61,8 +61,11 @@ type Message struct {
 
 // Query narrows a message search (spec §2.6.18).
 type Query struct {
-	IDFrom      string
-	IDTo        string
+	IDFrom string
+	IDTo   string
+	// IDAfter selects ids after it (exclusive): the cursor of a page read
+	// in id order.
+	IDAfter     string
 	FlowID      string
 	From        time.Time
 	To          time.Time
@@ -108,8 +111,8 @@ func (s *sqlStore) bind(ctx context.Context) context.Context {
 	return ctx
 }
 
-func openSQLStore(ctx context.Context, db *sql.DB) (*sqlStore, error) {
-	s := &sqlStore{db: newDialectDB(db)}
+func openSQLStore(ctx context.Context, db *sql.DB, postgres bool) (*sqlStore, error) {
+	s := &sqlStore{db: &dialectDB{db: db, postgres: postgres}}
 	if err := Migrate(ctx, db, Migrations()); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -119,8 +122,30 @@ func openSQLStore(ctx context.Context, db *sql.DB) (*sqlStore, error) {
 
 func (s *sqlStore) Close() error { return s.db.Close() }
 
+// storableText is m with its metadata and attempt texts as every backend
+// stores them (textValue: no NUL bytes, valid UTF-8).
+func storableText(m Message) Message {
+	if len(m.Metadata) > 0 {
+		md := make(map[string]string, len(m.Metadata))
+		for k, v := range m.Metadata {
+			md[textValue(k)] = textValue(v)
+		}
+		m.Metadata = md
+	}
+	if len(m.Attempts) > 0 {
+		at := make(map[string]DestinationAttempt, len(m.Attempts))
+		for d, a := range m.Attempts {
+			a.LastError, a.LastCode = textValue(a.LastError), textValue(a.LastCode)
+			at[textValue(d)] = a
+		}
+		m.Attempts = at
+	}
+	return m
+}
+
 func (s *sqlStore) Put(ctx context.Context, m Message) error {
 	ctx = s.bind(ctx)
+	m = storableText(m)
 	now := time.Now()
 	if m.ReceivedAt.IsZero() {
 		m.ReceivedAt = now
@@ -210,10 +235,12 @@ func (s *sqlStore) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// The message row first, as Put writes it first: both lock in the same
+	// order, so a Put and a Delete of one message cannot deadlock.
 	for _, q := range []string{
+		`DELETE FROM messages WHERE id = ?`,
 		`DELETE FROM message_metadata WHERE message_id = ?`,
 		`DELETE FROM message_attempts WHERE message_id = ?`,
-		`DELETE FROM messages WHERE id = ?`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, id); err != nil {
 			return err

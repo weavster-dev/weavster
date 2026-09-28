@@ -2378,7 +2378,7 @@ func (m messageAdapter) DeleteMatching(ctx context.Context, q gateway.MessageQue
 				deleted++
 			}
 		}
-		sq.IDFrom = page[len(page)-1].ID + "\x00"
+		sq.IDAfter = page[len(page)-1].ID
 	}
 }
 
@@ -2580,7 +2580,7 @@ func (m messageAdapter) RequeueAll(ctx context.Context, flowID string) (gateway.
 	deleted := map[string]bool{}
 	cursor := ""
 	for {
-		page, err := m.store.Search(ctx, state.Query{Status: state.StatusDeadLettered, FlowID: flowID, IDFrom: cursor, Sort: "id", Limit: 500})
+		page, err := m.store.Search(ctx, state.Query{Status: state.StatusDeadLettered, FlowID: flowID, IDAfter: cursor, Sort: "id", Limit: 500})
 		if err != nil {
 			return res, err
 		}
@@ -2599,7 +2599,7 @@ func (m messageAdapter) RequeueAll(ctx context.Context, flowID string) (gateway.
 		if len(page) < 500 {
 			return res, nil
 		}
-		cursor = page[len(page)-1].ID + "\x00" // IDFrom is inclusive
+		cursor = page[len(page)-1].ID
 	}
 }
 

@@ -28,13 +28,13 @@ func postgresStoreDSN(t *testing.T) string {
 	b := make([]byte, 6)
 	_, _ = rand.Read(b)
 	schema := "t_" + hex.EncodeToString(b)
+	t.Cleanup(func() {
+		_, _ = admin.Exec("DROP SCHEMA IF EXISTS " + schema + " CASCADE")
+		_ = admin.Close()
+	})
 	if _, err := admin.Exec("CREATE SCHEMA " + schema); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		_, _ = admin.Exec("DROP SCHEMA " + schema + " CASCADE")
-		_ = admin.Close()
-	})
 	u, err := url.Parse(dsn)
 	if err != nil {
 		t.Fatal(err)

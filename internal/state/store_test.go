@@ -35,9 +35,31 @@ func testBackends(t *testing.T) map[string]Store {
 // returns nil when it is not set: no test needs PostgreSQL to run.
 func testPostgres(t *testing.T) Store {
 	t.Helper()
-	dsn := os.Getenv("WEAVSTER_TEST_POSTGRES_DSN")
+	dsn := testPostgresDSN(t)
 	if dsn == "" {
 		return nil
+	}
+	s, err := OpenPostgres(context.Background(), dsn, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+// testPostgresDSN creates an empty schema for the test and returns a DSN
+// whose search_path selects it, or "" without WEAVSTER_TEST_POSTGRES_DSN.
+// The schema is dropped when the test ends (after the stores it opened are
+// closed, as cleanups run last-registered first).
+func testPostgresDSN(t *testing.T) string {
+	t.Helper()
+	dsn := os.Getenv("WEAVSTER_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		return ""
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
 	}
 	ctx := context.Background()
 	admin, err := sql.Open("pgx", dsn)
@@ -47,26 +69,41 @@ func testPostgres(t *testing.T) Store {
 	b := make([]byte, 6)
 	_, _ = rand.Read(b)
 	schema := "t_" + hex.EncodeToString(b)
+	t.Cleanup(func() {
+		_, _ = admin.ExecContext(ctx, "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+		_ = admin.Close()
+	})
 	if _, err := admin.ExecContext(ctx, "CREATE SCHEMA "+schema); err != nil {
-		t.Fatal(err)
-	}
-	u, err := url.Parse(dsn)
-	if err != nil {
 		t.Fatal(err)
 	}
 	q := u.Query()
 	q.Set("search_path", schema)
 	u.RawQuery = q.Encode()
-	s, err := OpenPostgres(ctx, u.String(), 4)
-	if err != nil {
-		t.Fatal(err)
+	return u.String()
+}
+
+// TestPostgresConcurrentMigrate: servers starting together on one empty
+// database migrate it once; none fails on a table another is creating.
+func TestPostgresConcurrentMigrate(t *testing.T) {
+	dsn := testPostgresDSN(t)
+	if dsn == "" {
+		t.Skip("WEAVSTER_TEST_POSTGRES_DSN not set")
 	}
-	t.Cleanup(func() {
-		_ = s.Close()
-		_, _ = admin.ExecContext(ctx, "DROP SCHEMA "+schema+" CASCADE")
-		_ = admin.Close()
-	})
-	return s
+	errs := make(chan error, 4)
+	for range 4 {
+		go func() {
+			s, err := OpenPostgres(context.Background(), dsn, 2)
+			if err == nil {
+				err = s.Close()
+			}
+			errs <- err
+		}()
+	}
+	for range 4 {
+		if err := <-errs; err != nil {
+			t.Error(err)
+		}
+	}
 }
 
 func sampleMessage() Message {
@@ -277,5 +314,35 @@ func TestSQLiteCancelReleasesFile(t *testing.T) {
 			t.Fatalf("iteration %d: write after a cancelled query and Close: %v", i, err)
 		}
 		_ = s2.Close()
+	}
+}
+
+// TestSearchIDAfter: IDAfter pages through messages in id order after a
+// cursor, on every backend (no NUL bytes in the query: PostgreSQL refuses
+// them).
+func TestSearchIDAfter(t *testing.T) {
+	ctx := context.Background()
+	for name, s := range testBackends(t) {
+		for _, id := range []string{"a", "b", "c", "B"} {
+			_ = s.Put(ctx, Message{ID: id, FlowID: "f", Status: StatusQueued})
+		}
+		var seen []string
+		cursor := ""
+		for {
+			page, err := s.Search(ctx, Query{IDAfter: cursor, Sort: "id", Limit: 2})
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			for _, m := range page {
+				seen = append(seen, m.ID)
+			}
+			if len(page) < 2 {
+				break
+			}
+			cursor = page[len(page)-1].ID
+		}
+		if fmt.Sprint(seen) != "[B a b c]" { // byte order on every backend
+			t.Errorf("%s: pages %v, want [B a b c]", name, seen)
+		}
 	}
 }

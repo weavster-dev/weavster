@@ -873,7 +873,7 @@ func (p *Pipeline) RetryDue(ctx context.Context, lookup FlowLookup) (int, error)
 			if ctx.Err() != nil {
 				return n, errors.Join(errs...)
 			}
-			page, err := p.store.Search(ctx, state.Query{Status: status, IDFrom: cursor, Sort: "id", Limit: retryPage})
+			page, err := p.store.Search(ctx, state.Query{Status: status, IDAfter: cursor, Sort: "id", Limit: retryPage})
 			if err != nil {
 				return n, errors.Join(append(errs, err)...)
 			}
@@ -892,7 +892,7 @@ func (p *Pipeline) RetryDue(ctx context.Context, lookup FlowLookup) (int, error)
 			if len(page) < retryPage {
 				break
 			}
-			cursor = page[len(page)-1].ID + "\x00" // IDFrom is inclusive
+			cursor = page[len(page)-1].ID
 		}
 	}
 	return n, errors.Join(errs...)

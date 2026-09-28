@@ -87,7 +87,7 @@ func (s *sqlStore) GetFlow(ctx context.Context, id string) (FlowDefinition, erro
 
 func (s *sqlStore) ListFlows(ctx context.Context) ([]FlowDefinition, error) {
 	ctx = s.bind(ctx)
-	rows, err := s.db.QueryContext(ctx, `SELECT id, document FROM flows ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, document FROM flows ORDER BY id /*C*/`)
 	if err != nil {
 		return nil, err
 	}

@@ -36,7 +36,7 @@ func (s *MemStore) Put(_ context.Context, m Message) error {
 		}
 	}
 	m.UpdatedAt = now
-	s.m[m.ID] = cloneMessage(m)
+	s.m[m.ID] = storableText(cloneMessage(m))
 	return nil
 }
 
