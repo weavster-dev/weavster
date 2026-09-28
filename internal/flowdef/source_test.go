@@ -166,6 +166,7 @@ func TestCheckTransforms(t *testing.T) {
 		{"in a response transform", Flow{Destinations: []Destination{{Name: "b", Type: "http", URL: "https://x", ResponseTransform: set}}}, "destination b: responseTransform: destinationSet can only be used"},
 		{"plain destination transform", Flow{Destinations: []Destination{{Name: "b", Type: "file", Dir: "/d", Transform: plain}}}, ""},
 		{"build in a response transform", Flow{Destinations: []Destination{{Name: "b", Type: "http", URL: "https://x", ResponseTransform: json.RawMessage(`{"steps":[{"build":{"template":"x"}}]}`)}}}, "responseTransform: build cannot be used here"},
+		{"build not last in a response transform", Flow{Destinations: []Destination{{Name: "b", Type: "http", URL: "https://x", ResponseTransform: json.RawMessage(`{"steps":[{"build":{"template":"x"}},{"set":{"field":"a","expr":"b"}}]}`)}}}, "responseTransform: build cannot be used here"},
 		{"build in a destination transform", Flow{Destinations: []Destination{{Name: "b", Type: "file", Dir: "/d", Transform: json.RawMessage(`{"steps":[{"build":{"template":"x","format":"text"}}]}`)}}}, ""},
 	} {
 		err := CheckTransforms(tt.f)

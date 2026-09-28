@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/weavster-dev/weavster/internal/compiler"
-	"github.com/weavster-dev/weavster/internal/dsl"
 )
 
 // Flow is a flow definition. Status and StoppedDestinations are runtime
@@ -83,15 +82,18 @@ func CheckTransforms(f Flow) error {
 	return nil
 }
 
-// hasBuild reports whether a transform has a build step (as the DSL
-// compiles it; a transform that does not compile is reported elsewhere).
+// hasBuild reports whether a transform has a build step anywhere.
 func hasBuild(raw json.RawMessage) bool {
 	var t compiler.Transform
 	if len(raw) == 0 || json.Unmarshal(raw, &t) != nil {
 		return false
 	}
-	prog, err := dsl.Compile(t)
-	return err == nil && prog.Format() != ""
+	for _, s := range t.Steps {
+		if s.Build != nil {
+			return true
+		}
+	}
+	return false
 }
 
 // excluded lists the names a transform's destinationSet steps exclude

@@ -395,7 +395,7 @@ or text) again. For example, receive ADT over MLLP and relay a reshaped message 
 |---|---|---|
 | `json` (default) | The template must render a JSON object, and every `{{path}}` must be inside a string (`"name": "{{name}}"`), so values are always text. | `application/json` |
 | `hl7v2` | The template starts with an MSH segment using the standard delimiters (a vertical bar between fields, `^~\&` in MSH-2); segments may be written on separate lines and are sent separated by CR. | `x-application/hl7-v2+er7` |
-| `xml` | The template must render a well-formed XML document; an XML declaration may only say `encoding="UTF-8"`. | `application/xml` |
+| `xml` | The template must render a well-formed XML document; `{{path}}` may appear only in element text and quoted attribute values (not in tag names, comments, CDATA sections, or declarations); an XML declaration may only say `encoding="UTF-8"`. | `application/xml` |
 | `text` | Any text. | `text/plain; charset=utf-8` |
 
 - Each `{{path}}` is replaced by that value (an empty string when missing), **escaped for the

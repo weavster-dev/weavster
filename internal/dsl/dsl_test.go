@@ -326,3 +326,28 @@ func run(p *Program, in map[string]any) (map[string]any, bool, error) {
 	o, err := p.Execute(in)
 	return o.Doc, o.Filtered, err
 }
+
+// TestBuildXMLContexts: XML placeholders are allowed in element text and
+// quoted attribute values only.
+func TestBuildXMLContexts(t *testing.T) {
+	for _, tt := range []struct {
+		template string
+		ok       bool
+	}{
+		{`<a>{{x}}</a>`, true},
+		{`<a b="{{x}}" c='{{x}}'>t {{x}}</a>`, true},
+		{`<?xml version="1.0"?><!-- note --><a x="1>2">{{x}}<![CDATA[ c ]]></a>`, true},
+		{`<!-- {{x}} --><a/>`, false},
+		{`<a><![CDATA[{{x}}]]></a>`, false},
+		{`<{{x}}/>`, false},
+		{`<a {{x}}="1"/>`, false},
+		{`<a b={{x}}/>`, false},
+		{`<?pi {{x}}?><a/>`, false},
+		{`<!DOCTYPE {{x}}><a/>`, false},
+	} {
+		_, err := Compile(compiler.Transform{Name: "t", Steps: []compiler.Step{{Build: &compiler.BuildStep{Template: tt.template, Format: "xml"}}}})
+		if (err == nil) != tt.ok || (err != nil && !strings.Contains(err.Error(), "element text or a quoted attribute value")) {
+			t.Errorf("%s: %v, want ok=%v", tt.template, err, tt.ok)
+		}
+	}
+}

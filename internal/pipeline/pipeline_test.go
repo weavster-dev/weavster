@@ -555,3 +555,13 @@ func TestProcessBuild(t *testing.T) {
 		}
 	}
 }
+
+// TestStoredTextOutput: a stored text output stays unreadable for
+// destination transforms even after the flow definition changed.
+func TestStoredTextOutput(t *testing.T) {
+	later := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d", Transform: transform(t, "name: d\nsteps:\n  - set: { field: x, expr: y }")}}}
+	outs := destinationOutputs(later, state.Message{ContentType: "text", Transformed: []byte(`{"looks":"like json"}`)})
+	if r := outs["a"]; r.err == nil || !strings.Contains(r.err.Error(), "output is text") {
+		t.Errorf("text output read by a destination transform: %+v", r)
+	}
+}

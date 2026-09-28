@@ -57,8 +57,73 @@ func compileBuild(b compiler.BuildStep) (step, error) {
 		if !placeholdersQuoted(parts) {
 			return nil, errors.New(`build.template: in a json template every {{path}} must be inside a string ("{{path}}")`)
 		}
+	case FormatXML:
+		// Escaping protects text and attribute values only; in a tag name,
+		// comment, CDATA section, or declaration a value could still change
+		// the structure.
+		if !placeholdersInXMLValues(parts) {
+			return nil, errors.New("build.template: in an xml template every {{path}} must be in element text or a quoted attribute value")
+		}
 	}
 	return buildStep{parts: parts, format: format}, nil
+}
+
+// placeholdersInXMLValues reports whether every placeholder of an XML
+// template sits in character data or inside a quoted attribute value.
+func placeholdersInXMLValues(parts []templatePart) bool {
+	const (
+		text = iota
+		tag
+		attr
+		other // comment, CDATA, processing instruction, or declaration
+	)
+	state, quote, end := text, byte(0), ""
+	for _, part := range parts {
+		if part.ref != nil {
+			if state != text && state != attr {
+				return false
+			}
+			continue
+		}
+		lit := part.literal
+		for i := 0; i < len(lit); i++ {
+			switch state {
+			case text:
+				if lit[i] != '<' {
+					continue
+				}
+				rest := lit[i:]
+				switch {
+				case strings.HasPrefix(rest, "<!--"):
+					state, end = other, "-->"
+				case strings.HasPrefix(rest, "<![CDATA["):
+					state, end = other, "]]>"
+				case strings.HasPrefix(rest, "<?"):
+					state, end = other, "?>"
+				case strings.HasPrefix(rest, "<!"):
+					state, end = other, ">"
+				default:
+					state = tag
+				}
+			case tag:
+				switch lit[i] {
+				case '"', '\'':
+					state, quote = attr, lit[i]
+				case '>':
+					state = text
+				}
+			case attr:
+				if lit[i] == quote {
+					state = tag
+				}
+			case other:
+				if strings.HasPrefix(lit[i:], end) {
+					state, i = text, i+len(end)-1
+				}
+			}
+		}
+	}
+	return true
 }
 
 // placeholdersQuoted reports whether every placeholder of a JSON template

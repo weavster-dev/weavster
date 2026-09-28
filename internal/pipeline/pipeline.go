@@ -657,11 +657,14 @@ func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 	// Changed input options (delimiter, header) apply to messages still
 	// waiting, like any other definition change.
 	format := f
+	unreadable := false
 	switch m.ContentType {
 	case "json":
 		format = Flow{}
 	case "hl7v2", "xml": // a flow build step's output
 		format = Flow{InputFormat: m.ContentType}
+	case "text": // stays unreadable even if the flow changed since
+		unreadable = true
 	}
 	excluded := excludedSet(m)
 	for _, d := range f.Destinations {
@@ -670,6 +673,11 @@ func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 			continue
 		}
 		var r destinationResult
+		if unreadable {
+			r.err = errors.New("the flow's output is text, which a transform cannot read")
+			outs[d.Name] = r
+			continue
+		}
 		r.body, r.format, r.filtered, r.err = destinationOutput(*d.Transform, format, m.Transformed)
 		outs[d.Name] = r
 	}
