@@ -28,9 +28,9 @@ func TestQuerySQL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 2 || rows[0].ID != "a" || rows[0].Values["n"] != int64(1) || rows[0].Values["f"] != 1.5 || rows[0].Values["b"] != "AP8=" ||
-		rows[0].Values["z"] != nil || rows[1].Values["b"] != "text" {
-		t.Errorf("rows = %+v", rows)
+	if len(rows) != 2 || rows[0].ID != "a" || string(rows[0].Body) != `{"b":"AP8=","f":1.5,"id":"a","n":1,"s":"x","z":null}` ||
+		string(rows[1].Body) != `{"b":"text","f":2.5,"id":"b","n":2,"s":"y","z":null}` {
+		t.Errorf("rows = %s / %s", rows[0].Body, rows[1].Body)
 	}
 	for _, tt := range []struct {
 		o    SQLQueryOptions
@@ -91,7 +91,8 @@ func TestJSONValue(t *testing.T) {
 			t.Errorf("idText(%v) = %q", in, got)
 		}
 	}
-	for q, ok := range map[string]bool{"select 1": true, " WITH a AS (SELECT 1) SELECT * FROM a;": true, "SELECT 1; SELECT 2": false, "UPDATE t SET a=1": false, "selectx": false} {
+	for q, ok := range map[string]bool{"select 1": true, " WITH a AS (SELECT 1) SELECT * FROM a;": true, "SELECT 1; SELECT 2": false, "UPDATE t SET a=1": false, "selectx": false,
+		"WITH x AS (DELETE FROM t RETURNING id) SELECT id FROM x": false, "WITH x AS (SELECT 1) UPDATE t SET a = 1": false, "SELECT updated_at FROM t": true} {
 		if ValidSelect(q) != ok {
 			t.Errorf("ValidSelect(%q) != %v", q, ok)
 		}

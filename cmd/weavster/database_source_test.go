@@ -45,6 +45,7 @@ func TestDatabaseSourcePoll(t *testing.T) {
 		events  []string
 		ingests int
 		dsnEnv  string
+		query   string
 	}{
 		{name: "stored and marked", ingest: &fakeIngest{id: "m"}, marked: 2, ingests: 2},
 		{name: "stored, processing failed: marked", ingest: &fakeIngest{id: "m", err: errors.New("transform failed")}, marked: 2, ingests: 2},
@@ -52,6 +53,7 @@ func TestDatabaseSourcePoll(t *testing.T) {
 		{name: "stopped flow", ingest: &fakeIngest{err: gateway.ErrFlowNotRunning}, ingests: 2},
 		{name: "ingest failure", ingest: &fakeIngest{err: errors.New("disk full")}, events: []string{"source.database.failed"}, ingests: 2},
 		{name: "update failure", ingest: &fakeIngest{id: "m"}, update: &flowdef.SourceUpdate{Table: "nope", Key: "id", Set: map[string]string{"done": "1"}}, events: []string{"source.database.failed"}, ingests: 2},
+		{name: "over the size limit: refused", ingest: &fakeIngest{id: "m"}, query: "SELECT id, zeroblob(10485761) AS big FROM t WHERE done = 0", events: []string{"source.database.refused", "source.database.refused"}},
 		{name: "unset variable", ingest: &fakeIngest{id: "m"}, dsnEnv: "WEAVSTER_DB_UNSET_POLL", events: []string{"source.database.failed"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -65,6 +67,9 @@ func TestDatabaseSourcePoll(t *testing.T) {
 			}
 			if tt.update != nil {
 				src.Update = tt.update
+			}
+			if tt.query != "" {
+				src.Query = tt.query
 			}
 			f.Source = &src
 			events := &fakeEvents{}

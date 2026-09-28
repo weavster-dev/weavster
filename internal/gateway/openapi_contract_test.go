@@ -359,6 +359,28 @@ func TestOpenAPIFlowSourceVariants(t *testing.T) {
 
 // TestOpenAPIFlowDestinationOptions: the request options apply to http
 // destinations only, like flow.schema.json.
+// TestOpenAPIFlowSourceDatabase: a database source needs its fields and
+// an interval of at least a second, like flow.schema.json.
+func TestOpenAPIFlowSourceDatabase(t *testing.T) {
+	schema := loadSpec(t).Components.Schemas["FlowSource"].Value
+	base := `"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_X","query":"SELECT 1 AS id","idColumn":"id","update":{"table":"t","key":"id","set":{"a":"1"}}`
+	for doc, ok := range map[string]bool{
+		`{` + base + `}`:                       true,
+		`{` + base + `,"pollIntervalMs":1000}`: true,
+		`{` + base + `,"pollIntervalMs":500}`:  false,
+		`{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_X","query":"SELECT 1","idColumn":"id"}`: false,
+		`{` + base + `,"dir":"/in"}`: false,
+	} {
+		var v any
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			t.Fatal(err)
+		}
+		if err := schema.VisitJSON(v); (err == nil) != ok {
+			t.Errorf("%s: %v", doc, err)
+		}
+	}
+}
+
 func TestOpenAPIFlowDestinationOptions(t *testing.T) {
 	schema := loadSpec(t).Components.Schemas["FlowDestination"].Value
 	for _, tt := range []struct {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"database/sql/driver"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"math"
 	"regexp"
@@ -19,14 +20,26 @@ import (
 // WITH … SELECT) statement, a trailing semicolon allowed (#107 D-76).
 var selectStatement = regexp.MustCompile(`(?is)^\s*(select|with)\b[^;]*;?\s*$`)
 
-// ValidSelect reports whether query is a single SELECT or WITH statement.
-func ValidSelect(query string) bool { return selectStatement.MatchString(query) }
+// writeKeyword finds a statement that changes data or schema, also inside
+// a WITH (WITH x AS (DELETE …) SELECT …, WITH … UPDATE …).
+var writeKeyword = regexp.MustCompile(`(?i)\b(insert|update|delete|merge|create|drop|alter|truncate|grant|revoke)\b`)
 
-// SQLRow is one row a database source read: its columns as JSON values
-// (Values) and its id as text.
+// ValidSelect reports whether query is a single SELECT or WITH … SELECT
+// statement that names no statement changing data (the read-only
+// transaction also refuses writes at run time).
+func ValidSelect(query string) bool {
+	return selectStatement.MatchString(query) && !writeKeyword.MatchString(query)
+}
+
+// MaxSQLBatchBytes bounds the rows one poll holds in memory (their JSON);
+// the rest come with the next polls.
+const MaxSQLBatchBytes = 64 << 20
+
+// SQLRow is one row a database source read: its id as text and its
+// columns as a JSON object (Body).
 type SQLRow struct {
-	ID     string
-	Values map[string]any
+	ID   string
+	Body []byte
 }
 
 // SQLQueryOptions describe a database source's read: Query (checked with
@@ -42,8 +55,9 @@ type SQLQueryOptions struct {
 
 // QuerySQL runs a database source's query read-only (a READ ONLY
 // transaction on PostgreSQL, PRAGMA query_only on SQLite, which ignores
-// read-only transactions) with LIMIT MaxRows, and returns the rows. Errors
-// never quote values.
+// read-only transactions) with LIMIT MaxRows, and returns the rows, as
+// many as fit in MaxSQLBatchBytes (at least one). Errors never quote
+// values.
 func QuerySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, error) {
 	if !ValidSelect(o.Query) {
 		return nil, errors.New("database: query must be one SELECT or WITH statement")
@@ -105,7 +119,8 @@ func QuerySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, err
 		return nil, errors.New("database: the query's result has no idColumn " + strconv.Quote(o.IDColumn))
 	}
 	var out []SQLRow
-	for rows.Next() {
+	size := 0
+	for size < MaxSQLBatchBytes && rows.Next() {
 		vals := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
 		for i := range vals {
@@ -114,15 +129,16 @@ func QuerySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, err
 		if err := rows.Scan(ptrs...); err != nil {
 			return nil, fail(err)
 		}
-		row := SQLRow{Values: make(map[string]any, len(cols))}
+		values := make(map[string]any, len(cols))
 		for i, c := range cols {
-			row.Values[c] = jsonValue(vals[i])
+			values[c] = jsonValue(vals[i])
 		}
 		if vals[idAt] == nil {
 			return nil, errors.New("database: a row's idColumn is NULL")
 		}
-		row.ID = idText(row.Values[cols[idAt]])
-		out = append(out, row)
+		body, _ := json.Marshal(values) // column values are JSON values
+		size += len(body)
+		out = append(out, SQLRow{ID: idText(values[cols[idAt]]), Body: body})
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fail(err)

@@ -968,11 +968,11 @@ each new order becomes a message such as:
 |---|---|
 | `driver` | Required. `postgres`, or `sqlite` (the connection string is then a database file path). |
 | `dsnEnv` | Required. The server environment variable holding the connection string, `WEAVSTER_DB_…`. |
-| `query` | Required. One `SELECT` (or `WITH … SELECT`) statement, without `;` inside it. It runs read-only: a PostgreSQL `READ ONLY` transaction, SQLite `query_only`. |
+| `query` | Required. One `SELECT` (or `WITH … SELECT`) statement, without `;` inside it and without `INSERT`, `UPDATE`, `DELETE`, `MERGE`, or schema statements anywhere in it. It runs read-only: a PostgreSQL `READ ONLY` transaction, SQLite `query_only`. |
 | `idColumn` | Required. The column of the result that identifies a row: the value `update` matches `key` against, kept with the message as the metadata `source.database.id`. |
 | `update` | Required. `table` (or `schema.table`), `key` (the table's column holding the row id), and `set` (column → value) mark each row once its message is stored: `UPDATE table SET … WHERE key = <id>`. |
 | `pollIntervalMs` | How often the query runs, 1000–3600000 (default 5000). |
-| `maxRows` | Rows read per poll, 1–10000 (default 100): the query runs with `LIMIT maxRows`, and the rest come with the next polls once these are marked. |
+| `maxRows` | Rows read per poll, 1–10000 (default 100): the query runs with `LIMIT maxRows`, and the rest come with the next polls once these are marked. A poll also stops reading once the rows it holds reach 64 MiB. |
 | `timeoutMs` | Time allowed for the query and for each update, 1000–120000 (default 30000). |
 
 - Values become JSON: numbers, `true`/`false`, text, `null`; times as RFC 3339 text; bytes as

@@ -1374,7 +1374,7 @@ components:
               - {required: [certFile], not: {required: [keyFile]}}
               - {required: [keyFile], not: {required: [certFile]}}
         - required: [driver, dsnEnv, query, idColumn, update]
-          properties: {type: {enum: [database]}}
+          properties: {type: {enum: [database]}, pollIntervalMs: {minimum: 1000}}
           not: {anyOf: [{required: [dir]}, {required: [pattern]}, {required: [moveTo]}, {required: [recursive]}, {required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
         - required: [address]
           properties: {type: {enum: [http]}}
@@ -1429,7 +1429,7 @@ components:
           properties:
             table: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}(\\.[A-Za-z_][A-Za-z0-9_]{0,62})?$"}
             key: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}$"}
-            set: {type: object, minProperties: 1, additionalProperties: {type: string}}
+            set: {type: object, minProperties: 1, additionalProperties: {type: string}, description: "column -> value; column names are letters, digits, and _ (not starting with a digit), checked by the server and flow.schema.json"}
         maxRows: {type: integer, minimum: 1, maximum: 10000, description: "database: rows read per poll (default 100)"}
         timeoutMs: {type: integer, minimum: 1000, maximum: 120000, description: "database: time allowed for the query or one update (default 30000)"}
     FlowDestination:

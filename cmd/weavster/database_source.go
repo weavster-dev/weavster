@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -151,8 +150,11 @@ func (s *databaseSources) poll(ctx context.Context, f gateway.Flow) error {
 		if ctx.Err() != nil || s.wasRefused(f.ID, row.ID) {
 			continue
 		}
-		body, _ := json.Marshal(row.Values) // column values are JSON values
-		res, err := s.ingest.ingest(ctx, f.ID, body, map[string]string{rowIDMetadata: row.ID})
+		if len(row.Body) > gateway.MaxMessageBytes {
+			s.refuse(f.ID, row.ID) // as any source refuses a message over the limit
+			continue
+		}
+		res, err := s.ingest.ingest(ctx, f.ID, row.Body, map[string]string{rowIDMetadata: row.ID})
 		switch {
 		case err == nil, res.ID != "":
 			// stored: the flow has the row (a processing failure is the
