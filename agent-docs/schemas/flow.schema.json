@@ -542,6 +542,28 @@
               }
             }
           }
+        },
+        {
+          "if": {
+            "required": [
+              "caFile"
+            ],
+            "properties": {
+              "caFile": {
+                "type": "string"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tls"
+            ],
+            "properties": {
+              "tls": {
+                "const": true
+              }
+            }
+          }
         }
       ]
     },

@@ -1405,7 +1405,14 @@ components:
         - properties: {type: {enum: [file]}}
           not: {anyOf: [{required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [address]}, {required: [flow]}, {required: [tls]}, {required: [caFile]}]}
         - properties: {type: {enum: [mllp]}}
-          not: {anyOf: [{required: [method]}, {required: [maxRedirects]}, {required: [url]}, {required: [dir]}, {required: [flow]}]}
+          not:
+            anyOf:
+              - {required: [method]}
+              - {required: [maxRedirects]}
+              - {required: [url]}
+              - {required: [dir]}
+              - {required: [flow]}
+              - {required: [caFile], not: {required: [tls], properties: {tls: {enum: [true]}}}}
         - properties: {type: {enum: [flow]}}
           required: [flow]
           not: {anyOf: [{required: [url]}, {required: [dir]}, {required: [address]}, {required: [method]}, {required: [timeoutMs]}, {required: [maxRedirects]}, {required: [tls]}, {required: [caFile]}]}

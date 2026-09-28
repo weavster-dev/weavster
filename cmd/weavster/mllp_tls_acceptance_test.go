@@ -82,7 +82,7 @@ func TestMLLPTLS(t *testing.T) {
 	for body, want := range map[string]string{
 		`{"id":"x","source":{"type":"mllp","address":"` + freeAddr(t) + `","certFile":"` + certFile + `"}}`:                                "flow.schema.json",
 		`{"id":"x","source":{"type":"mllp","address":"` + freeAddr(t) + `","certFile":"cert.pem","keyFile":"key.pem"}}`:                    "must be absolute paths",
-		`{"id":"x","inputFormat":"hl7v2","destinations":[{"name":"lab","type":"mllp","address":"lab:2575","caFile":"` + certFile + `"}]}`:  "caFile needs tls: true",
+		`{"id":"x","inputFormat":"hl7v2","destinations":[{"name":"lab","type":"mllp","address":"lab:2575","caFile":"` + certFile + `"}]}`:  "flow.schema.json",
 		`{"id":"x","inputFormat":"hl7v2","destinations":[{"name":"lab","type":"mllp","address":"lab:2575","tls":true,"caFile":"ca.pem"}]}`: "caFile must be an absolute path",
 		`{"id":"x","destinations":[{"name":"out","type":"http","url":"https://x","tls":true}]}`:                                            "flow.schema.json",
 	} {
