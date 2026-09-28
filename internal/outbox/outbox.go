@@ -25,9 +25,6 @@ type Options struct {
 	MaxAttempts int
 	BackoffBase time.Duration
 	CheckStatus StatusFunc
-	// ErrorCode gives a failure's protocol-specific code for the attempt
-	// record (default: the code of an error with a Code() string method).
-	ErrorCode func(error) string
 }
 
 // Outbox persists intent and result transactionally in the Store before
@@ -38,7 +35,9 @@ type Outbox struct {
 	opts    Options
 }
 
-// codeOf is the code of an error with a Code() string method, or "".
+// codeOf is the protocol-specific code a sink attached to err (an error
+// with a Code() string method; the server's sinks classify network and
+// TLS failures too, #107 D-78), or "".
 func codeOf(err error) string {
 	var c interface{ Code() string }
 	if errors.As(err, &c) {
@@ -51,9 +50,6 @@ func codeOf(err error) string {
 func New(store state.Store, deliver DeliverFunc, opts Options) *Outbox {
 	if opts.MaxAttempts <= 0 {
 		opts.MaxAttempts = 5
-	}
-	if opts.ErrorCode == nil {
-		opts.ErrorCode = codeOf
 	}
 	if opts.BackoffBase <= 0 {
 		opts.BackoffBase = time.Second
@@ -117,7 +113,8 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 		}
 		if delivered {
 			cur.Attempts++
-			cur.LastError, cur.LastCode, cur.LastAttemptAt = "", "", time.Now()
+			cur.LastError, cur.LastCode = "", ""
+			cur.NextAttemptAt = time.Time{} // delivered: nothing is due
 			m.Attempts[dest] = cur
 			return o.store.Put(ctx, m)
 		}
@@ -138,7 +135,7 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 		return o.store.Put(ctx, m)
 	} else {
 		cur.Attempts = attempt
-		cur.LastCode = o.opts.ErrorCode(err)
+		cur.LastCode = codeOf(err)
 		if errors.Is(err, ErrAmbiguous) {
 			cur.LastError = ErrAmbiguous.Error()
 		} else {

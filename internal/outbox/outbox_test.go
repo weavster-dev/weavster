@@ -207,9 +207,8 @@ func TestBackoff(t *testing.T) {
 	}
 }
 
-// TestDeliverRecordsCode: a failed attempt records its code (from an
-// error's Code(), or the ErrorCode option) and when it ended; a success
-// clears the code.
+// TestDeliverRecordsCode: a failed attempt records its code (an error's
+// Code()) and when it ended; a success clears the code.
 func TestDeliverRecordsCode(t *testing.T) {
 	ctx := context.Background()
 	s := state.NewMemStore()
@@ -233,11 +232,10 @@ func TestDeliverRecordsCode(t *testing.T) {
 	if a := m.Attempts["d"]; a.LastCode != "" || a.LastError != "" || a.LastAttemptAt.IsZero() {
 		t.Errorf("after a success: %+v", a)
 	}
-	custom := New(s, func(context.Context, state.Message, string, string) error { return errors.New("x") },
-		Options{ErrorCode: func(error) string { return "net:refused" }})
-	_ = custom.Deliver(ctx, "1", "e")
-	if m, _ = s.Get(ctx, "1"); m.Attempts["e"].LastCode != "net:refused" {
-		t.Errorf("ErrorCode option: %+v", m.Attempts["e"])
+	plain := New(s, func(context.Context, state.Message, string, string) error { return errors.New("x") }, Options{})
+	_ = plain.Deliver(ctx, "1", "e")
+	if m, _ = s.Get(ctx, "1"); m.Attempts["e"].LastCode != "" || m.Attempts["e"].LastError != "x" {
+		t.Errorf("an error without a code: %+v", m.Attempts["e"])
 	}
 }
 

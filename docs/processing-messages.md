@@ -1236,14 +1236,15 @@ last one ended), `nextAttemptAt` (when a failed delivery is retried), and, after
 |---|---|
 | `http:<status>` | The receiver answered with this status, for example `http:503`; `http:307` is a redirect that was not followed. |
 | `mllp:AE`, `mllp:AR`, `mllp:CE`, `mllp:CR` | The receiver's HL7 ACK code. |
-| `mllp:no-ack`, `mllp:not-an-ack`, `mllp:wrong-message`, `mllp:unknown-code` | No reply, a reply that is not an ACK, an ACK for another control id, or an ACK code other than AA/AE/AR/CA/CE/CR. |
-| `sqlstate:<code>` | A PostgreSQL error, for example `sqlstate:42P01` (table does not exist). |
+| `mllp:no-ack`, `mllp:not-an-ack`, `mllp:wrong-message`, `mllp:unknown-code`, `mllp:ack-too-large` | No reply (the connection closed), a reply that is not an ACK, an ACK for another control id, an ACK code other than AA/AE/AR/CA/CE/CR, or a reply over 1 MiB. A reply that does not come in time is `net:timeout`. |
+| `sqlstate:<code>` | A PostgreSQL error, for example `sqlstate:42P01` (table does not exist) or `sqlstate:28P01` (the login was refused). |
 | `net:timeout`, `net:refused`, `net:reset`, `net:dns`, `net:connect` | No answer in time, the connection refused or reset, the host name not found, or a database connection that failed otherwise. |
 | `tls:certificate` | The receiver's certificate could not be verified. |
-| `flow:not-running` | A flow destination's target flow is not started. |
+| `flow:not-running`, `flow:not-found` | A flow destination's target flow is not started, or no longer exists. |
 
 A failure without a protocol behind it (a destination transform error, a message that cannot be
-framed) has no `lastCode`. A successful attempt clears `lastError` and `lastCode`.
+framed, a delivery cut short by a server shutdown) has no `lastCode`. A successful attempt clears
+`lastError` and `lastCode`.
 
 | Parameter | Meaning |
 |---|---|

@@ -23,12 +23,22 @@ func (e *codedError) Error() string { return e.err.Error() }
 func (e *codedError) Unwrap() error { return e.err }
 func (e *codedError) Code() string  { return e.code }
 
-// withCode wraps err with code.
-func withCode(code string, err error) error { return &codedError{code: code, err: err} }
+// WithCode wraps err with a protocol-specific code for its attempt record.
+func WithCode(code string, err error) error { return &codedError{code: code, err: err} }
 
-// WithCode wraps err with a protocol-specific code for its attempt record
-// (for sinks outside this package).
-func WithCode(code string, err error) error { return withCode(code, err) }
+// Classify attaches ErrorCode's network or TLS code to err when it has no
+// code yet, so the attempt record gets one; it leaves err as it is
+// otherwise (nil stays nil).
+func Classify(err error) error {
+	var c coded
+	if err == nil || errors.As(err, &c) {
+		return err
+	}
+	if code := ErrorCode(err); code != "" {
+		return WithCode(code, err)
+	}
+	return err
+}
 
 // ErrorCode is err's protocol-specific code: the code a sink attached, or a
 // network or TLS failure's kind ("net:timeout", "net:refused",

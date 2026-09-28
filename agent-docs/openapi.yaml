@@ -1596,7 +1596,7 @@ components:
       properties:
         attempts: {type: integer}
         lastError: {type: string}
-        lastCode: {type: string, description: "The last failure's protocol-specific code: http:<status>, mllp:AE/AR/CE/CR/no-ack/not-an-ack/wrong-message/unknown-code, sqlstate:<code>, net:timeout/refused/reset/dns/connect, tls:certificate, flow:not-running; absent when it has none or after a success"}
+        lastCode: {type: string, description: "The last failure's protocol-specific code: http:<status>, mllp:AE/AR/CE/CR/no-ack/not-an-ack/wrong-message/unknown-code/ack-too-large, sqlstate:<code>, net:timeout/refused/reset/dns/connect, tls:certificate, flow:not-running/not-found; absent when it has none or after a success"}
         lastAttemptAt: {type: string, format: date-time, description: "When the last attempt ended"}
         nextAttemptAt: {type: string, format: date-time}
     Message:

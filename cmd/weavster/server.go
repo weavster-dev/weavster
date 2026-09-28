@@ -133,7 +133,6 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 			MaxAttempts: cfg.Delivery.MaxAttempts,
 			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
 			Gate:        flows.locks,
-			ErrorCode:   adapters.ErrorCode,
 		})
 		ia := ingestAdapter{flows: flows, pipe: pipe}
 		sinks.ingest = ia // flow destinations hand messages to other flows (#107 D-70)
@@ -1653,20 +1652,20 @@ func (a ingestAdapter) retryDue(ctx context.Context) error {
 type adapterSink struct{ sink adapters.Sink }
 
 func (s adapterSink) Write(ctx context.Context, d pipeline.Delivery) error {
-	return s.sink.Write(ctx, adapterMessage(d))
+	return adapters.Classify(s.sink.Write(ctx, adapterMessage(d))) // a code for the attempt record (#107 D-78)
 }
 
 // httpSink is the HTTP destination: a sink that also returns replies.
 type httpSink struct{ sink *adapters.HTTPSink }
 
 func (s httpSink) Write(ctx context.Context, d pipeline.Delivery) error {
-	return s.sink.Write(ctx, adapterMessage(d))
+	return adapters.Classify(s.sink.Write(ctx, adapterMessage(d)))
 }
 
 func (s httpSink) WriteResponse(ctx context.Context, d pipeline.Delivery) (*pipeline.Reply, error) {
 	r, err := s.sink.WriteResponse(ctx, adapterMessage(d))
 	if err != nil || r == nil {
-		return nil, err
+		return nil, adapters.Classify(err)
 	}
 	return &pipeline.Reply{Body: r.Body, ContentType: r.ContentType}, nil
 }
@@ -1723,8 +1722,10 @@ func (s flowSink) Write(ctx context.Context, d pipeline.Delivery) error {
 		"source.flow": d.FlowID, "source.message": d.MessageID, flowKeyMetadata: d.IdempotencyKey,
 	})
 	switch {
-	case err != nil && res.ID == "" && (errors.Is(err, gateway.ErrFlowNotRunning) || errors.Is(err, gateway.ErrFlowNotFound)):
+	case err != nil && res.ID == "" && errors.Is(err, gateway.ErrFlowNotRunning):
 		return adapters.WithCode("flow:not-running", fmt.Errorf("flow %s: %w", s.target, err))
+	case err != nil && res.ID == "" && errors.Is(err, gateway.ErrFlowNotFound):
+		return adapters.WithCode("flow:not-found", fmt.Errorf("flow %s: %w", s.target, err))
 	case err != nil && res.ID == "":
 		return fmt.Errorf("flow %s: %w", s.target, err)
 	case err != nil: // stored: the target has it, and reports its own failure

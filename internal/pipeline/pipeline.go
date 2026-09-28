@@ -154,9 +154,6 @@ type Options struct {
 	Gate interface {
 		ProcessFlow(flowID string) (done func())
 	}
-	// ErrorCode gives a delivery failure's protocol-specific code for its
-	// attempt record (#107 D-78; default: an error's own Code()).
-	ErrorCode func(error) string
 }
 
 // ErrFlowGone is returned by a FlowLookup when the message's flow no longer
@@ -188,7 +185,7 @@ func New(store state.Store, sinks SinkFactory, observer Observer, opts Options) 
 }
 
 func (p *Pipeline) outbox(f Flow, contentType string, outs map[string]destinationResult, reply **Reply) *outbox.Outbox {
-	return outbox.New(p.store, p.deliverFunc(f, contentType, outs, reply), outbox.Options{MaxAttempts: p.opts.MaxAttempts, BackoffBase: p.opts.BackoffBase, ErrorCode: p.opts.ErrorCode})
+	return outbox.New(p.store, p.deliverFunc(f, contentType, outs, reply), outbox.Options{MaxAttempts: p.opts.MaxAttempts, BackoffBase: p.opts.BackoffBase})
 }
 
 // Validate checks a flow definition: the transform compiles and every

@@ -23,7 +23,10 @@ func TestAttemptCodes(t *testing.T) {
 		}
 	}))
 	defer ehr.Close()
-	ln, _ := net.Listen("tcp", "127.0.0.1:0")
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
 	closed := ln.Addr().String()
 	_ = ln.Close()
 	lab := &mllpReceiver{codes: []string{"AE"}}
