@@ -35,6 +35,17 @@ type Outbox struct {
 	opts    Options
 }
 
+// codeOf is the protocol-specific code a sink attached to err (an error
+// with a Code() string method; the server's sinks classify network and
+// TLS failures too, #107 D-78), or "".
+func codeOf(err error) string {
+	var c interface{ Code() string }
+	if errors.As(err, &c) {
+		return c.Code()
+	}
+	return ""
+}
+
 // New returns an outbox with sane defaults applied.
 func New(store state.Store, deliver DeliverFunc, opts Options) *Outbox {
 	if opts.MaxAttempts <= 0 {
@@ -102,7 +113,8 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 		}
 		if delivered {
 			cur.Attempts++
-			cur.LastError = ""
+			cur.LastError, cur.LastCode = "", ""
+			cur.NextAttemptAt = time.Time{} // delivered: nothing is due
 			m.Attempts[dest] = cur
 			return o.store.Put(ctx, m)
 		}
@@ -111,9 +123,11 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 	attempt := cur.Attempts + 1
 	key := IdempotencyKey(m.ID, dest)
 
-	if err := o.deliver(ctx, m, dest, key); err == nil {
+	err = o.deliver(ctx, m, dest, key)
+	cur.LastAttemptAt = time.Now()
+	if err == nil {
 		cur.Attempts = attempt
-		cur.LastError = ""
+		cur.LastError, cur.LastCode = "", ""
 		cur.NextAttemptAt = time.Time{}
 		m.Attempts[dest] = cur
 		// The message status is left to the caller: other destinations may
@@ -121,6 +135,7 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 		return o.store.Put(ctx, m)
 	} else {
 		cur.Attempts = attempt
+		cur.LastCode = codeOf(err)
 		if errors.Is(err, ErrAmbiguous) {
 			cur.LastError = ErrAmbiguous.Error()
 		} else {

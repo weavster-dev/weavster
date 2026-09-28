@@ -101,6 +101,7 @@ All notable changes to this project are documented here, following
 - Database destination (#345): `{type: database, driver: postgres|sqlite, dsnEnv, table, columns, keyColumn}` inserts each message's JSON values into a table as query parameters (identifiers checked and quoted, one transaction per message, `$n` placeholders for PostgreSQL); with `keyColumn` a retry inserts nothing. The connection string comes from a `WEAVSTER_DB_…` environment variable.
 - Database source (#347): `source: {type: database, driver, dsnEnv, query, idColumn, update}` runs a read-only SELECT every `pollIntervalMs` and sends each row through the flow as a JSON message (`source.database.id` metadata), then marks it with the required `update`, a parameterized `UPDATE` (at-least-once).
 - Cron schedules for polling sources (#349): file and database sources take `schedule` instead of `pollIntervalMs` — a 5-field cron expression or a descriptor (`@hourly`, `@every 30s`), optionally with `CRON_TZ=Area/City`; the time zone database is built in.
+- Attempt codes (#351): each destination's attempt record keeps `lastCode` — the last failure's protocol-specific code (`http:503`, `mllp:AE`, `sqlstate:42P01`, `net:timeout`, `tls:certificate`, `flow:not-running`, …) — and `lastAttemptAt`; stored (migration 8) and shown with the message.
 
 ### Changed
 

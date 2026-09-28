@@ -199,8 +199,11 @@ type Message struct {
 
 // MessageAttempt is one destination's delivery state for a message.
 type MessageAttempt struct {
-	Attempts      int        `json:"attempts"`
-	LastError     string     `json:"lastError,omitempty"`
+	Attempts  int    `json:"attempts"`
+	LastError string `json:"lastError,omitempty"`
+	// LastCode is the last failure's protocol-specific code (#107 D-78).
+	LastCode      string     `json:"lastCode,omitempty"`
+	LastAttemptAt *time.Time `json:"lastAttemptAt,omitempty"`
 	NextAttemptAt *time.Time `json:"nextAttemptAt,omitempty"`
 }
 

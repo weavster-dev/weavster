@@ -1590,12 +1590,14 @@ components:
       description: Flow id -> statistics
       additionalProperties: {$ref: "#/components/schemas/FlowStats"}
     MessageAttempt:
-      example: {"attempts": 3, "lastError": "Service Unavailable", "nextAttemptAt": "2026-09-27T10:00:04Z"}
+      example: {"attempts": 3, "lastError": "Service Unavailable", "lastCode": "http:503", "lastAttemptAt": "2026-09-27T10:00:02Z", "nextAttemptAt": "2026-09-27T10:00:04Z"}
       type: object
       required: [attempts]
       properties:
         attempts: {type: integer}
         lastError: {type: string}
+        lastCode: {type: string, description: "The last failure's protocol-specific code: http:<status>, mllp:AE/AR/CE/CR/no-ack/not-an-ack/wrong-message/unknown-code/ack-too-large, sqlstate:<code>, net:timeout/refused/reset/dns/connect, tls:certificate, flow:not-running/not-found; absent when it has none or after a success"}
+        lastAttemptAt: {type: string, format: date-time, description: "When the last attempt ended"}
         nextAttemptAt: {type: string, format: date-time}
     Message:
       example: {"id": "7f3c9a1e", "flowId": "adt", "status": "sent", "contentType": "json", "receivedAt": "2026-09-27T10:00:00Z", "updatedAt": "2026-09-27T10:00:01Z", "attempts": {"ehr": {"attempts": 1}, "archive": {"attempts": 1}}, "metadata": {"source": "lab"}}

@@ -1224,8 +1224,27 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
 ```json
 [{"id":"6f1c…","flowId":"adt","status":"queued","contentType":"json",
   "receivedAt":"2026-09-26T12:00:00Z","updatedAt":"2026-09-26T12:00:05Z",
-  "attempts":{"ehr":{"attempts":2,"lastError":"Service Unavailable","nextAttemptAt":"2026-09-26T12:00:09Z"}}}]
+  "attempts":{"ehr":{"attempts":2,"lastError":"Service Unavailable","lastCode":"http:503",
+    "lastAttemptAt":"2026-09-26T12:00:05Z","nextAttemptAt":"2026-09-26T12:00:09Z"}}}]
 ```
+
+`attempts` has one entry per destination tried: `attempts` (how many), `lastAttemptAt` (when the
+last one ended), `nextAttemptAt` (when a failed delivery is retried), and, after a failure,
+`lastError` (what went wrong, in words) and `lastCode`, a code for scripts and alerts:
+
+| `lastCode` | Meaning |
+|---|---|
+| `http:<status>` | The receiver answered with this status, for example `http:503`; `http:307` is a redirect that was not followed. |
+| `mllp:AE`, `mllp:AR`, `mllp:CE`, `mllp:CR` | The receiver's HL7 ACK code. |
+| `mllp:no-ack`, `mllp:not-an-ack`, `mllp:wrong-message`, `mllp:unknown-code`, `mllp:ack-too-large` | No reply (the connection closed), a reply that is not an ACK, an ACK for another control id, an ACK code other than AA/AE/AR/CA/CE/CR, or a reply over 1 MiB. A reply that does not come in time is `net:timeout`. |
+| `sqlstate:<code>` | A PostgreSQL error, for example `sqlstate:42P01` (table does not exist) or `sqlstate:28P01` (the login was refused). |
+| `net:timeout`, `net:refused`, `net:reset`, `net:dns`, `net:connect` | No answer in time, the connection refused or reset, the host name not found, or a connection that failed otherwise (an unreachable network or host). |
+| `tls:certificate` | The receiver's certificate could not be verified. |
+| `flow:not-running`, `flow:not-found` | A flow destination's target flow is not started, or no longer exists. |
+
+A failure without a protocol behind it (a destination transform error, a message that cannot be
+framed, a delivery cut short by a server shutdown) has no `lastCode`. A successful attempt clears
+`lastError` and `lastCode`.
 
 | Parameter | Meaning |
 |---|---|

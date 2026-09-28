@@ -135,22 +135,30 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 		return nil
 	}
 	reply, err := readFramed(bufio.NewReader(conn), maxACKBytes, framing)
-	if err != nil {
-		return fmt.Errorf("mllp: no ACK: %w", err)
+	switch {
+	case err == nil:
+	case errors.Is(err, ErrMLLPFrameTooLarge):
+		return WithCode("mllp:ack-too-large", fmt.Errorf("mllp: the reply is larger than %d bytes", maxACKBytes))
+	case ctx.Err() != nil && !errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return fmt.Errorf("mllp: no ACK: %w", ctx.Err()) // the caller cancelled: no code
+	case ErrorCode(err) != "":
+		return fmt.Errorf("mllp: no ACK: %w", err) // a network failure: classified as such
+	default:
+		return WithCode("mllp:no-ack", fmt.Errorf("mllp: no ACK: %w", err))
 	}
 	code, acked, ok := codecs.ParseHL7ACK(reply)
 	switch {
 	case !ok:
-		return errors.New("mllp: the reply is not an HL7 ACK")
+		return WithCode("mllp:not-an-ack", errors.New("mllp: the reply is not an HL7 ACK"))
 	case code == codecs.AckApplicationError || code == codecs.AckCommitError:
-		return fmt.Errorf("mllp: ACK %s (application error)", code)
+		return WithCode("mllp:"+code, fmt.Errorf("mllp: ACK %s (application error)", code))
 	case code == codecs.AckApplicationReject || code == codecs.AckCommitReject:
-		return fmt.Errorf("mllp: ACK %s (application reject)", code)
+		return WithCode("mllp:"+code, fmt.Errorf("mllp: ACK %s (application reject)", code))
 	case code != codecs.AckApplicationAccept && code != codecs.AckCommitAccept:
-		return fmt.Errorf("mllp: ACK with an unknown code %q", code[:min(len(code), 8)]) // bounded: from the receiver
+		return WithCode("mllp:unknown-code", fmt.Errorf("mllp: ACK with an unknown code %q", code[:min(len(code), 8)])) // bounded: from the receiver
 	case acked != codecs.HL7ControlID(m.Body):
 		// An accept counts only for this message.
-		return errors.New("mllp: the ACK is for another message (MSA-2 does not match MSH-10)")
+		return WithCode("mllp:wrong-message", errors.New("mllp: the ACK is for another message (MSA-2 does not match MSH-10)"))
 	}
 	return nil
 }

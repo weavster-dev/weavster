@@ -185,14 +185,16 @@ func TestNextAttemptAtRoundTrip(t *testing.T) {
 	defer func() { _ = s.Close() }()
 	due := time.UnixMilli(time.Now().Add(time.Minute).UnixMilli())
 	m := Message{ID: "n", FlowID: "f", Status: StatusQueued, Attempts: map[string]DestinationAttempt{
-		"a": {Attempts: 1, LastError: "x", NextAttemptAt: due},
+		"a": {Attempts: 1, LastError: "x", LastCode: "http:503", LastAttemptAt: due.Add(-time.Minute), NextAttemptAt: due},
 		"b": {Attempts: 1},
 	}}
 	if err := s.Put(ctx, m); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.Get(ctx, "n")
-	if err != nil || !got.Attempts["a"].NextAttemptAt.Equal(due) || !got.Attempts["b"].NextAttemptAt.IsZero() {
+	a := got.Attempts["a"]
+	if err != nil || !a.NextAttemptAt.Equal(due) || !got.Attempts["b"].NextAttemptAt.IsZero() ||
+		a.LastCode != "http:503" || !a.LastAttemptAt.Equal(due.Add(-time.Minute)) || !got.Attempts["b"].LastAttemptAt.IsZero() {
 		t.Errorf("attempts = %+v, %v", got.Attempts, err)
 	}
 }

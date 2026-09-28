@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/weavster-dev/weavster/internal/state"
 )
@@ -205,3 +206,40 @@ func TestBackoff(t *testing.T) {
 		t.Errorf("backoff(2) = %v", o.Backoff(2))
 	}
 }
+
+// TestDeliverRecordsCode: a failed attempt records its code (an error's
+// Code()) and when it ended; a success clears the code.
+func TestDeliverRecordsCode(t *testing.T) {
+	ctx := context.Background()
+	s := state.NewMemStore()
+	_ = s.Put(ctx, msg("1"))
+	fail := true
+	o := New(s, func(context.Context, state.Message, string, string) error {
+		if fail {
+			return coded{"http:503"}
+		}
+		return nil
+	}, Options{BackoffBase: time.Millisecond})
+	before := time.Now()
+	_ = o.Deliver(ctx, "1", "d")
+	m, _ := s.Get(ctx, "1")
+	if a := m.Attempts["d"]; a.LastCode != "http:503" || a.LastAttemptAt.Before(before) {
+		t.Errorf("after a failure: %+v", a)
+	}
+	fail = false
+	_ = o.Deliver(ctx, "1", "d")
+	m, _ = s.Get(ctx, "1")
+	if a := m.Attempts["d"]; a.LastCode != "" || a.LastError != "" || a.LastAttemptAt.IsZero() {
+		t.Errorf("after a success: %+v", a)
+	}
+	plain := New(s, func(context.Context, state.Message, string, string) error { return errors.New("x") }, Options{})
+	_ = plain.Deliver(ctx, "1", "e")
+	if m, _ = s.Get(ctx, "1"); m.Attempts["e"].LastCode != "" || m.Attempts["e"].LastError != "x" {
+		t.Errorf("an error without a code: %+v", m.Attempts["e"])
+	}
+}
+
+type coded struct{ code string }
+
+func (c coded) Error() string { return "failed" }
+func (c coded) Code() string  { return c.code }

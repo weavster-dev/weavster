@@ -216,17 +216,26 @@ func dbError(ctx context.Context, dialect string, timeout time.Duration, err err
 	var pg *pgconn.PgError
 	var connect *pgconn.ConnectError
 	switch {
+	case errors.As(err, &pg): // also a refused login while connecting (28P01)
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
-		return fmt.Errorf("database: no result within %s", timeout)
+		return WithCode("net:timeout", fmt.Errorf("database: no result within %s", timeout))
 	case ctx.Err() != nil:
 		return errors.New("database: the delivery was cancelled")
 	case errors.As(err, &connect):
-		return errors.New("database: could not connect (check the host, credentials, and TLS settings in the connection string)")
+		code := ErrorCode(connect.Unwrap())
+		if code == "" {
+			code = "net:connect"
+		}
+		return WithCode(code, errors.New("database: could not connect (check the host, credentials, and TLS settings in the connection string)"))
 	case errors.Is(err, sql.ErrConnDone):
-		return errors.New("database: the connection was closed")
-	case errors.As(err, &pg):
+		return WithCode("net:reset", errors.New("database: the connection was closed"))
 	case dialect == DialectPostgres:
-		return errors.New("database: the statement failed before reaching the database")
+		// Not the error's text (it can quote values), but its network kind.
+		msg := errors.New("database: the statement failed before reaching the database")
+		if code := ErrorCode(err); code != "" {
+			return WithCode(code, errors.New("database: the connection failed during the statement"))
+		}
+		return msg
 	default:
 		return fmt.Errorf("database: %w", err)
 	}
@@ -243,7 +252,7 @@ func dbError(ctx context.Context, dialect string, timeout time.Duration, err err
 	if what == "" {
 		what = "the statement failed"
 	}
-	return fmt.Errorf("database: %s (SQLSTATE %s)", what, pg.Code)
+	return WithCode("sqlstate:"+pg.Code, fmt.Errorf("database: %s (SQLSTATE %s)", what, pg.Code))
 }
 
 func (s *SQLSink) Close() error { return nil }
