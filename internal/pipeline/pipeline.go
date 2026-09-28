@@ -19,6 +19,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/weavster-dev/weavster/internal/codecs"
 	"github.com/weavster-dev/weavster/internal/compiler"
 	"github.com/weavster-dev/weavster/internal/dsl"
 	"github.com/weavster-dev/weavster/internal/outbox"
@@ -26,8 +27,20 @@ import (
 )
 
 // ErrInvalidMessage is returned when a message cannot be processed by the
-// flow's transform (for example, the body is not a JSON object).
+// flow's transform (for example, the body is not a JSON object). The
+// returned error is an *InvalidMessageError carrying the reason.
 var ErrInvalidMessage = errors.New("pipeline: invalid message")
+
+// InvalidMessageError is a refused message and why, in words meant for
+// the sender ("body must be a JSON object"); it matches ErrInvalidMessage.
+type InvalidMessageError struct{ Reason string }
+
+func (e *InvalidMessageError) Error() string { return ErrInvalidMessage.Error() + ": " + e.Reason }
+
+// Is makes errors.Is(err, ErrInvalidMessage) hold.
+func (e *InvalidMessageError) Is(target error) bool { return target == ErrInvalidMessage }
+
+func invalid(reason string) error { return &InvalidMessageError{Reason: reason} }
 
 // Destination is one delivery target of a flow.
 type Destination struct {
@@ -57,6 +70,9 @@ type Flow struct {
 	Destinations []Destination
 	// ResponseSelector names the destination whose reply Process returns.
 	ResponseSelector string
+	// InputFormat is how transforms read a received message: "json" (or
+	// empty) or "hl7v2" (the HL7 v2 message's JSON view, #107 D-61).
+	InputFormat string
 }
 
 // Delivery is one message sent to one destination.
@@ -222,8 +238,8 @@ func (p *Pipeline) ProcessWithMetadata(ctx context.Context, f Flow, body []byte,
 			return Result{}, err
 		}
 	}
-	if needsObject(f) {
-		if _, err := decodeObject(body); err != nil {
+	if needsObject(f) || f.InputFormat == "hl7v2" { // an hl7v2 flow takes only HL7
+		if _, err := decodeInput(f.InputFormat, body); err != nil {
 			return Result{}, err
 		}
 	}
@@ -360,6 +376,19 @@ func (p *Pipeline) Requeue(ctx context.Context, id string) (state.Message, error
 	return before, p.store.Put(ctx, m)
 }
 
+// decodeInput reads a received message as the object transforms work on:
+// its HL7 v2 JSON view for format "hl7v2", otherwise the JSON object.
+func decodeInput(format string, body []byte) (map[string]any, error) {
+	if format != "hl7v2" {
+		return decodeObject(body)
+	}
+	doc, err := codecs.HL7JSON(body)
+	if err != nil {
+		return nil, invalid("body must be an HL7 v2 message (MSH segment first)")
+	}
+	return doc, nil
+}
+
 // decodeObject decodes body as a single JSON object, keeping numbers exact
 // (json.Number) so identifiers like 20-digit MRNs survive untouched fields.
 func decodeObject(body []byte) (map[string]any, error) {
@@ -367,10 +396,10 @@ func decodeObject(body []byte) (map[string]any, error) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
 	if err := dec.Decode(&doc); err != nil || doc == nil {
-		return nil, fmt.Errorf("%w: body must be a JSON object", ErrInvalidMessage)
+		return nil, invalid("body must be a JSON object")
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return nil, fmt.Errorf("%w: body must be a single JSON object", ErrInvalidMessage)
+		return nil, invalid("body must be a single JSON object")
 	}
 	return doc, nil
 }
@@ -393,7 +422,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 			if err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
-			doc, err := decodeObject(m.Raw)
+			doc, err := decodeInput(f.InputFormat, m.Raw)
 			if err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
@@ -460,7 +489,7 @@ func responseOutput(f Flow, r *Reply) json.RawMessage {
 		}
 	}
 	if t != nil {
-		out, _, err := destinationOutput(*t, r.Body)
+		out, _, err := destinationOutput(*t, "json", r.Body) // replies are read as JSON
 		if err != nil || isJSONNull(out) {
 			return nil
 		}
@@ -501,25 +530,33 @@ type destinationResult struct {
 // transforms are deterministic, so every retry gets the same result.
 func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 	outs := map[string]destinationResult{}
+	// The flow's output is JSON when a flow transform made it, else the
+	// message as received. Judge by what was stored, not the current
+	// definition, which may have changed since.
+	format := f.InputFormat
+	if m.ContentType == "json" {
+		format = "json"
+	}
 	for _, d := range f.Destinations {
 		a := m.Attempts[d.Name]
 		if d.Transform == nil || d.Stopped || (a.Attempts > 0 && a.LastError == "") {
 			continue
 		}
 		var r destinationResult
-		r.body, r.filtered, r.err = destinationOutput(*d.Transform, m.Transformed)
+		r.body, r.filtered, r.err = destinationOutput(*d.Transform, format, m.Transformed)
 		outs[d.Name] = r
 	}
 	return outs
 }
 
-// destinationOutput runs transform t over body, the flow's output.
-func destinationOutput(t compiler.Transform, body []byte) (out []byte, filtered bool, err error) {
+// destinationOutput runs transform t over body, the flow's output, read as
+// format.
+func destinationOutput(t compiler.Transform, format string, body []byte) (out []byte, filtered bool, err error) {
 	prog, err := dsl.Compile(t)
 	if err != nil {
 		return nil, false, err
 	}
-	doc, err := decodeObject(body)
+	doc, err := decodeInput(format, body)
 	if err != nil {
 		return nil, false, err
 	}

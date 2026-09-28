@@ -66,7 +66,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   `POST /api/v1/flows/{id}/messages` runs a message through the flow's DSL transform and
   delivers it to each `http`/`file` destination, retrying failures with backoff (see
   [Processing messages](docs/processing-messages.md)); a flow can also read files from a
-  directory, listen on its own HTTP port, or accept HL7 v2 over MLLP; message search (flow, status, time,
+  directory, listen on its own HTTP port, or accept HL7 v2 over MLLP, and transforms can read
+  HL7 v2 messages (`inputFormat: hl7v2`); message search (flow, status, time,
   paging), reading one message and its content (audited), reprocessing, and removing messages;
   read-only topology JSON built from the flows.
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
@@ -84,7 +85,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   flow API operation, user administration, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
   a connection file, and `-v` prints the server's version.
 - **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
-  scheduler, the other adapters (MLLP destination, database, SMTP, web service), outbox, codecs, WASM compiler/executor/registry, PostgreSQL
+  scheduler, the other adapters (MLLP destination, database, SMTP, web service), outbox, codecs other than
+  HL7 v2, WASM compiler/executor/registry, PostgreSQL
   store, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
   metrics/tracing.
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.

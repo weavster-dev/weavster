@@ -327,3 +327,45 @@ func TestProcessReturnsIDOnceStored(t *testing.T) {
 		}
 	}
 }
+
+// TestProcessHL7Input: with inputFormat hl7v2, transforms read the HL7 v2
+// message's JSON view (the flow's, or a destination's when the flow has
+// none); a message that is not HL7 is refused.
+func TestProcessHL7Input(t *testing.T) {
+	ctx := context.Background()
+	sink := &recordingSink{}
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil }, nil, Options{})
+	msg := []byte("MSH|^~\\&|LAB|HOSP|W|H|1||ADT^A01|C1|P|2.5\rPID|1||123||DOE^JOHN\r")
+	flowT := Flow{ID: "f", InputFormat: "hl7v2", Transform: transform(t, "name: t\nsteps:\n  - map: { from: PID.5.1, to: last }"),
+		Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	destT := Flow{ID: "g", InputFormat: "hl7v2", Destinations: []Destination{
+		{Name: "a", Type: "file", Dir: "d", Transform: transform(t, "name: d\nsteps:\n  - filter: { when: \"MSH.9.2 == 'A01'\", action: accept }\n  - map: { from: PID.5.2, to: first }")},
+	}}
+	for i, f := range []Flow{flowT, destT} {
+		res, err := p.Process(ctx, f, msg)
+		if err != nil || res.Status != state.StatusSent {
+			t.Fatalf("%s: res = %+v, err = %v", f.ID, res, err)
+		}
+		want := []string{`"last":"DOE"`, `"first":"JOHN"`}[i]
+		if !strings.Contains(sink.bodies[i], want) || sink.types[i] != "application/json" {
+			t.Errorf("%s: delivered %s as %s", f.ID, sink.bodies[i], sink.types[i])
+		}
+	}
+	pass := Flow{ID: "h", InputFormat: "hl7v2", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	for _, f := range []Flow{flowT, pass} {
+		_, err := p.Process(ctx, f, []byte(`{"PID":{}}`))
+		var invalid *InvalidMessageError
+		if !errors.As(err, &invalid) || invalid.Reason != "body must be an HL7 v2 message (MSH segment first)" || !errors.Is(err, ErrInvalidMessage) {
+			t.Errorf("%s: JSON into an hl7v2 flow: %v", f.ID, err)
+		}
+	}
+
+	// A message stored as received (no flow transform then) is read as HL7
+	// by destination transforms even after a flow transform is added.
+	later := destT
+	later.Transform = transform(t, "name: t\nsteps:\n  - set: { field: x, expr: y }")
+	outs := destinationOutputs(later, state.Message{ContentType: "raw", Transformed: msg})
+	if r := outs["a"]; r.err != nil || !strings.Contains(string(r.body), `"first":"JOHN"`) {
+		t.Errorf("stored HL7 after the definition changed: %s, %v", r.body, r.err)
+	}
+}

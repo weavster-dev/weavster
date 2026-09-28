@@ -38,11 +38,13 @@ type HL7Codec struct {
 	fieldSep byte
 	compSep  byte
 	repSep   byte
+	escape   byte
+	subSep   byte
 }
 
 // HL7v2 returns an HL7 v2 codec with standard delimiters.
 func HL7v2() *HL7Codec {
-	return &HL7Codec{fieldSep: '|', compSep: '^', repSep: '~'}
+	return &HL7Codec{fieldSep: '|', compSep: '^', repSep: '~', escape: '\\', subSep: '&'}
 }
 
 func (c *HL7Codec) Name() string { return "hl7v2" }
@@ -60,9 +62,14 @@ func (c *HL7Codec) Parse(in []byte) (any, error) {
 		if strings.HasPrefix(line, "MSH") && len(line) > 3 {
 			seps.fieldSep = line[3]
 			// MSH-2 is component, repetition, escape, subcomponent.
-			if enc := mshEncoding(line, seps.fieldSep); len(enc) >= 2 {
+			enc := mshEncoding(line, seps.fieldSep)
+			if len(enc) >= 2 {
 				seps.compSep = enc[0]
 				seps.repSep = enc[1]
+			}
+			if len(enc) >= 4 {
+				seps.escape = enc[2]
+				seps.subSep = enc[3]
 			}
 		}
 		msg.Segments = append(msg.Segments, seps.parseSegment(line))
@@ -109,7 +116,7 @@ func (c *HL7Codec) parseField(f string) [][]string {
 	for _, rep := range reps {
 		comps := strings.Split(rep, string(c.compSep))
 		for i := range comps {
-			comps[i] = unescapeHL7(comps[i])
+			comps[i] = c.unescape(comps[i])
 		}
 		field = append(field, comps)
 	}
@@ -168,18 +175,20 @@ func normalizeSegTerminators(s string) string {
 	return s
 }
 
-func unescapeHL7(s string) string {
-	if !strings.ContainsRune(s, '\\') {
+// unescape decodes the escape sequences \F\ \S\ \R\ \T\ \E\ written with
+// the message's escape character into its own delimiters.
+func (c *HL7Codec) unescape(s string) string {
+	e := string(c.escape)
+	if !strings.Contains(s, e) {
 		return s
 	}
-	r := strings.NewReplacer(
-		`\F\`, "|",
-		`\S\`, "^",
-		`\R\`, "~",
-		`\T\`, "&",
-		`\E\`, `\`,
-	)
-	return r.Replace(s)
+	return strings.NewReplacer(
+		e+"F"+e, string(c.fieldSep),
+		e+"S"+e, string(c.compSep),
+		e+"R"+e, string(c.repSep),
+		e+"T"+e, string(c.subSep),
+		e+"E"+e, e,
+	).Replace(s)
 }
 
 func escapeHL7(s string) string {

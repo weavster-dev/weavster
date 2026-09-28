@@ -43,8 +43,9 @@ Unknown fields and wrong types are rejected rather than ignored:
 ### `transform`
 
 `transform` is optional. Without it (or with `null` or no `steps`), messages pass through
-unchanged and may be any bytes (unless a destination has its own `transform`). It uses the steps
-below, in order, on the message as a JSON object.
+unchanged and may be any bytes (unless a destination has its own `transform`, or `inputFormat`
+is `hl7v2`). It uses the steps below, in order, on the message as a JSON object, or on an HL7 v2
+message's JSON view with [`inputFormat: hl7v2`](#transform-hl7-v2-messages).
 
 | Step | Fields | Effect |
 |---|---|---|
@@ -69,6 +70,7 @@ below, in order, on the message as a JSON object.
 | `enabled`, `initialState` | Automatic deployment at startup; see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically). |
 | `dependsOn` | Flows this flow requires; see [Flow lifecycle](flow-lifecycle.md). |
 | `responseSelector` | The destination whose reply is returned to the sender; see [Return a destination's reply](#return-a-destinations-reply). |
+| `inputFormat` | How transforms read a message: `json` (default) or `hl7v2`; see [Transform HL7 v2 messages](#transform-hl7-v2-messages). |
 | `source` | Where the flow receives messages on its own; see [Read files from a directory](#read-files-from-a-directory), [Receive messages over HTTP](#receive-messages-over-http), and [Receive HL7 v2 over MLLP](#receive-hl7-v2-over-mllp). Without it, messages arrive only through the API. |
 
 ### `destinations`
@@ -84,6 +86,65 @@ below, in order, on the message as a JSON object.
 | `maxRedirects` | `http` only: how many redirects to follow, 0–10; default 0. See [Redirects](#redirects). |
 | `transform` | Optional. This destination's own transform, with the same steps as the flow `transform`. See [Per-destination transforms and filters](#per-destination-transforms-and-filters). |
 | `responseTransform` | Optional. Transform applied to this destination's reply. See [Return a destination's reply](#return-a-destinations-reply). |
+
+### Transform HL7 v2 messages
+
+Set `"inputFormat": "hl7v2"` and the flow's transforms read each HL7 v2 message as JSON, so
+paths name segment, field, and component the way HL7 does:
+
+```json
+{
+  "id": "adt",
+  "inputFormat": "hl7v2",
+  "source": {"type": "mllp", "address": ":2575"},
+  "transform": {"name": "adt", "steps": [
+    {"filter": {"when": "MSH.9.2 == 'A01'", "action": "accept"}},
+    {"map": {"from": "PID.5.1", "to": "patient.lastName"}},
+    {"map": {"from": "PID.3.repetitions.1.1", "to": "patient.ssn"}}
+  ]},
+  "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/inbound"}]
+}
+```
+
+For `MSH|^~\&|LAB|HOSP|W|H|20260927120000||ADT^A01|MSG1|P|2.5` and
+`PID|1||123^^^MRN~456^^^SSN||DOE^JOHN`, the transform sees:
+
+```json
+{
+  "MSH": {"name": "MSH", "2": {"1": "^", "2": "~", "3": "\\", "4": "&"}, "3": {"1": "LAB"}, "4": {"1": "HOSP"},
+          "5": {"1": "W"}, "6": {"1": "H"}, "7": {"1": "20260927120000"}, "9": {"1": "ADT", "2": "A01"},
+          "10": {"1": "MSG1"}, "11": {"1": "P"}, "12": {"1": "2.5"}},
+  "PID": {"name": "PID", "1": {"1": "1"},
+          "3": {"1": "123", "4": "MRN", "repetitions": [{"1": "123", "4": "MRN"}, {"1": "456", "4": "SSN"}]},
+          "5": {"1": "DOE", "2": "JOHN"}},
+  "segments": [{"name": "MSH", "…": "…"}, {"name": "PID", "…": "…"}]
+}
+```
+
+- A segment name holds that segment's **first** occurrence: `PID.5.1` is the family name. Every
+  segment, in order, is in `segments` (`segments.2.5.1` is field 5, component 1 of the third
+  segment), which is how you reach a second `OBX`.
+- Fields use HL7 numbers. For MSH, `MSH.9` is MSH-9 (MSH-1, the field separator, is not
+  included; MSH-2 holds the encoding characters).
+- A field is an object of its components, even with one component: `PID.8.1`, not `PID.8`.
+  Subcomponents stay in the component's text, with their `&`.
+- A field that repeats (`~`) shows its first repetition, plus `repetitions` with every
+  repetition in order; an empty repetition is `{}`, so positions never shift (`~456` has no
+  `PID.3.1`, and `PID.3.repetitions.1.1` is `456`).
+- Escape sequences (`\F\`, `\S\`, `\R\`, `\T\`, `\E\`, written with the message's escape
+  character) are decoded to the message's own delimiters; empty fields and components are left
+  out, so a missing value compares equal to `''`. An escaped `\T\` becomes the subcomponent
+  separator (`&`), so it cannot be told apart from a subcomponent boundary in the text.
+- The message's own delimiters (MSH-1 and MSH-2) are used; line breaks `\n` or `\r\n` between
+  segments are accepted.
+- The transform's output is JSON: the view above with your changes. Destinations receive it as
+  `application/json`; there is no conversion back to HL7 yet. A flow without transforms delivers
+  the HL7 message unchanged.
+- Destination transforms read the same view when the flow itself has no transform (otherwise they
+  read the flow's JSON output).
+- A message that does not start with an MSH segment is refused: `400` over the API, `AR` over
+  MLLP, even when the flow has no transform. The stored original is always the message as
+  received.
 
 ### Redirects
 
@@ -125,7 +186,8 @@ for that destination only:
   message is `sent` once the other destinations succeed. It is `filtered` when every destination
   drops it.
 - Once any destination has a `transform`, every message sent to the flow must be a JSON object
-  (`400` otherwise), even when the flow itself has no `transform`.
+  (`400` otherwise), even when the flow itself has no `transform`; with `inputFormat: hl7v2`, an
+  HL7 v2 message instead.
 - A destination transform that fails (for example `"x" is not a number`) counts as a failed
   delivery to that destination. It is retried and then dead-lettered like any other failure.
   Because the same input gives the same failure, fix the transform with an update: `queued`
@@ -284,7 +346,8 @@ the flow as a message, and then deletes it (or moves it into `moveTo`):
   destinations should tolerate a repeat. If the file cannot be deleted or moved (for example
   the server may read but not write the directory), it is logged and not read again until it
   changes.
-- A file the flow refuses (larger than 10 MiB, or not a JSON object when the flow has a transform)
+- A file the flow refuses (larger than 10 MiB, or not a JSON object when the flow has a transform,
+  or not HL7 v2 with `inputFormat: hl7v2`)
   is moved into `moveTo/rejected`, or, without `moveTo`, left where it is and skipped until it
   changes. Either way a `source.file.rejected` [event](#5-statistics-and-events) records the file
   and the reason.
@@ -333,7 +396,8 @@ curl -s -X POST http://127.0.0.1:9001/adt -d '{"PID":{"5":{"1":"Doe"}}}'
   `responseSelector`). Only the error codes below differ, because they are meant for a sending
   system. Each message has the metadata `source.http.path`.
 - Other paths get `404`, other methods `405` with an `Allow` header, a body over 10 MiB `413`, and
-  a message the flow refuses (for example not a JSON object when the flow has a transform) `400`.
+  a message the flow refuses (for example not a JSON object when the flow has a transform, or not
+  HL7 v2 with `inputFormat: hl7v2`) `400`.
   While the flow is stopping, or after it was removed, requests get `503`.
 - A message stored before a later failure is still answered `202` (the API answers `500`): the
   flow has it, and resending it would store it twice. A flow that is not running answers `503`
@@ -420,9 +484,11 @@ MSA|AA|MSG1
   delivery, and 10 MiB limit), with the metadata `source.mllp.controlId`. Delivery problems after
   that are retried and do not change the ACK.
 - `AR` (reject; sending the same message again will be rejected again): the frame is not an HL7 v2
-  message (no MSH segment), is larger than 10 MiB, or the flow refuses it. Today a flow with a
-  `transform` refuses HL7 messages, because transforms need JSON; use flows without `transform`
-  (the message is passed through unchanged) until HL7 parsing is added.
+  message (no MSH segment), is larger than 10 MiB, or the flow refuses it. A flow with a
+  `transform` needs `"inputFormat": "hl7v2"` to read HL7 messages (see
+  [Transform HL7 v2 messages](#transform-hl7-v2-messages)); without it the transform expects JSON
+  and every HL7 message is answered `AR`. A flow without transforms passes HL7 through unchanged.
+- A message the flow's filter drops is still answered `AA`: it was received and stored.
 - `AE` (error; try again later): the message was not stored, because the flow was stopping or
   processing failed.
 - MSA-3 says why in fixed words, never with message content.
@@ -481,7 +547,7 @@ Errors:
 
 | Response | Cause |
 |---|---|
-| `400` | The flow or one of its destinations has a `transform` (a `responseTransform` does not count) and the body is not a JSON object, or the body could not be read. |
+| `400` | The flow or one of its destinations has a `transform` (a `responseTransform` does not count) and the body is not a JSON object; the flow has `inputFormat: hl7v2` and the body is not an HL7 v2 message; or the body could not be read. |
 | `404` | Unknown flow. |
 | `409` | The flow is not `started`. |
 | `413` | Body larger than 10 MiB. |

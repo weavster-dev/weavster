@@ -1406,7 +1406,7 @@ func (a flowAdapter) replaceKeepingStatus(ctx context.Context, f gateway.Flow, k
 // toPipelineFlow converts a stored flow into the pipeline's definition,
 // strictly decoding its transform.
 func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
-	pf := pipeline.Flow{ID: f.ID, Paused: !flowlife.AcceptsMessages(f.Status), ResponseSelector: f.ResponseSelector}
+	pf := pipeline.Flow{ID: f.ID, Paused: !flowlife.AcceptsMessages(f.Status), ResponseSelector: f.ResponseSelector, InputFormat: f.InputFormat}
 	stopped := make(map[string]bool, len(f.StoppedDestinations))
 	for _, name := range f.StoppedDestinations {
 		stopped[name] = true
@@ -1491,8 +1491,9 @@ func (a ingestAdapter) ingest(ctx context.Context, flowID string, body []byte, m
 	// so the stored message never stops half-way. HTTP deliveries are
 	// bounded by each destination's timeoutMs (default 30 s).
 	res, err := a.pipe.ProcessWithMetadata(context.WithoutCancel(ctx), pf, body, metadata)
-	if errors.Is(err, pipeline.ErrInvalidMessage) {
-		return gateway.IngestResult{}, fmt.Errorf("%w: body must be a JSON object", gateway.ErrInvalidMessage)
+	var invalid *pipeline.InvalidMessageError
+	if errors.As(err, &invalid) {
+		return gateway.IngestResult{}, fmt.Errorf("%w: %s", gateway.ErrInvalidMessage, invalid.Reason)
 	}
 	if err != nil { // ID is set when the message was stored before the error
 		return gateway.IngestResult{ID: res.ID}, err

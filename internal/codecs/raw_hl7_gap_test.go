@@ -18,7 +18,7 @@ func TestRawSerializeUnsupportedType(t *testing.T) {
 	}
 }
 
-// TestUnescapeHL7AllSequences covers unescapeHL7's escape-replacement branches
+// TestUnescapeHL7AllSequences covers unescape's escape-replacement branches
 // (hl7v2.go), previously only exercised via the no-backslash fast path.
 func TestUnescapeHL7AllSequences(t *testing.T) {
 	cases := map[string]string{
@@ -31,8 +31,8 @@ func TestUnescapeHL7AllSequences(t *testing.T) {
 		`\F\\S\\R\\T\\E\`:   `|^~&\`,
 	}
 	for in, want := range cases {
-		if got := unescapeHL7(in); got != want {
-			t.Errorf("unescapeHL7(%q) = %q, want %q", in, got, want)
+		if got := HL7v2().unescape(in); got != want {
+			t.Errorf("unescape(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
