@@ -581,9 +581,14 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestDatabaseDestination</code> (SQLite file), <code>TestSQLSink</code>, <code>TestSQLSinkStatement</code> (PostgreSQL SQL), <code>TestSQLSinkErrors</code>, <code>TestSQLValue</code>, <code>TestDBPool</code>. Not yet run against a live PostgreSQL in CI (arrives with the PostgreSQL CI job). See <a href="../processing-messages/#write-rows-to-a-database">Write rows to a database</a>.</td>
 </tr>
 <tr>
-<td>Other sources and destinations (database source, SMTP, SOAP/REST web service, document)</td>
+<td><code>database</code> source: runs a read-only <code>SELECT</code> every <code>pollIntervalMs</code> and turns each row into a JSON message (<code>driver</code>, <code>dsnEnv</code>, <code>query</code>, <code>idColumn</code>, <code>update</code>, <code>maxRows</code>, <code>timeoutMs</code>), then marks it with <code>update</code>; at-least-once</td>
+<td>Implemented (wired)</td>
+<td><code>TestDatabaseSource</code> (SQLite file), <code>TestDatabaseSourcePoll</code>, <code>TestQuerySQL</code>, <code>TestJSONValue</code>. Interval polling only (cron schedules are §7). Not yet run against a live PostgreSQL in CI. See <a href="../processing-messages/#read-rows-from-a-database">Read rows from a database</a>.</td>
+</tr>
+<tr>
+<td>Other sources and destinations (SMTP, SOAP/REST web service, document)</td>
 <td>Library-only</td>
-<td>Only file, http, and mllp sources and http, file, mllp, flow, and database destinations are wired.</td>
+<td>Only file, http, mllp, and database sources and http, file, mllp, flow, and database destinations are wired.</td>
 </tr>
 <tr>
 <td>Per-flow and per-destination statistics (<code>GET /api/v1/flows/{id}/stats</code>)</td>
@@ -914,7 +919,7 @@ to the target.</p>
 </tr>
 <tr>
 <td>Database</td>
-<td>library</td>
+<td>wired</td>
 <td>wired</td>
 <td>at-least-once; with <code>keyColumn</code>, effectively once: the key is inserted with the row, and a retry after a lost success inserts nothing</td>
 <td>only with <code>keyColumn</code>: the key is inserted into that column</td>

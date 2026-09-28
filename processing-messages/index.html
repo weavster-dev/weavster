@@ -316,7 +316,7 @@ VS Code, for example, mistakes are underlined and fields are completed:</p>
 </tr>
 <tr>
 <td><code>source</code></td>
-<td>Where the flow receives messages on its own; see <a href="#read-files-from-a-directory">Read files from a directory</a>, <a href="#receive-messages-over-http">Receive messages over HTTP</a>, and <a href="#receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</a>. Without it, messages arrive only through the API.</td>
+<td>Where the flow receives messages on its own; see <a href="#read-files-from-a-directory">Read files from a directory</a>, <a href="#receive-messages-over-http">Receive messages over HTTP</a>, <a href="#receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</a>, and <a href="#read-rows-from-a-database">Read rows from a database</a>. Without it, messages arrive only through the API.</td>
 </tr>
 </tbody>
 </table>
@@ -1228,6 +1228,93 @@ weavster server --config weavster.yaml
   new reason is recorded again), and opening is tried again every second.</li>
 <li>The server reads the certificate and key files with its own permissions; only give
   <code>flows:edit</code> to users you trust with the files it can read.</li>
+</ul>
+<h3 id="read-rows-from-a-database">Read rows from a database</h3>
+<p>A flow with a <code>database</code> source runs a query every few seconds while it is started and turns each
+row into a message: a JSON object of the row's columns. Each row is then marked with <code>update</code>,
+and the query must leave marked rows out, so it returns only rows not yet taken:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;orders-out&quot;,
+  &quot;source&quot;: {
+    &quot;type&quot;: &quot;database&quot;, &quot;driver&quot;: &quot;postgres&quot;, &quot;dsnEnv&quot;: &quot;WEAVSTER_DB_HIS&quot;,
+    &quot;query&quot;: &quot;SELECT id, mrn, test_code, ordered_at FROM his.orders WHERE exported = false ORDER BY id&quot;,
+    &quot;idColumn&quot;: &quot;id&quot;,
+    &quot;update&quot;: {&quot;table&quot;: &quot;his.orders&quot;, &quot;key&quot;: &quot;id&quot;, &quot;set&quot;: {&quot;exported&quot;: &quot;true&quot;}},
+    &quot;pollIntervalMs&quot;: 5000
+  },
+  &quot;destinations&quot;: [{&quot;name&quot;: &quot;lab&quot;, &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://lab.example.com/orders&quot;}]
+}
+</code></pre>
+<p>With the connection string in the server's environment
+(<code>export WEAVSTER_DB_HIS='postgres://reader:secret@his.example.com/his?sslmode=verify-full'</code>),
+each new order becomes a message such as:</p>
+<pre><code class="language-json">{&quot;id&quot;: 42, &quot;mrn&quot;: &quot;A-1001&quot;, &quot;ordered_at&quot;: &quot;2026-09-28T10:00:00Z&quot;, &quot;test_code&quot;: &quot;GLU&quot;}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>driver</code></td>
+<td>Required. <code>postgres</code>, or <code>sqlite</code> (the connection string is then a database file path).</td>
+</tr>
+<tr>
+<td><code>dsnEnv</code></td>
+<td>Required. The server environment variable holding the connection string, <code>WEAVSTER_DB_…</code>.</td>
+</tr>
+<tr>
+<td><code>query</code></td>
+<td>Required. One <code>SELECT</code> (or <code>WITH … SELECT</code>) statement, without <code>;</code> inside it and without <code>INSERT</code>, <code>UPDATE</code>, <code>DELETE</code>, <code>MERGE</code>, or schema statements anywhere in it. It runs read-only: a PostgreSQL <code>READ ONLY</code> transaction, SQLite <code>query_only</code>.</td>
+</tr>
+<tr>
+<td><code>idColumn</code></td>
+<td>Required. The column of the result that identifies a row: the value <code>update</code> matches <code>key</code> against, kept with the message as the metadata <code>source.database.id</code>.</td>
+</tr>
+<tr>
+<td><code>update</code></td>
+<td>Required. <code>table</code> (or <code>schema.table</code>), <code>key</code> (the table's column holding the row id), and <code>set</code> (column → value) mark each row once its message is stored: <code>UPDATE table SET … WHERE key = &lt;id&gt;</code>.</td>
+</tr>
+<tr>
+<td><code>pollIntervalMs</code></td>
+<td>How often the query runs, 1000–3600000 (default 5000).</td>
+</tr>
+<tr>
+<td><code>maxRows</code></td>
+<td>Rows read per poll, 1–10000 (default 100): the query runs with <code>LIMIT maxRows</code>, and the rest come with the next polls once these are marked. A poll also stops reading once the rows it holds reach 64 MiB.</td>
+</tr>
+<tr>
+<td><code>timeoutMs</code></td>
+<td>Time allowed for the query and for each update, 1000–120000 (default 30000).</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Values become JSON: numbers, <code>true</code>/<code>false</code>, text, <code>null</code>; times as RFC 3339 text; bytes as
+  text, or base64 when they are not UTF-8. The flow reads them with <code>inputFormat: json</code> (the
+  default); other input formats are refused for a database source.</li>
+<li>A row is marked once its message is stored, also when processing that message then fails
+  (the failure is the message's: it is retried or dead-lettered, and you can reprocess it).
+  Delivery is at least once: a server that stops between storing a row and marking it reads the
+  row again at the next start (look for two messages with the same <code>source.database.id</code>).</li>
+<li>The query must leave out the rows <code>update</code> marked (<code>WHERE exported = false</code> above); otherwise
+  it returns the same rows again and they are stored again.</li>
+<li><code>update</code> values are sent as text and converted to the column's type by the database; names are
+  checked and quoted as for the <a href="#write-rows-to-a-database">database destination</a> (case-sensitive
+  in PostgreSQL). Each update is one statement, its own transaction.</li>
+<li>Each flow's source polls on its own, so a slow flow does not delay another's; a flow's next poll
+  starts only after its previous one finished.</li>
+<li>A row the flow cannot store (larger than the 10 MiB message limit) is not marked, is reported
+  once as a <code>source.database.refused</code> event with its id, and is skipped until the flow restarts.</li>
+<li>A failed poll (an unset variable, a query or update error) is logged and recorded once as a
+  <code>source.database.failed</code> event with the reason, for example
+  <code>database: environment variable WEAVSTER_DB_HIS is not set</code>; it is retried at every interval.</li>
+<li>Give the database user only what the source needs: <code>SELECT</code> on the query's tables, and
+  <code>UPDATE</code> on the marked columns.</li>
+<li>Cron schedules are not available yet; the query runs every <code>pollIntervalMs</code>.</li>
 </ul>
 <h3 id="receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</h3>
 <p>A flow with an mllp <code>source</code> accepts HL7 v2 messages over TCP, framed with the minimal lower
