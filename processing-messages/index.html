@@ -247,6 +247,11 @@ JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a>,
 <td><code>reject</code> drops the message when <code>when</code> is true; <code>accept</code> drops it when <code>when</code> is false.</td>
 </tr>
 <tr>
+<td><code>build</code></td>
+<td><code>template</code>, optional <code>format</code> (<code>json</code>, <code>hl7v2</code>, <code>xml</code>, <code>text</code>)</td>
+<td>Renders the output from <code>template</code>, replacing each <code>{{path}}</code>. Last step only; see <a href="#build-the-output-build">Build the output</a>.</td>
+</tr>
+<tr>
 <td><code>destinationSet</code></td>
 <td><code>exclude</code> (destination names), optional <code>when</code></td>
 <td>Excludes those destinations for this message when <code>when</code> is true (always without <code>when</code>). Flow <code>transform</code> only; see <a href="#route-by-content-destinationset">Route by content</a>.</td>
@@ -259,7 +264,6 @@ JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a>,
   or <code>&lt;operand&gt; == &lt;operand&gt;</code> / <code>&lt;operand&gt; != &lt;operand&gt;</code>. An operand is a path, a quoted string
   (<code>'x'</code> or <code>"x"</code>), a number (<code>3</code>, <code>-1.5</code>), or <code>true</code>/<code>false</code>. A missing path compares equal
   to <code>''</code>. No other operators exist.</li>
-<li><code>build</code> steps are not supported yet.</li>
 <li>Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.</li>
 </ul>
 <p>The transform format is published as
@@ -335,7 +339,7 @@ VS Code, for example, mistakes are underlined and fields are completed:</p>
 </tr>
 <tr>
 <td><code>url</code></td>
-<td>Required for <code>http</code>: an absolute <code>http://</code> or <code>https://</code> URL. Each delivery is a request (<code>POST</code> unless <code>method</code> says otherwise) with <code>Content-Type: application/json</code> (transformed messages) or <code>application/octet-stream</code> (passthrough). The request carries an <code>Idempotency-Key</code> header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates.</td>
+<td>Required for <code>http</code>: an absolute <code>http://</code> or <code>https://</code> URL. Each delivery is a request (<code>POST</code> unless <code>method</code> says otherwise) with <code>Content-Type: application/json</code> (transformed messages), the <a href="#build-the-output-build"><code>build</code></a> format's type, or <code>application/octet-stream</code> (passthrough). The request carries an <code>Idempotency-Key</code> header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates.</td>
 </tr>
 <tr>
 <td><code>dir</code></td>
@@ -411,11 +415,11 @@ paths name segment, field, and component the way HL7 does:</p>
   separator (<code>&amp;</code>), so it cannot be told apart from a subcomponent boundary in the text.</li>
 <li>The message's own delimiters (MSH-1 and MSH-2) are used; line breaks <code>\n</code> or <code>\r\n</code> between
   segments are accepted.</li>
-<li>The transform's output is JSON: the view above with your changes. Destinations receive it as
-  <code>application/json</code>; there is no conversion back to HL7 yet. A flow without transforms delivers
-  the HL7 message unchanged.</li>
+<li>The transform's output is JSON (the view above with your changes), unless it ends with a
+  <a href="#build-the-output-build"><code>build</code></a> step, which can produce HL7 v2 again. A flow without
+  transforms delivers the HL7 message unchanged.</li>
 <li>Destination transforms read the same view when the flow itself has no transform (otherwise they
-  read the flow's JSON output).</li>
+  read the flow's output: JSON, or the view of what its <code>build</code> step produced).</li>
 <li>A message that does not start with an MSH segment is refused: <code>400</code> over the API, <code>AR</code> over
   MLLP, even when the flow has no transform. The stored original is always the message as
   received.</li>
@@ -462,8 +466,9 @@ paths name segment, field, and component the way HL7 does:</p>
   joined into the parent's <code>#text</code>.</li>
 <li>Any character set the document declares (<code>encoding="ISO-8859-1"</code>, <code>windows-1252</code>, …) is
   accepted, and a leading UTF-8 byte order mark is skipped.</li>
-<li>The transform's output is JSON, delivered as <code>application/json</code>; there is no conversion back to
-  XML yet. The stored original is the document as received.</li>
+<li>The transform's output is JSON, delivered as <code>application/json</code>, unless it ends with a
+  <a href="#build-the-output-build"><code>build</code></a> step (for example <code>format: xml</code>). The stored original is the
+  document as received.</li>
 <li>Only well-formed documents with one root element are accepted, with at most 256 levels of
   nesting and 100,000 elements, every namespace prefix declared, no attribute twice, the XML
   declaration (if any) first, and at most one <code>DOCTYPE</code> before the root. Anything else is refused
@@ -528,7 +533,8 @@ the body of a request) as rows:</p>
   like any other change to a flow's definition.</li>
 <li>The whole file is one message. A transform reaches rows by position (<code>rows.0</code>, <code>rows.1</code>); there
   are no loops yet, and splitting a file into one message per row comes later.</li>
-<li>The transform's output is JSON, delivered as <code>application/json</code>.</li>
+<li>The transform's output is JSON, delivered as <code>application/json</code>, unless it ends with a
+  <a href="#build-the-output-build"><code>build</code></a> step.</li>
 </ul>
 <h3 id="send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</h3>
 <p>An <code>mllp</code> destination sends each message to another HL7 system over TCP, framed with MLLP, and
@@ -541,10 +547,11 @@ waits for its ACK:</p>
 }
 </code></pre>
 <ul>
-<li>The destination sends the HL7 message as received. The flow must have <code>"inputFormat":
-  "hl7v2"</code> (so only HL7 v2 messages are accepted), and neither the flow nor the destination may
-  have a <code>transform</code>: transforms output JSON, which an HL7 receiver cannot take, and conversion
-  back to HL7 is not available yet. Such a flow is refused when you create it.</li>
+<li>The destination must receive an HL7 v2 message: either the message as received (the flow has
+  <code>"inputFormat": "hl7v2"</code> and neither the flow nor the destination has a <code>transform</code>), or the
+  output of a <a href="#build-the-output-build"><code>build</code></a> step with <code>"format": "hl7v2"</code> at the end of the
+  flow's or the destination's transform. Anything else (JSON, XML) is refused when you create the
+  flow.</li>
 <li>A message containing the MLLP end bytes (<code>0x1C 0x0D</code>) cannot be framed; its delivery fails.</li>
 <li>Each delivery opens its own connection, sends one frame, and waits for one framed reply within
   <code>timeoutMs</code> (default 30 seconds; replies over 1 MiB are not read).</li>
@@ -580,7 +587,8 @@ instead of losing messages. To follow them, set <code>maxRedirects</code>:</p>
    <a href="#transform-xml-documents">XML</a>, or <a href="#transform-delimited-text-csv">delimited</a> view). Each
    step sees what the steps before it produced. If a <code>filter</code> drops the message it is
    <code>filtered</code>; if a step fails (for example <code>"x" is not a number</code>) it is <code>errored</code>. Either way
-   nothing is delivered.</li>
+   nothing is delivered. A final <a href="#build-the-output-build"><code>build</code></a> step turns the result into
+   the output (HL7 v2, XML, text, or JSON); otherwise the output is the document as JSON.</li>
 <li><strong>Destination transform</strong>: for each destination, its own
    <a href="#per-destination-transforms-and-filters"><code>transform</code></a> steps in order, on the flow's output
    (not the original message). A <code>filter</code> here drops the message for that destination only. A
@@ -604,6 +612,67 @@ instead of losing messages. To follow them, set <code>maxRedirects</code>:</p>
 itself carries: a message without an <code>adult</code> field (a missing value compares equal to <code>''</code>) is
 filtered, whatever <code>age.flag</code> says. A destination's filter on <code>adult</code>, by contrast, always sees
 the flow's finished output, including what the <code>map</code> set.</p>
+<h3 id="build-the-output-build">Build the output (<code>build</code>)</h3>
+<p>A <code>build</code> step, as the <strong>last</strong> step of a flow's or destination's <code>transform</code>, writes the output
+from a template instead of sending the document as JSON. This is how a flow sends HL7 v2 (or XML,
+or text) again. For example, receive ADT over MLLP and relay a reshaped message to a lab:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;adt-relay&quot;,
+  &quot;inputFormat&quot;: &quot;hl7v2&quot;,
+  &quot;source&quot;: {&quot;type&quot;: &quot;mllp&quot;, &quot;address&quot;: &quot;:2575&quot;},
+  &quot;transform&quot;: {&quot;steps&quot;: [
+    {&quot;set&quot;: {&quot;field&quot;: &quot;name&quot;, &quot;expr&quot;: &quot;{{PID.5.1}}^{{PID.5.2}}&quot;}},
+    {&quot;build&quot;: {&quot;format&quot;: &quot;hl7v2&quot;, &quot;template&quot;: &quot;MSH|^~\\&amp;|WEAVSTER|H|LAB|H|{{MSH.7.1}}||ADT^A08|{{MSH.10.1}}|P|2.5\nPID|1||{{PID.3.1}}^^^MRN||{{name}}&quot;}}
+  ]},
+  &quot;destinations&quot;: [{&quot;name&quot;: &quot;lab&quot;, &quot;type&quot;: &quot;mllp&quot;, &quot;address&quot;: &quot;lab.example.com:2575&quot;}]
+}
+</code></pre>
+<table>
+<thead>
+<tr>
+<th><code>format</code></th>
+<th>Output</th>
+<th>Content-Type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>json</code> (default)</td>
+<td>The template must render a JSON object, and every <code>{{path}}</code> must be inside a string (<code>"name": "{{name}}"</code>), so values are always text.</td>
+<td><code>application/json</code></td>
+</tr>
+<tr>
+<td><code>hl7v2</code></td>
+<td>The template starts with an MSH segment using the standard delimiters (a vertical bar between fields, <code>^~\&amp;</code> in MSH-2); segments may be written on separate lines and are sent separated by CR.</td>
+<td><code>x-application/hl7-v2+er7</code></td>
+</tr>
+<tr>
+<td><code>xml</code></td>
+<td>The template must render a well-formed XML document; <code>{{path}}</code> may appear only in element text and quoted attribute values (not in tag names, comments, CDATA sections, or declarations); an XML declaration may only say <code>encoding="UTF-8"</code>.</td>
+<td><code>application/xml</code></td>
+</tr>
+<tr>
+<td><code>text</code></td>
+<td>Any text.</td>
+<td><code>text/plain; charset=utf-8</code></td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>Each <code>{{path}}</code> is replaced by that value (an empty string when missing), <strong>escaped for the
+  format</strong>, so a value can never change the output's structure: in <code>hl7v2</code>, <code>| ^ ~ \ &amp;</code> become
+  <code>\F\ \S\ \R\ \E\ \T\</code>, and line breaks and MLLP framing bytes hex escapes such as <code>\X0D\</code> (in the example above, the
+  <code>^</code> in <code>name</code> is sent as <code>\S\</code>, so the name stays one field); in <code>xml</code>, <code>&amp; &lt; &gt; " '</code> become
+  entities; in <code>json</code>, values are escaped as the inside of a JSON string. <code>text</code> inserts values
+  as they are. To send numbers or booleans as JSON, leave out <code>build</code>: a transform's document is
+  sent as JSON with its types (use <code>map</code> with <code>type</code>).</li>
+<li>If the result is not a valid document of its format, the step fails and the message is
+  <code>errored</code>.</li>
+<li>A destination transform after a flow <code>build</code> reads that output's view: HL7 v2 paths after
+  <code>format: hl7v2</code>, XML paths after <code>format: xml</code>. After <code>format: text</code> a destination transform
+  cannot read it and is refused.</li>
+<li>A <code>responseTransform</code> cannot use <code>build</code>: the reply returned to the sender is JSON.</li>
+</ul>
 <h3 id="route-by-content-destinationset">Route by content (<code>destinationSet</code>)</h3>
 <p>A <code>destinationSet</code> step in the flow's <code>transform</code> leaves destinations out for a message, based on
 its content:</p>
@@ -648,7 +717,7 @@ for that destination only:</p>
 ]
 </code></pre>
 <ul>
-<li>The destination receives the result as <code>application/json</code>.</li>
+<li>The destination receives the result as <code>application/json</code>, or in its <code>build</code> step's format.</li>
 <li>A destination whose filter drops the message is not delivered to and counts as done. A
   <a href="../flow-lifecycle/#stopping-one-destination">stopped</a> destination still holds the message
   until you start it; its filter is checked then. The

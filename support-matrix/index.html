@@ -508,7 +508,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>mllp</code> destination: sends HL7 v2 over TCP (<code>address</code>, <code>timeoutMs</code>) and succeeds only on an <code>AA</code>/<code>CA</code> ACK for the message's control id</td>
 <td>Implemented (wired)</td>
-<td><code>TestMLLPDestination</code>, <code>TestMLLPSinkACK</code>. Needs <code>inputFormat: hl7v2</code> and no transforms (HL7 passthrough); a connection per delivery; no TLS yet. See <a href="../processing-messages/#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>.</td>
+<td><code>TestMLLPDestination</code>, <code>TestMLLPSinkACK</code>. Needs an HL7 v2 message: HL7 passthrough (<code>inputFormat: hl7v2</code>, no transforms) or a <code>build</code> step with <code>format: hl7v2</code>; a connection per delivery; no TLS yet. See <a href="../processing-messages/#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>.</td>
 </tr>
 <tr>
 <td>File source: a flow polls a directory (<code>source: {type: file, dir, pattern, pollIntervalMs, moveTo}</code>); files deleted or moved after the message is stored; rejected files moved aside or skipped</td>
@@ -531,24 +531,29 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestProcessingOrder</code>, <code>TestDestinationTransforms</code>. See <a href="../processing-messages/#processing-order">Processing order</a>.</td>
 </tr>
 <tr>
-<td>Transform schema: <code>agent-docs/schemas/transform.schema.json</code> describes exactly the steps that run (<code>map</code>, <code>set</code>, <code>filter</code>, <code>destinationSet</code>); flow, destination, and response transforms are checked against it by the API and <code>config validate</code></td>
+<td><code>build</code> step: the last step of a flow or destination transform renders the output from a template as JSON, HL7 v2, XML, or text, with values escaped for the format and the result checked</td>
 <td>Implemented (wired)</td>
-<td><code>TestTransformSchema</code>, <code>TestValidateRefuses</code>, <code>TestSchemaPublishedAndMatchesTypes</code>. <code>build</code> is refused until it runs.</td>
+<td><code>TestBuildOutput</code>, <code>TestProcessBuild</code>, <code>TestBuild</code>. See <a href="../processing-messages/#build-the-output-build">Build the output</a>.</td>
+</tr>
+<tr>
+<td>Transform schema: <code>agent-docs/schemas/transform.schema.json</code> describes exactly the steps that run (<code>map</code>, <code>set</code>, <code>filter</code>, <code>destinationSet</code>, <code>build</code>); flow, destination, and response transforms are checked against it by the API and <code>config validate</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestTransformSchema</code>, <code>TestValidateRefuses</code>, <code>TestSchemaPublishedAndMatchesTypes</code>. <code>destinationSet.include</code> is refused (D-20).</td>
 </tr>
 <tr>
 <td>Delimited input: <code>inputFormat: delimited</code> (<code>delimited: {delimiter, header}</code>) gives transforms <code>{"rows": [...]}</code> (objects by column name, or lists) with RFC 4180 quoting</td>
 <td>Implemented (wired)</td>
-<td><code>TestDelimitedInput</code>, <code>TestProcessDelimitedInput</code>, <code>TestDelimitedJSON</code>, <code>TestCheckInput</code>. One message per file; at most 100,000 rows; output is JSON. See <a href="../processing-messages/#transform-delimited-text-csv">Transform delimited text</a>.</td>
+<td><code>TestDelimitedInput</code>, <code>TestProcessDelimitedInput</code>, <code>TestDelimitedJSON</code>, <code>TestCheckInput</code>. One message per file; at most 100,000 rows; output is JSON unless a <code>build</code> step produces another format. See <a href="../processing-messages/#transform-delimited-text-csv">Transform delimited text</a>.</td>
 </tr>
 <tr>
 <td>XML input: <code>inputFormat: xml</code> gives transforms the document as JSON (<code>order.@id</code>, <code>order.patient.name.#text</code>, repeated names as lists, <code>#ns</code>); DTDs never processed and declared entities never expanded (predefined ones such as <code>&amp;amp;</code> are decoded)</td>
 <td>Implemented (wired)</td>
-<td><code>TestXMLInput</code>, <code>TestProcessXMLInput</code>, <code>TestXMLJSON</code>. Output is JSON; order between different child names and mixed-content position not kept; at most 256 levels and 100,000 elements. See <a href="../processing-messages/#transform-xml-documents">Transform XML documents</a>.</td>
+<td><code>TestXMLInput</code>, <code>TestProcessXMLInput</code>, <code>TestXMLJSON</code>. Output is JSON unless a <code>build</code> step produces XML; order between different child names and mixed-content position not kept; at most 256 levels and 100,000 elements. See <a href="../processing-messages/#transform-xml-documents">Transform XML documents</a>.</td>
 </tr>
 <tr>
 <td>HL7 v2 input: <code>inputFormat: hl7v2</code> gives transforms the message as JSON (<code>PID.5.1</code>, repetitions, every segment in order)</td>
 <td>Implemented (wired)</td>
-<td><code>TestHL7Input</code>, <code>TestProcessHL7Input</code>, <code>TestHL7JSON</code>. Output is JSON; no conversion back to HL7 yet. See <a href="../processing-messages/#transform-hl7-v2-messages">Transform HL7 v2 messages</a>.</td>
+<td><code>TestHL7Input</code>, <code>TestProcessHL7Input</code>, <code>TestHL7JSON</code>. Output is JSON unless a <code>build</code> step produces HL7 v2 again. See <a href="../processing-messages/#transform-hl7-v2-messages">Transform HL7 v2 messages</a>.</td>
 </tr>
 <tr>
 <td>MLLP source: a flow accepts HL7 v2 over TCP (<code>source: {type: mllp, address}</code>) while it is started and answers each message with an HL7 ACK (AA stored, AR refused, AE not stored)</td>
