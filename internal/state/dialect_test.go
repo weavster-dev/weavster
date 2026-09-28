@@ -89,3 +89,18 @@ func TestTextValue(t *testing.T) {
 		}
 	}
 }
+
+// TestStorableTextCollisions: keys that normalise to the same text keep one
+// value, always the same one: the key given as-is wins, then the
+// bytewise-lower key.
+func TestStorableTextCollisions(t *testing.T) {
+	for range 20 { // map iteration order varies between runs
+		m := storableText(Message{
+			Metadata: map[string]string{"a\x00b": "nul", "ab": "plain", "c\x00": "c1", "\x00c": "c2"},
+			Attempts: map[string]DestinationAttempt{"o\x00ut": {Attempts: 1}, "out": {Attempts: 2}},
+		})
+		if m.Metadata["ab"] != "plain" || m.Metadata["c"] != "c2" || len(m.Metadata) != 2 || m.Attempts["out"].Attempts != 2 || len(m.Attempts) != 1 {
+			t.Fatalf("storableText = %+v", m)
+		}
+	}
+}

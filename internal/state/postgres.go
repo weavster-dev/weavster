@@ -17,6 +17,8 @@ func OpenPostgres(ctx context.Context, connString string, maxConns int) (Store, 
 		return nil, err
 	}
 	db.SetMaxOpenConns(maxConns)
-	db.SetMaxIdleConns(maxConns) // keep the pool: each new connection is a TLS handshake
+	if maxConns > 0 {
+		db.SetMaxIdleConns(maxConns) // keep the pool: each new connection is a TLS handshake
+	}
 	return openSQLStore(ctx, db, true)
 }

@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 	"time"
 )
 
@@ -127,20 +128,43 @@ func (s *sqlStore) Close() error { return s.db.Close() }
 func storableText(m Message) Message {
 	if len(m.Metadata) > 0 {
 		md := make(map[string]string, len(m.Metadata))
-		for k, v := range m.Metadata {
-			md[textValue(k)] = textValue(v)
+		for _, k := range storableKeys(m.Metadata) {
+			if _, taken := md[textValue(k)]; !taken {
+				md[textValue(k)] = textValue(m.Metadata[k])
+			}
 		}
 		m.Metadata = md
 	}
 	if len(m.Attempts) > 0 {
 		at := make(map[string]DestinationAttempt, len(m.Attempts))
-		for d, a := range m.Attempts {
-			a.LastError, a.LastCode = textValue(a.LastError), textValue(a.LastCode)
-			at[textValue(d)] = a
+		for _, d := range storableKeys(m.Attempts) {
+			if _, taken := at[textValue(d)]; !taken {
+				a := m.Attempts[d]
+				a.LastError, a.LastCode = textValue(a.LastError), textValue(a.LastCode)
+				at[textValue(d)] = a
+			}
 		}
 		m.Attempts = at
 	}
 	return m
+}
+
+// storableKeys orders a map's keys so that when two normalise to the same
+// text the survivor is always the same one: a key stored as given wins over
+// one that normalisation changed, and otherwise the bytewise-lower key wins.
+func storableKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		ci, cj := textValue(keys[i]) != keys[i], textValue(keys[j]) != keys[j]
+		if ci != cj {
+			return cj
+		}
+		return keys[i] < keys[j]
+	})
+	return keys
 }
 
 func (s *sqlStore) Put(ctx context.Context, m Message) error {

@@ -127,6 +127,7 @@ func TestLookupHandlers(t *testing.T) {
 		{"put no value", http.MethodPut, "/api/v1/lookups/mrn/A-3", `{}`, cfg, http.StatusBadRequest, `{\"value\": \"text\"}`},
 		{"put long key", http.MethodPut, "/api/v1/lookups/mrn/" + strings.Repeat("k", maxLookupKey+1), `{"value":"w"}`, cfg, http.StatusBadRequest, "1-512 characters"},
 		{"put big value", http.MethodPut, "/api/v1/lookups/mrn/k", `{"value":"` + strings.Repeat("x", maxLookupValue+1) + `"}`, cfg, http.StatusBadRequest, "64 KiB"},
+		{"put NUL value", http.MethodPut, "/api/v1/lookups/mrn/k", `{"value":"a\u0000b"}`, cfg, http.StatusBadRequest, "without NUL"},
 		{"delete", http.MethodDelete, "/api/v1/lookups/mrn/A-3", ``, cfg, http.StatusNoContent, ""},
 		{"delete missing", http.MethodDelete, "/api/v1/lookups/mrn/A-3", ``, cfg, http.StatusNotFound, "lookup not found"},
 		{"replace", http.MethodPost, "/api/v1/lookups/mrn/import?replace=true", `{"only":"1"}`, cfg, http.StatusOK, `{"imported":1}`},

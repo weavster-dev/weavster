@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"strings"
 	"unicode"
 	"unicode/utf8"
 
@@ -55,8 +56,8 @@ func checkLookupKey(k string) error {
 }
 
 func checkLookupValue(k, v string) error {
-	if len(v) > maxLookupValue || !utf8.ValidString(v) {
-		return fmt.Errorf("value of %q must be UTF-8 text of at most 64 KiB", k)
+	if len(v) > maxLookupValue || !utf8.ValidString(v) || strings.ContainsRune(v, 0) {
+		return fmt.Errorf("value of %q must be UTF-8 text of at most 64 KiB, without NUL characters", k)
 	}
 	return nil
 }

@@ -90,9 +90,11 @@ func TestPostgresConcurrentMigrate(t *testing.T) {
 		t.Skip("WEAVSTER_TEST_POSTGRES_DSN not set")
 	}
 	errs := make(chan error, 4)
-	for range 4 {
+	for i := range 4 {
 		go func() {
-			s, err := OpenPostgres(context.Background(), dsn, 2)
+			// A pool of one connection too: migrating must not wait for
+			// a second one while it holds the lock.
+			s, err := OpenPostgres(context.Background(), dsn, 1+i%2)
 			if err == nil {
 				err = s.Close()
 			}
