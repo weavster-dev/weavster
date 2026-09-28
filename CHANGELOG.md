@@ -102,6 +102,7 @@ All notable changes to this project are documented here, following
 - Database source (#347): `source: {type: database, driver, dsnEnv, query, idColumn, update}` runs a read-only SELECT every `pollIntervalMs` and sends each row through the flow as a JSON message (`source.database.id` metadata), then marks it with the required `update`, a parameterized `UPDATE` (at-least-once).
 - Cron schedules for polling sources (#349): file and database sources take `schedule` instead of `pollIntervalMs` — a 5-field cron expression or a descriptor (`@hourly`, `@every 30s`), optionally with `CRON_TZ=Area/City`; the time zone database is built in.
 - Attempt codes (#351): each destination's attempt record keeps `lastCode` — the last failure's protocol-specific code (`http:503`, `mllp:AE`, `sqlstate:42P01`, `net:timeout`, `tls:certificate`, `flow:not-running`, …) — and `lastAttemptAt`; stored (migration 8) and shown with the message.
+- End-to-end acceptance test (#353): a file source, a transform with a filter, HTTP and file destinations, stored statuses, statistics, events, topology, and a queued delivery completing after a restart, all through the real server (`TestEndToEnd`).
 
 ### Changed
 
