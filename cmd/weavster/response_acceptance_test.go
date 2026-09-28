@@ -30,9 +30,9 @@ func TestResponseSelector(t *testing.T) {
 	defer stop()
 
 	for body, want := range map[string]string{
-		`{"id":"x","responseSelector":"nope","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `"}]}`:                                                         `no destination named \"nope\"`, // JSON-escaped in the error envelope
-		`{"id":"x","responseSelector":"a","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `","responseTransform":{"steps":[{"build":{"template":"x"}}]}}]}`: "not supported yet",
-		`{"id":"x","responseSelector":"a","destinations":[{"name":"a","type":"file","dir":"` + t.TempDir() + `"}]}`:                                                        "sends no reply",
+		`{"id":"x","responseSelector":"nope","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `"}]}`:                                                               `no destination named \"nope\"`, // JSON-escaped in the error envelope
+		`{"id":"x","responseSelector":"a","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `","responseTransform":{"steps":[{"map":{"from":"a..b","to":"c"}}]}}]}`: `invalid path \"a..b\"`,
+		`{"id":"x","responseSelector":"a","destinations":[{"name":"a","type":"file","dir":"` + t.TempDir() + `"}]}`:                                                              "sends no reply",
 	} {
 		if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows", body, admin); code != http.StatusBadRequest || !strings.Contains(resp, want) {
 			t.Errorf("create %s: %d %q, want 400 with %q", body, code, resp, want)

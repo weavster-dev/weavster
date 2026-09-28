@@ -59,7 +59,7 @@ func TestPipelineEndToEnd(t *testing.T) {
 	  ]
 	}`
 	createFlow(t, c, flow)
-	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"bad","transform":{"name":"t","steps":[{"build":{"template":"x"}}]}}`, admin); status != http.StatusBadRequest || !strings.Contains(body, "not supported yet") {
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"bad","transform":{"name":"t","steps":[{"map":{"from":"a..b","to":"c"}}]}}`, admin); status != http.StatusBadRequest || !strings.Contains(body, `invalid path \"a..b\"`) {
 		t.Errorf("invalid flow: %d %q, want 400", status, body)
 	}
 

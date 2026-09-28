@@ -39,7 +39,8 @@ func TestFlowUpdateAndEnable(t *testing.T) {
 		{"null body", `null`, "must be a JSON object"},
 		{"status key", `{"name":"x","status":"stopped"}`, "status is managed"},
 		{"id change", `{"id":"g","name":"x"}`, "cannot be changed"},
-		{"bad transform", `{"transform":{"name":"t","steps":[{"build":{"template":"x"}}]}}`, "not supported yet"},
+		{"bad transform", `{"transform":{"name":"t","steps":[{"map":{"from":"a..b","to":"c"}}]}}`, `invalid path \"a..b\"`},
+		{"unsupported step", `{"transform":{"name":"t","steps":[{"build":{"template":"x"}}]}}`, "additionalProperties 'build' not allowed"},
 	} {
 		if code, body, _ := c.do(http.MethodPut, "/api/v1/flows/f", tc.body, admin); code != http.StatusBadRequest || !strings.Contains(body, tc.want) {
 			t.Errorf("%s: %d %q, want 400 %q", tc.name, code, body, tc.want)

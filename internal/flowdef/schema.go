@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v5"
+
+	"github.com/weavster-dev/weavster/internal/compiler"
 )
 
 // Schema is the flow-definition JSON Schema, published as
@@ -57,6 +59,10 @@ func mustCompileFlowSchema() *jsonschema.Schema {
 	c := jsonschema.NewCompiler()
 	c.Draft = jsonschema.Draft2020
 	if err := c.AddResource(SchemaID, bytes.NewReader(Schema)); err != nil {
+		panic(err)
+	}
+	// Transforms are described by the DSL's own schema.
+	if err := c.AddResource(compiler.SchemaID, bytes.NewReader(compiler.Schema)); err != nil {
 		panic(err)
 	}
 	return c.MustCompile(SchemaID)

@@ -13,6 +13,7 @@ import (
 	"github.com/santhosh-tekuri/jsonschema/v5"
 
 	"github.com/weavster-dev/weavster/internal/artifact"
+	transform "github.com/weavster-dev/weavster/internal/compiler"
 	"github.com/weavster-dev/weavster/internal/flowdef"
 )
 
@@ -190,6 +191,9 @@ var configSchema = sync.OnceValues(func() (*jsonschema.Schema, error) {
 	compiler := jsonschema.NewCompiler()
 	compiler.Draft = jsonschema.Draft2020
 	if err := compiler.AddResource(flowdef.SchemaID, bytes.NewReader(flowdef.Schema)); err != nil {
+		return nil, err
+	}
+	if err := compiler.AddResource(transform.SchemaID, bytes.NewReader(transform.Schema)); err != nil {
 		return nil, err
 	}
 	if err := compiler.AddResource("config.schema.json", bytes.NewReader(schema)); err != nil {
