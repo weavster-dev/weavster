@@ -511,9 +511,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestMLLPDestination</code>, <code>TestMLLPSinkACK</code>. Needs an HL7 v2 message: HL7 passthrough (<code>inputFormat: hl7v2</code>, no transforms) or a <code>build</code> step with <code>format: hl7v2</code>; a connection per delivery; no TLS yet. See <a href="../processing-messages/#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>.</td>
 </tr>
 <tr>
-<td>File source: a flow polls a directory (<code>source: {type: file, dir, pattern, pollIntervalMs, moveTo}</code>); files deleted or moved after the message is stored; rejected files moved aside or skipped</td>
+<td>File source: a flow polls a directory (<code>source: {type: file, dir, pattern, pollIntervalMs, moveTo, recursive}</code>); files deleted or moved after the message is stored; rejected files moved aside or skipped</td>
 <td>Implemented (wired)</td>
-<td><code>TestFileSource</code>, <code>TestCheckSource</code>. At-least-once; only while the flow is started; regular files directly in <code>dir</code>, not symlinks or subdirectories. See <a href="../processing-messages/#read-files-from-a-directory">Read files from a directory</a>.</td>
+<td><code>TestFileSource</code>, <code>TestFileSourceRecursive</code>, <code>TestListFilesRecursive</code>, <code>TestCheckSource</code>. At-least-once; only while the flow is started; regular files in <code>dir</code> (and, with <code>recursive</code>, its subdirectories up to 32 levels), never through symbolic links. See <a href="../processing-messages/#read-files-from-a-directory">Read files from a directory</a>.</td>
 </tr>
 <tr>
 <td>HTTP source: a flow listens on its own address (<code>source: {type: http, address, path, method}</code>) while it is started</td>

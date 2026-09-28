@@ -343,7 +343,7 @@ VS Code, for example, mistakes are underlined and fields are completed:</p>
 </tr>
 <tr>
 <td><code>dir</code></td>
-<td>Required for <code>file</code>. Created if missing.</td>
+<td>Required for <code>file</code>: an absolute path, created if missing.</td>
 </tr>
 <tr>
 <td><code>address</code></td>
@@ -918,15 +918,33 @@ the flow as a message, and then deletes it (or moves it into <code>moveTo</code>
 <td><code>moveTo</code></td>
 <td>Absolute directory processed files are moved into (created if missing; a name that is already there gets the message id appended). Without it, processed files are deleted.</td>
 </tr>
+<tr>
+<td><code>recursive</code></td>
+<td><code>true</code> also reads the subdirectories of <code>dir</code> (default <code>false</code>); see below.</td>
+</tr>
 </tbody>
 </table>
 <ul>
 <li>The directory is read only while the flow is <code>started</code>. Stopping, pausing, or deleting the flow
   stops reading; starting it again picks up what arrived meanwhile.</li>
-<li>Only regular files directly in <code>dir</code> are read: subdirectories, symbolic links, and hidden files
-  (names starting with <code>.</code>, such as <code>rsync</code> temporary files and <code>.DS_Store</code>) are skipped. A
-  pattern starting with <code>.</code> reads hidden files.</li>
-<li>A directory can be read by one flow only; a second flow with the same <code>dir</code> is refused.</li>
+<li>Only regular files directly in <code>dir</code> are read, unless <code>recursive</code> is <code>true</code>: symbolic links
+  (to files or directories) are never followed, and hidden files (names starting with <code>.</code>, such as
+  <code>rsync</code> temporary files and <code>.DS_Store</code>) are skipped. A pattern starting with <code>.</code> reads hidden
+  files.</li>
+<li>With <code>"recursive": true</code>, files in subdirectories are read too, up to 32 levels deep, in path
+  order; hidden directories are always skipped (a pattern starting with <code>.</code> reads hidden files,
+  not hidden directories), and <code>pattern</code> matches the file name
+  (<code>*.hl7</code> finds <code>2026/09/adt.hl7</code>). The metadata <code>source.file</code> is the path relative to <code>dir</code>
+  (<code>2026/09/adt.hl7</code>), and <code>moveTo</code> (and <code>moveTo/rejected</code>) keep that path
+  (<code>/var/lib/weavster/done/adt/2026/09/adt.hl7</code>). <code>moveTo</code> must then be outside <code>dir</code>, or moved
+  files would be read again. No other flow may read a directory, or move files, inside a
+  recursive source's <code>dir</code>; these checks also compare paths with symbolic links resolved (links
+  created after the flow was saved are not detected). A subdirectory that cannot be read is logged (once) and its files are
+  not read. Subdirectories are left in place when their files have been processed, and every poll
+  walks the whole tree, so keep it small. A <code>dir</code> that is itself a symbolic link is followed;
+  links inside it are not.</li>
+<li>A directory can be read by one flow only; a second flow with the same <code>dir</code> is refused (and,
+  with <code>recursive</code>, any directory or <code>moveTo</code> inside it).</li>
 <li>Each poll reads at most 100 files, so one busy directory does not hold up other flows; the
   rest are read at the next poll.</li>
 <li>A file is read once it has not changed for a second, so a file still being written is not taken
