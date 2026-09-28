@@ -300,7 +300,7 @@ VS Code, for example, mistakes are underlined and fields are completed:</p>
 </tr>
 <tr>
 <td><code>dependsOn</code></td>
-<td>Flows this flow requires; see <a href="../flow-lifecycle/">Flow lifecycle</a>.</td>
+<td>Flows this flow requires; see <a href="../flow-lifecycle/">Flow lifecycle</a>. Flows it <a href="#send-to-another-flow">sends to</a> count too.</td>
 </tr>
 <tr>
 <td><code>responseSelector</code></td>
@@ -335,7 +335,7 @@ VS Code, for example, mistakes are underlined and fields are completed:</p>
 </tr>
 <tr>
 <td><code>type</code></td>
-<td><code>http</code> (send to <code>url</code>), <code>file</code> (write one file per message into <code>dir</code>, named by message ID), or <code>mllp</code> (send HL7 v2 to <code>address</code> over TCP; see <a href="#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>).</td>
+<td><code>http</code> (send to <code>url</code>), <code>file</code> (write one file per message into <code>dir</code>, named by message ID), <code>mllp</code> (send HL7 v2 to <code>address</code> over TCP; see <a href="#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>), or <code>flow</code> (hand the message to another flow; see <a href="#send-to-another-flow">Send to another flow</a>).</td>
 </tr>
 <tr>
 <td><code>url</code></td>
@@ -348,6 +348,10 @@ VS Code, for example, mistakes are underlined and fields are completed:</p>
 <tr>
 <td><code>address</code></td>
 <td>Required for <code>mllp</code>: <code>host:port</code> of the receiving system, for example <code>lab.example.com:2575</code>.</td>
+</tr>
+<tr>
+<td><code>flow</code></td>
+<td>Required for <code>flow</code>: the id of the flow that gets the message.</td>
 </tr>
 <tr>
 <td><code>method</code></td>
@@ -733,6 +737,42 @@ in the documents you receive:</p>
   step to drop documents without what the template needs, for example
   <code>{"filter": {"when": "order.item.1.@sku", "action": "accept"}}</code>, and a third item is simply not
   copied.</li>
+</ul>
+<h3 id="send-to-another-flow">Send to another flow</h3>
+<p>A <code>flow</code> destination hands each message to another flow in the same server, as a new message of
+that flow. Use it to split work into flows you can deploy, stop, and monitor on their own, for
+example one flow that receives and cleans up messages and one per system that sends them on:</p>
+<pre><code class="language-json">{&quot;id&quot;: &quot;intake&quot;, &quot;source&quot;: {&quot;type&quot;: &quot;mllp&quot;, &quot;address&quot;: &quot;:2575&quot;}, &quot;inputFormat&quot;: &quot;hl7v2&quot;,
+ &quot;transform&quot;: {&quot;steps&quot;: [{&quot;map&quot;: {&quot;from&quot;: &quot;PID.5.1&quot;, &quot;to&quot;: &quot;lastName&quot;}}]},
+ &quot;destinations&quot;: [{&quot;name&quot;: &quot;to-ehr&quot;, &quot;type&quot;: &quot;flow&quot;, &quot;flow&quot;: &quot;ehr-out&quot;}]}
+</code></pre>
+<pre><code class="language-json">{&quot;id&quot;: &quot;ehr-out&quot;,
+ &quot;destinations&quot;: [{&quot;name&quot;: &quot;ehr&quot;, &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://ehr.example.com/inbound&quot;}]}
+</code></pre>
+<ul>
+<li>The target flow gets what this destination sends (the flow's output, or this destination's
+  own <code>transform</code> output), read the way the target's <code>inputFormat</code> says, and processes it like
+  any other message: its own transform, destinations, retries, and statistics. Its message has the
+  metadata <code>source.flow</code> (the sending flow) and <code>source.message</code> (the sending message's id).</li>
+<li>The delivery succeeds once the target has stored its message. If the target is not started
+  (stopped, paused, or only deployed), refuses the message, or fails before storing it, the attempt
+  fails and is retried, then dead-lettered like any other; starting the target lets the retries
+  through. The target's message also keeps the delivery's key (<code>source.idempotencyKey</code>), so a
+  retry after a lost success finds it and does not store the message twice.</li>
+<li>What the destination sends must fit the target's <code>inputFormat</code>: JSON for a target that
+  transforms JSON, HL7 v2 for <code>hl7v2</code> (the message as received, or a <code>build</code> with
+  <code>format: hl7v2</code>), XML for <code>xml</code>, and <code>build</code> text for <code>delimited</code>. A flow that could not work
+  is refused when you create or update either flow.</li>
+<li>A flow that sends to another flow depends on it, with the same rules as
+  <a href="../flow-lifecycle/"><code>dependsOn</code></a>: the target must exist, a flow cannot send to itself or back
+  to itself through others, the target cannot be deleted while a flow sends to it, and deploying
+  the sending flow deploys the target first. Starting the sending flow does not start the
+  target: start it too.</li>
+<li>The sending flow waits while the target processes the message, so a message's time in the
+  sending flow includes the target's deliveries, and stopping the sending flow waits for them.
+  Keep chains short and the targets' destinations fast.</li>
+<li>The topology overview (<code>GET /api/v1/topology</code>) shows each route as an edge between the two
+  flows.</li>
 </ul>
 <h3 id="route-by-content-destinationset">Route by content (<code>destinationSet</code>)</h3>
 <p>A <code>destinationSet</code> step in the flow's <code>transform</code> leaves destinations out for a message, based on
@@ -1615,7 +1655,7 @@ again as a new message instead, use <code>reprocess</code>.</p>
 <li>Statistics and events are kept in memory: they restart from zero when the server restarts,
   and only the newest 10,000 events are kept.</li>
 <li>The first delivery attempt runs while your request waits; retries run in the background.</li>
-<li>Only <code>http</code>, <code>file</code>, and <code>mllp</code> destinations are available.</li>
+<li>Only <code>http</code>, <code>file</code>, <code>mllp</code>, and <code>flow</code> destinations are available.</li>
 <li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a> and
   <a href="#receive-messages-over-http">http sources</a>, and <a href="#receive-hl7-v2-over-mllp">mllp sources</a>;
   database sources are not available yet.</li>

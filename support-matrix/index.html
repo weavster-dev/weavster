@@ -571,9 +571,14 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestMLLPSource</code>, <code>TestMLLPHandler</code>, <code>TestMLLPServer</code>, <code>TestHL7ACKOptions</code>. No TLS or sender authentication yet; set <code>inputFormat: hl7v2</code> to transform the messages. See <a href="../processing-messages/#receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</a>.</td>
 </tr>
 <tr>
-<td>Other sources and destinations (database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>
+<td><code>flow</code> destination: hands a message to another flow in-process (<code>flow: &lt;id&gt;</code>), with <code>source.flow</code>/<code>source.message</code> metadata; targets follow the <code>dependsOn</code> rules</td>
+<td>Implemented (wired)</td>
+<td><code>TestFlowDestination</code>, <code>TestFlowSink</code>, <code>TestDependencies</code>. Effectively once (a retry finds the stored message); what it sends must fit the target's <code>inputFormat</code>. See <a href="../processing-messages/#send-to-another-flow">Send to another flow</a>.</td>
+</tr>
+<tr>
+<td>Other sources and destinations (database, SMTP, SOAP/REST web service, document)</td>
 <td>Library-only</td>
-<td>Only file, http, and mllp sources and http, file, and mllp destinations are wired.</td>
+<td>Only file, http, and mllp sources and http, file, mllp, and flow destinations are wired.</td>
 </tr>
 <tr>
 <td>Per-flow and per-destination statistics (<code>GET /api/v1/flows/{id}/stats</code>)</td>
@@ -868,8 +873,9 @@ handles RFC 4180 quoting, which the library codec does not.</p>
 destinations are at-least-once: an attempt whose response was lost is sent again. The HTTP
 destination sends the same <code>Idempotency-Key</code> on every attempt, so a receiver that honors it
 sees each message once. Rows marked "library" describe adapters the server does not use yet. No
-destination is exactly-once (that is deferred from the MVP); HTTP is the only one that gives the
-receiver a key to drop repeats with.</p>
+destination is exactly-once (that is deferred from the MVP); HTTP gives the receiver a key to drop
+repeats with, and a <code>flow</code> destination uses its key itself so a retry never adds a second message
+to the target.</p>
 <table>
 <thead>
 <tr>
@@ -931,11 +937,11 @@ receiver a key to drop repeats with.</p>
 <td>no</td>
 </tr>
 <tr>
-<td>In-process inter-flow</td>
-<td>library</td>
-<td>library</td>
-<td>not wired</td>
-<td>no</td>
+<td>In-process inter-flow (<code>flow</code> destination)</td>
+<td>—</td>
+<td>wired</td>
+<td>at-least-once, effectively once: the delivery succeeds once the target stored its message, and a retry finds that message by its key instead of storing it again</td>
+<td>yes: kept with the target's message as <code>source.idempotencyKey</code></td>
 </tr>
 <tr>
 <td>Broker, DICOM</td>
