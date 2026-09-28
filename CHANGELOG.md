@@ -106,6 +106,7 @@ All notable changes to this project are documented here, following
 - Bounded processing (#355): server config `processing: {maxConcurrent, waitMs}` (defaults 32 and 5000) limits the messages received and processed at once; a message that finds no free slot in time is refused as busy — `503` with `Retry-After` from the API and http sources, `AE` from mllp sources, a later poll for file and database sources. Flow-to-flow handoffs share the sender's slot.
 - Docs (#357): [Capacity and limits](docs/limits.md) lists every size, count, time, and retention limit with its default and what happens at it; [Production setup](docs/production.md) lists the secure defaults and gives an HTTPS-only production configuration with a durable store (`docs/examples/production/weavster-server.yaml`), which a test starts the server from.
 - Crash consistency (#359): `TestCrashAtEveryWrite` stops the store at each of a message's writes in turn (delivered, queued, and filtered paths) and checks the next start finishes it with one idempotency key per destination; the processing docs state when each source acknowledges a message, that every step is written with the message on a durable store, and where a duplicate can still arise.
+- Startup order (#361): the server configuration docs list what the server does at start and in which order; `TestMigratesBeforeTraffic` upgrades a store left at an older schema version and checks it is migrated, with its flows and messages, while the server is built, before any listener exists.
 
 ### Changed
 
@@ -145,6 +146,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- The server binds its API ports before starting sources and retries, so a port that is already in use stops it before a file source has moved a file or an http/mllp source has accepted a message (#361).
 - `POST /api/v1/flows/{id}/messages` and `POST /api/v1/messages/{id}/reprocess` answer `202` with the stored message's id when a later step fails after the message was stored (previously `500`), as every source already did, so a client does not resend a message the server already has and will finish (#359).
 - A retry pass that read a message just before its first processing finished no longer works on it again: it rechecks the stored message, so a sent message is not counted twice in the flow statistics and events, and a destination not yet reached by the first pass is not delivered twice (found by `TestEndToEnd`, #353).
 

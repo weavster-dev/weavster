@@ -51,6 +51,34 @@ auth:
     lockoutPeriodSeconds: 300
 ```
 
+## Startup order
+
+`weavster server` starts in this order:
+
+1. Checks its arguments (a bad flag or an extra argument exits `2`) and refuses to run as root
+   unless `WEAVSTER_ALLOW_ROOT=1` is set.
+2. Reads and checks the configuration file (a problem exits `1`).
+3. Opens the store and applies any pending schema migrations. A store left at an older version
+   by an earlier release is upgraded here, and the data in it is kept. With PostgreSQL, a failed
+   connection or migration is retried per `store.maxRetry` and `store.retryWaitMs`; run one
+   server at a time while it upgrades a database.
+4. Loads users and creates the first `admin` account when there are none (see
+   [Authentication](authentication.md)).
+5. With `flows.deployOnStartup` (and a store), deploys every flow that is `enabled` and
+   `undeployed` into its `initialState` (see [Flow lifecycle](flow-lifecycle.md#enabled-flows-start-automatically)).
+   Flows keep the status they had otherwise.
+6. Binds the API ports (`listen.address`, `listen.tlsAddress`). A port that is taken exits `1`
+   here, before anything below starts, so no source has taken a file or a message.
+7. Starts the background work, side by side: the recovery pass that resumes messages stored
+   before the last stop (queued deliveries, and messages that were still being processed) for
+   flows that are running, then retries every `delivery.retryIntervalMs`; and the running flows'
+   sources. New messages can therefore be processed while older ones are still being recovered.
+8. Answers API requests.
+
+Messages of a flow that is not running are not recovered at start; they are finished once the
+flow is started. The server keeps no jobs or leases of its own to reconcile: everything it must
+resume is a stored message, which the recovery pass picks up.
+
 ## Keys
 
 Keys you leave out keep their default.

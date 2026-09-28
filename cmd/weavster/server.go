@@ -305,6 +305,25 @@ func runServer(args []string, stderr io.Writer) int {
 	}
 	defer func() { _ = closeStore() }()
 
+	// The API ports are bound before any background work starts: a port
+	// that is taken stops the server before a source has taken a file or
+	// a message.
+	servers, err := listen(cfg, handler)
+	if err != nil {
+		return fail(err)
+	}
+	bound := make([]net.Listener, 0, len(servers))
+	for _, s := range servers {
+		ln, err := net.Listen("tcp", s.Addr)
+		if err != nil {
+			for _, b := range bound {
+				_ = b.Close()
+			}
+			return fail(err)
+		}
+		bound = append(bound, ln)
+	}
+
 	// Background workers run until runServer returns, and stop before the
 	// store closes.
 	workerCtx, stopWorkers := context.WithCancel(ctx)
@@ -312,25 +331,19 @@ func runServer(args []string, stderr io.Writer) int {
 	go func() { workers(workerCtx); close(workersDone) }()
 	defer stopWorkers()
 
-	servers, err := listen(cfg, handler)
-	if err != nil {
-		stopWorkers()
-		<-workersDone // no deliveries can be in progress this early
-		return fail(err)
-	}
 	errCh := make(chan error, len(servers))
-	for _, s := range servers {
-		go func(s *http.Server) {
+	for i, s := range servers {
+		go func(s *http.Server, ln net.Listener) {
 			var err error
 			if s.TLSConfig != nil {
-				err = s.ListenAndServeTLS("", "")
+				err = s.ServeTLS(ln, "", "")
 			} else {
-				err = s.ListenAndServe()
+				err = s.Serve(ln)
 			}
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errCh <- err
 			}
-		}(s)
+		}(s, bound[i])
 	}
 
 	code := 0
