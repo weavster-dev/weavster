@@ -1581,8 +1581,53 @@ statuses above.</p>
 </code></pre>
 <pre><code class="language-json">[{&quot;id&quot;:&quot;6f1c…&quot;,&quot;flowId&quot;:&quot;adt&quot;,&quot;status&quot;:&quot;queued&quot;,&quot;contentType&quot;:&quot;json&quot;,
   &quot;receivedAt&quot;:&quot;2026-09-26T12:00:00Z&quot;,&quot;updatedAt&quot;:&quot;2026-09-26T12:00:05Z&quot;,
-  &quot;attempts&quot;:{&quot;ehr&quot;:{&quot;attempts&quot;:2,&quot;lastError&quot;:&quot;Service Unavailable&quot;,&quot;nextAttemptAt&quot;:&quot;2026-09-26T12:00:09Z&quot;}}}]
+  &quot;attempts&quot;:{&quot;ehr&quot;:{&quot;attempts&quot;:2,&quot;lastError&quot;:&quot;Service Unavailable&quot;,&quot;lastCode&quot;:&quot;http:503&quot;,
+    &quot;lastAttemptAt&quot;:&quot;2026-09-26T12:00:05Z&quot;,&quot;nextAttemptAt&quot;:&quot;2026-09-26T12:00:09Z&quot;}}}]
 </code></pre>
+<p><code>attempts</code> has one entry per destination tried: <code>attempts</code> (how many), <code>lastAttemptAt</code> (when the
+last one ended), <code>nextAttemptAt</code> (when a failed delivery is retried), and, after a failure,
+<code>lastError</code> (what went wrong, in words) and <code>lastCode</code>, a code for scripts and alerts:</p>
+<table>
+<thead>
+<tr>
+<th><code>lastCode</code></th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>http:&lt;status&gt;</code></td>
+<td>The receiver answered with this status, for example <code>http:503</code>; <code>http:307</code> is a redirect that was not followed.</td>
+</tr>
+<tr>
+<td><code>mllp:AE</code>, <code>mllp:AR</code>, <code>mllp:CE</code>, <code>mllp:CR</code></td>
+<td>The receiver's HL7 ACK code.</td>
+</tr>
+<tr>
+<td><code>mllp:no-ack</code>, <code>mllp:not-an-ack</code>, <code>mllp:wrong-message</code>, <code>mllp:unknown-code</code>, <code>mllp:ack-too-large</code></td>
+<td>No reply (the connection closed), a reply that is not an ACK, an ACK for another control id, an ACK code other than AA/AE/AR/CA/CE/CR, or a reply over 1 MiB. A reply that does not come in time is <code>net:timeout</code>.</td>
+</tr>
+<tr>
+<td><code>sqlstate:&lt;code&gt;</code></td>
+<td>A PostgreSQL error, for example <code>sqlstate:42P01</code> (table does not exist) or <code>sqlstate:28P01</code> (the login was refused).</td>
+</tr>
+<tr>
+<td><code>net:timeout</code>, <code>net:refused</code>, <code>net:reset</code>, <code>net:dns</code>, <code>net:connect</code></td>
+<td>No answer in time, the connection refused or reset, the host name not found, or a connection that failed otherwise (an unreachable network or host).</td>
+</tr>
+<tr>
+<td><code>tls:certificate</code></td>
+<td>The receiver's certificate could not be verified.</td>
+</tr>
+<tr>
+<td><code>flow:not-running</code>, <code>flow:not-found</code></td>
+<td>A flow destination's target flow is not started, or no longer exists.</td>
+</tr>
+</tbody>
+</table>
+<p>A failure without a protocol behind it (a destination transform error, a message that cannot be
+framed, a delivery cut short by a server shutdown) has no <code>lastCode</code>. A successful attempt clears
+<code>lastError</code> and <code>lastCode</code>.</p>
 <table>
 <thead>
 <tr>

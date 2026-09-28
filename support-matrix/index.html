@@ -636,6 +636,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestRetryRecoversQueuedMessage</code>, <code>TestQueuedWorkSurvivesRestart</code>, <code>TestDeadLetterAfterMaxAttempts</code>. Dead letters can be listed, requeued, and removed (next row).</td>
 </tr>
 <tr>
+<td>Per-destination attempt records: count, last error, protocol-specific <code>lastCode</code> (<code>http:503</code>, <code>mllp:AE</code>, <code>sqlstate:…</code>, <code>net:…</code>, <code>tls:certificate</code>, <code>flow:not-running</code>), <code>lastAttemptAt</code>, <code>nextAttemptAt</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestAttemptCodes</code>, <code>TestErrorCode</code>, <code>TestDeliverRecordsCode</code>. See <a href="../processing-messages/">Search stored messages</a>.</td>
+</tr>
+<tr>
 <td>Dead letters: list, show, requeue (one or all; delivered destinations not re-sent; attempt counts in the audit log and a <code>message.requeued</code> event), remove (<code>POST /api/v1/messages/{id}/requeue</code>, <code>POST /api/v1/messages/requeue</code>, <code>DELETE /api/v1/messages/{id}?status=dead-lettered</code>; CLI <code>deadletter list</code>, <code>show</code>, <code>requeue</code>, <code>remove</code>)</td>
 <td>Implemented (wired)</td>
 <td><code>TestDeadLetterRequeue</code>. See <a href="../processing-messages/#dead-lettered-messages">Dead-lettered messages</a>.</td>
