@@ -225,3 +225,26 @@ func TestWithinResolvesLinks(t *testing.T) {
 		}
 	}
 }
+
+func TestDependencies(t *testing.T) {
+	f := Flow{DependsOn: []string{"a", "b"}, Destinations: []Destination{
+		{Name: "x", Type: "flow", Flow: "c"}, {Name: "y", Type: "flow", Flow: "a"}, {Name: "z", Type: "file", Dir: "/o"},
+	}}
+	if got := strings.Join(f.Dependencies(), ","); got != "a,b,c" {
+		t.Errorf("Dependencies = %s", got)
+	}
+	for _, tt := range []struct {
+		dest string
+		ok   bool
+	}{
+		{`{"name":"a","type":"flow","flow":"next"}`, true},
+		{`{"name":"a","type":"flow"}`, false},
+		{`{"name":"a","type":"flow","flow":"next","url":"https://x"}`, false},
+		{`{"name":"a","type":"http","url":"https://x","flow":"next"}`, false},
+		{`{"name":"a","type":"flow","flow":"bad id"}`, false},
+	} {
+		if err := ValidateJSON([]byte(`{"id":"f","destinations":[` + tt.dest + `]}`)); (err == nil) != tt.ok {
+			t.Errorf("%s: %v", tt.dest, err)
+		}
+	}
+}

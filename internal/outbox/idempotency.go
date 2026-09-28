@@ -21,7 +21,9 @@ type DeliverySemantics string
 // whether the receiver gets a key to drop the repeat with.
 const (
 	// SemanticsKeySent sinks send the idempotency key to the receiver (the
-	// HTTP Idempotency-Key header): effectively once when it honors the key.
+	// HTTP Idempotency-Key header; a flow destination stores it with the
+	// target's message and finds it on retry): effectively once when the
+	// receiver honors the key.
 	SemanticsKeySent DeliverySemantics = "idempotency-key-sent"
 	// SemanticsAtLeastOnce sinks send no key (raw TCP/MLLP, file, SMTP,
 	// database, …); the receiver may see a message twice (gap #5).
@@ -31,7 +33,8 @@ const (
 // SemanticsForAdapter returns the delivery semantics for an adapter type;
 // an unknown type is at-least-once (#107 §8).
 func SemanticsForAdapter(adapterType string) DeliverySemantics {
-	if adapterType == "http" {
+	switch adapterType {
+	case "http", "interflow":
 		return SemanticsKeySent
 	}
 	return SemanticsAtLeastOnce

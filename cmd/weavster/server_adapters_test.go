@@ -339,3 +339,55 @@ func TestMessageAdapterDeleteMatching(t *testing.T) {
 		t.Errorf("search error = %v", err)
 	}
 }
+
+// flowIngest answers IngestFrom with res and err and records the call.
+type flowIngest struct {
+	res      gateway.IngestResult
+	err      error
+	target   string
+	metadata map[string]string
+}
+
+func (f *flowIngest) IngestFrom(_ context.Context, flowID string, _ []byte, md map[string]string) (gateway.IngestResult, error) {
+	f.target, f.metadata = flowID, md
+	return f.res, f.err
+}
+
+// TestFlowSink: a flow delivery succeeds once the target stored the
+// message (even if processing then failed), fails otherwise, and a retry
+// that finds the message already stored for its key stores nothing new.
+func TestFlowSink(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	none := func(context.Context, string, string) (string, error) { return "", nil }
+	for _, tt := range []struct {
+		name      string
+		in        flowIngest
+		delivered func(context.Context, string, string) (string, error)
+		ok        bool
+		ingested  bool
+	}{
+		{"stored", flowIngest{res: gateway.IngestResult{ID: "m2"}}, none, true, true},
+		{"stored, then failed", flowIngest{res: gateway.IngestResult{ID: "m2"}, err: errors.New("disk full")}, none, true, true},
+		{"not running", flowIngest{err: gateway.ErrFlowNotRunning}, none, false, true},
+		{"already stored", flowIngest{}, func(_ context.Context, flow, key string) (string, error) {
+			if flow == "next" && key == "k1" {
+				return "m2", nil
+			}
+			return "", nil
+		}, true, false},
+		{"lookup failed", flowIngest{}, func(context.Context, string, string) (string, error) { return "", errors.New("store down") }, false, false},
+	} {
+		in := tt.in
+		sink, _ := (&sinkFactory{ingest: &in, delivered: tt.delivered, logger: logger}).build(pipeline.Destination{Type: "flow", Flow: "next"})
+		err := sink.Write(context.Background(), pipeline.Delivery{FlowID: "from", MessageID: "m1", IdempotencyKey: "k1", Body: []byte("{}")})
+		if (err == nil) != tt.ok || (in.target != "") != tt.ingested {
+			t.Errorf("%s: %v, ingested %v", tt.name, err, in.target != "")
+		}
+		if tt.ingested && (in.target != "next" || in.metadata["source.flow"] != "from" || in.metadata["source.message"] != "m1" || in.metadata[flowKeyMetadata] != "k1") {
+			t.Errorf("%s: target %s, metadata %v", tt.name, in.target, in.metadata)
+		}
+	}
+	if _, err := (&sinkFactory{}).build(pipeline.Destination{Type: "ftp"}); err == nil {
+		t.Error("an unknown type built a sink")
+	}
+}

@@ -308,7 +308,8 @@
           "enum": [
             "http",
             "file",
-            "mllp"
+            "mllp",
+            "flow"
           ]
         },
         "url": {
@@ -362,6 +363,14 @@
             "null"
           ],
           "description": "mllp: host:port to deliver HL7 v2 to"
+        },
+        "flow": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9._-]{1,128}$",
+          "description": "flow: id of the flow to hand messages to"
         }
       },
       "allOf": [
@@ -385,6 +394,9 @@
                 "type": "null"
               },
               "address": {
+                "type": "null"
+              },
+              "flow": {
                 "type": "null"
               }
             }
@@ -411,6 +423,9 @@
               },
               "dir": {
                 "type": "null"
+              },
+              "flow": {
+                "type": "null"
               }
             }
           }
@@ -429,6 +444,43 @@
                 "type": "null"
               },
               "dir": {
+                "type": "null"
+              },
+              "flow": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "flow"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "flow"
+            ],
+            "properties": {
+              "url": {
+                "type": "null"
+              },
+              "dir": {
+                "type": "null"
+              },
+              "address": {
+                "type": "null"
+              },
+              "method": {
+                "type": "null"
+              },
+              "timeoutMs": {
+                "type": "null"
+              },
+              "maxRedirects": {
                 "type": "null"
               }
             }
