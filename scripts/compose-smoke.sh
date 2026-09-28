@@ -20,7 +20,7 @@ wait_up() {
   fail "server did not come up"
 }
 
-docker compose up -d --build --wait
+docker compose up -d --build --wait || fail "docker compose up failed"
 wait_up
 code=$(curl -sS -o /dev/null -w '%{http_code}' -u admin:Weavster-dev-1 -H 'X-Weavster-CSRF: 1' \
   -X POST "$base/api/v1/flows" -H 'Content-Type: application/json' \
@@ -36,9 +36,9 @@ check() {
   *) fail "the flow was lost $1: $body" ;;
   esac
 }
-docker compose restart weavster
+docker compose restart weavster || fail "docker compose restart failed"
 check "on a server restart"
-docker compose down
-docker compose up -d --wait
+docker compose down || fail "docker compose down failed"
+docker compose up -d --wait || fail "docker compose up failed after down"
 check "on down and up (the database volume)"
 echo "compose smoke test passed"
