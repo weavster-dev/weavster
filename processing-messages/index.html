@@ -673,6 +673,67 @@ or text) again. For example, receive ADT over MLLP and relay a reshaped message 
   cannot read it and is refused.</li>
 <li>A <code>responseTransform</code> cannot use <code>build</code>: the reply returned to the sender is JSON.</li>
 </ul>
+<h3 id="convert-xml-instead-of-xslt">Convert XML (instead of XSLT)</h3>
+<p>Weavster has no XSLT. The declarative equivalent is an XML flow whose transform reads the
+document's <a href="#transform-xml-documents">XML view</a>, optionally filters it, and writes the new
+document with a <a href="#build-the-output-build"><code>build</code></a> step:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;orders-to-requests&quot;,
+  &quot;inputFormat&quot;: &quot;xml&quot;,
+  &quot;transform&quot;: {&quot;steps&quot;: [
+    {&quot;filter&quot;: {&quot;when&quot;: &quot;order.@status == 'cancelled'&quot;, &quot;action&quot;: &quot;reject&quot;}},
+    {&quot;build&quot;: {&quot;format&quot;: &quot;xml&quot;, &quot;template&quot;: &quot;&lt;request id=\&quot;{{order.@id}}\&quot;&gt;&lt;patient&gt;{{order.patient.name.#text}}&lt;/patient&gt;&lt;first-item sku=\&quot;{{order.item.0.@sku}}\&quot;/&gt;&lt;second-item sku=\&quot;{{order.item.1.@sku}}\&quot;/&gt;&lt;/request&gt;&quot;}}
+  ]},
+  &quot;destinations&quot;: [{&quot;name&quot;: &quot;lab&quot;, &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://lab.example.com/requests&quot;}]
+}
+</code></pre>
+<p>For <code>&lt;order id="42" status="new" xmlns="urn:orders"&gt;&lt;patient&gt;&lt;name&gt; DOE &amp;amp; SON &lt;/name&gt;&lt;/patient&gt;&lt;item sku="A"/&gt;&lt;item sku="B"/&gt;&lt;/order&gt;</code>
+the lab receives <code>&lt;request id="42"&gt;&lt;patient&gt;DOE &amp;amp; SON&lt;/patient&gt;&lt;first-item sku="A"/&gt;&lt;second-item sku="B"/&gt;&lt;/request&gt;</code>
+as <code>application/xml</code>.</p>
+<p>What XSLT does and how to do it here:</p>
+<table>
+<thead>
+<tr>
+<th>XSLT</th>
+<th>Here</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>xsl:value-of select="/order/@id"</code></td>
+<td><code>{{order.@id}}</code> in a <code>build</code> template (or <code>map</code>/<code>set</code> first)</td>
+</tr>
+<tr>
+<td>Literal result elements</td>
+<td>The <code>build</code> template's own markup</td>
+</tr>
+<tr>
+<td><code>xsl:if</code> / predicate that drops the message</td>
+<td>A <code>filter</code> step</td>
+</tr>
+<tr>
+<td><code>xsl:choose</code> to pick a destination</td>
+<td>A <a href="#route-by-content-destinationset"><code>destinationSet</code></a> step</td>
+</tr>
+<tr>
+<td>Computed text (<code>concat(...)</code>)</td>
+<td>A <code>set</code> step with <code>{{path}}</code> placeholders</td>
+</tr>
+</tbody>
+</table>
+<p>Not available: XPath functions, sorting, and loops (<code>xsl:for-each</code>, <code>xsl:apply-templates</code>). A
+template addresses repeated elements by position (<code>order.item.0</code>, <code>order.item.1</code>), so it fits
+documents with a known shape; lists of any length cannot be reshaped yet. Two things to check
+in the documents you receive:</p>
+<ul>
+<li>An element that appears <strong>once</strong> is an object, not a list: with a single <code>&lt;item&gt;</code>,
+  <code>order.item.0.@sku</code> finds nothing and <code>order.item.@sku</code> is the value. A template written for
+  two items does not fit an order with one.</li>
+<li>A path that finds nothing is written as empty text (<code>sku=""</code>), not an error. Add a <code>filter</code>
+  step to drop documents without what the template needs, for example
+  <code>{"filter": {"when": "order.item.1.@sku", "action": "accept"}}</code>, and a third item is simply not
+  copied.</li>
+</ul>
 <h3 id="route-by-content-destinationset">Route by content (<code>destinationSet</code>)</h3>
 <p>A <code>destinationSet</code> step in the flow's <code>transform</code> leaves destinations out for a message, based on
 its content:</p>

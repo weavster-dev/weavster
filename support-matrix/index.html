@@ -531,6 +531,16 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestProcessingOrder</code>, <code>TestDestinationTransforms</code>. See <a href="../processing-messages/#processing-order">Processing order</a>.</td>
 </tr>
 <tr>
+<td>Golden transform tests: every supported input (JSON, HL7 v2, XML, delimited) and output (JSON, HL7 v2, XML, text) run through the real server to an HTTP destination; body and Content-Type compared</td>
+<td>Implemented (wired)</td>
+<td><code>TestTransformGolden</code> (<code>cmd/weavster/testdata/transforms/</code>).</td>
+</tr>
+<tr>
+<td>XML conversion without XSLT: XML view + steps + <code>build</code> xml</td>
+<td>Implemented (wired)</td>
+<td><code>TestTransformGolden/xml-to-xml</code>, <code>TestTransformGolden/xml-to-xml-filtered</code>. No XPath functions, sorting, or loops. See <a href="../processing-messages/#convert-xml-instead-of-xslt">Convert XML</a>.</td>
+</tr>
+<tr>
 <td><code>build</code> step: the last step of a flow or destination transform renders the output from a template as JSON, HL7 v2, XML, or text, with values escaped for the format and the result checked</td>
 <td>Implemented (wired)</td>
 <td><code>TestBuildOutput</code>, <code>TestProcessBuild</code>, <code>TestBuild</code>. See <a href="../processing-messages/#build-the-output-build">Build the output</a>.</td>
