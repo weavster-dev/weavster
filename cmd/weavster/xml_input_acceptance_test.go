@@ -22,7 +22,7 @@ func TestXMLInput(t *testing.T) {
 	createFlow(t, c, `{"id":"orders","inputFormat":"xml","transform":{"name":"t","steps":[`+
 		`{"map":{"from":"order.@id","to":"order.id"}},`+
 		`{"map":{"from":"order.patient.name.#text","to":"patient"}},`+
-		`{"map":{"from":"order.#children.2.@sku","to":"secondSku"}}]},`+
+		`{"map":{"from":"order.item.1.@sku","to":"secondSku"}}]},`+
 		`"destinations":[{"name":"out","type":"file","dir":"`+out+`"}]}`)
 	doc := `<?xml version="1.0"?><order id="42" xmlns="urn:orders"><patient><name>DOE</name></patient><item sku="A"/><item sku="B"/></order>`
 	if code, body, _ := c.do(http.MethodPost, "/api/v1/flows/orders/messages", doc, admin); code != http.StatusAccepted {

@@ -239,7 +239,7 @@ func (p *Pipeline) ProcessWithMetadata(ctx context.Context, f Flow, body []byte,
 			return Result{}, err
 		}
 	}
-	if needsObject(f) || f.InputFormat == "hl7v2" || f.InputFormat == "xml" { // these flows take only their format
+	if needsObject(f) || (f.InputFormat != "" && f.InputFormat != "json") { // a flow with a format takes only that format
 		if _, err := decodeInput(f.InputFormat, body); err != nil {
 			return Result{}, err
 		}
@@ -390,8 +390,12 @@ func decodeInput(format string, body []byte) (map[string]any, error) {
 		return doc, nil
 	case "xml":
 		doc, err := codecs.XMLJSON(body)
+		var notXML *codecs.NotXMLError
+		if errors.As(err, &notXML) && notXML.Reason != "" {
+			return nil, invalid("body must be a single well-formed XML document: " + notXML.Reason)
+		}
 		if err != nil {
-			return nil, invalid("body must be a single well-formed XML document" + strings.TrimPrefix(err.Error(), codecs.ErrNotXML.Error()))
+			return nil, invalid("body must be a single well-formed XML document")
 		}
 		return doc, nil
 	}

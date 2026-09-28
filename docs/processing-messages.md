@@ -158,37 +158,53 @@ Set `"inputFormat": "xml"` and the flow's transforms read each XML document as J
   "transform": {"name": "orders", "steps": [
     {"map": {"from": "order.@id", "to": "orderId"}},
     {"map": {"from": "order.patient.name.#text", "to": "patient"}},
-    {"map": {"from": "order.#children.2.@sku", "to": "secondSku"}}
+    {"map": {"from": "order.item.1.@sku", "to": "secondSku"}}
   ]},
   "destinations": [{"name": "ehr", "type": "http", "url": "https://ehr.example.com/orders"}]
 }
 ```
 
-For `<order id="42" xmlns="urn:orders"><patient><name>DOE</name></patient><item sku="A"/><item sku="B"/></order>`
+For this document:
+
+```xml
+<order id="42" xmlns="urn:orders" xml:lang="en">
+  <patient>
+    <name>DOE</name>
+  </patient>
+  <item sku="A"/>
+  <item sku="B"/>
+</order>
+```
+
 the transform sees:
 
 ```json
-{"order": {"@id": "42", "#ns": "urn:orders",
-           "patient": {"#ns": "urn:orders", "name": {"#ns": "urn:orders", "#text": "DOE"}, "#children": ["…"]},
-           "item": {"#ns": "urn:orders", "@sku": "A"},
-           "#children": [{"…patient…": "…"}, {"@sku": "A", "…": "…"}, {"@sku": "B", "…": "…"}]}}
+{"order": {"@id": "42", "@xml:lang": "en", "#ns": "urn:orders",
+           "patient": {"#ns": "urn:orders", "name": {"#ns": "urn:orders", "#text": "DOE"}},
+           "item": [{"#ns": "urn:orders", "@sku": "A"}, {"#ns": "urn:orders", "@sku": "B"}]}}
 ```
 
 - The top-level key is the root element's name. Elements are named by their local name (without
   a namespace prefix); `#ns` holds an element's namespace URI when it has one.
-- `@name` is an attribute (namespace declarations such as `xmlns` are left out), `#text` the
-  element's own text when it is not only whitespace (`&amp;` and the other predefined entities
-  are decoded).
-- A child element's name holds the **first** child with that name; `#children` lists every child
-  element in order (`order.#children.2` is the third), which is how you reach a second `item`.
-- Text mixed between child elements is joined into the parent's `#text`; its position among the
-  children is not kept.
+- A child that appears once under its parent is an object (`order.patient`); a name that appears
+  more than once is a list in document order (`order.item.0`, `order.item.1`). Check the
+  documents you receive: a path such as `order.item.@sku` finds nothing when there are two
+  items. The order between children of different names is not kept.
+- `@name` is an attribute, written as in the document: `@id`, `@xml:lang`, `@x:id` for a prefixed
+  one. Namespace declarations (`xmlns`, `xmlns:x`) are left out.
+- `#text` is the element's own text with surrounding whitespace removed, so indented documents
+  compare as expected (`order.patient.name.#text == 'DOE'`); it is left out when empty.
+  `&amp;` and the other predefined entities are decoded. Text mixed between child elements is
+  joined into the parent's `#text`.
+- Any character set the document declares (`encoding="ISO-8859-1"`, `windows-1252`, …) is
+  accepted, and a leading UTF-8 byte order mark is skipped.
 - The transform's output is JSON, delivered as `application/json`; there is no conversion back to
   XML yet. The stored original is the document as received.
-- Only well-formed documents with one root element and at most 256 levels of nesting are
-  accepted; anything else is refused (`400` over the API, rejected by a file source), even when
-  the flow has no transform. A `DOCTYPE` is allowed but never processed: entities it declares are
-  not expanded and nothing is fetched, so a document using one is refused.
+- Only well-formed documents with one root element are accepted, with at most 256 levels of
+  nesting and 100,000 elements, and every namespace prefix declared. Anything else is refused
+  (`400` over the API, rejected by a file source), even when the flow has no transform. A
+  `DOCTYPE` is allowed but never processed: entities it declares are not expanded and nothing is
+  fetched, so a document using one is refused.
 
 ### Redirects
 
