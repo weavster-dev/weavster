@@ -1513,6 +1513,13 @@ same `Idempotency-Key`, so an HTTP receiver can ignore duplicates. When a destin
 `delivery.maxAttempts` times (default 5), the message becomes `dead-lettered` and a
 `message.dead-lettered` event is logged. See [Server configuration](server-config.md#delivery).
 
+A message is acknowledged to its sender only after it is stored: the API and http sources answer
+`202`, an mllp source `AA`, a file source removes or moves the file, and a database source marks
+the row. If storing fails, the sender gets an error (`500`, `AE`, or the file or row stays for the
+next poll) and can send it again. Each later step (the transformed result, each destination's
+result, the final status) is written in one step with the message, so a stop at any point leaves
+the message in a state the next start can finish.
+
 Retry times are stored with the message. After a restart, the server resumes pending
 retries right away. With `store.dialect: sqlite`, a message that was `queued` when the server
 stopped is delivered once its destination is back. So is a message the server was still

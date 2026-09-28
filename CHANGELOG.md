@@ -105,6 +105,7 @@ All notable changes to this project are documented here, following
 - End-to-end acceptance test (#353): a file source, a transform with a filter, HTTP and file destinations, stored statuses, statistics, events, topology, and a queued delivery completing after a restart, all through the real server (`TestEndToEnd`).
 - Bounded processing (#355): server config `processing: {maxConcurrent, waitMs}` (defaults 32 and 5000) limits the messages received and processed at once; a message that finds no free slot in time is refused as busy — `503` with `Retry-After` from the API and http sources, `AE` from mllp sources, a later poll for file and database sources. Flow-to-flow handoffs share the sender's slot.
 - Docs (#357): [Capacity and limits](docs/limits.md) lists every size, count, time, and retention limit with its default and what happens at it; [Production setup](docs/production.md) lists the secure defaults and gives an HTTPS-only production configuration with a durable store (`docs/examples/production/weavster-server.yaml`), which a test starts the server from.
+- Crash consistency (#359): `TestCrashAtEveryWrite` stops the store at each of a message's writes in turn and checks the next start finishes it with one idempotency key per destination; the processing docs state when each source acknowledges a message and that every step is written with the message.
 
 ### Changed
 
