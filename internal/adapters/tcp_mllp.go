@@ -1,10 +1,16 @@
 package adapters
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net"
+	"time"
+
+	"github.com/weavster-dev/weavster/internal/codecs"
 )
 
 // MLLP framing delimiters (minimal lower-layer protocol, spec §8 TCP MLLP).
@@ -54,16 +60,32 @@ func readMLLPFrame(r io.Reader) ([]byte, error) {
 	}
 }
 
-// MLLPSink delivers messages over TCP using MLLP framing.
+// MLLPSinkTimeout bounds one delivery (connect, send, and the ACK) unless
+// NewMLLPSinkWith sets another bound.
+const MLLPSinkTimeout = 30 * time.Second
+
+// maxACKBytes bounds the reply an MLLP sink reads.
+const maxACKBytes = 1 << 20
+
+// MLLPSink delivers HL7 v2 messages over TCP with MLLP framing and checks
+// the receiver's ACK (#107 D-64). Each delivery uses its own connection, so
+// a dropped connection never affects the next one.
 type MLLPSink struct {
-	addr   string
-	conn   net.Conn
-	dialer func(ctx context.Context, addr string) (net.Conn, error)
+	addr    string
+	timeout time.Duration
+	dialer  func(ctx context.Context, addr string) (net.Conn, error)
 }
 
-// NewMLLPSink returns a TCP MLLP sink for addr.
-func NewMLLPSink(addr string) *MLLPSink {
-	return &MLLPSink{addr: addr, dialer: func(ctx context.Context, addr string) (net.Conn, error) {
+// NewMLLPSink returns an MLLP sink for addr with the default timeout.
+func NewMLLPSink(addr string) *MLLPSink { return NewMLLPSinkWith(addr, 0) }
+
+// NewMLLPSinkWith returns an MLLP sink for addr whose deliveries take at
+// most timeout (MLLPSinkTimeout when not positive).
+func NewMLLPSinkWith(addr string, timeout time.Duration) *MLLPSink {
+	if timeout <= 0 {
+		timeout = MLLPSinkTimeout
+	}
+	return &MLLPSink{addr: addr, timeout: timeout, dialer: func(ctx context.Context, addr string) (net.Conn, error) {
 		var d net.Dialer
 		return d.DialContext(ctx, "tcp", addr)
 	}}
@@ -71,24 +93,51 @@ func NewMLLPSink(addr string) *MLLPSink {
 
 func (s *MLLPSink) Name() string { return "tcp" }
 
+// Write sends m and waits for its ACK: AA or CA delivers it; any other code,
+// a reply that is not an ACK, an ACK for another control id, or no reply
+// in time is an error. Errors name the ACK code, never message content.
 func (s *MLLPSink) Write(ctx context.Context, m Message) error {
-	if s.conn == nil {
-		conn, err := s.dialer(ctx, s.addr)
-		if err != nil {
-			return err
-		}
-		s.conn = conn
+	if bytes.Contains(m.Body, mllpEnd) {
+		return errors.New("mllp: the message contains the MLLP end bytes (FS CR) and cannot be framed")
 	}
-	_, err := s.conn.Write(frameMLLP(m.Body))
-	return err
-}
-
-func (s *MLLPSink) Close() error {
-	if s.conn != nil {
-		return s.conn.Close()
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	conn, err := s.dialer(ctx, s.addr)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(deadline)
+	}
+	// A cancelled caller stops a blocked write or ACK read at once.
+	stop := context.AfterFunc(ctx, func() { _ = conn.SetDeadline(time.Now()) })
+	defer stop()
+	if _, err := conn.Write(frameMLLP(m.Body)); err != nil {
+		return err
+	}
+	reply, err := readFrame(bufio.NewReader(conn), maxACKBytes)
+	if err != nil {
+		return fmt.Errorf("mllp: no ACK: %w", err)
+	}
+	code, acked, ok := codecs.ParseHL7ACK(reply)
+	switch {
+	case !ok:
+		return errors.New("mllp: the reply is not an HL7 ACK")
+	case code == codecs.AckApplicationError || code == codecs.AckCommitError:
+		return fmt.Errorf("mllp: ACK %s (application error)", code)
+	case code == codecs.AckApplicationReject || code == codecs.AckCommitReject:
+		return fmt.Errorf("mllp: ACK %s (application reject)", code)
+	case code != codecs.AckApplicationAccept && code != codecs.AckCommitAccept:
+		return fmt.Errorf("mllp: ACK with an unknown code %q", code[:min(len(code), 8)]) // bounded: from the receiver
+	case acked != codecs.HL7ControlID(m.Body):
+		// An accept counts only for this message.
+		return errors.New("mllp: the ACK is for another message (MSA-2 does not match MSH-10)")
 	}
 	return nil
 }
+
+func (s *MLLPSink) Close() error { return nil }
 
 // MLLPSource accepts TCP connections and reads MLLP-framed messages.
 type MLLPSource struct {

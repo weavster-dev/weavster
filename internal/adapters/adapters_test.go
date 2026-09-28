@@ -73,6 +73,7 @@ func TestMLLPSinkWritesFramed(t *testing.T) {
 			return
 		}
 		got <- body
+		_, _ = conn.Write(frameMLLP([]byte("MSH|^~\\&|B\rMSA|AA|\r")))
 	}()
 
 	sink := NewMLLPSink(l.Addr().String())

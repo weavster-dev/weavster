@@ -46,7 +46,7 @@ func mllpHandler(id string, ingest gateway.SourceIngester) adapters.MLLPHandler 
 		if !isMSH(msh) {
 			return ack(codecs.AckApplicationReject, "not an HL7 v2 message (no MSH segment)")
 		}
-		cid := controlID(msh)
+		cid := codecs.HL7ControlID(msh)
 		if len(cid) > maxControlIDMetadata {
 			cid = cid[:maxControlIDMetadata]
 		}
@@ -95,17 +95,6 @@ func isMSH(seg []byte) bool {
 	c := seg[3]
 	alnum := c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
 	return !alnum && c != ' '
-}
-
-// controlID is MSH-10 of the MSH segment msh.
-func controlID(msh []byte) string {
-	v, _ := codecs.HL7v2().Parse(msh) // never fails
-	for _, seg := range v.(*codecs.HL7Message).Segments {
-		if f := seg.Field(10); seg.Name == "MSH" && len(f) > 0 {
-			return f[0]
-		}
-	}
-	return ""
 }
 
 // newControlID is a unique MSH-10 for an ACK: 20 hex characters, the

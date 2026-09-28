@@ -104,6 +104,9 @@ func TestDestinationRequestOptionsSchema(t *testing.T) {
 		{`{"name":"a","type":"file","dir":"/out","method":"PUT"}`, false},
 		{`{"name":"a","type":"file","dir":"/out","maxRedirects":1}`, false},
 		{`{"name":"a","type":"file","dir":"/out","method":null,"timeoutMs":null}`, true},
+		{`{"name":"a","type":"mllp","address":"lab:2575","timeoutMs":5000}`, true},
+		{`{"name":"a","type":"mllp","address":"lab:2575","method":"PUT"}`, false},
+		{`{"name":"a","type":"mllp","address":"lab:2575","url":"https://x"}`, false},
 		{`{"name":"a","type":"http","url":"https://x","timeoutMs":120001}`, false},
 	} {
 		if err := ValidateJSON([]byte(`{"id":"f","destinations":[` + tt.dest + `]}`)); (err == nil) != tt.ok {

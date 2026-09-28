@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -48,9 +49,10 @@ type Destination struct {
 	// without using attempts until the destination is started.
 	Stopped bool
 	Name    string
-	Type    string // "http" or "file"
+	Type    string // "http", "file", or "mllp"
 	URL     string // http
 	Dir     string // file
+	Address string // mllp: host:port
 	// Method, Timeout, and MaxRedirects shape http requests (zero: defaults).
 	Method       string
 	Timeout      time.Duration
@@ -192,8 +194,13 @@ func Validate(f Flow) error {
 			return fmt.Errorf("destination %s: url must be an absolute http:// or https:// URL, got %q", d.Name, d.URL)
 		case d.Type == "file" && d.Dir == "":
 			return fmt.Errorf("destination %s: dir is required for type file", d.Name)
-		case d.Type != "http" && d.Type != "file":
-			return fmt.Errorf("destination %s: type must be http or file, got %q", d.Name, d.Type)
+		case d.Type == "mllp" && !validAddress(d.Address):
+			return fmt.Errorf("destination %s: address must be host:port with a port from 1 to 65535, got %q", d.Name, d.Address)
+		case d.Type == "mllp" && (f.InputFormat != "hl7v2" || f.Transform != nil || d.Transform != nil):
+			// Transforms output JSON, which an HL7 receiver cannot take.
+			return fmt.Errorf("destination %s: an mllp destination sends the HL7 v2 message as received, so the flow needs inputFormat hl7v2 and neither the flow nor the destination may have a transform", d.Name)
+		case d.Type != "http" && d.Type != "file" && d.Type != "mllp":
+			return fmt.Errorf("destination %s: type must be http, file, or mllp, got %q", d.Name, d.Type)
 		}
 		if d.Transform != nil {
 			if _, err := dsl.Compile(*d.Transform); err != nil {
@@ -218,6 +225,13 @@ func Validate(f Flow) error {
 		return fmt.Errorf("responseSelector: destination %s is type %s, which sends no reply; select an http destination", f.ResponseSelector, kind)
 	}
 	return nil
+}
+
+// validAddress reports whether s is host:port with a numeric port 1–65535.
+func validAddress(s string) bool {
+	host, p, err := net.SplitHostPort(s)
+	port, perr := strconv.Atoi(p)
+	return err == nil && host != "" && perr == nil && port >= 1 && port <= 65535
 }
 
 func validHTTPURL(s string) bool {

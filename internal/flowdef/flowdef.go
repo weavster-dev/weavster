@@ -111,6 +111,8 @@ type Destination struct {
 	Type string `json:"type"`
 	URL  string `json:"url,omitempty"`
 	Dir  string `json:"dir,omitempty"`
+	// Address is the host:port an mllp destination delivers to (#107 D-64).
+	Address string `json:"address,omitempty"`
 	// Method, TimeoutMs, and MaxRedirects shape an http destination's
 	// request: POST, 30 s, and no redirects followed by default (#107 D-59).
 	Method       string `json:"method,omitempty"`
