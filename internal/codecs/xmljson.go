@@ -70,7 +70,8 @@ func XMLJSON(in []byte) (map[string]any, error) {
 	var root map[string]any
 	var rootName string
 	var stack []*open
-	elements := 0
+	elements, tokens := 0, 0
+	doctype := false
 	for {
 		// RawToken keeps prefixes as written; namespaces are resolved and
 		// end tags matched here.
@@ -81,7 +82,19 @@ func XMLJSON(in []byte) (map[string]any, error) {
 		if err != nil {
 			return nil, notXML("") // not the decoder's text: it can quote the document
 		}
+		tokens++
 		switch t := tok.(type) {
+		case xml.ProcInst:
+			// The XML declaration comes first or not at all.
+			if strings.EqualFold(t.Target, "xml") && tokens != 1 {
+				return nil, notXML("")
+			}
+		case xml.Directive:
+			// Only one DOCTYPE, before the root element (never processed).
+			if !bytes.HasPrefix(t, []byte("DOCTYPE")) || doctype || root != nil {
+				return nil, notXML("")
+			}
+			doctype = true
 		case xml.StartElement:
 			switch {
 			case len(stack) == 0 && root != nil:
@@ -111,6 +124,17 @@ func XMLJSON(in []byte) (map[string]any, error) {
 			el := map[string]any{}
 			if uri != "" {
 				el["#ns"] = uri
+			}
+			seen := map[xml.Name]bool{} // attributes by expanded name: each once
+			for _, a := range t.Attr {
+				expanded := a.Name
+				if a.Name.Space != "" && a.Name.Space != "xmlns" {
+					expanded.Space = "{" + ns[a.Name.Space] + "}"
+				}
+				if seen[expanded] {
+					return nil, notXML("duplicate attribute")
+				}
+				seen[expanded] = true
 			}
 			for _, a := range t.Attr {
 				switch {

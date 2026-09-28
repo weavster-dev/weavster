@@ -76,23 +76,33 @@ func TestXMLJSON(t *testing.T) {
 		t.Errorf("DOCTYPE: %v", v)
 	}
 	view(t, strings.Repeat("<a>", MaxXMLDepth)+strings.Repeat("</a>", MaxXMLDepth))
+	view(t, `<?xml version="1.0"?><?app hint?><a><?app inner?></a><?app after?>`)
+	view(t, `<a xmlns:x="urn:x" xmlns:y="urn:y" x:id="1" y:id="2" id="3"/>`)
 
 	for name, tt := range map[string]struct{ in, reason string }{
-		"empty":            {"", "no root element"},
-		"not xml":          {"hello", "text outside the root element"},
-		"two roots":        {"<a/><b/>", "more than one root element"},
-		"unclosed":         {"<a><b></a>", ""},
-		"text outside":     {"<a/>trailing", "text outside the root element"},
-		"unknown entity":   {`<!DOCTYPE a [<!ENTITY e SYSTEM "file:///etc/passwd">]><a>&e;</a>`, ""},
-		"unknown charset":  {`<?xml version="1.0" encoding="x-nope"?><a/>`, ""},
-		"undeclared":       {"<a><p:b/></a>", "undeclared namespace prefix"},
-		"undeclared attr":  {`<a p:x="1"/>`, "undeclared namespace prefix"},
-		"too deep":         {strings.Repeat("<a>", MaxXMLDepth+1) + strings.Repeat("</a>", MaxXMLDepth+1), "elements nested deeper than 256"},
-		"too many":         {"<r>" + strings.Repeat("<a/>", MaxXMLElements) + "</r>", "more than 100000 elements"},
-		"end tag mismatch": {"<a></b>", ""},
-		"prefix mismatch":  {`<x:a xmlns:x="urn:x" xmlns:y="urn:x"></y:a>`, ""},
-		"not closed":       {"<a>", ""},
-		"stray end":        {"</a>", ""},
+		"empty":                 {"", "no root element"},
+		"not xml":               {"hello", "text outside the root element"},
+		"two roots":             {"<a/><b/>", "more than one root element"},
+		"unclosed":              {"<a><b></a>", ""},
+		"text outside":          {"<a/>trailing", "text outside the root element"},
+		"unknown entity":        {`<!DOCTYPE a [<!ENTITY e SYSTEM "file:///etc/passwd">]><a>&e;</a>`, ""},
+		"unknown charset":       {`<?xml version="1.0" encoding="x-nope"?><a/>`, ""},
+		"undeclared":            {"<a><p:b/></a>", "undeclared namespace prefix"},
+		"undeclared attr":       {`<a p:x="1"/>`, "undeclared namespace prefix"},
+		"too deep":              {strings.Repeat("<a>", MaxXMLDepth+1) + strings.Repeat("</a>", MaxXMLDepth+1), "elements nested deeper than 256"},
+		"too many":              {"<r>" + strings.Repeat("<a/>", MaxXMLElements) + "</r>", "more than 100000 elements"},
+		"end tag mismatch":      {"<a></b>", ""},
+		"prefix mismatch":       {`<x:a xmlns:x="urn:x" xmlns:y="urn:x"></y:a>`, ""},
+		"not closed":            {"<a>", ""},
+		"stray end":             {"</a>", ""},
+		"bad directive":         {"<!bad><a/>", ""},
+		"late declaration":      {`<a/><?xml version="1.0"?>`, ""},
+		"declaration in root":   {`<a><?xml version="1.0"?></a>`, ""},
+		"doctype after root":    {`<a/><!DOCTYPE a>`, ""},
+		"two doctypes":          {`<!DOCTYPE a><!DOCTYPE a><a/>`, ""},
+		"duplicate attribute":   {`<a id="1" id="2"/>`, "duplicate attribute"},
+		"same expanded name":    {`<a xmlns:x="urn:x" xmlns:y="urn:x" x:id="1" y:id="2"/>`, "duplicate attribute"},
+		"duplicate declaration": {`<a xmlns:x="urn:x" xmlns:x="urn:y"/>`, "duplicate attribute"},
 	} {
 		_, err := XMLJSON([]byte(tt.in))
 		var e *NotXMLError

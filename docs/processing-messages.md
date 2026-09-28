@@ -201,7 +201,8 @@ the transform sees:
 - The transform's output is JSON, delivered as `application/json`; there is no conversion back to
   XML yet. The stored original is the document as received.
 - Only well-formed documents with one root element are accepted, with at most 256 levels of
-  nesting and 100,000 elements, and every namespace prefix declared. Anything else is refused
+  nesting and 100,000 elements, every namespace prefix declared, no attribute twice, the XML
+  declaration (if any) first, and at most one `DOCTYPE` before the root. Anything else is refused
   (`400` over the API, rejected by a file source), even when the flow has no transform. A
   `DOCTYPE` is allowed but never processed: entities it declares are not expanded and nothing is
   fetched, so a document using one is refused.
