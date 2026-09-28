@@ -114,3 +114,33 @@ func TestDestinationRequestOptionsSchema(t *testing.T) {
 		t.Error("readTimeoutMs under 1000 accepted")
 	}
 }
+
+func TestCheckInput(t *testing.T) {
+	yes := true
+	for _, tt := range []struct {
+		f    Flow
+		want string
+	}{
+		{Flow{}, ""},
+		{Flow{InputFormat: "delimited", Delimited: &Delimited{Delimiter: ";", Header: &yes}}, ""},
+		{Flow{InputFormat: "json", Delimited: &Delimited{}}, "delimited applies only to inputFormat delimited"},
+		{Flow{Delimited: &Delimited{}}, "delimited applies only to inputFormat delimited"},
+	} {
+		err := CheckInput(tt.f)
+		if (tt.want == "") != (err == nil) || (err != nil && err.Error() != tt.want) {
+			t.Errorf("%+v: %v, want %q", tt.f, err, tt.want)
+		}
+	}
+	for _, tt := range []struct {
+		doc string
+		ok  bool
+	}{
+		{`{"id":"a","inputFormat":"delimited","delimited":{"delimiter":"\t","header":false}}`, true},
+		{`{"id":"a","inputFormat":"delimited","delimited":{"delimiter":"::"}}`, false},
+		{`{"id":"a","inputFormat":"delimited","delimited":{"quote":"'"}}`, false},
+	} {
+		if err := ValidateJSON([]byte(tt.doc)); (err == nil) != tt.ok {
+			t.Errorf("%s: %v", tt.doc, err)
+		}
+	}
+}

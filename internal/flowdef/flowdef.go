@@ -44,6 +44,24 @@ type Flow struct {
 	// or xml — the HL7 v2 message's or XML document's JSON view (#107 D-61,
 	// D-62).
 	InputFormat string `json:"inputFormat,omitempty"`
+	// Delimited configures inputFormat delimited (#107 D-63).
+	Delimited *Delimited `json:"delimited,omitempty"`
+}
+
+// Delimited describes delimited text: the delimiter ("," when empty) and
+// whether the first row names the columns (true when nil).
+type Delimited struct {
+	Delimiter string `json:"delimiter,omitempty"`
+	Header    *bool  `json:"header,omitempty"`
+}
+
+// CheckInput checks what the schema cannot: delimited options go with
+// inputFormat delimited only.
+func CheckInput(f Flow) error {
+	if f.Delimited != nil && f.InputFormat != "delimited" {
+		return errors.New("delimited applies only to inputFormat delimited")
+	}
+	return nil
 }
 
 // SourceKind is the flow's source type: its source's, or else the

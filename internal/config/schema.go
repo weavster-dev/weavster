@@ -3,6 +3,7 @@ package config
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"reflect"
 	"sort"
@@ -124,10 +125,9 @@ func ParseValid(data []byte) (*Config, error) {
 func checkArtifacts(c *Config) []string {
 	var errs []string
 	for _, k := range sortedKeys(c.Flows) {
-		if f := c.Flows[k]; f.Source != nil {
-			if err := flowdef.CheckSource(f.Source); err != nil {
-				errs = append(errs, "flows."+k+": "+err.Error())
-			}
+		f := c.Flows[k]
+		if err := errors.Join(flowdef.CheckSource(f.Source), flowdef.CheckInput(f)); err != nil {
+			errs = append(errs, "flows."+k+": "+err.Error())
 		}
 	}
 	for _, k := range sortedKeys(c.Alerts) {
