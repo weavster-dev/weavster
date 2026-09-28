@@ -576,9 +576,14 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestFlowDestination</code>, <code>TestFlowSink</code>, <code>TestDependencies</code>. Effectively once (a retry finds the stored message); what it sends must fit the target's <code>inputFormat</code>. See <a href="../processing-messages/#send-to-another-flow">Send to another flow</a>.</td>
 </tr>
 <tr>
-<td>Other sources and destinations (database, SMTP, SOAP/REST web service, document)</td>
+<td><code>database</code> destination: inserts each message's JSON values into a table of PostgreSQL or SQLite (<code>driver</code>, <code>dsnEnv</code>, <code>table</code>, <code>columns</code>, <code>keyColumn</code>), with parameters, quoted identifiers, one statement (its own transaction) per message within <code>timeoutMs</code>, and no duplicate on retry with <code>keyColumn</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestDatabaseDestination</code> (SQLite file), <code>TestSQLSink</code>, <code>TestSQLSinkStatement</code> (PostgreSQL SQL), <code>TestSQLSinkErrors</code>, <code>TestSQLValue</code>, <code>TestDBPool</code>. Not yet run against a live PostgreSQL in CI (arrives with the PostgreSQL CI job). See <a href="../processing-messages/#write-rows-to-a-database">Write rows to a database</a>.</td>
+</tr>
+<tr>
+<td>Other sources and destinations (database source, SMTP, SOAP/REST web service, document)</td>
 <td>Library-only</td>
-<td>Only file, http, and mllp sources and http, file, mllp, and flow destinations are wired.</td>
+<td>Only file, http, and mllp sources and http, file, mllp, flow, and database destinations are wired.</td>
 </tr>
 <tr>
 <td>Per-flow and per-destination statistics (<code>GET /api/v1/flows/{id}/stats</code>)</td>
@@ -910,9 +915,9 @@ to the target.</p>
 <tr>
 <td>Database</td>
 <td>library</td>
-<td>library</td>
-<td>not wired</td>
-<td>no</td>
+<td>wired</td>
+<td>at-least-once; with <code>keyColumn</code>, effectively once: the key is inserted with the row, and a retry after a lost success inserts nothing</td>
+<td>only with <code>keyColumn</code>: the key is inserted into that column</td>
 </tr>
 <tr>
 <td>SMTP</td>

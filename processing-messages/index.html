@@ -335,7 +335,7 @@ VS Code, for example, mistakes are underlined and fields are completed:</p>
 </tr>
 <tr>
 <td><code>type</code></td>
-<td><code>http</code> (send to <code>url</code>), <code>file</code> (write one file per message into <code>dir</code>, named by message ID), <code>mllp</code> (send HL7 v2 to <code>address</code> over TCP; see <a href="#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>), or <code>flow</code> (hand the message to another flow; see <a href="#send-to-another-flow">Send to another flow</a>).</td>
+<td><code>http</code> (send to <code>url</code>), <code>file</code> (write one file per message into <code>dir</code>, named by message ID), <code>mllp</code> (send HL7 v2 to <code>address</code> over TCP; see <a href="#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>), <code>flow</code> (hand the message to another flow; see <a href="#send-to-another-flow">Send to another flow</a>), or <code>database</code> (insert a row into a table; see <a href="#write-rows-to-a-database">Write rows to a database</a>).</td>
 </tr>
 <tr>
 <td><code>url</code></td>
@@ -768,6 +768,95 @@ in the documents you receive:</p>
   step to drop documents without what the template needs, for example
   <code>{"filter": {"when": "order.item.1.@sku", "action": "accept"}}</code>, and a third item is simply not
   copied.</li>
+</ul>
+<h3 id="write-rows-to-a-database">Write rows to a database</h3>
+<p>A <code>database</code> destination inserts each message as one row of a table in PostgreSQL (or SQLite,
+for local use and tests). You choose which value of the message goes into which column:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;lab-results&quot;,
+  &quot;inputFormat&quot;: &quot;hl7v2&quot;,
+  &quot;transform&quot;: {&quot;name&quot;: &quot;results&quot;, &quot;steps&quot;: [
+    {&quot;map&quot;: {&quot;from&quot;: &quot;PID.3.1&quot;, &quot;to&quot;: &quot;patient.mrn&quot;}},
+    {&quot;map&quot;: {&quot;from&quot;: &quot;OBX.3.2&quot;, &quot;to&quot;: &quot;result.test&quot;}},
+    {&quot;map&quot;: {&quot;from&quot;: &quot;OBX.5.1&quot;, &quot;to&quot;: &quot;result.value&quot;}}
+  ]},
+  &quot;destinations&quot;: [{
+    &quot;name&quot;: &quot;warehouse&quot;, &quot;type&quot;: &quot;database&quot;, &quot;driver&quot;: &quot;postgres&quot;, &quot;dsnEnv&quot;: &quot;WEAVSTER_DB_WAREHOUSE&quot;,
+    &quot;table&quot;: &quot;lab.results&quot;,
+    &quot;columns&quot;: {&quot;mrn&quot;: &quot;patient.mrn&quot;, &quot;test&quot;: &quot;result.test&quot;, &quot;value&quot;: &quot;result.value&quot;},
+    &quot;keyColumn&quot;: &quot;delivery_key&quot;
+  }]
+}
+</code></pre>
+<p>Start the server with the connection string in the environment variable the destination names:</p>
+<pre><code class="language-bash">export WEAVSTER_DB_WAREHOUSE='postgres://weavster:secret@db.example.com:5432/warehouse?sslmode=verify-full'
+weavster server --config weavster.yaml
+</code></pre>
+<p>and create the table yourself, for example:</p>
+<pre><code class="language-sql">CREATE TABLE lab.results (mrn text, test text, value text, delivery_key text UNIQUE);
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>driver</code></td>
+<td>Required. <code>postgres</code>, or <code>sqlite</code> (the connection string is then a database file path).</td>
+</tr>
+<tr>
+<td><code>dsnEnv</code></td>
+<td>Required. The server environment variable holding the connection string; its name must start with <code>WEAVSTER_DB_</code>. The connection string never appears in the flow.</td>
+</tr>
+<tr>
+<td><code>table</code></td>
+<td>Required. <code>table</code> or <code>schema.table</code>: letters, digits, and <code>_</code>.</td>
+</tr>
+<tr>
+<td><code>columns</code></td>
+<td>Required. Column name → path of its value in the message, such as <code>patient.mrn</code> (numbers index lists: <code>ids.0</code>).</td>
+</tr>
+<tr>
+<td><code>keyColumn</code></td>
+<td>Optional. A column with a unique constraint that receives the delivery's idempotency key (see below).</td>
+</tr>
+<tr>
+<td><code>timeoutMs</code></td>
+<td>Optional. Time allowed for one insert, 1000–120000 (default 30000).</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>The destination needs JSON: the flow's or the destination's transform output, or JSON messages
+  passed through. A flow reading HL7 v2, XML, or delimited text without a transform, or ending
+  with a <code>build</code> to another format, is refused when you create it.</li>
+<li>Values are sent as query parameters, never written into the SQL, so a quote in a value is just
+  data. Each value is sent as text and the database converts it to the column's type: in
+  PostgreSQL <code>42</code> into an <code>integer</code>, <code>5.40</code> into a <code>numeric</code> with every digit kept, <code>true</code> into a
+  <code>boolean</code>, <code>2026-09-28T10:00:00Z</code> into a <code>timestamptz</code>, an object into <code>jsonb</code>. <code>null</code> and
+  missing paths are <code>NULL</code>. A value the column cannot take fails the delivery
+  (<code>database: a value does not fit its column's type (SQLSTATE 22P02)</code>). SQLite converts by the
+  column's affinity (<code>true</code> stays the text <code>true</code>).</li>
+<li>Table and column names are checked and written in double quotes, so in PostgreSQL they are
+  case-sensitive: use the names as the table has them (a table created without quotes has
+  lower-case names, so <code>Results</code> does not find <code>results</code>).</li>
+<li>Each message is one <code>INSERT</code> statement, its own transaction, within <code>timeoutMs</code>. A failed
+  insert is retried like any other delivery and then dead-lettered.</li>
+<li>With <code>keyColumn</code>, the insert is <code>ON CONFLICT (keyColumn) DO NOTHING</code>: a retry after a lost
+  success (the row was written but the reply never arrived) inserts nothing, so the message is
+  written once. The key is the same for every attempt to deliver that message to that
+  destination; reprocessing a message makes a new message with a new key. Without
+  <code>keyColumn</code>, a retry can insert the row twice.</li>
+<li>The connection string is read for every message, so a changed variable (a rotated password)
+  applies without a restart: the old connections are closed and new ones opened. Connections
+  are pooled per variable; a SQLite database gets one connection, so its inserts take turns. An unset variable fails the delivery:
+  <code>database: environment variable WEAVSTER_DB_WAREHOUSE is not set</code>.</li>
+<li>Errors never quote values: PostgreSQL errors are reported by kind and SQLSTATE (for example
+  <code>database: the table does not exist (SQLSTATE 42P01)</code>), and a failed connection as
+  <code>database: could not connect (check the host, credentials, and TLS settings in the connection string)</code>.</li>
 </ul>
 <h3 id="send-to-another-flow">Send to another flow</h3>
 <p>A <code>flow</code> destination hands each message to another flow in the same server, as a new message of
