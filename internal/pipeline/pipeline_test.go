@@ -468,12 +468,21 @@ func TestProcessDestinationSet(t *testing.T) {
 
 	// A reprocessed message arrives with the old exclusion in its metadata;
 	// this run excludes nothing, so it is removed and ehr gets the message.
+	// The same holds for a flow with no transform at all.
+	plain := Flow{ID: "p", Destinations: f.Destinations}
+	res0, err := p.ProcessWithMetadata(ctx, plain, []byte(`{}`), map[string]string{ExcludedMetadata: "ehr"})
+	if err != nil || res0.Status != state.StatusSent {
+		t.Fatalf("reprocessed, no transform: %+v %v", res0, err)
+	}
+	if m, _ := store.Get(ctx, res0.ID); m.Metadata[ExcludedMetadata] != "" || len(sinks["ehr"].bodies) != 2 {
+		t.Errorf("no transform: excluded %q, ehr deliveries %d; want none, 2", m.Metadata[ExcludedMetadata], len(sinks["ehr"].bodies))
+	}
 	res, err := p.ProcessWithMetadata(ctx, f, []byte(`{"kind":"adt"}`), map[string]string{ExcludedMetadata: "ehr"})
 	if err != nil || res.Status != state.StatusSent {
 		t.Fatalf("reprocessed: %+v %v", res, err)
 	}
-	if m, _ := store.Get(ctx, res.ID); m.Metadata[ExcludedMetadata] != "" || len(sinks["ehr"].bodies) != 2 {
-		t.Errorf("reprocessed: excluded %q, ehr deliveries %d; want none, 2", m.Metadata[ExcludedMetadata], len(sinks["ehr"].bodies))
+	if m, _ := store.Get(ctx, res.ID); m.Metadata[ExcludedMetadata] != "" || len(sinks["ehr"].bodies) != 3 {
+		t.Errorf("reprocessed: excluded %q, ehr deliveries %d; want none, 3", m.Metadata[ExcludedMetadata], len(sinks["ehr"].bodies))
 	}
 
 	// A retry honors the stored exclusion even though archive failed first.
@@ -489,7 +498,7 @@ func TestProcessDestinationSet(t *testing.T) {
 	if _, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) { return f, nil }); err != nil {
 		t.Fatal(err)
 	}
-	if m, _ = store.Get(ctx, res.ID); m.Status != state.StatusSent || len(sinks["ehr"].bodies) != 2 {
-		t.Errorf("after retry: status %s, ehr deliveries %d (want sent, 2: ehr stays excluded)", m.Status, len(sinks["ehr"].bodies))
+	if m, _ = store.Get(ctx, res.ID); m.Status != state.StatusSent || len(sinks["ehr"].bodies) != 3 {
+		t.Errorf("after retry: status %s, ehr deliveries %d (want sent, 3: ehr stays excluded)", m.Status, len(sinks["ehr"].bodies))
 	}
 }

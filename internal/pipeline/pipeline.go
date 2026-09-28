@@ -462,7 +462,10 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 	ob := p.outbox(f, m.ContentType, nil, nil)
 	if m.Status == state.StatusReceived {
 		transformed := m.Raw
-		var routed map[string]string // metadata the flow transform adds
+		// Every newly received message decides its own exclusions: the key
+		// is cleared ("") unless the flow transform sets it, so one carried
+		// over (a reprocessed message keeps its metadata) never applies.
+		routed := map[string]string{ExcludedMetadata: ""}
 		if f.Transform != nil {
 			prog, err := dsl.Compile(*f.Transform)
 			if err != nil {
@@ -482,9 +485,7 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 			if transformed, err = json.Marshal(out); err != nil {
 				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
 			}
-			// Always set, so an exclusion carried over (a reprocessed
-			// message keeps its metadata) never outlives this run: "" removes it.
-			routed = map[string]string{ExcludedMetadata: strings.Join(excluded, ",")}
+			routed[ExcludedMetadata] = strings.Join(excluded, ",")
 		}
 		stored, err := ob.SetTransformed(ctx, id, transformed, routed)
 		if err != nil {

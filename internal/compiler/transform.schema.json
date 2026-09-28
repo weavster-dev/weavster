@@ -147,7 +147,7 @@
       "required": [
         "exclude"
       ],
-      "description": "Excludes the named destinations for this message when when holds (always without when). Only in a flow's transform; destinations can only be excluded.",
+      "description": "Excludes the named destinations for this message when the when condition holds (always without one). Only in a flow's transform; destinations can only be excluded.",
       "properties": {
         "exclude": {
           "type": "array",
