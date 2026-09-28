@@ -1,0 +1,25 @@
+{
+  "transform": {
+    "steps": [
+      {
+        "map": {
+          "from": "patient.mrn",
+          "to": "id",
+          "type": "number"
+        }
+      },
+      {
+        "set": {
+          "field": "label",
+          "expr": "{{patient.last}}, {{patient.first}}"
+        }
+      },
+      {
+        "filter": {
+          "when": "patient.test",
+          "action": "reject"
+        }
+      }
+    ]
+  }
+}

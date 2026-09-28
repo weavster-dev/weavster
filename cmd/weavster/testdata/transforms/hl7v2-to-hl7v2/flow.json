@@ -1,0 +1,19 @@
+{
+  "inputFormat": "hl7v2",
+  "transform": {
+    "steps": [
+      {
+        "set": {
+          "field": "name",
+          "expr": "{{PID.5.1}}^{{PID.5.2}}"
+        }
+      },
+      {
+        "build": {
+          "format": "hl7v2",
+          "template": "MSH|^~\\&|WEAVSTER|HOSP|LAB|HOSP|{{MSH.7.1}}||ADT^A08|{{MSH.10.1}}|P|2.5\nPID|1||{{PID.3.1}}^^^MRN||{{name}}"
+        }
+      }
+    ]
+  }
+}

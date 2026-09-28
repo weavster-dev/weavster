@@ -412,6 +412,42 @@ or text) again. For example, receive ADT over MLLP and relay a reshaped message 
   cannot read it and is refused.
 - A `responseTransform` cannot use `build`: the reply returned to the sender is JSON.
 
+### Convert XML (instead of XSLT)
+
+Weavster has no XSLT. The declarative equivalent is an XML flow whose transform reads the
+document's [XML view](#transform-xml-documents), optionally filters it, and writes the new
+document with a [`build`](#build-the-output-build) step:
+
+```json
+{
+  "id": "orders-to-requests",
+  "inputFormat": "xml",
+  "transform": {"steps": [
+    {"filter": {"when": "order.@status == 'cancelled'", "action": "reject"}},
+    {"build": {"format": "xml", "template": "<request id=\"{{order.@id}}\"><patient>{{order.patient.name.#text}}</patient><first-item sku=\"{{order.item.0.@sku}}\"/><second-item sku=\"{{order.item.1.@sku}}\"/></request>"}}
+  ]},
+  "destinations": [{"name": "lab", "type": "http", "url": "https://lab.example.com/requests"}]
+}
+```
+
+For `<order id="42" status="new" xmlns="urn:orders"><patient><name> DOE &amp; SON </name></patient><item sku="A"/><item sku="B"/></order>`
+the lab receives `<request id="42"><patient>DOE &amp; SON</patient><first-item sku="A"/><second-item sku="B"/></request>`
+as `application/xml`.
+
+What XSLT does and how to do it here:
+
+| XSLT | Here |
+|---|---|
+| `xsl:value-of select="/order/@id"` | `{{order.@id}}` in a `build` template (or `map`/`set` first) |
+| Literal result elements | The `build` template's own markup |
+| `xsl:if` / predicate that drops the message | A `filter` step |
+| `xsl:choose` to pick a destination | A [`destinationSet`](#route-by-content-destinationset) step |
+| Computed text (`concat(...)`) | A `set` step with `{{path}}` placeholders |
+
+Not available: XPath functions, sorting, and loops (`xsl:for-each`, `xsl:apply-templates`). A
+template addresses repeated elements by position (`order.item.0`, `order.item.1`), so it fits
+documents with a known shape; lists of any length cannot be reshaped yet.
+
 ### Route by content (`destinationSet`)
 
 A `destinationSet` step in the flow's `transform` leaves destinations out for a message, based on
