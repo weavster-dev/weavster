@@ -1118,8 +1118,10 @@ func hasSource(flows []gateway.Flow) bool {
 }
 
 // checkSources refuses two flows reading the same directory, which would
-// take the same files (#107 D-56), or listening on the same port or on one
-// of the server's own ports (D-57).
+// take the same files (#107 D-56) — or, with a recursive source, a
+// directory or moveTo inside another flow's recursive directory (D-69) —
+// and two flows listening on the same port or on one of the server's own
+// ports (D-57).
 func checkSources(all map[string]gateway.Flow, serverPorts map[int]string) error {
 	ids := make([]string, 0, len(all))
 	for id := range all {
@@ -1146,6 +1148,30 @@ func checkSources(all map[string]gateway.Flow, serverPorts map[int]string) error
 				return fmt.Errorf("flows %s and %s both read %s; a directory can have one file source", other, id, dir)
 			}
 			readBy[dir] = id
+		}
+	}
+	return checkRecursiveSources(all, ids)
+}
+
+// checkRecursiveSources refuses a recursive file source whose directory
+// holds another flow's source directory or moveTo: both flows would read
+// the same files.
+func checkRecursiveSources(all map[string]gateway.Flow, ids []string) error {
+	for _, a := range ids {
+		src := all[a].Source
+		if src == nil || src.Type != "file" || !src.Recursive {
+			continue
+		}
+		for _, b := range ids {
+			other := all[b].Source
+			if b == a || other == nil || other.Type != "file" {
+				continue
+			}
+			for _, p := range []string{other.Dir, other.MoveTo} {
+				if p != "" && flowdef.Within(p, src.Dir) {
+					return fmt.Errorf("flow %s reads %s recursively, which holds flow %s's %s; a directory can have one file source", a, filepath.Clean(src.Dir), b, filepath.Clean(p))
+				}
+			}
 		}
 	}
 	return nil

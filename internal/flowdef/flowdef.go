@@ -233,7 +233,7 @@ func CheckSource(s *Source) error {
 		return errors.New("source.moveTo must differ from source.dir")
 	case s.MoveTo != "" && filepath.Join(s.MoveTo, "rejected") == filepath.Clean(s.Dir):
 		return errors.New("source.dir must not be moveTo/rejected, where refused files are moved")
-	case s.Recursive && s.MoveTo != "" && within(s.MoveTo, s.Dir):
+	case s.Recursive && s.MoveTo != "" && Within(s.MoveTo, s.Dir):
 		return errors.New("source.moveTo must not be inside source.dir when recursive: moved files would be read again")
 	case strings.ContainsAny(s.Pattern, `/\`):
 		return fmt.Errorf("source.pattern is a file-name glob without path separators, got %q", s.Pattern)
@@ -244,8 +244,8 @@ func CheckSource(s *Source) error {
 	return nil
 }
 
-// within reports whether path is dir or inside it.
-func within(path, dir string) bool {
+// Within reports whether path is dir or inside it.
+func Within(path, dir string) bool {
 	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(path))
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }

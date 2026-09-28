@@ -669,9 +669,13 @@ the flow as a message, and then deletes it (or moves it into `moveTo`):
   (`*.hl7` finds `2026/09/adt.hl7`). The metadata `source.file` is the path relative to `dir`
   (`2026/09/adt.hl7`), and `moveTo` (and `moveTo/rejected`) keep that path
   (`/var/lib/weavster/done/adt/2026/09/adt.hl7`). `moveTo` must then be outside `dir`, or moved
-  files would be read again. Subdirectories are left in place when their files have been
-  processed, and every poll walks the whole tree, so keep it small.
-- A directory can be read by one flow only; a second flow with the same `dir` is refused.
+  files would be read again. No other flow may read a directory, or move files, inside a
+  recursive source's `dir`. A subdirectory that cannot be read is logged (once) and its files are
+  not read. Subdirectories are left in place when their files have been processed, and every poll
+  walks the whole tree, so keep it small. A `dir` that is itself a symbolic link is followed;
+  links inside it are not.
+- A directory can be read by one flow only; a second flow with the same `dir` is refused (and,
+  with `recursive`, any directory or `moveTo` inside it).
 - Each poll reads at most 100 files, so one busy directory does not hold up other flows; the
   rest are read at the next poll.
 - A file is read once it has not changed for a second, so a file still being written is not taken

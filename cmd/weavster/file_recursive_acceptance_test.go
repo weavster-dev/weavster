@@ -85,6 +85,8 @@ func TestFileSourceRecursive(t *testing.T) {
 	for flow, want := range map[string]string{
 		`{"id":"x","source":{"type":"file","dir":"` + in + `/sub","recursive":true,"moveTo":"` + in + `/sub/done"}}`: "must not be inside source.dir when recursive",
 		`{"id":"x","destinations":[{"name":"out","type":"file","dir":"relative/out"}]}`:                              "dir must be an absolute path",
+		`{"id":"x","source":{"type":"file","dir":"` + in + `/2026"}}`:                                                "reads " + in + " recursively, which holds flow x's " + in + "/2026",
+		`{"id":"x","source":{"type":"file","dir":"` + t.TempDir() + `","moveTo":"` + in + `/archive"}}`:              "which holds flow x's " + in + "/archive",
 	} {
 		if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows", flow, admin); code != http.StatusBadRequest || !strings.Contains(resp, want) {
 			t.Errorf("%s: %d %s", flow, code, resp)

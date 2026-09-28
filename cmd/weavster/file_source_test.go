@@ -294,19 +294,25 @@ func TestFileSourceUsesCurrentMoveTo(t *testing.T) {
 	}
 }
 
-// TestListFilesRecursive: recursion stops at maxSourceDepth, an unreadable
-// subdirectory is skipped, and a missing root is an error.
+// TestListFilesRecursive: recursion reads files up to maxSourceDepth
+// levels of subdirectories and no deeper, filters by pattern, reports an
+// unreadable subdirectory, follows a root that is a symbolic link, and a
+// missing root is an error.
 func TestListFilesRecursive(t *testing.T) {
 	root := t.TempDir()
-	deep := root
-	for i := 0; i < maxSourceDepth+2; i++ {
-		deep = filepath.Join(deep, "d")
+	at := func(depth int) string {
+		p := root
+		for i := 0; i < depth; i++ {
+			p = filepath.Join(p, "d")
+		}
+		return p
 	}
-	if err := os.MkdirAll(deep, 0o750); err != nil {
-		t.Fatal(err)
-	}
-	for _, p := range []string{filepath.Join(root, "top.json"), filepath.Join(deep, "too-deep.json"), filepath.Join(root, "locked", "x.json")} {
-		_ = os.MkdirAll(filepath.Dir(p), 0o750)
+	for _, p := range []string{filepath.Join(root, "top.json"), filepath.Join(root, "top.txt"),
+		filepath.Join(at(maxSourceDepth), "deepest.json"), filepath.Join(at(maxSourceDepth+1), "too-deep.json"),
+		filepath.Join(root, "locked", "x.json")} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
 		if err := os.WriteFile(p, []byte("{}"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -315,24 +321,29 @@ func TestListFilesRecursive(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = os.Chmod(filepath.Join(root, "locked"), 0o750) }()
-	got, err := listFiles(root, true, "*")
-	if err != nil {
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(root, link); err != nil {
 		t.Fatal(err)
 	}
-	var files []string
-	for _, e := range got {
-		if !e.d.IsDir() {
-			files = append(files, e.rel)
+	deepest := strings.Repeat("d/", maxSourceDepth) + "deepest.json"
+	for _, dir := range []string{root, link} {
+		files, skipped, err := listFiles(dir, true, "*.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rels []string
+		for _, f := range files {
+			rels = append(rels, f.rel)
+		}
+		want, wantSkipped := deepest+",top.json", "locked"
+		if os.Geteuid() == 0 { // root reads the locked directory anyway
+			want, wantSkipped = deepest+",locked/x.json,top.json", ""
+		}
+		if strings.Join(rels, ",") != want || strings.Join(skipped, ",") != wantSkipped {
+			t.Errorf("%s: listed %v, skipped %v; want %s, %s", dir, rels, skipped, want, wantSkipped)
 		}
 	}
-	want := "top.json"
-	if os.Geteuid() == 0 { // root reads the locked directory anyway
-		want = "locked/x.json,top.json"
-	}
-	if strings.Join(files, ",") != want {
-		t.Errorf("listed %v, want %s (too deep and unreadable skipped)", files, want)
-	}
-	if _, err := listFiles(filepath.Join(root, "missing"), true, "*"); err == nil {
+	if _, _, err := listFiles(filepath.Join(root, "missing"), true, "*"); err == nil {
 		t.Error("a missing root listed without error")
 	}
 }

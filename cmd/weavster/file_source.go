@@ -66,14 +66,14 @@ type fileSources struct {
 	now     func() time.Time
 	listed  time.Time
 	cached  []gateway.Flow
-	last    map[string]time.Time // flow id -> last poll
-	skip    map[string]fileStamp // path -> version not to read again (done or refused)
-	lastErr map[string]string    // flow id -> last directory error logged
+	last    map[string]time.Time            // flow id -> last poll
+	skip    map[string]map[string]fileStamp // flow id -> path -> version not to read again (done or refused)
+	lastErr map[string]string               // flow id -> last directory error logged
 }
 
 func newFileSources(flows flowLister, ingest messageIngester, events eventRecorder, logger *slog.Logger) *fileSources {
 	return &fileSources{flows: flows, ingest: ingest, events: events, logger: logger, now: time.Now,
-		last: map[string]time.Time{}, skip: map[string]fileStamp{}, lastErr: map[string]string{}}
+		last: map[string]time.Time{}, skip: map[string]map[string]fileStamp{}, lastErr: map[string]string{}}
 }
 
 // loop polls until ctx is cancelled; a file in progress is finished first.
@@ -136,7 +136,7 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
 	if pattern == "" {
 		pattern = "*"
 	}
-	entries, err := listFiles(src.Dir, src.Recursive, pattern)
+	files, skipped, err := listFiles(src.Dir, src.Recursive, pattern)
 	if err != nil {
 		if msg := err.Error(); s.lastErr[f.ID] != msg { // once per distinct error
 			s.lastErr[f.ID] = msg
@@ -145,18 +145,21 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
 		return
 	}
 	delete(s.lastErr, f.ID)
+	if msg := strings.Join(skipped, ", "); msg != s.lastErr[f.ID+"/subdirs"] { // once per distinct set
+		s.lastErr[f.ID+"/subdirs"] = msg
+		if msg != "" {
+			s.logger.Warn("file source: cannot read subdirectories; their files are not read", "flow", f.ID, "subdirectories", msg)
+		}
+	}
+	if s.skip[f.ID] == nil {
+		s.skip[f.ID] = map[string]fileStamp{}
+	}
+	skip := s.skip[f.ID]
 	present := map[string]bool{}
 	read := 0
-	for _, e := range entries { // in path order; symlinks are not followed
-		path := e.path
-		present[path] = true
+	for _, e := range files { // matching regular files, in path order
+		present[e.path] = true
 		if ctx.Err() != nil || read == maxFilesPerPoll {
-			continue
-		}
-		if !e.d.Type().IsRegular() || hidden(e.d.Name(), pattern) {
-			continue // directories, symlinks, devices; dotfiles unless asked for
-		}
-		if ok, _ := filepath.Match(pattern, e.d.Name()); !ok {
 			continue
 		}
 		info, err := e.d.Info()
@@ -164,63 +167,85 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
 			continue // removed meanwhile
 		}
 		stamp := fileStamp{size: info.Size(), mod: info.ModTime()}
-		if now.Sub(stamp.mod) < fileSettle || s.skip[path] == stamp {
+		if now.Sub(stamp.mod) < fileSettle || skip[e.path] == stamp {
 			continue // still being written, or unchanged since it was done or refused
 		}
-		delete(s.skip, path)
+		delete(skip, e.path)
 		read++
-		if !s.readFile(ctx, f, e.rel, path, stamp) {
+		if !s.readFile(ctx, f, e.rel, e.path, stamp) {
 			break
 		}
 	}
-	root := filepath.Clean(src.Dir) + string(filepath.Separator)
-	for path := range s.skip { // forget files that are gone
-		if strings.HasPrefix(path, root) && !present[path] {
-			delete(s.skip, path)
+	for path := range skip { // forget this flow's files that are gone
+		if !present[path] {
+			delete(skip, path)
 		}
 	}
 }
 
-// listed is one entry a file source found: its path, its path relative to
-// the source's dir ("/"-separated), and the directory entry.
+// listed is a file a source can read: its path, its path relative to the
+// source's dir ("/"-separated), and its directory entry.
 type listed struct {
 	path, rel string
 	d         fs.DirEntry
 }
 
-// listFiles lists dir's entries in path order; recursive also lists its
-// subdirectories (at most maxSourceDepth deep), skipping hidden ones and
-// never following symbolic links. A subdirectory that cannot be read is
-// skipped; dir itself not being readable is an error.
-func listFiles(dir string, recursive bool, pattern string) ([]listed, error) {
-	if !recursive {
-		entries, err := os.ReadDir(dir) // sorted by name; symlinks are not followed
-		out := make([]listed, len(entries))
-		for i, e := range entries {
-			out[i] = listed{path: filepath.Join(dir, e.Name()), rel: e.Name(), d: e}
-		}
-		return out, err
-	}
+// listFiles lists, in path order, the regular files in dir whose names
+// match pattern (hidden ones only when the pattern starts with a dot);
+// recursive also lists subdirectories up to maxSourceDepth levels deep,
+// skipping hidden ones. Symbolic links are never followed, except dir
+// itself. Subdirectories that cannot be read are skipped and returned;
+// dir itself not being readable is an error.
+func listFiles(dir string, recursive bool, pattern string) (files []listed, skipped []string, err error) {
 	root := filepath.Clean(dir)
-	var out []listed
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if path == root {
+	match := func(d fs.DirEntry) bool {
+		ok, _ := filepath.Match(pattern, d.Name())
+		return ok && d.Type().IsRegular() && !hidden(d.Name(), pattern)
+	}
+	if !recursive {
+		entries, err := os.ReadDir(root) // sorted by name; follows dir if it is a link
+		for _, e := range entries {
+			if match(e) {
+				files = append(files, listed{path: filepath.Join(root, e.Name()), rel: e.Name(), d: e})
+			}
+		}
+		return files, nil, err
+	}
+	// A trailing separator makes WalkDir enter dir when it is a link.
+	start := root
+	if start != string(filepath.Separator) {
+		start += string(filepath.Separator)
+	}
+	err = filepath.WalkDir(start, func(path string, d fs.DirEntry, err error) error {
+		rel, _ := filepath.Rel(root, path) // path is under root
+		if rel == "." {
 			return err // the source's own dir must be readable
 		}
 		if err != nil {
-			return nil // an unreadable subdirectory: skip it
+			skipped = append(skipped, filepath.ToSlash(rel))
+			return nil // an unreadable subdirectory
 		}
-		rel, _ := filepath.Rel(root, path) // path is under root
 		if d.IsDir() {
-			if hidden(d.Name(), pattern) || strings.Count(rel, string(filepath.Separator)) >= maxSourceDepth-1 {
+			// rel of a directory n levels down has n-1 separators.
+			if hidden(d.Name(), pattern) || strings.Count(rel, string(filepath.Separator))+1 > maxSourceDepth {
 				return filepath.SkipDir
 			}
 			return nil
 		}
-		out = append(out, listed{path: path, rel: filepath.ToSlash(rel), d: d})
+		if match(d) {
+			files = append(files, listed{path: filepath.Join(root, rel), rel: filepath.ToSlash(rel), d: d})
+		}
 		return nil
 	})
-	return out, err
+	return files, skipped, err
+}
+
+// markSkip records a version of a flow's file not to read again.
+func (s *fileSources) markSkip(flowID, path string, stamp fileStamp) {
+	if s.skip[flowID] == nil {
+		s.skip[flowID] = map[string]fileStamp{}
+	}
+	s.skip[flowID][path] = stamp
 }
 
 // hidden reports whether name is a dotfile a pattern that does not start
@@ -245,7 +270,7 @@ func (s *fileSources) readFile(ctx context.Context, f gateway.Flow, name, path s
 		return true
 	}
 	if err != nil {
-		s.skip[path] = stamp // not again until it changes
+		s.markSkip(f.ID, path, stamp) // not again until it changes
 		s.logger.Warn("file source: cannot read a file; skipped until it changes", "flow", f.ID, "file", name, "error", err)
 		return true
 	}
@@ -275,7 +300,7 @@ func (s *fileSources) readFile(ctx context.Context, f gateway.Flow, name, path s
 	}
 	if err != nil {
 		// The message is stored: never send this version of the file again.
-		s.skip[path] = stamp
+		s.markSkip(f.ID, path, stamp)
 		s.logger.Error("file source: the file was processed but could not be removed; it is skipped until it changes", "flow", f.ID, "file", name, "message", res.ID, "error", err)
 	}
 	return true
@@ -293,7 +318,7 @@ func (s *fileSources) reject(f gateway.Flow, name, path string, stamp fileStamp,
 		}
 	}
 	if !moved {
-		s.skip[path] = stamp
+		s.markSkip(f.ID, path, stamp)
 	}
 	s.events.record("source.file.rejected", f.ID, map[string]string{"file": name, "reason": reason})
 }

@@ -96,7 +96,7 @@ All notable changes to this project are documented here, following
 
 ### Changed
 
-- A `file` destination's `dir` must be an absolute path (#329), as a file source's already is, so where files go never depends on the server's working directory.
+- A `file` destination's `dir` must be an absolute path (#329), as a file source's already is, so where files go never depends on the server's working directory. Flows stored earlier with a relative `dir` keep running; set an absolute path before you next update them.
 - Codec coverage matrix (#327): `CoverageMatrix()` records how the server itself handles each format; the support matrix adds a "Server use" column (HL7 v2, XML, delimited, JSON, raw), checked by a test, and says that the codecs listed are libraries.
 - `SemanticsForAdapter` (#327) no longer calls every non-TCP sink exactly-once: no sink is exactly-once (deferred, D-55); HTTP sends the idempotency key and every other adapter, including unknown ones, is at-least-once. The delivery-guarantee table's key column and wired guarantees are checked against it.
 - `agent-docs/schemas/transform.schema.json` (#315) is now the one transform schema: `flow.schema.json` refers to it for flow, destination, and response transforms, and the server, `config validate`, and the DSL compiler all check against it. It describes what runs — every field optional, one of `map`/`set`/`filter` per step, `filter.action` and `map.type` enums, non-empty paths — instead of the schema generated from Go types, which required `kind`/`name`/`inputs`/`steps` and listed `build`/`destinationSet`.
