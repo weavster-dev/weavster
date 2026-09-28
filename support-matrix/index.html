@@ -302,7 +302,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Durable local users (password changes and lockout state included)</td>
 <td>Implemented (wired)</td>
-<td><code>TestUsersSurviveRestart</code>. Durable with <code>store.dialect: postgres</code> or <code>sqlite</code>; the first-run <code>admin</code> is created once per database.</td>
+<td><code>TestUsersSurviveRestart</code>. Durable with <code>store.dialect: postgres</code>; the first-run <code>admin</code> is created once per database.</td>
 </tr>
 <tr>
 <td>User administration (<code>/api/v1/users</code>, CLI <code>user list/add/remove/changepw</code>)</td>
@@ -327,7 +327,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Message trends (<code>GET /api/v1/messages/trends</code>: hourly or daily counts by status, optional flow)</td>
 <td>Implemented (wired)</td>
-<td><code>TestMessageTrends</code> (SQLite and memory). Counted from stored messages. See <a href="../processing-messages/#message-trends">Processing messages</a>.</td>
+<td><code>TestMessageTrends</code> (PostgreSQL and memory). Counted from stored messages. See <a href="../processing-messages/#message-trends">Processing messages</a>.</td>
 </tr>
 <tr>
 <td>XML responses by content negotiation (<code>Accept: application/xml</code>); request bodies JSON only</td>
@@ -352,7 +352,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Dynamic lookups (<code>/api/v1/lookups</code>: groups, prefix matching, get, exists, batch, put, delete, import with <code>replace</code>)</td>
 <td>Implemented (wired)</td>
-<td><code>TestLookups</code> (SQLite durability, permissions). Stored and served only: flows do not read lookups yet. See <a href="../lookups/">Dynamic lookups</a>.</td>
+<td><code>TestLookups</code> (permissions; durability on PostgreSQL). Stored and served only: flows do not read lookups yet. See <a href="../lookups/">Dynamic lookups</a>.</td>
 </tr>
 <tr>
 <td>Full configuration export/import (<code>GET /api/v1/config/export</code>, <code>POST /api/v1/config/import</code> with <code>force</code>, <code>nodeploy</code>, <code>overwriteConfigMap</code>); CLI <code>exportcfg</code>, <code>importcfg</code></td>
@@ -400,9 +400,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td></td>
 </tr>
 <tr>
-<td>Message store selection: <code>memory</code> (default), <code>sqlite</code>, <code>postgres</code>, <code>disabled</code></td>
+<td>Message store selection: <code>memory</code> (default), <code>postgres</code>, <code>disabled</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestServerConfigStore</code>. SQLite creates <code>&lt;dataDir&gt;/weavster.db</code> and runs migrations at startup; PostgreSQL migrates its tables on the first start (<code>TestServerOnPostgres</code>). <code>disabled</code> makes message search return <code>503</code> and message intake unavailable.</td>
+<td><code>TestServerConfigStore</code>, <code>TestServerConfigErrors/sqlite-removed</code>. PostgreSQL migrates its tables on the first start (<code>TestServerOnPostgres</code>). <code>sqlite</code> was removed as a server store (D-55); tests that restart the server run in the <code>postgres</code> CI job. <code>disabled</code> makes message search return <code>503</code> and message intake unavailable.</td>
 </tr>
 <tr>
 <td>PostgreSQL message store (<code>store.dialect: postgres</code>): messages, flows, users, config items, lookups, search, trends</td>
@@ -417,7 +417,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Durable flow definitions</td>
 <td>Implemented (wired)</td>
-<td><code>TestFlowsSurviveRestart</code>. Durable with <code>store.dialect: postgres</code> or <code>sqlite</code>. With <code>memory</code> or <code>disabled</code>, flows are lost on restart.</td>
+<td><code>TestFlowsSurviveRestart</code>. Durable with <code>store.dialect: postgres</code>. With <code>memory</code> or <code>disabled</code>, flows are lost on restart.</td>
 </tr>
 <tr>
 <td>Server configuration file (<code>weavster server --config FILE</code>)</td>

@@ -221,8 +221,6 @@ store:
   maxConnections: 20
   maxRetry: 10
   retryWaitMs: 2000
-paths:
-  dataDir: /var/lib/weavster
 auth:
   passwordPolicy:
     minLength: 14
@@ -273,7 +271,7 @@ password, so it would be sent to every database your flows read and write.</p>
 <li>Set <code>WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE</code> for the first start, log in, change the password
   (a password you provide is not forced to change), remove the file, then create one account per
   person or system with only the permissions it needs.</li>
-<li>Run as an unprivileged account; keep <code>/etc/weavster</code> and <code>paths.dataDir</code> readable only by it.</li>
+<li>Run as an unprivileged account; keep <code>/etc/weavster</code> readable only by it.</li>
 <li>Give flows' http and mllp sources their own certificates (<code>certFile</code>, <code>keyFile</code>) and, for http
   sources, credentials (<code>username</code>, <code>passwordEnv</code>).</li>
 <li>Collect stderr: it holds the audit log and warnings such as a reached processing limit.</li>

@@ -189,7 +189,7 @@ example a password policy that forbids every character class) stops the server w
   line 3: field dialekt not found in type serverconfig.Store
 </code></pre>
 <h2 id="example">Example</h2>
-<p>A single-node server with a durable SQLite store and HTTPS:</p>
+<p>A single-node server with a durable PostgreSQL store and HTTPS:</p>
 <pre><code class="language-yaml">listen:
   address: 127.0.0.1:8080        # cleartext listener; &quot;&quot; disables it
   tlsAddress: 0.0.0.0:8443       # HTTPS listener; &quot;&quot; disables it
@@ -199,11 +199,10 @@ tls:
   keyFile: /etc/weavster/tls/key.pem
   minVersion: &quot;1.2&quot;
 store:
-  dialect: sqlite
+  dialect: postgres
+  dsn: postgres://weavster@db.internal:5432/weavster?sslmode=verify-full
   maxRetry: 3
   retryWaitMs: 1000
-paths:
-  dataDir: /var/lib/weavster     # SQLite file: /var/lib/weavster/weavster.db
 auth:
   passwordPolicy:
     minLength: 12
@@ -319,17 +318,17 @@ and serves nothing.</p>
 <tr>
 <td><code>dialect</code></td>
 <td><code>memory</code></td>
-<td><code>memory</code>, <code>sqlite</code>, <code>postgres</code>, or <code>disabled</code>.</td>
+<td><code>memory</code>, <code>postgres</code>, or <code>disabled</code>.</td>
 </tr>
 <tr>
 <td><code>dsn</code></td>
-<td>see below</td>
-<td>Connection string. For <code>sqlite</code>, a file path. For <code>postgres</code>, a URL such as <code>postgres://user:pass@db:5432/weavster</code>.</td>
+<td><code>""</code></td>
+<td>For <code>postgres</code>, a URL such as <code>postgres://weavster@db:5432/weavster?sslmode=verify-full</code>.</td>
 </tr>
 <tr>
 <td><code>maxConnections</code></td>
 <td><code>10</code></td>
-<td>Maximum open PostgreSQL connections. SQLite always uses one.</td>
+<td>Maximum open PostgreSQL connections.</td>
 </tr>
 <tr>
 <td><code>maxRetry</code></td>
@@ -345,9 +344,6 @@ and serves nothing.</p>
 </table>
 <ul>
 <li><strong><code>memory</code></strong>: messages, flow definitions, and users live in process memory and are lost on restart.</li>
-<li><strong><code>sqlite</code></strong>: set <code>dsn</code> or <code>paths.dataDir</code>. <code>dsn</code> defaults to <code>&lt;paths.dataDir&gt;/weavster.db</code>.
-  The parent directory is created (mode <code>0700</code>) if missing. Migrations run at startup. A SQLite
-  failure is never retried.</li>
 <li><strong><code>postgres</code></strong>: <code>dsn</code> is required, for example
   <code>postgres://weavster@db.internal:5432/weavster?sslmode=verify-full</code> (tested with PostgreSQL
   16). The server creates and migrates its tables on the first start; the account needs to create
@@ -356,13 +352,36 @@ and serves nothing.</p>
   server's account, on a line for the database's host only.</li>
 <li><strong><code>disabled</code></strong>: runs with no message store. <code>GET /api/v1/messages</code> returns <code>503 messages unavailable</code>.
   Flow definitions and users are kept in memory.</li>
+<li><strong><code>sqlite</code></strong> is no longer a server store. The server exits <code>1</code> with
+  <code>Error: config: store.dialect sqlite is no longer supported: use postgres for a durable store, or memory</code>.
+  The <code>paths</code> section (<code>paths.dataDir</code> named the SQLite file's directory) was removed with it:
+  delete it from the file, or the server exits <code>1</code> with <code>field paths not found</code>. See
+  <a href="#move-from-sqlite-to-postgresql">Move from SQLite to PostgreSQL</a>.</li>
 </ul>
 <p>If every PostgreSQL attempt fails, the server exits <code>1</code>. SIGINT/SIGTERM during the retries
 stops the server immediately with exit code <code>0</code>. When every attempt fails:</p>
 <pre><code class="language-text">Error: store: postgres: giving up after 4 attempts: ...
 </code></pre>
-<p>The store holds messages, flow definitions, and users. With <code>sqlite</code> or <code>postgres</code>, flows and
+<p>The store holds messages, flow definitions, and users. With <code>postgres</code>, flows and
 users (including password changes and lockouts) survive a restart.</p>
+<h4 id="move-from-sqlite-to-postgresql">Move from SQLite to PostgreSQL</h4>
+<p>To move a server from SQLite to PostgreSQL, save its setup <strong>while the old release is still
+running</strong> (the new one does not start with <code>sqlite</code>):</p>
+<ol>
+<li>Export the configuration with the config map:
+   <code>GET /api/v1/config/export?includeConfigMap=true</code> (see <a href="../config-transfer/">Export and import</a>).</li>
+<li>Save every lookup group. <code>GET /api/v1/lookups</code> lists the groups with their number of
+   entries, and <code>GET /api/v1/lookups/{group}?limit=10000</code> returns up to 10,000 entries of one as
+   <code>{key: value}</code> (see <a href="../lookups/">Dynamic lookups</a>). A group with 10,000 entries or more does
+   not fit in one response: save it in parts with <code>prefix</code>, one part per first character of the
+   keys (for example <code>prefix=A</code>, <code>prefix=B</code>, …), and split any part that returns exactly 10,000
+   entries by a longer prefix (<code>prefix=AB</code>, …). Check that the saved entries of each group add up
+   to its number of entries before you upgrade.</li>
+<li>Upgrade, set <code>store.dialect: postgres</code> and <code>store.dsn</code>, remove <code>paths</code>, and start the server.</li>
+<li>Import the configuration with <code>POST /api/v1/config/import?overwriteConfigMap=true</code>, and each
+   group with <code>POST /api/v1/lookups/{group}/import</code>.</li>
+</ol>
+<p>Messages and users are not moved: create the users again (see <a href="../authentication/">Authentication</a>).</p>
 <h3 id="delivery"><code>delivery</code></h3>
 <table>
 <thead>
@@ -484,23 +503,6 @@ that the oldest are dropped.</p>
   sampleIntervalMs: 10000   # every 10 seconds
   retentionHours: 48
 </code></pre>
-<h3 id="paths"><code>paths</code></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>dataDir</code></td>
-<td><code>""</code></td>
-<td>Directory for the default SQLite file. Use an absolute path; a relative one resolves against the working directory, which is <code>/</code> under most service managers.</td>
-</tr>
-</tbody>
-</table>
 <h3 id="auth"><code>auth</code></h3>
 <table>
 <thead>
