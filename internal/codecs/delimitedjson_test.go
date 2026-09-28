@@ -69,6 +69,24 @@ func TestDelimitedJSON(t *testing.T) {
 			t.Errorf("%s: %v, want reason %q", name, err, tt.reason)
 		}
 	}
+	// Quoted delimiters and line breaks are not values; the limit itself is allowed.
+	for in, want := range map[string]int{
+		"":                   0,
+		"a,b\r\nc,d\n":       4,
+		"\n\n\"x,y\ny\",z\n": 2,
+		"a,\"\"\"q\"\"\",c":  3,
+		",\n":                2,
+	} {
+		if got := countValues([]byte(in), ','); got != want {
+			t.Errorf("countValues(%q) = %d, want %d", in, got, want)
+		}
+	}
+	if _, err := DelimitedJSON([]byte(strings.Repeat(",", MaxDelimitedValues-1)+"\n"), ',', false); err != nil {
+		t.Errorf("exactly %d values: %v", MaxDelimitedValues, err)
+	}
+	if _, err := DelimitedJSON([]byte("a\n\""+strings.Repeat(",", MaxDelimitedValues)+"\"\n"), ',', true); err != nil {
+		t.Errorf("delimiters inside quotes counted: %v", err)
+	}
 	if notDelimited("").Error() != "not valid delimited text" {
 		t.Error("refusal text")
 	}

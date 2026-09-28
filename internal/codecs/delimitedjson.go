@@ -31,9 +31,8 @@ func notDelimited(reason string) error { return &RefusedError{Err: ErrNotDelimit
 // rows at all is refused.
 func DelimitedJSON(in []byte, delim rune, header bool) (map[string]any, error) {
 	in = bytes.TrimPrefix(in, []byte("\xEF\xBB\xBF"))
-	// An upper bound on the values (quoted delimiters count too), checked
-	// before parsing allocates them.
-	if bytes.Count(in, []byte(string(delim)))+bytes.Count(in, []byte("\n")) >= MaxDelimitedValues {
+	// Checked before parsing allocates the values.
+	if countValues(in, delim) > MaxDelimitedValues {
 		return nil, notDelimited(fmt.Sprintf("more than %d values", MaxDelimitedValues))
 	}
 	r := csv.NewReader(bytes.NewReader(in))
@@ -96,4 +95,33 @@ func DelimitedJSON(in []byte, delim rune, header bool) (map[string]any, error) {
 		doc["header"] = h
 	}
 	return doc, nil
+}
+
+// countValues counts the values in delimited text as the parser will see
+// them: delimiters and line breaks inside double quotes are part of a value,
+// and blank lines hold none.
+func countValues(in []byte, delim rune) int {
+	values, quoted, rowStarted := 0, false, false
+	for _, r := range string(in) {
+		switch {
+		case r == '"':
+			quoted = !quoted // a doubled quote toggles twice
+		case quoted:
+		case r == delim:
+			values++
+		case r == '\n':
+			if rowStarted {
+				values++ // the row's last value
+			}
+			rowStarted = false
+			continue
+		case r == '\r':
+			continue
+		}
+		rowStarted = true
+	}
+	if rowStarted {
+		values++
+	}
+	return values
 }
