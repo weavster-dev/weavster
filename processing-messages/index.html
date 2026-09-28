@@ -582,6 +582,8 @@ certificate itself); only the certificates in <code>caFile</code> are then trust
   unreadable <code>caFile</code>, fails the attempt before anything is sent; the attempt's error says why
   (for example <code>x509: certificate signed by unknown authority</code>), and it is retried like any
   other failure.</li>
+<li>For other framing bytes, or to send without waiting for ACKs, see
+  <a href="#mllp-framing-and-ack-modes">MLLP framing and ACK modes</a>.</li>
 <li><code>tls</code> and <code>caFile</code> apply only to mllp destinations; an http destination uses TLS with an
   <code>https://</code> URL.</li>
 </ul>
@@ -1215,6 +1217,59 @@ MSA|AA|MSG1
   plain TCP) and records a <code>source.mllp.failed</code> event with the reason, as an
   <a href="#receive-messages-over-http">http source</a> does. The server's own TLS key is refused.</li>
 <li>Client certificates (mutual TLS) are not requested.</li>
+</ul>
+<h3 id="mllp-framing-and-ack-modes">MLLP framing and ACK modes</h3>
+<p>Some systems frame HL7 messages with other bytes than MLLP's, or do not exchange ACKs. An mllp
+source and an mllp destination both take:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>frameStart</code></td>
+<td>Byte before each message, in hex. Default <code>0B</code> (VT).</td>
+</tr>
+<tr>
+<td><code>frameEnd</code></td>
+<td>One or two bytes after each message, in hex. Default <code>1C0D</code> (FS CR).</td>
+</tr>
+<tr>
+<td><code>ackMode</code></td>
+<td><code>original</code> (default): the source answers every message with an HL7 ACK, and the destination waits for the receiver's ACK. <code>none</code>: the source sends nothing back, and the destination counts a message as delivered once it is written.</td>
+</tr>
+</tbody>
+</table>
+<p>For example, a feed framed with STX … ETX that expects no replies, forwarded to a lab system
+that uses standard MLLP:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;legacy-feed&quot;,
+  &quot;inputFormat&quot;: &quot;hl7v2&quot;,
+  &quot;source&quot;: {&quot;type&quot;: &quot;mllp&quot;, &quot;address&quot;: &quot;:2577&quot;, &quot;frameStart&quot;: &quot;02&quot;, &quot;frameEnd&quot;: &quot;03&quot;, &quot;ackMode&quot;: &quot;none&quot;},
+  &quot;destinations&quot;: [{&quot;name&quot;: &quot;lab&quot;, &quot;type&quot;: &quot;mllp&quot;, &quot;address&quot;: &quot;lab.example.com:2575&quot;}]
+}
+</code></pre>
+<ul>
+<li><code>frameStart</code> and the first byte of <code>frameEnd</code> must be control bytes that HL7 text never
+  contains: <code>00</code>–<code>1F</code> except <code>09</code> (tab), <code>0A</code> (line feed), and <code>0D</code> (carriage return), or <code>7F</code>;
+  and they must differ. The second byte of <code>frameEnd</code> can be any other byte (MLLP's is <code>0D</code>).
+  Anything else is refused when you create the flow, for example
+  <code>frameEnd starts with 0D, which can occur in a message; use a control byte such as 1C</code>.</li>
+<li>A source reads everything between the start byte and the end bytes as one message and skips
+  bytes outside a frame; its ACKs use the same framing. With a one-byte <code>frameEnd</code>, a message
+  cannot contain that byte.</li>
+<li>A message containing the destination's <code>frameStart</code> byte or <code>frameEnd</code> cannot be framed; its
+  delivery fails.</li>
+<li>With <code>ackMode: none</code> the destination sends the message, closes its side of the connection, and
+  waits up to a second for the receiver to close before counting it as delivered.</li>
+<li>With <code>ackMode: none</code> the sender learns nothing: on the source, a message the flow refuses or
+  cannot store is dropped with no reply (look for it in the flow's messages and events); on the
+  destination, a receiver that rejects the message is not noticed. Use it only for systems that
+  do not send or expect ACKs.</li>
+<li>The fields apply only to mllp sources and destinations.</li>
 </ul>
 <h2 id="2-deploy-and-start-the-flow">2. Deploy and start the flow</h2>
 <p>A new flow is <code>undeployed</code> and rejects messages until you deploy and start it (permission
