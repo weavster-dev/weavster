@@ -207,8 +207,9 @@ one or more destinations. You send messages to the flow over the API.</p>
 }'
 </code></pre>
 <p>The server checks the transform and destinations when you create the flow. A problem is
-reported as <code>400</code> with the reason in the <a href="../api-errors/">error envelope</a>, for example:</p>
-<pre><code class="language-json">{&quot;error&quot;:{&quot;code&quot;:&quot;BAD_REQUEST&quot;,&quot;message&quot;:&quot;invalid flow: dsl: normalize: step 1: build: dsl: step not supported yet&quot;}}
+reported as <code>400</code> with the reason in the <a href="../api-errors/">error envelope</a>, for example for a
+<code>filter</code> whose <code>when</code> is <code>patient.lastName ==</code>, with nothing to compare against:</p>
+<pre><code class="language-json">{&quot;error&quot;:{&quot;code&quot;:&quot;BAD_REQUEST&quot;,&quot;message&quot;:&quot;invalid flow: dsl: normalize: step 2: filter.when: empty path&quot;}}
 </code></pre>
 <p>Every flow definition you send (create, update, import) is checked against
 <a href="https://github.com/weavster-dev/weavster/blob/main/agent-docs/schemas/flow.schema.json"><code>flow.schema.json</code></a>.
@@ -256,6 +257,17 @@ JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a>,
 <li><code>build</code> and <code>destinationSet</code> steps are not supported yet.</li>
 <li>Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.</li>
 </ul>
+<p>The transform format is published as
+<a href="https://github.com/weavster-dev/weavster/blob/main/agent-docs/schemas/transform.schema.json"><code>transform.schema.json</code></a>.
+The server checks every flow, destination, and response transform against it, and so does
+<code>weavster config validate</code>, so a mistake is reported with its place in the document:</p>
+<pre><code class="language-text">400 {&quot;error&quot;:{&quot;code&quot;:&quot;BAD_REQUEST&quot;,&quot;message&quot;:&quot;flow does not match flow.schema.json: /transform/steps/0/filter/action: value must be one of \&quot;reject\&quot;, \&quot;accept\&quot;&quot;}}
+</code></pre>
+<p>Editors that understand JSON Schema can check transforms as you type. For a config-as-code YAML
+file (its flows' transforms included), put this on the first line; with the YAML extension for
+VS Code, for example, mistakes are underlined and fields are completed:</p>
+<pre><code class="language-yaml"># yaml-language-server: $schema=https://raw.githubusercontent.com/weavster-dev/weavster/main/agent-docs/schemas/config.schema.json
+</code></pre>
 <h3 id="other-fields">Other fields</h3>
 <table>
 <thead>
