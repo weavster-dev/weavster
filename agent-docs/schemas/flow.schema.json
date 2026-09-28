@@ -250,9 +250,10 @@
       "enum": [
         "json",
         "hl7v2",
+        "xml",
         null
       ],
-      "description": "How transforms read a message: json (default) or hl7v2 (the HL7 v2 message as JSON: segment.field.component paths such as PID.5.1)"
+      "description": "How transforms read a message: json (default), hl7v2 (segment.field.component paths such as PID.5.1), or xml (element paths such as order.@id and order.patient.name.#text)"
     }
   },
   "$defs": {

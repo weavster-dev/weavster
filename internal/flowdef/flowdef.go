@@ -40,8 +40,9 @@ type Flow struct {
 	// ResponseSelector names the destination whose reply is returned to
 	// the sender of a message.
 	ResponseSelector string `json:"responseSelector,omitempty"`
-	// InputFormat is how transforms read a message: json (default) or
-	// hl7v2, the HL7 v2 message's JSON view (#107 D-61).
+	// InputFormat is how transforms read a message: json (default), hl7v2,
+	// or xml — the HL7 v2 message's or XML document's JSON view (#107 D-61,
+	// D-62).
 	InputFormat string `json:"inputFormat,omitempty"`
 }
 
