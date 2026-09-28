@@ -106,6 +106,7 @@ All notable changes to this project are documented here, following
 - Bounded processing (#355): server config `processing: {maxConcurrent, waitMs}` (defaults 32 and 5000) limits the messages received and processed at once; a message that finds no free slot in time is refused as busy — `503` with `Retry-After` from the API and http sources, `AE` from mllp sources, a later poll for file and database sources. Flow-to-flow handoffs share the sender's slot.
 - Docs (#357): [Capacity and limits](docs/limits.md) lists every size, count, time, and retention limit with its default and what happens at it; [Production setup](docs/production.md) lists the secure defaults and gives an HTTPS-only production configuration with a durable store (`docs/examples/production/weavster-server.yaml`), which a test starts the server from.
 - Crash consistency (#359): `TestCrashAtEveryWrite` stops the store at each of a message's writes in turn (delivered, queued, and filtered paths) and checks the next start finishes it with one idempotency key per destination; the processing docs state when each source acknowledges a message, that every step is written with the message on a durable store, and where a duplicate can still arise.
+- Startup order (#361): the server configuration docs list what the server does at start and in which order (migrations before any request); `TestMigratesBeforeTraffic` upgrades a store left at an older schema version and checks it is migrated, with its data, before the first answer.
 
 ### Changed
 

@@ -51,6 +51,25 @@ auth:
     lockoutPeriodSeconds: 300
 ```
 
+## Startup order
+
+`weavster server` starts in this order. Nothing is received before the store is migrated (step 2); the API answers only after the last step, while the flows' own sources start in step 5:
+
+1. Reads and checks the configuration file (a problem stops it with exit code `1`).
+2. Opens the store, retrying PostgreSQL connections per `store.maxRetry`, and applies any
+   pending schema migrations. A store left at an older version by an earlier release is upgraded
+   here; the data in it is kept.
+3. Loads users and creates the first `admin` account when there are none (see
+   [Authentication](authentication.md)).
+4. Loads the flows and, with `flows.deployOnStartup`, deploys and starts the enabled ones.
+5. Starts the background work: the recovery pass that finishes messages stored before the last
+   stop (queued deliveries, and messages that were still being processed), then retries on
+   `delivery.retryIntervalMs`, and the flows' sources.
+6. Opens the API listeners (`listen.address`, `listen.tlsAddress`).
+
+The server keeps no jobs or leases of its own to reconcile at start: everything it must resume is
+a stored message, which the recovery pass in step 5 picks up.
+
 ## Keys
 
 Keys you leave out keep their default.
