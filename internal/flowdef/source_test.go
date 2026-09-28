@@ -227,6 +227,15 @@ func TestCheckDestinations(t *testing.T) {
 		{Destination{Name: "a", Type: "mllp", FrameStart: "02", FrameEnd: "03", AckMode: "none"}, ""},
 		{Destination{Name: "a", Type: "mllp", FrameEnd: "0A"}, "destination a: frameEnd starts with 0A"},
 		{Destination{Name: "a", Type: "file", Dir: "/out", AckMode: "none"}, "apply only to mllp destinations"},
+		{Destination{Name: "a", Type: "database", Driver: "postgres", DSNEnv: "WEAVSTER_DB_LAB", Table: "lab.results", Columns: map[string]string{"mrn": "patient.mrn"}, KeyColumn: "k"}, ""},
+		{Destination{Name: "a", Type: "database", Driver: "mysql", DSNEnv: "WEAVSTER_DB_LAB", Table: "t", Columns: map[string]string{"a": "a"}}, "driver must be postgres or sqlite"},
+		{Destination{Name: "a", Type: "database", Driver: "sqlite", DSNEnv: "PATH", Table: "t", Columns: map[string]string{"a": "a"}}, "dsnEnv must name"},
+		{Destination{Name: "a", Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Table: "a.b.c", Columns: map[string]string{"a": "a"}}, "table must be"},
+		{Destination{Name: "a", Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Table: "t"}, "columns must map"},
+		{Destination{Name: "a", Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Table: "t", Columns: map[string]string{"a b": "a"}}, "must be a name"},
+		{Destination{Name: "a", Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Table: "t", Columns: map[string]string{"a": "a"}, KeyColumn: "k-1"}, "keyColumn must be"},
+		{Destination{Name: "a", Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Table: "t", Columns: map[string]string{"a": ".a"}}, "path must be"},
+		{Destination{Name: "a", Type: "http", URL: "https://x", Table: "t"}, "apply only to database destinations"},
 	} {
 		err := CheckDestinations(Flow{Destinations: []Destination{tt.dest}})
 		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {

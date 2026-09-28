@@ -430,3 +430,34 @@ func TestMLLPClientTLS(t *testing.T) {
 		t.Errorf("newSink over TLS: %v", err)
 	}
 }
+
+// TestDBPool: one pool per driver and connection string, closed together;
+// a database destination needs the pool and its environment variable.
+func TestDBPool(t *testing.T) {
+	p := newDBPool()
+	a, err := p.get("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := p.get("sqlite", ":memory:"); b != a {
+		t.Error("a second pool for the same connection string")
+	}
+	if c, _ := p.get("postgres", "postgres://x"); c == a {
+		t.Error("drivers share a pool")
+	}
+	p.close()
+	if len(p.dbs) != 0 || a.Ping() == nil {
+		t.Error("pools not closed")
+	}
+	d := pipeline.Destination{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_POOL_TEST", Table: "t", Columns: map[string]string{"b": "b", "a": "a"}}
+	if _, err := newSink(d); err == nil {
+		t.Error("newSink without a pool: want error")
+	}
+	if _, err := buildSink(d, gateway.DefaultTLSOptions(), newDBPool()); err == nil || !strings.Contains(err.Error(), "WEAVSTER_DB_POOL_TEST is not set") {
+		t.Errorf("unset variable: %v", err)
+	}
+	t.Setenv("WEAVSTER_DB_POOL_TEST", ":memory:")
+	if _, err := buildSink(d, gateway.DefaultTLSOptions(), newDBPool()); err != nil {
+		t.Errorf("buildSink: %v", err)
+	}
+}

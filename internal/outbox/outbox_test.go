@@ -28,7 +28,6 @@ func TestIdempotencyKey(t *testing.T) {
 
 func TestSemanticsForAdapter(t *testing.T) {
 	for adapter, want := range map[string]DeliverySemantics{
-		"database":    SemanticsAtLeastOnce,
 		"http":        SemanticsKeySent,
 		"web-service": SemanticsAtLeastOnce,
 		"tcp":         SemanticsAtLeastOnce,
@@ -37,6 +36,7 @@ func TestSemanticsForAdapter(t *testing.T) {
 		"smtp":        SemanticsAtLeastOnce,
 		"document":    SemanticsAtLeastOnce,
 		"interflow":   SemanticsKeySent,
+		"database":    SemanticsKeySent,
 		"something":   SemanticsAtLeastOnce,
 	} {
 		if got := SemanticsForAdapter(adapter); got != want {
