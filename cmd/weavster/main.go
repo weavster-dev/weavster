@@ -10,12 +10,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/weavster-dev/weavster/internal/state"
 )
 
 var (
 	version   = "0.1.0"
 	buildDate = "unknown"
 )
+
+// The store records which release applied each schema migration.
+func init() { state.AppVersion = version }
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))

@@ -231,6 +231,9 @@ func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config
 		if s, err = state.OpenPostgres(ctx, sc.DSN, sc.MaxConnections); err == nil {
 			return s, nil
 		}
+		if newer := (*state.NewerSchemaError)(nil); errors.As(err, &newer) {
+			return nil, fmt.Errorf("store: %w", err) // a newer release's database: retrying cannot help
+		}
 		logger.Warn("store connection failed", "dialect", sc.Dialect, "attempt", attempt, "error", err)
 	}
 	return nil, fmt.Errorf("store: %s: giving up after %d attempts: %w", sc.Dialect, sc.MaxRetry+1, err)

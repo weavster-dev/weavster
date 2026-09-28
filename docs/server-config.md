@@ -57,10 +57,9 @@ auth:
 1. Checks its arguments (a bad flag or an extra argument exits `2`) and refuses to run as root
    unless `WEAVSTER_ALLOW_ROOT=1` is set.
 2. Reads and checks the configuration file (a problem exits `1`).
-3. Opens the store and applies any pending schema migrations. A store left at an older version
-   by an earlier release is upgraded here, and the data in it is kept. With PostgreSQL, a failed
-   connection or migration is retried per `store.maxRetry` and `store.retryWaitMs`; run one
-   server at a time while it upgrades a database.
+3. Opens the store and applies any pending schema migrations (see [Upgrades](#upgrades)).
+   With PostgreSQL, a failed connection or migration is retried per `store.maxRetry` and
+   `store.retryWaitMs`.
 4. Loads users and creates the first `admin` account when there are none (see
    [Authentication](authentication.md)).
 5. With `flows.deployOnStartup` (and a store), deploys every flow that is `enabled` and
@@ -77,6 +76,24 @@ auth:
 Messages of a flow that is not running are not recovered at start; they are finished once the
 flow is started. The server keeps no jobs or leases of its own to reconcile: everything it must
 resume is a stored message, which the recovery pass picks up.
+
+## Upgrades
+
+A new release upgrades the database schema when it starts (step 3 above), before it accepts any
+traffic. The data is kept. Each schema change runs in its own transaction, so a failed upgrade
+leaves the database at the last completed version, and the next start carries on from there.
+Servers that start together on one database take turns: only the first applies the upgrade.
+The database records which weavster release applied each schema version.
+
+A database that a **newer** release has already upgraded is refused, and nothing in it changes.
+The server exits `1` at once (this is not retried) with:
+
+```text
+Error: store: state: the database schema is at version 10 (written by weavster 0.3.0), newer than this release supports (9): run weavster 0.3.0 or later, or restore a backup taken before the upgrade
+```
+
+So you can't roll back to an older release by just starting it again. Back up the database
+before upgrading, and to go back, restore that backup and start the older release.
 
 ## Keys
 

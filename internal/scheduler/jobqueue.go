@@ -173,24 +173,14 @@ type SQLJobQueue struct {
 	dialect string
 }
 
-// NewSQLJobQueue opens a durable job queue over an existing database handle.
+// NewSQLJobQueue is a durable job queue over an existing database handle
+// whose schema the store's migrations created (the jobs table, migration 9;
+// §6 keeps every table in one ordered migration chain).
 func NewSQLJobQueue(db *sql.DB, dialect string) (*SQLJobQueue, error) {
-	q := &SQLJobQueue{db: db, dialect: dialect}
-	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS jobs (
-		id TEXT PRIMARY KEY,
-		type TEXT NOT NULL,
-		payload TEXT NOT NULL DEFAULT '',
-		next_run_at INTEGER NOT NULL DEFAULT 0,
-		status TEXT NOT NULL DEFAULT 'queued',
-		claimed_by TEXT NOT NULL DEFAULT '',
-		lease_until INTEGER NOT NULL DEFAULT 0,
-		attempts INTEGER NOT NULL DEFAULT 0,
-		last_error TEXT NOT NULL DEFAULT ''
-	)`)
-	if err != nil {
-		return nil, err
+	if _, err := db.Exec(`SELECT id FROM jobs WHERE 1 = 0`); err != nil {
+		return nil, fmt.Errorf("scheduler: the jobs table is missing (migrate the store first): %w", err)
 	}
-	return q, nil
+	return &SQLJobQueue{db: db, dialect: dialect}, nil
 }
 
 func (q *SQLJobQueue) Enqueue(ctx context.Context, j Job) error {
