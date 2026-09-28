@@ -561,9 +561,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestXMLInput</code>, <code>TestProcessXMLInput</code>, <code>TestXMLJSON</code>. Output is JSON unless a <code>build</code> step produces XML; order between different child names and mixed-content position not kept; at most 256 levels and 100,000 elements. See <a href="../processing-messages/#transform-xml-documents">Transform XML documents</a>.</td>
 </tr>
 <tr>
-<td>HL7 v2 input: <code>inputFormat: hl7v2</code> gives transforms the message as JSON (<code>PID.5.1</code>, repetitions, every segment in order)</td>
+<td>HL7 v2 input: <code>inputFormat: hl7v2</code> gives transforms the message as JSON (<code>PID.5.1</code>, repetitions, subcomponents, escapes decoded, the message's own delimiters, every segment in order); versions 2.1–2.9</td>
 <td>Implemented (wired)</td>
-<td><code>TestHL7Input</code>, <code>TestProcessHL7Input</code>, <code>TestHL7JSON</code>. Output is JSON unless a <code>build</code> step produces HL7 v2 again. See <a href="../processing-messages/#transform-hl7-v2-messages">Transform HL7 v2 messages</a>.</td>
+<td><code>TestHL7Input</code>, <code>TestHL7Codec</code>, <code>TestProcessHL7Input</code>, <code>TestHL7JSON</code>, <code>TestHL7JSONSubcomponents</code>, <code>TestHL7JSONVersions</code>, <code>TestHL7RoundTrip</code>, <code>TestHL7ACKCustomDelimiters</code>. Output is JSON unless a <code>build</code> step produces HL7 v2 again. See <a href="../processing-messages/#transform-hl7-v2-messages">Transform HL7 v2 messages</a>.</td>
 </tr>
 <tr>
 <td>MLLP source: a flow accepts HL7 v2 over TCP (<code>source: {type: mllp, address}</code>, over TLS with <code>certFile</code> and <code>keyFile</code>; other framing with <code>frameStart</code>/<code>frameEnd</code>; no replies with <code>ackMode: none</code>) while it is started and answers each message with an HL7 ACK (AA stored, AR refused, AE not stored)</td>
@@ -814,7 +814,7 @@ handles RFC 4180 quoting, which the library codec does not.</p>
 <td><code>hl7v2</code></td>
 <td>Library-only</td>
 <td>reads it for transforms (inputFormat hl7v2), writes it (build format hl7v2), acknowledges MLLP messages</td>
-<td>2.x segment/field/component/repetition</td>
+<td>2.1–2.9 segment/field/repetition/component/subcomponent</td>
 <td>yes</td>
 <td>MSH/MSA ACK</td>
 </tr>
