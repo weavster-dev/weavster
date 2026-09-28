@@ -144,7 +144,7 @@ func (s *portSources) start(id string, src gateway.FlowSource) {
 			ln = tls.NewListener(ln, tlsCfg) // MLLP over TLS only (#107 D-71)
 		}
 		srv := adapters.ServeMLLP(ln, mllpHandler(id, s.ingest), adapters.MLLPOptions{
-			MaxFrame: gateway.MaxMessageBytes, IdleTimeout: mllpIdleTimeout, FrameTimeout: mllpFrameTimeout,
+			MaxFrame: gateway.MaxMessageBytes, IdleTimeout: mllpIdleTimeout, FrameTimeout: mllpFrameTimeout, HandshakeTimeout: mllpHandshakeTimeout,
 		})
 		l.done, l.shut = srv.Done(), func() { _ = srv.Close() }
 	} else {

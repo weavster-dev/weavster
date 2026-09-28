@@ -108,13 +108,17 @@ func TestMLLPSinkTLS(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(func() { _ = ln.Close() })
+			got := make(chan bool, 1) // whether the receiver read a frame
 			go func() {
 				conn, err := ln.Accept()
 				if err != nil {
+					got <- false
 					return
 				}
 				defer func() { _ = conn.Close() }()
-				if _, err := readFrame(bufio.NewReader(conn), 1<<20); err == nil {
+				_, err = readFrame(bufio.NewReader(conn), 1<<20)
+				got <- err == nil
+				if err == nil {
 					_, _ = conn.Write(frameMLLP([]byte("MSH|^~\\&|C|D|A|B|2||ACK^A01|X|P|2.5\rMSA|AA|C1\r")))
 				}
 			}()
@@ -122,6 +126,9 @@ func TestMLLPSinkTLS(t *testing.T) {
 			err = NewMLLPSinkTLS(ln.Addr().String(), 5*time.Second, cfg).Write(context.Background(), Message{Body: []byte(msg)})
 			if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
 				t.Errorf("Write = %v, want %q", err, tt.want)
+			}
+			if read := <-got; read != (tt.want == "") {
+				t.Errorf("the receiver read a frame: %v", read)
 			}
 		})
 	}

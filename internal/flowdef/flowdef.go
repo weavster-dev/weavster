@@ -135,7 +135,7 @@ func CheckDestinations(f Flow) error {
 		case d.Type == "file" && d.Dir != "" && !filepath.IsAbs(d.Dir):
 			return fmt.Errorf("destination %s: dir must be an absolute path, got %q", d.Name, d.Dir)
 		case (d.TLS || d.CAFile != "") && d.Type != "mllp":
-			return fmt.Errorf("destination %s: tls and caFile apply only to mllp destinations (an http destination uses an https:// url)", d.Name)
+			return fmt.Errorf("destination %s: tls and caFile apply only to mllp destinations", d.Name)
 		case d.CAFile != "" && !d.TLS:
 			return fmt.Errorf("destination %s: caFile needs tls: true", d.Name)
 		case d.CAFile != "" && !filepath.IsAbs(d.CAFile):

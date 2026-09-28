@@ -3,6 +3,8 @@ package adapters
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"crypto/tls"
 	"errors"
 	"net"
 	"sync"
@@ -25,6 +27,9 @@ type MLLPOptions struct {
 	// FrameTimeout bounds receiving one frame once its first byte arrived,
 	// so a slow sender of a large message is not cut off by IdleTimeout.
 	FrameTimeout time.Duration
+	// HandshakeTimeout bounds a TLS connection's handshake (the listener
+	// is a tls listener), so a stalled client does not wait IdleTimeout.
+	HandshakeTimeout time.Duration
 }
 
 // maxFrameHead is how much of an oversize frame's first segment is kept.
@@ -91,6 +96,14 @@ func (s *MLLPServer) serve(conn net.Conn) {
 		s.mu.Unlock()
 		_ = conn.Close()
 	}()
+	if tc, ok := conn.(*tls.Conn); ok {
+		ctx, cancel := context.WithTimeout(context.Background(), s.opts.HandshakeTimeout)
+		err := tc.HandshakeContext(ctx)
+		cancel()
+		if err != nil {
+			return
+		}
+	}
 	r := bufio.NewReader(conn)
 	for {
 		// Under the lock, so Close either sees this deadline set and cuts

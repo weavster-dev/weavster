@@ -329,7 +329,7 @@ certificate itself); only the certificates in `caFile` are then trusted:
 
 - `caFile` must be an absolute path on the server and needs `"tls": true`. It is read for each
   message, so a replaced file is used without a restart.
-- TLS 1.2 or later is used. A receiver whose certificate cannot be verified, or a missing or
+- The server's `tls.minVersion` applies (TLS 1.2 by default). A receiver whose certificate cannot be verified, or a missing or
   unreadable `caFile`, fails the attempt before anything is sent; the attempt's error says why
   (for example `x509: certificate signed by unknown authority`), and it is retried like any
   other failure.
@@ -929,7 +929,7 @@ printf '\x0bMSH|^~\\&|LAB|HOSP|WEAVSTER|HOSP|20260927120000||ADT^A01|MSG1|P|2.5\
 ```
 
 - The port accepts TLS connections only; a sender connecting without TLS gets no ACK and is
-  disconnected. The server's `tls.minVersion` applies (TLS 1.2 by default).
+  disconnected, as is one that does not finish the TLS handshake within 30 seconds. The server's `tls.minVersion` applies (TLS 1.2 by default).
 - The certificate and key are read when the port opens; after replacing the files, stop and
   start the flow. A source whose files cannot be loaded stays closed (it never falls back to
   plain TCP) and records a `source.mllp.failed` event with the reason, as an

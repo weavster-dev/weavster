@@ -3,9 +3,12 @@ package adapters
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -180,5 +183,44 @@ func TestMLLPServerCloseCutsPartialFrame(t *testing.T) {
 	case <-closed:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Close waited for a partial frame")
+	}
+}
+
+// TestMLLPServerTLS: on a tls listener, a client that completes the
+// handshake is answered, and one that never starts it is closed after
+// HandshakeTimeout rather than IdleTimeout.
+func TestMLLPServerTLS(t *testing.T) {
+	ts := httptest.NewUnstartedServer(nil) // for its 127.0.0.1 certificate
+	ts.StartTLS()
+	serverTLS, roots := ts.TLS.Clone(), ts.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
+	ts.Close()
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", serverTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := ServeMLLP(ln, func(frame []byte, _ error) []byte { return frame },
+		MLLPOptions{MaxFrame: 100, IdleTimeout: time.Minute, FrameTimeout: time.Minute, HandshakeTimeout: 200 * time.Millisecond})
+	defer func() { _ = srv.Close() }()
+
+	conn, err := tls.Dial("tcp", ln.Addr().String(), &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = conn.Write(frameMLLP([]byte("hello")))
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if reply, err := readFrame(bufio.NewReader(conn), 100); err != nil || string(reply) != "hello" {
+		t.Errorf("reply over TLS = %q, %v", reply, err)
+	}
+	_ = conn.Close()
+
+	stalled, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stalled.Close() }()
+	start := time.Now()
+	_ = stalled.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := stalled.Read(make([]byte, 1)); err == nil || time.Since(start) > 3*time.Second {
+		t.Errorf("a client that never shakes hands: %v after %s", err, time.Since(start))
 	}
 }

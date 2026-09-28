@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"log/slog"
@@ -395,7 +396,7 @@ func TestFlowSink(t *testing.T) {
 }
 
 // TestMLLPClientTLS: an mllp destination verifies its receiver's host name,
-// against caFile's certificates when set; an unreadable caFile or one
+// against caFile's certificates when set, with the server's TLS settings; an unreadable caFile or one
 // without a certificate fails the delivery.
 func TestMLLPClientTLS(t *testing.T) {
 	dir := t.TempDir()
@@ -409,13 +410,18 @@ func TestMLLPClientTLS(t *testing.T) {
 		{"missing caFile", filepath.Join(dir, "none.pem"), "caFile:", false},
 		{"caFile without a certificate", keyFile, "no PEM certificate", false},
 	} {
-		cfg, err := mllpClientTLS(pipeline.Destination{Type: "mllp", Address: "lab.example:2575", TLS: true, CAFile: tt.caFile})
+		opts := gateway.DefaultTLSOptions()
+		opts.MinVersion = tls.VersionTLS13
+		cfg, err := mllpClientTLS(pipeline.Destination{Type: "mllp", Address: "lab.example:2575", TLS: true, CAFile: tt.caFile}, opts)
 		switch {
 		case (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)):
 			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
-		case err == nil && (cfg.ServerName != "lab.example" || (cfg.RootCAs != nil) != tt.roots):
-			t.Errorf("%s: ServerName %q, roots %v", tt.name, cfg.ServerName, cfg.RootCAs != nil)
+		case err == nil && (cfg.MinVersion != tls.VersionTLS13 || (cfg.RootCAs != nil) != tt.roots):
+			t.Errorf("%s: MinVersion %x, roots %v", tt.name, cfg.MinVersion, cfg.RootCAs != nil)
 		}
+	}
+	if _, err := mllpClientTLS(pipeline.Destination{Type: "mllp", Address: "lab:2575", TLS: true}, gateway.TLSOptions{}); err == nil {
+		t.Error("mllpClientTLS without TLS options: want error")
 	}
 	if _, err := newSink(pipeline.Destination{Type: "mllp", Address: "lab:2575", TLS: true, CAFile: filepath.Join(dir, "none.pem")}); err == nil {
 		t.Error("newSink with a missing caFile: want error")

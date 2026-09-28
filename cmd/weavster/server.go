@@ -121,7 +121,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	var sourcePorts gateway.SourcePorts
 	retry := func(context.Context) {}
 	if store != nil {
-		sinks := &sinkFactory{logger: logger, delivered: func(ctx context.Context, flowID, key string) (string, error) {
+		sinks := &sinkFactory{logger: logger, tlsOpts: tlsOptions(cfg), delivered: func(ctx context.Context, flowID, key string) (string, error) {
 			found, err := store.Search(ctx, state.Query{FlowID: flowID, Metadata: map[string]string{flowKeyMetadata: key}, Limit: 1})
 			if err != nil || len(found) == 0 {
 				return "", err
@@ -1676,13 +1676,16 @@ type sinkFactory struct {
 	// ("" when there is none).
 	delivered func(ctx context.Context, flowID, key string) (string, error)
 	logger    *slog.Logger
+	// tlsOpts are the server's TLS settings, also used by mllp
+	// destinations with tls.
+	tlsOpts gateway.TLSOptions
 }
 
 func (s *sinkFactory) build(d pipeline.Destination) (pipeline.Sink, error) {
 	if d.Type == "flow" {
 		return flowSink{target: d.Flow, factory: s}, nil
 	}
-	return newSink(d)
+	return buildSink(d, s.tlsOpts)
 }
 
 // flowKeyMetadata stores a flow delivery's idempotency key with the target
@@ -1718,6 +1721,12 @@ func (s flowSink) Write(ctx context.Context, d pipeline.Delivery) error {
 
 // newSink builds the adapter for a flow destination.
 func newSink(d pipeline.Destination) (pipeline.Sink, error) {
+	return buildSink(d, gateway.DefaultTLSOptions())
+}
+
+// buildSink builds the adapter for a destination; an mllp destination
+// with tls uses tlsOpts (the server's minimum version and ciphers).
+func buildSink(d pipeline.Destination, tlsOpts gateway.TLSOptions) (pipeline.Sink, error) {
 	switch d.Type {
 	case "http":
 		return httpSink{adapters.NewHTTPSinkWith(d.URL, adapters.HTTPSinkOptions{
@@ -1729,7 +1738,7 @@ func newSink(d pipeline.Destination) (pipeline.Sink, error) {
 		if !d.TLS {
 			return adapterSink{adapters.NewMLLPSinkWith(d.Address, d.Timeout)}, nil
 		}
-		cfg, err := mllpClientTLS(d)
+		cfg, err := mllpClientTLS(d, tlsOpts)
 		if err != nil {
 			return nil, err
 		}
@@ -1740,11 +1749,14 @@ func newSink(d pipeline.Destination) (pipeline.Sink, error) {
 
 // mllpClientTLS verifies an mllp destination's receiver: its certificate
 // against the system's roots, or only CAFile's when set, and its host name
+// (the dialer takes it from the address), with the server's TLS settings
 // (#107 D-71). CAFile is read for each message, so a replaced file takes
 // effect without a restart.
-func mllpClientTLS(d pipeline.Destination) (*tls.Config, error) {
-	host, _, _ := net.SplitHostPort(d.Address) // validated with the flow
-	cfg := &tls.Config{MinVersion: tls.VersionTLS12, ServerName: host}
+func mllpClientTLS(d pipeline.Destination, opts gateway.TLSOptions) (*tls.Config, error) {
+	cfg, err := gateway.BuildTLSConfig(opts)
+	if err != nil {
+		return nil, err
+	}
 	if d.CAFile == "" {
 		return cfg, nil
 	}
