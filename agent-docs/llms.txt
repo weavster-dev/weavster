@@ -19,5 +19,5 @@ Source of truth for coding agents building the Weavster MVP.
 
 - [openapi.yaml](openapi.yaml) — OpenAPI 3.1 API contract
 - [schemas/config.schema.json](schemas/config.schema.json) — config-as-code JSON Schema (generated)
-- [schemas/transform.schema.json](schemas/transform.schema.json) — transform DSL JSON Schema (generated)
+- [schemas/transform.schema.json](schemas/transform.schema.json) — transform DSL JSON Schema (source: internal/compiler/transform.schema.json, copied by go generate)
 - [schemas/flow.schema.json](schemas/flow.schema.json) — flow definition JSON Schema, enforced on flow create/update/import

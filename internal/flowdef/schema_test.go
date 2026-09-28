@@ -3,13 +3,14 @@ package flowdef
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/weavster-dev/weavster/internal/compiler"
 	"os"
 	"reflect"
 	"slices"
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/weavster-dev/weavster/internal/compiler"
 )
 
 // TestFlowSchemaPublished keeps the embedded schema and the published
@@ -92,7 +93,8 @@ func TestValidateFlowJSONNullsAndErrors(t *testing.T) {
 }
 
 // TestFlowSchemaMatchesGoTypes guards the hand-written schema against drift
-// from Flow/Destination and the generated transform schema.
+// from Flow/Destination, and checks that transforms refer to the DSL's own
+// schema (whose parity with the step types the compiler package tests).
 func TestFlowSchemaMatchesGoTypes(t *testing.T) {
 	var schema struct {
 		Properties map[string]any `json:"properties"`

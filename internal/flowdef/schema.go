@@ -55,14 +55,19 @@ func mustReservedIDs() map[string]bool {
 	return out
 }
 
+// AddSchemas adds flow.schema.json and the schemas it refers to (the
+// transform DSL's) to c, so any schema can refer to flows by SchemaID.
+func AddSchemas(c *jsonschema.Compiler) error {
+	if err := c.AddResource(SchemaID, bytes.NewReader(Schema)); err != nil {
+		return err
+	}
+	return c.AddResource(compiler.SchemaID, bytes.NewReader(compiler.Schema))
+}
+
 func mustCompileFlowSchema() *jsonschema.Schema {
 	c := jsonschema.NewCompiler()
 	c.Draft = jsonschema.Draft2020
-	if err := c.AddResource(SchemaID, bytes.NewReader(Schema)); err != nil {
-		panic(err)
-	}
-	// Transforms are described by the DSL's own schema.
-	if err := c.AddResource(compiler.SchemaID, bytes.NewReader(compiler.Schema)); err != nil {
+	if err := AddSchemas(c); err != nil {
 		panic(err)
 	}
 	return c.MustCompile(SchemaID)

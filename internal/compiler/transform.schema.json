@@ -77,13 +77,13 @@
       "properties": {
         "from": {
           "type": "string",
-          "minLength": 1,
-          "description": "Dot path to read, for example PID.5.1 or rows.0.lastName"
+          "description": "Dot path to read, for example PID.5.1 or rows.0.lastName",
+          "pattern": "^[^.]+(\\.[^.]+)*$"
         },
         "to": {
           "type": "string",
-          "minLength": 1,
-          "description": "Dot path to write"
+          "description": "Dot path to write",
+          "pattern": "^[^.]+(\\.[^.]+)*$"
         },
         "type": {
           "enum": [
@@ -107,8 +107,8 @@
       "properties": {
         "field": {
           "type": "string",
-          "minLength": 1,
-          "description": "Dot path to write"
+          "description": "Dot path to write",
+          "pattern": "^[^.]+(\\.[^.]+)*$"
         },
         "expr": {
           "type": "string",
@@ -127,8 +127,8 @@
       "properties": {
         "when": {
           "type": "string",
-          "minLength": 1,
-          "description": "A path (true when present and not empty, 0, false, or null) or <operand> == <operand> / <operand> != <operand>"
+          "description": "A path (true when present and not empty, 0, false, or null) or <operand> == <operand> / <operand> != <operand>",
+          "pattern": "\\S"
         },
         "action": {
           "enum": [

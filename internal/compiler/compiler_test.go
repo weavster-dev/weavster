@@ -69,7 +69,7 @@ func TestGenerate(t *testing.T) {
 }
 
 func TestCompileAndValidate(t *testing.T) {
-	tr, res, err := Compile([]byte(runnableYAML))
+	tr, res, err := Compile([]byte(exampleYAML)) // destinationSet included: codegen supports it
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -104,17 +104,22 @@ func TestValidateAcceptsValidTransform(t *testing.T) {
 // TestValidateRefuses: the schema describes exactly what runs.
 func TestValidateRefuses(t *testing.T) {
 	for name, doc := range map[string]string{
-		"build":            "steps:\n  - build: { template: x }",
-		"destinationSet":   "steps:\n  - destinationSet: { exclude: [a] }",
-		"two kinds":        "steps:\n  - map: { from: a, to: b }\n    set: { field: c, expr: d }",
-		"empty step":       "steps:\n  - {}",
-		"unknown key":      "name: t\ncolor: red",
-		"bad action":       "steps:\n  - filter: { when: a, action: drop }",
-		"bad type":         "steps:\n  - map: { from: a, to: b, type: date }",
-		"missing to":       "steps:\n  - map: { from: a }",
-		"empty path":       "steps:\n  - map: { from: '', to: b }",
-		"not YAML":         "steps: [",
-		"unknown step key": "steps:\n  - map: { from: a, to: b, via: c }",
+		"build":              "steps:\n  - build: { template: x }",
+		"destinationSet":     "steps:\n  - destinationSet: { exclude: [a] }",
+		"two kinds":          "steps:\n  - map: { from: a, to: b }\n    set: { field: c, expr: d }",
+		"empty step":         "steps:\n  - {}",
+		"unknown key":        "name: t\ncolor: red",
+		"bad action":         "steps:\n  - filter: { when: a, action: drop }",
+		"bad type":           "steps:\n  - map: { from: a, to: b, type: date }",
+		"missing to":         "steps:\n  - map: { from: a }",
+		"empty path":         "steps:\n  - map: { from: '', to: b }",
+		"not YAML":           "steps: [",
+		"unknown step key":   "steps:\n  - map: { from: a, to: b, via: c }",
+		"empty path segment": "steps:\n  - map: { from: a..b, to: c }",
+		"trailing dot":       "steps:\n  - set: { field: a., expr: x }",
+		"blank when":         "steps:\n  - filter: { when: '  ', action: reject }",
+		"number key":         "1: x",
+		"bool key in step":   "steps:\n  - {true: x}",
 	} {
 		if err := Validate([]byte(doc)); err == nil {
 			t.Errorf("%s: accepted", name)

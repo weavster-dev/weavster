@@ -27,10 +27,10 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 
 The server checks the transform and destinations when you create the flow. A problem is
 reported as `400` with the reason in the [error envelope](api-errors.md), for example for a
-`map` whose `from` is `PID..5`:
+`filter` whose `when` is `patient.lastName ==`, with nothing to compare against:
 
 ```json
-{"error":{"code":"BAD_REQUEST","message":"invalid flow: dsl: normalize: step 2: map.from: invalid path \"PID..5\""}}
+{"error":{"code":"BAD_REQUEST","message":"invalid flow: dsl: normalize: step 2: filter.when: empty path"}}
 ```
 
 Every flow definition you send (create, update, import) is checked against
@@ -61,6 +61,7 @@ JSON view of an [HL7 v2 message](#transform-hl7-v2-messages),
   (`'x'` or `"x"`), a number (`3`, `-1.5`), or `true`/`false`. A missing path compares equal
   to `''`. No other operators exist.
 - `build` and `destinationSet` steps are not supported yet.
+- Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.
 
 The transform format is published as
 [`transform.schema.json`](https://github.com/weavster-dev/weavster/blob/main/agent-docs/schemas/transform.schema.json).
@@ -78,7 +79,6 @@ VS Code, for example, mistakes are underlined and fields are completed:
 ```yaml
 # yaml-language-server: $schema=https://raw.githubusercontent.com/weavster-dev/weavster/main/agent-docs/schemas/config.schema.json
 ```
-- Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.
 
 ### Other fields
 
