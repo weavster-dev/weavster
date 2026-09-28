@@ -30,14 +30,13 @@ func Parse(data []byte) (*Transform, error) {
 	return &t, nil
 }
 
-// Compile parses, validates, and transpiles a YAML transform to Go source,
-// returning the transform and the generated code (arch §4.1).
+// Compile parses and transpiles a YAML transform to Go source, returning
+// the transform and the generated code (arch §4.1). It is the deferred WASM
+// path, which also generates build and destinationSet steps, so it does not
+// apply Validate (the schema of the steps the interpreter runs today).
 func Compile(data []byte) (*Transform, *Result, error) {
 	t, err := Parse(data)
 	if err != nil {
-		return nil, nil, err
-	}
-	if err := Validate(data); err != nil {
 		return nil, nil, err
 	}
 	src, err := Generate(t)

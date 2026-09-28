@@ -1,8 +1,14 @@
 package compiler
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"os"
 	"os/exec"
+	"reflect"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -63,7 +69,7 @@ func TestGenerate(t *testing.T) {
 }
 
 func TestCompileAndValidate(t *testing.T) {
-	tr, res, err := Compile([]byte(exampleYAML))
+	tr, res, err := Compile([]byte(exampleYAML)) // destinationSet included: codegen supports it
 	if err != nil {
 		t.Fatalf("compile: %v", err)
 	}
@@ -76,9 +82,90 @@ func TestCompileAndValidate(t *testing.T) {
 	}
 }
 
+// runnableYAML uses only the steps the interpreter runs.
+const runnableYAML = `
+kind: Transform
+name: normalize-patient-name
+inputs: [message]
+steps:
+  - map: { from: "PID.5.1", to: "patient.lastName", type: string }
+  - set: { field: "patient.fullName", expr: "{{patient.lastName}}" }
+  - filter: { when: "patient.lastName == ''", action: reject }
+`
+
 func TestValidateAcceptsValidTransform(t *testing.T) {
-	if err := Validate([]byte(exampleYAML)); err != nil {
-		t.Fatalf("validate valid transform: %v", err)
+	for _, doc := range []string{runnableYAML, "steps: []", "name: t", "{}", `{"name":"t","steps":[{"map":{"from":"a","to":"b"}}]}`} {
+		if err := Validate([]byte(doc)); err != nil {
+			t.Errorf("validate %q: %v", doc, err)
+		}
+	}
+}
+
+// TestValidateRefuses: the schema describes exactly what runs.
+func TestValidateRefuses(t *testing.T) {
+	for name, doc := range map[string]string{
+		"build":                  "steps:\n  - build: { template: x }",
+		"destinationSet":         "steps:\n  - destinationSet: { exclude: [a] }",
+		"two kinds":              "steps:\n  - map: { from: a, to: b }\n    set: { field: c, expr: d }",
+		"empty step":             "steps:\n  - {}",
+		"unknown key":            "name: t\ncolor: red",
+		"bad action":             "steps:\n  - filter: { when: a, action: drop }",
+		"bad type":               "steps:\n  - map: { from: a, to: b, type: date }",
+		"missing to":             "steps:\n  - map: { from: a }",
+		"empty path":             "steps:\n  - map: { from: '', to: b }",
+		"not YAML":               "steps: [",
+		"unknown step key":       "steps:\n  - map: { from: a, to: b, via: c }",
+		"second document":        "name: t\n---\ncolor: red",
+		"broken second document": "name: t\n---\n[",
+		"empty path segment":     "steps:\n  - map: { from: a..b, to: c }",
+		"trailing dot":           "steps:\n  - set: { field: a., expr: x }",
+		"blank when":             "steps:\n  - filter: { when: '  ', action: reject }",
+		"number key":             "1: x",
+		"bool key in step":       "steps:\n  - {true: x}",
+	} {
+		if err := Validate([]byte(doc)); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+// TestSchemaPublishedAndMatchesTypes: agent-docs holds the embedded schema,
+// and its properties are the Go types' JSON fields (build and
+// destinationSet steps are not run yet, so the schema leaves them out).
+func TestSchemaPublishedAndMatchesTypes(t *testing.T) {
+	published, err := os.ReadFile("../../agent-docs/schemas/transform.schema.json")
+	if err != nil || !bytes.Equal(published, Schema) {
+		t.Errorf("agent-docs/schemas/transform.schema.json differs from internal/compiler/transform.schema.json (%v); run go generate ./internal/compiler", err)
+	}
+	var s struct {
+		ID   string `json:"$id"`
+		Defs map[string]struct {
+			Properties map[string]any `json:"properties"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(Schema, &s); err != nil || s.ID != SchemaID {
+		t.Fatalf("$id = %q, %v", s.ID, err)
+	}
+	fields := func(v any, skip ...string) []string {
+		var out []string
+		rt := reflect.TypeOf(v)
+		for i := 0; i < rt.NumField(); i++ {
+			if name, _, _ := strings.Cut(rt.Field(i).Tag.Get("json"), ","); !slices.Contains(skip, name) {
+				out = append(out, name)
+			}
+		}
+		sort.Strings(out)
+		return out
+	}
+	for name, v := range map[string]any{"Transform": Transform{}, "MapStep": MapStep{}, "SetStep": SetStep{}, "FilterStep": FilterStep{}, "Step": Step{}} {
+		var got []string
+		for k := range s.Defs[name].Properties {
+			got = append(got, k)
+		}
+		sort.Strings(got)
+		if want := fields(v, "build", "destinationSet"); !slices.Equal(got, want) {
+			t.Errorf("$defs/%s properties %v, Go fields %v", name, got, want)
+		}
 	}
 }
 

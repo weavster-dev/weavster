@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/weavster-dev/weavster/internal/compiler"
 )
 
 // TestFlowSchemaPublished keeps the embedded schema and the published
@@ -91,7 +93,8 @@ func TestValidateFlowJSONNullsAndErrors(t *testing.T) {
 }
 
 // TestFlowSchemaMatchesGoTypes guards the hand-written schema against drift
-// from Flow/Destination and the generated transform schema.
+// from Flow/Destination, and checks that transforms refer to the DSL's own
+// schema (whose parity with the step types the compiler package tests).
 func TestFlowSchemaMatchesGoTypes(t *testing.T) {
 	var schema struct {
 		Properties map[string]any `json:"properties"`
@@ -129,22 +132,14 @@ func TestFlowSchemaMatchesGoTypes(t *testing.T) {
 		t.Errorf("Destination properties %v != Destination fields %v", got, want)
 	}
 
-	generated, err := os.ReadFile("../../agent-docs/schemas/transform.schema.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var transform struct {
+	// Transforms are described by the DSL's own schema, referred to by $id.
+	var ref struct {
 		Defs map[string]struct {
-			Properties map[string]any `json:"properties"`
+			Ref string `json:"$ref"`
 		} `json:"$defs"`
 	}
-	if err := json.Unmarshal(generated, &transform); err != nil {
-		t.Fatal(err)
-	}
-	for name, def := range transform.Defs {
-		if got, want := keys(schema.Defs[name].Properties), keys(def.Properties); !slices.Equal(got, want) {
-			t.Errorf("$defs/%s properties %v != transform.schema.json %v", name, got, want)
-		}
+	if err := json.Unmarshal(Schema, &ref); err != nil || ref.Defs["Transform"].Ref != compiler.SchemaID {
+		t.Errorf("$defs/Transform = %+v, %v; want a $ref to %s", ref.Defs["Transform"], err, compiler.SchemaID)
 	}
 }
 

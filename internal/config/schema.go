@@ -189,7 +189,7 @@ var configSchema = sync.OnceValues(func() (*jsonschema.Schema, error) {
 	}
 	compiler := jsonschema.NewCompiler()
 	compiler.Draft = jsonschema.Draft2020
-	if err := compiler.AddResource(flowdef.SchemaID, bytes.NewReader(flowdef.Schema)); err != nil {
+	if err := flowdef.AddSchemas(compiler); err != nil {
 		return nil, err
 	}
 	if err := compiler.AddResource("config.schema.json", bytes.NewReader(schema)); err != nil {
