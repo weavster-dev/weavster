@@ -1385,7 +1385,7 @@ components:
       example: {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}
       type: object
       required: [name, type]
-      description: "url, method, and maxRedirects apply to http destinations; dir to file; address to mllp; timeoutMs to http and mllp."
+      description: "url, method, and maxRedirects apply to http destinations; dir to file; address to mllp; flow (required) to flow; timeoutMs to http and mllp."
       anyOf:
         - properties: {type: {enum: [http]}}
           not: {anyOf: [{required: [address]}, {required: [dir]}, {required: [flow]}]}

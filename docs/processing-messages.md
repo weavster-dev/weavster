@@ -479,17 +479,25 @@ example one flow that receives and cleans up messages and one per system that se
   own `transform` output), read the way the target's `inputFormat` says, and processes it like
   any other message: its own transform, destinations, retries, and statistics. Its message has the
   metadata `source.flow` (the sending flow) and `source.message` (the sending message's id).
-- The delivery succeeds once the target has stored its message. If the target is stopped or
-  paused, refuses the message (for example it is not HL7 v2 and the target expects HL7), or fails
-  before storing it, the attempt fails and is retried, then dead-lettered like any other; starting
-  a stopped target lets the retries through. A lost success is retried too, so the target may
-  get a message twice (at-least-once).
+- The delivery succeeds once the target has stored its message. If the target is not started
+  (stopped, paused, or only deployed), refuses the message, or fails before storing it, the attempt
+  fails and is retried, then dead-lettered like any other; starting the target lets the retries
+  through. The target's message also keeps the delivery's key (`source.idempotencyKey`), so a
+  retry after a lost success finds it and does not store the message twice.
+- What the destination sends must fit the target's `inputFormat`: JSON for a target that
+  transforms JSON, HL7 v2 for `hl7v2` (the message as received, or a `build` with
+  `format: hl7v2`), XML for `xml`, and `build` text for `delimited`. A flow that could not work
+  is refused when you create or update either flow.
 - A flow that sends to another flow depends on it, with the same rules as
   [`dependsOn`](flow-lifecycle.md): the target must exist, a flow cannot send to itself or back
   to itself through others, the target cannot be deleted while a flow sends to it, and deploying
-  the sending flow deploys the target first.
+  the sending flow deploys the target first. Starting the sending flow does not start the
+  target: start it too.
 - The sending flow waits while the target processes the message, so a message's time in the
-  sending flow includes the target's deliveries.
+  sending flow includes the target's deliveries, and stopping the sending flow waits for them.
+  Keep chains short and the targets' destinations fast.
+- The topology overview (`GET /api/v1/topology`) shows each route as an edge between the two
+  flows.
 
 ### Route by content (`destinationSet`)
 

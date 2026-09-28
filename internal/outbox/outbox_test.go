@@ -36,7 +36,7 @@ func TestSemanticsForAdapter(t *testing.T) {
 		"file":        SemanticsAtLeastOnce,
 		"smtp":        SemanticsAtLeastOnce,
 		"document":    SemanticsAtLeastOnce,
-		"interflow":   SemanticsAtLeastOnce,
+		"interflow":   SemanticsKeySent,
 		"something":   SemanticsAtLeastOnce,
 	} {
 		if got := SemanticsForAdapter(adapter); got != want {

@@ -70,4 +70,19 @@ func TestFlowDestination(t *testing.T) {
 	if code, resp, _ := c.do(http.MethodDelete, "/api/v1/flows/store", "", admin); code != http.StatusConflict || !strings.Contains(resp, "intake") {
 		t.Errorf("deleting a target in use: %d %s", code, resp)
 	}
+
+	// What the sender sends must be readable by the target, whichever of
+	// the two changes.
+	createFlow(t, c, `{"id":"hl7-in","inputFormat":"hl7v2"}`)
+	if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"json-out","transform":{"steps":[{"set":{"field":"a","expr":"b"}}]},"destinations":[{"name":"x","type":"flow","flow":"hl7-in"}]}`, admin); code != http.StatusBadRequest || !strings.Contains(resp, "sends json, which flow hl7-in (inputFormat hl7v2) cannot read") {
+		t.Errorf("json to an hl7v2 flow: %d %s", code, resp)
+	}
+	if code, resp, _ := c.do(http.MethodPut, "/api/v1/flows/store", `{"id":"store","inputFormat":"xml","destinations":[{"name":"out","type":"file","dir":"`+out+`"}]}`, admin); code != http.StatusBadRequest || !strings.Contains(resp, "which flow store (inputFormat xml) cannot read") {
+		t.Errorf("changing the target's format under a sender: %d %s", code, resp)
+	}
+
+	// The topology shows the route.
+	if _, topo, _ := c.do(http.MethodGet, "/api/v1/topology", "", admin); !strings.Contains(topo, `"from":"flow:intake","to":"flow:store","kind":"route"`) {
+		t.Errorf("topology = %s", topo)
+	}
 }

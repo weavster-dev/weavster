@@ -120,7 +120,13 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	var sourcePorts gateway.SourcePorts
 	retry := func(context.Context) {}
 	if store != nil {
-		sinks := &sinkFactory{}
+		sinks := &sinkFactory{logger: logger, delivered: func(ctx context.Context, flowID, key string) (string, error) {
+			found, err := store.Search(ctx, state.Query{FlowID: flowID, Metadata: map[string]string{flowKeyMetadata: key}, Limit: 1})
+			if err != nil || len(found) == 0 {
+				return "", err
+			}
+			return found[0].ID, nil
+		}}
 		pipe := pipeline.New(store, sinks.build, processingObserver{stats, events}, pipeline.Options{
 			MaxAttempts: cfg.Delivery.MaxAttempts,
 			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
@@ -957,11 +963,10 @@ func (a flowAdapter) UpdateMany(ctx context.Context, changes []gateway.FlowChang
 		}
 		order = dependencyOrder(all, ids)
 	}
-	if hasSource(flows) {
-		all, err := a.withFlows(ctx, flows...)
-		if err != nil {
-			return updated, err
-		}
+	switch all, err := a.withFlows(ctx, flows...); {
+	case err != nil && refersToFlows(flows...):
+		return updated, err
+	case err == nil:
 		if err := checkSources(all, a.serverPorts); err != nil {
 			return updated, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 		}
@@ -1109,10 +1114,11 @@ func (a flowAdapter) RedeployAll(ctx context.Context) ([]gateway.Flow, error) {
 	return out, nil
 }
 
-// hasSource reports whether any of flows reads a source.
-func hasSource(flows []gateway.Flow) bool {
+// refersToFlows reports whether any of flows reads a source or depends on
+// or sends to another flow, so its checks need every stored flow.
+func refersToFlows(flows ...gateway.Flow) bool {
 	for _, f := range flows {
-		if f.Source != nil {
+		if f.Source != nil || len(f.Dependencies()) > 0 {
 			return true
 		}
 	}
@@ -1152,7 +1158,55 @@ func checkSources(all map[string]gateway.Flow, serverPorts map[int]string) error
 			readBy[dir] = id
 		}
 	}
-	return checkRecursiveSources(all, ids)
+	if err := checkRecursiveSources(all, ids); err != nil {
+		return err
+	}
+	return checkRoutes(all, ids)
+}
+
+// checkRoutes refuses a flow destination whose output its target flow
+// cannot read (#107 D-70): it would fail on every message and be retried
+// until dead-lettered.
+func checkRoutes(all map[string]gateway.Flow, ids []string) error {
+	for _, id := range ids {
+		pf, err := toPipelineFlow(all[id])
+		if err != nil {
+			continue // reported by the flow's own checks
+		}
+		for _, d := range pf.Destinations {
+			target, ok := all[d.Flow]
+			if d.Type != "flow" || !ok {
+				continue
+			}
+			sends, reads := pipeline.Receives(pf, d), readsFormat(target)
+			if !formatFits(sends, reads) {
+				return fmt.Errorf("flow %s: destination %s sends %s, which flow %s (inputFormat %s) cannot read", id, d.Name, sends, d.Flow, reads)
+			}
+		}
+	}
+	return nil
+}
+
+// readsFormat is the format a flow needs its messages in: its inputFormat
+// (json when it transforms), or "" when it takes any bytes.
+func readsFormat(f gateway.Flow) string {
+	if f.InputFormat != "" && f.InputFormat != "json" {
+		return f.InputFormat
+	}
+	transforms := len(f.Transform) > 0 && string(f.Transform) != "null"
+	for _, d := range f.Destinations {
+		transforms = transforms || (len(d.Transform) > 0 && string(d.Transform) != "null")
+	}
+	if transforms {
+		return "json"
+	}
+	return ""
+}
+
+// formatFits reports whether output in format sends can be read as reads;
+// unknown passthrough output ("") is allowed.
+func formatFits(sends, reads string) bool {
+	return reads == "" || sends == "" || sends == reads || (reads == "delimited" && sends == "text")
 }
 
 // checkRecursiveSources refuses a recursive file source whose directory
@@ -1302,12 +1356,14 @@ func (a flowAdapter) validateDefinition(ctx context.Context, f gateway.Flow) err
 	if err := checkDefinition(f); err != nil {
 		return err
 	}
-	if len(f.Dependencies()) == 0 && f.Source == nil {
-		return nil
-	}
+	// Other flows can refer to f (a flow destination), so the checks
+	// across flows run for every flow; an unreadable stored flow blocks
+	// only a flow that itself refers to other flows.
 	all, err := a.withFlows(ctx, f)
-	if err != nil {
+	if err != nil && refersToFlows(f) {
 		return err
+	} else if err != nil {
+		return nil
 	}
 	if err := checkDependencies(all, []string{f.ID}); err != nil {
 		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
@@ -1608,31 +1664,52 @@ func adapterMessage(d pipeline.Delivery) adapters.Message {
 }
 
 // sinkFactory builds destination sinks; flow destinations need the
-// ingester, which exists only once the pipeline does.
+// ingester, which exists only once the pipeline does, and a lookup of what
+// they already delivered.
 type sinkFactory struct {
 	ingest gateway.SourceIngester
+	// delivered finds the target's message stored for an idempotency key
+	// ("" when there is none).
+	delivered func(ctx context.Context, flowID, key string) (string, error)
+	logger    *slog.Logger
 }
 
 func (s *sinkFactory) build(d pipeline.Destination) (pipeline.Sink, error) {
 	if d.Type == "flow" {
-		return flowSink{target: d.Flow, ingest: s.ingest}, nil
+		return flowSink{target: d.Flow, factory: s}, nil
 	}
 	return newSink(d)
 }
 
+// flowKeyMetadata stores a flow delivery's idempotency key with the target
+// message, so a retry finds it instead of storing the message again.
+const flowKeyMetadata = "source.idempotencyKey"
+
 // flowSink hands a delivery to another flow as a new message of it (#107
-// D-70); it is delivered once the target stored the message.
+// D-70); it is delivered once the target stored the message, and only
+// once per delivery: a retry after a lost success finds the stored message.
 type flowSink struct {
-	target string
-	ingest gateway.SourceIngester
+	target  string
+	factory *sinkFactory
 }
 
 func (s flowSink) Write(ctx context.Context, d pipeline.Delivery) error {
-	res, err := s.ingest.IngestFrom(ctx, s.target, d.Body, map[string]string{"source.flow": d.FlowID, "source.message": d.MessageID})
-	if err != nil && res.ID == "" {
+	if id, err := s.factory.delivered(ctx, s.target, d.IdempotencyKey); err != nil {
 		return fmt.Errorf("flow %s: %w", s.target, err)
+	} else if id != "" {
+		return nil // an earlier attempt stored it
 	}
-	return nil // stored: the target flow has the message
+	res, err := s.factory.ingest.IngestFrom(ctx, s.target, d.Body, map[string]string{
+		"source.flow": d.FlowID, "source.message": d.MessageID, flowKeyMetadata: d.IdempotencyKey,
+	})
+	switch {
+	case err != nil && res.ID == "":
+		return fmt.Errorf("flow %s: %w", s.target, err)
+	case err != nil: // stored: the target has it, and reports its own failure
+		s.factory.logger.Warn("flow destination: the target stored the message but processing failed",
+			"flow", d.FlowID, "message", d.MessageID, "target", s.target, "targetMessage", res.ID, "error", err)
+	}
+	return nil
 }
 
 // newSink builds the adapter for a flow destination.
@@ -2016,7 +2093,14 @@ func (t topologyAdapter) Overview(ctx context.Context) (topology.Graph, error) {
 	}
 	summaries := make([]topology.FlowSummary, 0, len(flows))
 	for _, f := range flows {
-		summaries = append(summaries, topology.FlowSummary{ID: f.ID, Name: f.Name, Status: f.Status, Activity: t.activity(f.ID)})
+		var routes []string
+		for _, d := range f.Destinations {
+			if d.Type == "flow" && d.Flow != "" && !slices.Contains(routes, d.Flow) {
+				routes = append(routes, d.Flow)
+			}
+		}
+		summaries = append(summaries, topology.FlowSummary{ID: f.ID, Name: f.Name, Status: f.Status, Activity: t.activity(f.ID),
+			Routes: routes, Deps: f.DependsOn})
 	}
 	return topology.Overview(summaries), nil
 }

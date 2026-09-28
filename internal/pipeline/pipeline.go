@@ -264,6 +264,12 @@ func flowOutput(f Flow) string {
 	return "json"
 }
 
+// Receives is the format of what destination d is sent: a build format,
+// json, "hl7v2" for HL7 passthrough, or "" for other passthrough input.
+func Receives(f Flow, d Destination) string {
+	return receives(f, d)
+}
+
 // receives is the format of what destination d is sent.
 func receives(f Flow, d Destination) string {
 	if d.Transform == nil {
