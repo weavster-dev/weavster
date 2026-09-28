@@ -395,7 +395,7 @@
           ],
           "minimum": 1000,
           "maximum": 120000,
-          "description": "http, mllp: time allowed for one delivery, including the response or ACK (default 30000)"
+          "description": "http, mllp, database: time allowed for one delivery, including the response or ACK (default 30000)"
         },
         "maxRedirects": {
           "type": [

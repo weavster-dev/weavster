@@ -17,6 +17,7 @@ import (
 
 	"github.com/weavster-dev/weavster/internal/adapters"
 	"github.com/weavster-dev/weavster/internal/compiler"
+	"github.com/weavster-dev/weavster/internal/dsl"
 )
 
 // Flow is a flow definition. Status and StoppedDestinations are runtime
@@ -188,7 +189,7 @@ func checkDatabase(d Destination) error {
 			return fmt.Errorf("column %q must be a name of letters, digits, and _", col)
 		case col == d.KeyColumn:
 			return fmt.Errorf("column %q is the keyColumn, which gets the idempotency key", col)
-		case path == "" || slices.Contains(strings.Split(path, "."), ""):
+		case dsl.CheckPath(path) != nil:
 			return fmt.Errorf("column %s: path must be dot-separated names, got %q", col, path)
 		}
 	}

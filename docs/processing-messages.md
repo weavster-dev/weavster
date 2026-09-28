@@ -534,27 +534,35 @@ CREATE TABLE lab.results (mrn text, test text, value text, delivery_key text UNI
 | `table` | Required. `table` or `schema.table`: letters, digits, and `_`. |
 | `columns` | Required. Column name → path of its value in the message, such as `patient.mrn` (numbers index lists: `ids.0`). |
 | `keyColumn` | Optional. A column with a unique constraint that receives the delivery's idempotency key (see below). |
+| `timeoutMs` | Optional. Time allowed for one insert, 1000–120000 (default 30000). |
 
 - The destination needs JSON: the flow's or the destination's transform output, or JSON messages
   passed through. A flow reading HL7 v2, XML, or delimited text without a transform, or ending
   with a `build` to another format, is refused when you create it.
 - Values are sent as query parameters, never written into the SQL, so a quote in a value is just
-  data. Strings and `true`/`false` go in as they are, whole numbers as integers, other numbers as
-  floating point, `null` and missing paths as `NULL`, and objects or lists as their JSON text.
-  Table and column names are checked and quoted.
-- Each message is inserted in its own transaction. A failed insert is retried like any other
-  delivery and then dead-lettered.
+  data. Each value is sent as text and the database converts it to the column's type: in
+  PostgreSQL `42` into an `integer`, `5.40` into a `numeric` with every digit kept, `true` into a
+  `boolean`, `2026-09-28T10:00:00Z` into a `timestamptz`, an object into `jsonb`. `null` and
+  missing paths are `NULL`. A value the column cannot take fails the delivery
+  (`database: a value does not fit its column's type (SQLSTATE 22P02)`). SQLite converts by the
+  column's affinity (`true` stays the text `true`).
+- Table and column names are checked and written in double quotes, so in PostgreSQL they are
+  case-sensitive: use the names as the table has them (a table created without quotes has
+  lower-case names, so `Results` does not find `results`).
+- Each message is one `INSERT` statement, its own transaction, within `timeoutMs`. A failed
+  insert is retried like any other delivery and then dead-lettered.
 - With `keyColumn`, the insert is `ON CONFLICT (keyColumn) DO NOTHING`: a retry after a lost
   success (the row was written but the reply never arrived) inserts nothing, so the message is
   written once. The key is the same for every attempt to deliver that message to that
   destination; reprocessing a message makes a new message with a new key. Without
   `keyColumn`, a retry can insert the row twice.
-- The connection string is read for every message, so a changed variable applies without a
-  restart; connections are pooled per connection string. An unset variable fails the delivery:
+- The connection string is read for every message, so a changed variable (a rotated password)
+  applies without a restart: the old connections are closed and new ones opened. Connections
+  are pooled per variable. An unset variable fails the delivery:
   `database: environment variable WEAVSTER_DB_WAREHOUSE is not set`.
-- PostgreSQL errors are reported by kind and SQLSTATE, never with values, for example
-  `database: the table does not exist (SQLSTATE 42P01)` or
-  `database: a value does not fit its column's type (SQLSTATE 22P02)`.
+- Errors never quote values: PostgreSQL errors are reported by kind and SQLSTATE (for example
+  `database: the table does not exist (SQLSTATE 42P01)`), and a failed connection as
+  `database: could not connect (check the host, credentials, and TLS settings in the connection string)`.
 
 ### Send to another flow
 

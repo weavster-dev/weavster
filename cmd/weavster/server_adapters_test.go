@@ -431,23 +431,31 @@ func TestMLLPClientTLS(t *testing.T) {
 	}
 }
 
-// TestDBPool: one pool per driver and connection string, closed together;
-// a database destination needs the pool and its environment variable.
+// TestDBPool: one pool per driver and variable, replaced (the old one
+// closed) when the variable's connection string changes, all closed on
+// shutdown; a database destination needs the pool and its variable.
 func TestDBPool(t *testing.T) {
 	p := newDBPool()
-	a, err := p.get("sqlite", ":memory:")
+	a, err := p.get("sqlite", "WEAVSTER_DB_A", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b, _ := p.get("sqlite", ":memory:"); b != a {
-		t.Error("a second pool for the same connection string")
+	if b, _ := p.get("sqlite", "WEAVSTER_DB_A", ":memory:"); b != a {
+		t.Error("a second pool for the same variable")
 	}
-	if c, _ := p.get("postgres", "postgres://x"); c == a {
+	if c, _ := p.get("postgres", "WEAVSTER_DB_A", "postgres://x"); c == a {
 		t.Error("drivers share a pool")
 	}
+	rotated, _ := p.get("sqlite", "WEAVSTER_DB_A", "file::memory:?x=1")
+	if rotated == a || a.Ping() == nil {
+		t.Error("a changed connection string did not replace and close the old pool")
+	}
 	p.close()
-	if len(p.dbs) != 0 || a.Ping() == nil {
+	if len(p.dbs) != 0 || rotated.Ping() == nil {
 		t.Error("pools not closed")
+	}
+	if _, err := p.get("sqlite", "WEAVSTER_DB_A", ":memory:"); err == nil {
+		t.Error("a pool opened after close")
 	}
 	d := pipeline.Destination{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_POOL_TEST", Table: "t", Columns: map[string]string{"b": "b", "a": "a"}}
 	if _, err := newSink(d); err == nil {

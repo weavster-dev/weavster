@@ -150,7 +150,10 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
 			<-polled
 			<-served
-			sinks.dbs.close() // nothing delivers any more
+		}
+		closeStore = func() error { // after the API drained: nothing delivers any more
+			sinks.dbs.close()
+			return store.Close()
 		}
 	}
 
@@ -1774,7 +1777,7 @@ func databaseSink(d pipeline.Destination, dbs *dbPool) (pipeline.Sink, error) {
 	if dsn == "" {
 		return nil, fmt.Errorf("database: environment variable %s is not set", d.DSNEnv)
 	}
-	db, err := dbs.get(d.Driver, dsn)
+	db, err := dbs.get(d.Driver, d.DSNEnv, dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -1787,47 +1790,63 @@ func databaseSink(d pipeline.Destination, dbs *dbPool) (pipeline.Sink, error) {
 	for i, n := range names {
 		cols[i] = adapters.SQLColumn{Name: n, Path: d.Columns[n]}
 	}
-	sink, err := adapters.NewSQLSink(db, adapters.SQLSinkOptions{Dialect: d.Driver, Table: d.Table, Columns: cols, KeyColumn: d.KeyColumn})
+	sink, err := adapters.NewSQLSink(db, adapters.SQLSinkOptions{Dialect: d.Driver, Table: d.Table, Columns: cols, KeyColumn: d.KeyColumn, Timeout: d.Timeout})
 	if err != nil {
 		return nil, err
 	}
 	return adapterSink{sink}, nil
 }
 
-// dbPool keeps one connection pool per driver and connection string.
+// dbPool keeps one connection pool per driver and environment variable;
+// when the variable's connection string changes (a rotated password), the
+// old pool is closed and a new one opened.
 type dbPool struct {
-	mu  sync.Mutex
-	dbs map[string]*sql.DB
+	mu     sync.Mutex
+	dbs    map[string]pooledDB
+	closed bool
 }
 
-func newDBPool() *dbPool { return &dbPool{dbs: map[string]*sql.DB{}} }
+// pooledDB is a pool and the connection string it was opened with.
+type pooledDB struct {
+	dsn string
+	db  *sql.DB
+}
+
+func newDBPool() *dbPool { return &dbPool{dbs: map[string]pooledDB{}} }
 
 // sqlDrivers are the database/sql drivers of the database destinations'
 // drivers.
 var sqlDrivers = map[string]string{adapters.DialectPostgres: "pgx", adapters.DialectSQLite: "sqlite"}
 
-// get returns the pool for driver and dsn, opening it on first use.
-func (p *dbPool) get(driver, dsn string) (*sql.DB, error) {
+// get returns the pool for driver and the variable env holding dsn.
+func (p *dbPool) get(driver, env, dsn string) (*sql.DB, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	key := driver + "\x00" + dsn
-	if db, ok := p.dbs[key]; ok {
-		return db, nil
+	if p.closed {
+		return nil, errors.New("database: the server is stopping")
+	}
+	key := driver + "\x00" + env
+	if old, ok := p.dbs[key]; ok {
+		if old.dsn == dsn {
+			return old.db, nil
+		}
+		_ = old.db.Close() // deliveries using it finish first (database/sql waits)
 	}
 	db, err := sql.Open(sqlDrivers[driver], dsn)
 	if err != nil {
 		return nil, errors.New("database: the connection string is not valid for the driver") // not the error: it can quote the string
 	}
-	p.dbs[key] = db
+	p.dbs[key] = pooledDB{dsn: dsn, db: db}
 	return db, nil
 }
 
-// close closes every pool.
+// close closes every pool; later gets fail.
 func (p *dbPool) close() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	for key, db := range p.dbs {
-		_ = db.Close()
+	p.closed = true
+	for key, e := range p.dbs {
+		_ = e.db.Close()
 		delete(p.dbs, key)
 	}
 }

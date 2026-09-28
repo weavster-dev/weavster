@@ -165,6 +165,23 @@ func parsePath(s string) (path, error) {
 	return parts, nil
 }
 
+// CheckPath reports whether s is a path the DSL reads: dot-separated
+// names, numbers indexing lists.
+func CheckPath(s string) error {
+	_, err := parsePath(s)
+	return err
+}
+
+// Lookup returns the value at path s in doc, or false when any segment is
+// missing (or s is not a path), as transforms read it.
+func Lookup(doc map[string]any, s string) (any, bool) {
+	p, err := parsePath(s)
+	if err != nil {
+		return nil, false
+	}
+	return p.get(doc)
+}
+
 // get returns the value at p, or false when any segment is missing.
 // Numeric segments index arrays.
 func (p path) get(doc map[string]any) (any, bool) {

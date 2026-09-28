@@ -10,8 +10,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/weavster-dev/weavster/internal/dsl"
 )
 
 // SQL dialects a database destination writes.
@@ -54,7 +56,13 @@ type SQLSinkOptions struct {
 	Table     string
 	Columns   []SQLColumn
 	KeyColumn string
+	// Timeout bounds one insert (DBSinkTimeout when not positive).
+	Timeout time.Duration
 }
+
+// DBSinkTimeout bounds one insert unless SQLSinkOptions.Timeout says
+// otherwise.
+const DBSinkTimeout = 30 * time.Second
 
 // SQLSink inserts each message, a JSON object, as one row (#107 D-75).
 type SQLSink struct {
@@ -63,6 +71,7 @@ type SQLSink struct {
 	columns []SQLColumn
 	withKey bool
 	insert  string
+	timeout time.Duration
 }
 
 // NewSQLSink prepares the insert for db (which the caller owns).
@@ -103,11 +112,14 @@ func NewSQLSink(db *sql.DB, o SQLSinkOptions) (*SQLSink, error) {
 	if o.KeyColumn != "" {
 		insert += " ON CONFLICT (" + quoteIdentifier(o.KeyColumn) + ") DO NOTHING"
 	}
-	return &SQLSink{db: db, dialect: o.Dialect, columns: o.Columns, withKey: o.KeyColumn != "", insert: insert}, nil
+	if o.Timeout <= 0 {
+		o.Timeout = DBSinkTimeout
+	}
+	return &SQLSink{db: db, dialect: o.Dialect, columns: o.Columns, withKey: o.KeyColumn != "", insert: insert, timeout: o.Timeout}, nil
 }
 
 // quoteIdentifier double-quotes a checked identifier (standard SQL, and
-// both dialects).
+// both dialects); quoted names are case-sensitive in PostgreSQL.
 func quoteIdentifier(name string) string { return `"` + name + `"` }
 
 func (s *SQLSink) Name() string { return "database" }
@@ -115,23 +127,18 @@ func (s *SQLSink) Name() string { return "database" }
 // Statement is the insert the sink runs, for inspection.
 func (s *SQLSink) Statement() string { return s.insert }
 
-// Write inserts m in a transaction. Errors name the database's error class,
-// never values from the message.
+// Write inserts m with one statement, its own transaction, within the
+// sink's timeout. Errors name the database's error class, never values
+// from the message.
 func (s *SQLSink) Write(ctx context.Context, m Message) error {
 	args, err := s.values(m)
 	if err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return s.dbError(err)
-	}
-	if _, err := tx.ExecContext(ctx, s.insert, args...); err != nil {
-		_ = tx.Rollback()
-		return s.dbError(err)
-	}
-	if err := tx.Commit(); err != nil {
-		return s.dbError(err)
+	ctx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
+	if _, err := s.db.ExecContext(ctx, s.insert, args...); err != nil {
+		return s.dbError(ctx, err)
 	}
 	return nil
 }
@@ -146,11 +153,8 @@ func (s *SQLSink) values(m Message) ([]any, error) {
 	}
 	args := make([]any, 0, len(s.columns)+1)
 	for _, c := range s.columns {
-		v, err := sqlValue(lookupPath(doc, c.Path))
-		if err != nil {
-			return nil, fmt.Errorf("database: column %s: %w", c.Name, err)
-		}
-		args = append(args, v)
+		v, _ := dsl.Lookup(doc, c.Path) // missing: NULL
+		args = append(args, sqlValue(v))
 	}
 	if s.withKey {
 		key := m.Metadata[IdempotencyKeyMetadata]
@@ -162,57 +166,48 @@ func (s *SQLSink) values(m Message) ([]any, error) {
 	return args, nil
 }
 
-// lookupPath follows a dot path through objects and arrays (nil when it
-// leads nowhere).
-func lookupPath(v any, path string) any {
-	for _, key := range strings.Split(path, ".") {
-		switch t := v.(type) {
-		case map[string]any:
-			v = t[key]
-		case []any:
-			i, err := strconv.Atoi(key)
-			if err != nil || i < 0 || i >= len(t) {
-				return nil
-			}
-			v = t[i]
-		default:
-			return nil
-		}
-	}
-	return v
-}
-
-// sqlValue converts a JSON value to a parameter: strings and booleans as
-// they are, whole numbers as int64, other numbers as float64 (a number
-// neither can hold is refused), null as NULL, and objects and arrays as
-// their JSON text.
-func sqlValue(v any) (any, error) {
+// sqlValue is a JSON value as a query parameter: its text, which the
+// database converts to the column's type (PostgreSQL parses "42" into an
+// integer, "true" into a boolean, an ISO date into a timestamp; SQLite
+// applies the column's affinity). Numbers keep every digit as written;
+// objects and arrays are their JSON text; null and missing values are
+// NULL. Text is the one form pgx encodes into every column type.
+func sqlValue(v any) any {
 	switch t := v.(type) {
-	case nil, string, bool:
-		return t, nil
+	case nil:
+		return nil
+	case string:
+		return t
 	case json.Number:
-		if i, err := t.Int64(); err == nil {
-			return i, nil
-		}
-		if f, err := t.Float64(); err == nil {
-			return f, nil
-		}
-		return nil, errors.New("a number too large for the database")
+		return t.String()
+	case bool:
+		return strconv.FormatBool(t)
 	default:
-		b, err := json.Marshal(t)
-		return string(b), err
+		b, _ := json.Marshal(t) // decoded JSON always marshals
+		return string(b)
 	}
 }
 
 // dbError describes a database error without its details, which can quote
-// values: PostgreSQL errors by SQLSTATE class, others by their message
-// (SQLite's name tables and columns, not values).
-func (s *SQLSink) dbError(err error) error {
+// values: PostgreSQL errors by SQLSTATE class, client-side failures by
+// kind, and SQLite's by their message (it names tables and columns, not
+// values).
+func (s *SQLSink) dbError(ctx context.Context, err error) error {
 	var pg *pgconn.PgError
-	if !errors.As(err, &pg) {
-		if s.dialect == DialectPostgres {
-			return errors.New("database: the database could not be reached or the statement failed")
-		}
+	var connect *pgconn.ConnectError
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return fmt.Errorf("database: no result within %s", s.timeout)
+	case ctx.Err() != nil:
+		return errors.New("database: the delivery was cancelled")
+	case errors.As(err, &connect):
+		return errors.New("database: could not connect (check the host, credentials, and TLS settings in the connection string)")
+	case errors.Is(err, sql.ErrConnDone):
+		return errors.New("database: the connection was closed")
+	case errors.As(err, &pg):
+	case s.dialect == DialectPostgres:
+		return errors.New("database: the statement failed before reaching the database")
+	default:
 		return fmt.Errorf("database: %w", err)
 	}
 	what := map[string]string{

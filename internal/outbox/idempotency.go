@@ -22,12 +22,11 @@ type DeliverySemantics string
 const (
 	// SemanticsKeySent sinks send the idempotency key to the receiver (the
 	// HTTP Idempotency-Key header; a flow destination stores it with the
-	// target's message and finds it on retry; a database destination
-	// inserts it into its keyColumn, when set): effectively once when the
+	// target's message and finds it on retry): effectively once when the
 	// receiver honors the key.
 	SemanticsKeySent DeliverySemantics = "idempotency-key-sent"
 	// SemanticsAtLeastOnce sinks send no key (raw TCP/MLLP, file, SMTP,
-	// …); the receiver may see a message twice (gap #5).
+	// database without keyColumn, …); the receiver may see a message twice (gap #5).
 	SemanticsAtLeastOnce DeliverySemantics = "at-least-once"
 )
 
@@ -35,7 +34,7 @@ const (
 // an unknown type is at-least-once (#107 §8).
 func SemanticsForAdapter(adapterType string) DeliverySemantics {
 	switch adapterType {
-	case "http", "interflow", "database":
+	case "http", "interflow":
 		return SemanticsKeySent
 	}
 	return SemanticsAtLeastOnce

@@ -1404,7 +1404,7 @@ components:
       example: {"name": "ehr", "type": "http", "url": "https://ehr.example.com/in"}
       type: object
       required: [name, type]
-      description: "url, method, and maxRedirects apply to http destinations; dir to file; address, tls, caFile, frameStart, frameEnd, and ackMode to mllp; driver, dsnEnv, table, columns (required), and keyColumn to database; flow (required) to flow; timeoutMs to http and mllp."
+      description: "url, method, and maxRedirects apply to http destinations; dir to file; address, tls, caFile, frameStart, frameEnd, and ackMode to mllp; driver, dsnEnv, table, columns (required), and keyColumn to database; flow (required) to flow; timeoutMs to http, mllp, and database."
       anyOf:
         - properties: {type: {enum: [http]}}
           not: {anyOf: [{required: [address]}, {required: [dir]}, {required: [flow]}, {required: [tls]}, {required: [caFile]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}, {required: [driver]}, {required: [dsnEnv]}, {required: [table]}, {required: [columns]}, {required: [keyColumn]}]}
@@ -1448,7 +1448,7 @@ components:
         keyColumn: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}$", description: "database: column (with a unique constraint) that gets the delivery's idempotency key, so a retry inserts nothing"}
         flow: {type: string, description: "flow: id of the flow to hand messages to"}
         method: {type: string, enum: [POST, PUT, PATCH], description: "http: request method (default POST)"}
-        timeoutMs: {type: integer, minimum: 1000, maximum: 120000, description: "http, mllp: time allowed for one delivery, including the response or ACK (default 30000)"}
+        timeoutMs: {type: integer, minimum: 1000, maximum: 120000, description: "http, mllp, database: time allowed for one delivery, including the response or ACK (default 30000)"}
         maxRedirects: {type: integer, minimum: 0, maximum: 10, description: "http: 307/308 redirects followed, never https to http (default 0: a redirect fails the delivery)"}
         transform: {description: A destination transform}
         responseTransform: {description: A response transform}

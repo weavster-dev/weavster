@@ -300,8 +300,8 @@ func writesJSON(f Flow, d Destination) bool {
 	switch receives(f, d) {
 	case "json":
 		return true
-	case "":
-		return d.Transform == nil && f.Transform == nil && (f.InputFormat == "" || f.InputFormat == "json")
+	case "": // passthrough: no transform on the way
+		return f.InputFormat == "" || f.InputFormat == "json"
 	}
 	return false
 }

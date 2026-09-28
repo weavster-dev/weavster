@@ -36,7 +36,7 @@ func TestSemanticsForAdapter(t *testing.T) {
 		"smtp":        SemanticsAtLeastOnce,
 		"document":    SemanticsAtLeastOnce,
 		"interflow":   SemanticsKeySent,
-		"database":    SemanticsKeySent,
+		"database":    SemanticsAtLeastOnce, // the key only reaches the table with keyColumn
 		"something":   SemanticsAtLeastOnce,
 	} {
 		if got := SemanticsForAdapter(adapter); got != want {

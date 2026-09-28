@@ -3,9 +3,11 @@ package adapters
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	_ "modernc.org/sqlite"
@@ -53,7 +55,6 @@ func TestSQLSink(t *testing.T) {
 	}
 	for body, want := range map[string]string{
 		`[1]`: "not a JSON object", `nope`: "not a JSON object", `null`: "not a JSON object",
-		`{"count":1e400}`: "column n: a number too large",
 	} {
 		if err := s.Write(ctx, Message{Body: []byte(body), Metadata: map[string]string{IdempotencyKeyMetadata: "k"}}); err == nil || !strings.Contains(err.Error(), want) {
 			t.Errorf("%s: %v, want %q", body, err, want)
@@ -107,15 +108,47 @@ func TestSQLSinkErrors(t *testing.T) {
 	for err, want := range map[error]string{
 		&pgconn.PgError{Code: "23505", Message: "dup", Detail: "Key (mrn)=(123) already exists"}: "a unique constraint was violated (SQLSTATE 23505)",
 		&pgconn.PgError{Code: "22P02", Message: `invalid input syntax for type integer: "DOE"`}:  "a value does not fit its column's type (SQLSTATE 22P02)",
-		&pgconn.PgError{Code: "XX000"}:          "the statement failed (SQLSTATE XX000)",
-		errors.New("dial tcp: password=secret"): "could not be reached",
+		&pgconn.PgError{Code: "XX000"}:        "the statement failed (SQLSTATE XX000)",
+		errors.New("encode: password=secret"): "failed before reaching the database",
+		&pgconn.ConnectError{}:                "could not connect",
+		sql.ErrConnDone:                       "the connection was closed",
 	} {
-		got := pg.dbError(err).Error()
+		got := pg.dbError(context.Background(), err).Error()
 		if !strings.Contains(got, want) || strings.Contains(got, "123") || strings.Contains(got, "DOE") || strings.Contains(got, "secret") {
 			t.Errorf("%v: %q, want %q", err, got, want)
 		}
 	}
+	expired, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	if got := pg.dbError(expired, errors.New("x")).Error(); !strings.Contains(got, "no result within 30s") {
+		t.Errorf("timeout: %q", got)
+	}
+	gone, stop := context.WithCancel(context.Background())
+	stop()
+	if got := pg.dbError(gone, errors.New("x")).Error(); !strings.Contains(got, "cancelled") {
+		t.Errorf("cancelled: %q", got)
+	}
 	if !ValidSQLIdentifier("a.b", true) || ValidSQLIdentifier("a.b", false) || ValidSQLIdentifier("", false) {
 		t.Error("ValidSQLIdentifier")
+	}
+}
+
+// TestSQLValue: every value is sent as text (numbers with every digit),
+// objects and arrays as JSON, null as NULL.
+func TestSQLValue(t *testing.T) {
+	for _, tt := range []struct {
+		in   any
+		want any
+	}{
+		{nil, nil}, {"a", "a"}, {json.Number("18446744073709551615"), "18446744073709551615"}, {json.Number("5.40"), "5.40"},
+		{true, "true"}, {map[string]any{"a": []any{json.Number("1")}}, `{"a":[1]}`},
+	} {
+		if got := sqlValue(tt.in); got != tt.want {
+			t.Errorf("%v: %v, want %v", tt.in, got, tt.want)
+		}
+	}
+	s, _ := NewSQLSink(nil, SQLSinkOptions{Dialect: DialectSQLite, Table: "t", Columns: []SQLColumn{{"a", "a"}}, Timeout: time.Second})
+	if s.timeout != time.Second {
+		t.Errorf("timeout %s", s.timeout)
 	}
 }
