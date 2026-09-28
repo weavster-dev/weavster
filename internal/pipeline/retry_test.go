@@ -290,3 +290,35 @@ func TestRetryReadsFlowPerMessage(t *testing.T) {
 		t.Errorf("m2 status = %s, want queued (held)", m.Status)
 	}
 }
+
+// tallySink counts deliveries.
+type tallySink struct{ n int }
+
+func (s *tallySink) Write(context.Context, Delivery) error { s.n++; return nil }
+
+// TestRetryStaleSnapshot: a retry pass that read a message before its first
+// processing finished works from the stored message, so a message already
+// sent is neither delivered again nor counted again.
+func TestRetryStaleSnapshot(t *testing.T) {
+	ctx := context.Background()
+	store := state.NewMemStore()
+	sink := &tallySink{}
+	obs := &recordingObserver{}
+	p := New(store, func(Destination) (Sink, error) { return sink, nil }, obs, Options{})
+	f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}, {Name: "b", Type: "file", Dir: "d"}}}
+	lookup := func(context.Context, string) (Flow, error) { return f, nil }
+	res, err := p.Process(ctx, f, []byte("x"))
+	if err != nil || res.Status != state.StatusSent || sink.n != 2 {
+		t.Fatalf("process = %+v, %v; %d deliveries", res, err, sink.n)
+	}
+	stale := state.Message{ID: res.ID, FlowID: "f", Status: state.StatusReceived} // as a search page saw it mid-processing
+	if resumed, err := p.retryOne(ctx, stale, lookup); resumed || err != nil {
+		t.Errorf("retryOne on a sent message = %v, %v", resumed, err)
+	}
+	if sink.n != 2 || len(obs.retried) != 0 {
+		t.Errorf("a sent message was worked on again: %d deliveries, %d retry observations", sink.n, len(obs.retried))
+	}
+	if _, err := p.retryOne(ctx, state.Message{ID: "gone", FlowID: "f", Status: state.StatusReceived}, lookup); err == nil {
+		t.Error("a message missing from the store: want error")
+	}
+}
