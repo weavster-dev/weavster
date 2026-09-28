@@ -112,6 +112,19 @@ func excluded(raw json.RawMessage) []string {
 	return out
 }
 
+// CheckDestinations checks what the schema cannot about destinations: a
+// file destination's dir is an absolute path, so where files go never
+// depends on the server's working directory (#107 D-69).
+func CheckDestinations(f Flow) error {
+	for _, d := range f.Destinations {
+		// An empty dir is reported as required when the flow is used.
+		if d.Type == "file" && d.Dir != "" && !filepath.IsAbs(d.Dir) {
+			return fmt.Errorf("destination %s: dir must be an absolute path, got %q", d.Name, d.Dir)
+		}
+	}
+	return nil
+}
+
 // CheckInput checks what the schema cannot: delimited options go with
 // inputFormat delimited only.
 func CheckInput(f Flow) error {
@@ -142,6 +155,9 @@ type Source struct {
 	// MoveTo is an absolute directory processed files are moved to
 	// (default: they are deleted).
 	MoveTo string `json:"moveTo,omitempty"`
+	// Recursive makes a file source read subdirectories of Dir too (#107
+	// D-69).
+	Recursive bool `json:"recursive,omitempty"`
 	// Address is the host:port an http or mllp source listens on (#107
 	// D-57, D-60).
 	Address string `json:"address,omitempty"`
@@ -217,6 +233,8 @@ func CheckSource(s *Source) error {
 		return errors.New("source.moveTo must differ from source.dir")
 	case s.MoveTo != "" && filepath.Join(s.MoveTo, "rejected") == filepath.Clean(s.Dir):
 		return errors.New("source.dir must not be moveTo/rejected, where refused files are moved")
+	case s.Recursive && s.MoveTo != "" && Within(s.MoveTo, s.Dir):
+		return errors.New("source.moveTo must not be inside source.dir when recursive: moved files would be read again")
 	case strings.ContainsAny(s.Pattern, `/\`):
 		return fmt.Errorf("source.pattern is a file-name glob without path separators, got %q", s.Pattern)
 	}
@@ -224,6 +242,36 @@ func CheckSource(s *Source) error {
 		return fmt.Errorf("source.pattern %q: %w", s.Pattern, err)
 	}
 	return nil
+}
+
+// Within reports whether path is dir or inside it, comparing both as
+// written and with symbolic links resolved (a recursive source follows a
+// linked dir, so /link/done and /real/done can be the same place).
+func Within(path, dir string) bool {
+	return inside(filepath.Clean(path), filepath.Clean(dir)) || inside(resolve(path), resolve(dir))
+}
+
+func inside(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolve is p with symbolic links resolved in its longest existing
+// prefix (a directory may not exist yet: moveTo is created on first use).
+func resolve(p string) string {
+	p = filepath.Clean(p)
+	rest := ""
+	for {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, rest)
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = parent
+	}
 }
 
 // Listens reports whether s is a source with its own port (http or mllp).

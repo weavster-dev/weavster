@@ -2,6 +2,8 @@ package flowdef
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -21,6 +23,10 @@ func TestCheckSource(t *testing.T) {
 		{"dir is moveTo/rejected", &Source{Type: "file", Dir: "/data/rejected", MoveTo: "/data"}, "must not be moveTo/rejected"},
 		{"pattern with a path", &Source{Type: "file", Dir: "/in", Pattern: "../*"}, "without path separators"},
 		{"bad pattern", &Source{Type: "file", Dir: "/in", Pattern: "[a"}, "syntax error in pattern"},
+		{"recursive, moveTo outside", &Source{Type: "file", Dir: "/in", MoveTo: "/done", Recursive: true}, ""},
+		{"recursive, moveTo inside", &Source{Type: "file", Dir: "/in", MoveTo: "/in/done", Recursive: true}, "must not be inside source.dir when recursive"},
+		{"recursive, moveTo sibling prefix", &Source{Type: "file", Dir: "/in", MoveTo: "/inbox", Recursive: true}, ""},
+		{"not recursive, moveTo inside", &Source{Type: "file", Dir: "/in", MoveTo: "/in/done"}, ""},
 		{"http", &Source{Type: "http", Address: ":9001"}, ""},
 		{"http with host", &Source{Type: "http", Address: "127.0.0.1:9001", Path: "/adt", Method: "PUT"}, ""},
 		{"http without port", &Source{Type: "http", Address: "127.0.0.1"}, "source.address must be host:port"},
@@ -50,7 +56,8 @@ func TestCheckSource(t *testing.T) {
 		{`{"id":"a","source":{"type":"ftp","dir":"/in"}}`, false},
 		{`{"id":"a","source":{"type":"file"}}`, false},
 		{`{"id":"a","source":{"type":"file","dir":"/in","pollIntervalMs":50}}`, false},
-		{`{"id":"a","source":{"type":"file","dir":"/in","recursive":true}}`, false},
+		{`{"id":"a","source":{"type":"file","dir":"/in","recursive":true}}`, true},
+		{`{"id":"a","source":{"type":"file","dir":"/in","subdirs":true}}`, false},
 		{`{"id":"a","source":null}`, true},
 		{`{"id":"a","source":{"type":"mllp","address":":2575"}}`, true},
 		{`{"id":"a","source":{"type":"mllp"}}`, false},
@@ -172,6 +179,49 @@ func TestCheckTransforms(t *testing.T) {
 		err := CheckTransforms(tt.f)
 		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
 			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
+		}
+	}
+}
+
+func TestCheckDestinations(t *testing.T) {
+	for _, tt := range []struct {
+		dest Destination
+		want string
+	}{
+		{Destination{Name: "a", Type: "file", Dir: "/out"}, ""},
+		{Destination{Name: "a", Type: "file"}, ""}, // reported as required when used
+		{Destination{Name: "a", Type: "file", Dir: "out"}, `destination a: dir must be an absolute path, got "out"`},
+		{Destination{Name: "a", Type: "file", Dir: "../etc"}, "must be an absolute path"},
+		{Destination{Name: "a", Type: "http", URL: "https://x"}, ""},
+	} {
+		err := CheckDestinations(Flow{Destinations: []Destination{tt.dest}})
+		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
+			t.Errorf("%+v: %v, want %q", tt.dest, err, tt.want)
+		}
+	}
+}
+
+// TestWithinResolvesLinks: containment holds through a symbolic link, also
+// for a directory that does not exist yet.
+func TestWithinResolvesLinks(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		path, dir string
+		want      bool
+	}{
+		{filepath.Join(real, "done"), link, true},
+		{filepath.Join(link, "done", "later"), real, true},
+		{real, link, true},
+		{filepath.Join(t.TempDir(), "x"), link, false},
+		{"/in/done", "/in", true},
+		{"/inbox", "/in", false},
+	} {
+		if got := Within(tt.path, tt.dir); got != tt.want {
+			t.Errorf("Within(%s, %s) = %v, want %v", tt.path, tt.dir, got, tt.want)
 		}
 	}
 }

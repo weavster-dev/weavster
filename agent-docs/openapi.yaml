@@ -1352,7 +1352,7 @@ components:
           not: {anyOf: [{required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}]}
         - required: [address]
           properties: {type: {enum: [mllp]}}
-          not: {anyOf: [{required: [dir]}, {required: [pattern]}, {required: [pollIntervalMs]}, {required: [moveTo]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}]}
+          not: {anyOf: [{required: [dir]}, {required: [pattern]}, {required: [pollIntervalMs]}, {required: [moveTo]}, {required: [recursive]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}]}
         - required: [address]
           properties: {type: {enum: [http]}}
           not:
@@ -1361,6 +1361,7 @@ components:
               - {required: [pattern]}
               - {required: [pollIntervalMs]}
               - {required: [moveTo]}
+              - {required: [recursive]}
               - {required: [username], not: {required: [passwordEnv]}}
               - {required: [passwordEnv], not: {required: [username]}}
               - {required: [certFile], not: {required: [keyFile]}}
@@ -1371,6 +1372,7 @@ components:
         pattern: {type: string, description: "file: file-name glob (default *)"}
         pollIntervalMs: {type: integer, minimum: 100, maximum: 3600000, description: "file: default 1000"}
         moveTo: {type: string, description: "file: absolute directory processed files are moved to (default: deleted)"}
+        recursive: {type: boolean, description: "file: also read subdirectories of dir (default false)"}
         address: {type: string, description: "http, mllp: host:port the flow listens on while it is started"}
         path: {type: string, description: "http: request path accepted (default /)"}
         method: {type: string, enum: [POST, PUT], description: "http: request method accepted (default POST)"}
