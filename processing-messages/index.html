@@ -1195,7 +1195,9 @@ the configured method and path is a message:</p>
   While the flow is stopping, or after it was removed, requests get <code>503</code>.</li>
 <li>A message stored before a later failure is still answered <code>202</code> (the API answers <code>500</code>): the
   flow has it, and resending it would store it twice. A flow that is not running answers <code>503</code>
-  (the API answers <code>409</code>), so the sender tries again later.</li>
+  (the API answers <code>409</code>), so the sender tries again later. A server processing as many messages
+  as <a href="../server-config/#processing"><code>processing.maxConcurrent</code></a> allows answers <code>503</code> with
+  <code>Retry-After: 1</code>, as the API does.</li>
 <li>The port is open only while the flow is <code>started</code>. Starting, stopping, pausing, changing, or
   deleting the flow opens or closes it within about a second; stopping the server closes it.</li>
 <li>A port can have one flow source; a second flow with the same port, or one using the port of
@@ -1408,8 +1410,9 @@ MSA|AA|MSG1
   <a href="#transform-hl7-v2-messages">Transform HL7 v2 messages</a>); without it the transform expects JSON
   and every HL7 message is answered <code>AR</code>. A flow without transforms passes HL7 through unchanged.</li>
 <li>A message the flow's filter drops is still answered <code>AA</code>: it was received and stored.</li>
-<li><code>AE</code> (error; try again later): the message was not stored, because the flow was stopping or
-  processing failed.</li>
+<li><code>AE</code> (error; try again later): the message was not stored, because the flow was stopping,
+  processing failed, or the server was busy (<code>server busy</code>; see
+  <a href="../server-config/#processing"><code>processing</code></a>).</li>
 <li>MSA-3 says why in fixed words, never with message content.</li>
 <li>Several systems can be connected at once; messages on one connection are handled one after
   another, in order, each answered before the next is read. A connection that sends nothing for
@@ -1570,6 +1573,10 @@ statuses above.</p>
 <tr>
 <td><code>413</code></td>
 <td>Body larger than 10 MiB.</td>
+</tr>
+<tr>
+<td><code>503</code></td>
+<td>The server is busy: <a href="../server-config/#processing"><code>processing.maxConcurrent</code></a> messages are being processed and none finished within <code>processing.waitMs</code>. The reply has <code>Retry-After: 1</code>; send the message again.</td>
 </tr>
 </tbody>
 </table>

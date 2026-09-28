@@ -244,7 +244,7 @@
 <tr>
 <td><code>503</code></td>
 <td><code>SERVICE_UNAVAILABLE</code></td>
-<td>The part of the server that handles the request is not running, for example message endpoints with <code>store.dialect: disabled</code>.</td>
+<td>The part of the server that handles the request is not running, for example message endpoints with <code>store.dialect: disabled</code>; or the server is busy processing as many messages as <a href="../server-config/#processing"><code>processing.maxConcurrent</code></a> allows (the reply then has <code>Retry-After: 1</code>: send again shortly).</td>
 </tr>
 </tbody>
 </table>

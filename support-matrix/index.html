@@ -636,6 +636,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestRetryRecoversQueuedMessage</code>, <code>TestQueuedWorkSurvivesRestart</code>, <code>TestDeadLetterAfterMaxAttempts</code>. Dead letters can be listed, requeued, and removed (next row).</td>
 </tr>
 <tr>
+<td>Bounded processing: at most <code>processing.maxConcurrent</code> messages at once across the API and sources; busy senders get <code>503</code> + <code>Retry-After</code> (API, http), <code>AE</code> (mllp), or a later poll (file, database) after <code>processing.waitMs</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestBackpressure</code>, <code>TestProcessLimit</code>, <code>TestBackendErrorStatus</code>, <code>TestFileSourceBusy</code>, <code>TestDatabaseSourcePoll</code>. See <a href="../server-config/#processing"><code>processing</code></a>.</td>
+</tr>
+<tr>
 <td>Per-destination attempt records: count, last error, protocol-specific <code>lastCode</code> (<code>http:503</code>, <code>mllp:AE</code>, <code>sqlstate:…</code>, <code>net:…</code>, <code>tls:certificate</code>, <code>flow:not-running</code>), <code>lastAttemptAt</code>, <code>nextAttemptAt</code></td>
 <td>Implemented (wired)</td>
 <td><code>TestAttemptCodes</code>, <code>TestErrorCode</code>, <code>TestDeliverRecordsCode</code>. See <a href="../processing-messages/">Search stored messages</a>.</td>

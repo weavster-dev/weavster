@@ -351,6 +351,52 @@ stops the server immediately with exit code <code>0</code>. When every attempt f
 </tbody>
 </table>
 <p><code>maxAttempts</code> must be 1–1000; the two intervals must be 1–3,600,000 ms (one hour). See <a href="../processing-messages/#retries">Processing messages</a>.</p>
+<h3 id="processing"><code>processing</code></h3>
+<p>Bounds how many messages the server receives and processes at once, across the API and every
+flow source, so a burst queues at the senders instead of piling up in the server.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxConcurrent</code></td>
+<td><code>32</code></td>
+<td>Messages received and processed at the same time (1–10000).</td>
+</tr>
+<tr>
+<td><code>waitMs</code></td>
+<td><code>5000</code></td>
+<td>How long a message that arrives while all are busy waits for its turn (0–60000; <code>0</code> refuses it at once).</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-yaml">processing: {maxConcurrent: 64, waitMs: 2000}
+</code></pre>
+<p>A message still waiting after <code>waitMs</code> is refused as busy, and the sender tries again:</p>
+<ul>
+<li>the API and http sources answer <code>503</code> with <code>Retry-After: 1</code> and
+  <code>{"error":{"code":"SERVICE_UNAVAILABLE","message":"the server is busy: too many messages are being processed; retry shortly"}}</code>;</li>
+<li>an mllp source answers <code>AE</code> with <code>server busy</code>;</li>
+<li>a file or database source keeps the file or row and tries it again a moment later (this is
+  throttling, not a failure: no <code>source.database.failed</code> event).</li>
+</ul>
+<p>The server logs <code>processing limit reached: messages refused as busy</code> at most every 10 seconds
+while it refuses messages, with how many it refused; a message waiting for a slot also stops
+waiting when the server shuts down. A flow's own lock is taken first, so a flow being stopped or
+changed holds up only its own messages, and a message for an unknown or stopped flow is answered
+at once (<code>404</code>/<code>409</code>) without waiting.</p>
+<p>A message a flow destination hands to another flow is processed in the sender's turn, so a chain
+of flows never waits for itself. An http or mllp destination that sends to a source of the same
+server needs a second turn while the sender holds its own: with every turn taken, such
+deliveries are refused and retried. Use a <code>flow</code> destination to pass messages between flows of
+one server. Retries of queued deliveries run one message at a time outside
+this limit. Raise <code>maxConcurrent</code> when senders often see <code>503</code>/<code>AE</code> and the destinations can take
+more parallel traffic; lower it to protect slow destinations or a small database.</p>
 <h3 id="flows"><code>flows</code></h3>
 <table>
 <thead>
