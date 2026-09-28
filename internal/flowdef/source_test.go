@@ -90,6 +90,26 @@ func TestSourceKind(t *testing.T) {
 	}
 }
 
+func TestSourceListens(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		src  *Source
+		want bool
+	}{
+		{"nil", nil, false},
+		{"http", &Source{Type: "http"}, true},
+		{"mllp", &Source{Type: "mllp"}, true},
+		{"file", &Source{Type: "file"}, false},
+		{"unknown", &Source{Type: "unknown"}, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.src.Listens(); got != tt.want {
+				t.Errorf("Listens() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 // TestDestinationRequestOptionsSchema: method, timeoutMs, and maxRedirects
 // are http-only and bounded.
 func TestDestinationRequestOptionsSchema(t *testing.T) {
