@@ -1213,6 +1213,7 @@ Errors:
 | `404` | Unknown flow. |
 | `409` | The flow is not `started`. |
 | `413` | Body larger than 10 MiB. |
+| `503` | The server is busy: [`processing.maxConcurrent`](server-config.md#processing) messages are being processed and none finished within `processing.waitMs`. The reply has `Retry-After: 1`; send the message again. |
 
 ## 4. Find processed messages
 

@@ -226,8 +226,10 @@ func (c Config) Validate() error {
 	if p := c.Processing; p.MaxConcurrent < 1 || p.MaxConcurrent > 10000 {
 		return errors.New("config: processing.maxConcurrent must be between 1 and 10000")
 	}
-	if p := c.Processing; p.WaitMs < 0 || p.WaitMs > 600000 {
-		return errors.New("config: processing.waitMs must be between 0 and 600000 (ten minutes)")
+	if p := c.Processing; p.WaitMs < 0 || p.WaitMs > 60000 {
+		// Bounded low: a waiting http or mllp request cannot be cancelled by
+		// its sender, and stopping its flow's port waits for it.
+		return errors.New("config: processing.waitMs must be between 0 and 60000 (one minute)")
 	}
 	if st := c.Stats; st.SampleIntervalMs < 100 || st.SampleIntervalMs > 3600000 {
 		return errors.New("config: stats.sampleIntervalMs must be between 100 and 3600000 (one hour)")

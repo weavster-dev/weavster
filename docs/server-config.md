@@ -125,7 +125,7 @@ flow source, so a burst queues at the senders instead of piling up in the server
 | Key | Default | Description |
 |---|---|---|
 | `maxConcurrent` | `32` | Messages received and processed at the same time (1–10000). |
-| `waitMs` | `5000` | How long a message that arrives while all are busy waits for its turn (0–600000; `0` refuses it at once). |
+| `waitMs` | `5000` | How long a message that arrives while all are busy waits for its turn (0–60000; `0` refuses it at once). |
 
 ```yaml
 processing: {maxConcurrent: 64, waitMs: 2000}
@@ -136,10 +136,20 @@ A message still waiting after `waitMs` is refused as busy, and the sender tries 
 - the API and http sources answer `503` with `Retry-After: 1` and
   `{"error":{"code":"SERVICE_UNAVAILABLE","message":"the server is busy: too many messages are being processed; retry shortly"}}`;
 - an mllp source answers `AE` with `server busy`;
-- a file or database source keeps the file or row and tries it at its next poll.
+- a file or database source keeps the file or row and tries it again a moment later (this is
+  throttling, not a failure: no `source.database.failed` event).
+
+The server logs `processing limit reached: messages refused as busy` at most every 10 seconds
+while it refuses messages, with how many it refused; a message waiting for a slot also stops
+waiting when the server shuts down. A flow's own lock is taken first, so a flow being stopped or
+changed holds up only its own messages, and a message for an unknown or stopped flow is answered
+at once (`404`/`409`) without waiting.
 
 A message a flow destination hands to another flow is processed in the sender's turn, so a chain
-of flows never waits for itself. Retries of queued deliveries run one message at a time outside
+of flows never waits for itself. An http or mllp destination that sends to a source of the same
+server needs a second turn while the sender holds its own: with every turn taken, such
+deliveries are refused and retried. Use a `flow` destination to pass messages between flows of
+one server. Retries of queued deliveries run one message at a time outside
 this limit. Raise `maxConcurrent` when senders often see `503`/`AE` and the destinations can take
 more parallel traffic; lower it to protect slow destinations or a small database.
 

@@ -196,7 +196,10 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) t
 		delete(skip, e.path)
 		read++
 		if res := s.readFile(ctx, f, e.rel, e.path, stamp); res != readDone {
-			if res == readFailed && src.Schedule != "" && (again < 0 || again > defaultPollInterval) {
+			switch {
+			case res == readBusy && (again < 0 || again > defaultPollInterval):
+				again = defaultPollInterval // throttled: the rest after a moment, also for a schedule
+			case res == readFailed && src.Schedule != "" && (again < 0 || again > defaultPollInterval):
 				again = defaultPollInterval // a scheduled poll is not skipped for a passing error
 			}
 			break
@@ -291,6 +294,7 @@ const (
 	readDone    readResult = iota // go on with the next file
 	readStopped                   // the flow stopped accepting messages: stop
 	readFailed                    // nothing was stored (the store failed): stop, try again later
+	readBusy                      // the server is at its processing limit: stop, try again soon
 )
 
 // readFile sends one file through the flow and then removes it (moves it
@@ -319,6 +323,8 @@ func (s *fileSources) readFile(ctx context.Context, f gateway.Flow, name, path s
 	case errors.Is(err, gateway.ErrInvalidMessage):
 		s.reject(f, name, path, stamp, err.Error())
 		return readDone
+	case errors.Is(err, gateway.ErrBusy): // throttled, not failed: the file waits for a later poll
+		return readBusy
 	case err != nil && res.ID == "": // nothing stored: try again later
 		s.logger.Warn("file source: processing failed; the file is kept", "flow", f.ID, "file", name, "error", err)
 		return readFailed

@@ -134,7 +134,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
 			Gate:        flows.locks,
 		})
-		ia := ingestAdapter{flows: flows, pipe: pipe, limit: newProcessLimit(cfg.Processing)}
+		ia := ingestAdapter{flows: flows, pipe: pipe, limit: newProcessLimit(cfg.Processing, ctx.Done(), logger)}
 		// Flow destinations hand messages to other flows (#107 D-70) inside
 		// the sender's slot: a second slot could deadlock a full server.
 		inProcess := ia
@@ -1592,15 +1592,11 @@ func (a ingestAdapter) IngestFrom(ctx context.Context, flowID string, body []byt
 }
 
 // ingest runs body through flowID, storing metadata with the new message,
-// within the processing limit when the adapter has one.
+// within the processing limit when the adapter has one. The slot is taken
+// after the flow's lock and its running check: a flow being stopped or
+// changed makes its own messages wait, not fill every slot, and an unknown
+// or stopped flow is answered at once.
 func (a ingestAdapter) ingest(ctx context.Context, flowID string, body []byte, metadata map[string]string) (gateway.IngestResult, error) {
-	if a.limit != nil {
-		release, err := a.limit.acquire(ctx)
-		if err != nil {
-			return gateway.IngestResult{}, err
-		}
-		defer release()
-	}
 	if a.flows.locks != nil {
 		defer a.flows.locks.ProcessFlow(flowID)()
 	}
@@ -1614,6 +1610,13 @@ func (a ingestAdapter) ingest(ctx context.Context, flowID string, body []byte, m
 	}
 	if err != nil {
 		return gateway.IngestResult{}, err
+	}
+	if a.limit != nil {
+		release, err := a.limit.acquire(ctx)
+		if err != nil {
+			return gateway.IngestResult{}, err
+		}
+		defer release()
 	}
 	// Processing is durable work: finish it even if the client disconnects,
 	// so the stored message never stops half-way. HTTP deliveries are

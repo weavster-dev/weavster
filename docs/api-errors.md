@@ -28,7 +28,7 @@ Every error reply of the REST API has the same JSON shape, with `Content-Type: a
 | `500` | `INTERNAL` | Unexpected server-side failure. |
 | `500` | `IMPORT_INCOMPLETE`, `UPDATE_INCOMPLETE`, `REDEPLOY_INCOMPLETE` | A multi-flow operation stopped part-way; the reply also lists what was already written. |
 | `501` | `NOT_IMPLEMENTED` | The feature exists only in the Enterprise edition. `message` names it, for example `not implemented in this edition: SSO`. |
-| `503` | `SERVICE_UNAVAILABLE` | The part of the server that handles the request is not running, for example message endpoints with `store.dialect: disabled`. |
+| `503` | `SERVICE_UNAVAILABLE` | The part of the server that handles the request is not running, for example message endpoints with `store.dialect: disabled`; or the server is busy processing as many messages as [`processing.maxConcurrent`](server-config.md#processing) allows (the reply then has `Retry-After: 1`: send again shortly). |
 
 ## In the command-line client
 

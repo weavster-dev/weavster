@@ -175,6 +175,8 @@ func (s *databaseSources) poll(ctx context.Context, f gateway.Flow) (more bool, 
 		case errors.Is(err, gateway.ErrInvalidMessage):
 			s.refuse(f.ID, row.ID)
 			continue // not stored, so not marked
+		case errors.Is(err, gateway.ErrBusy):
+			return true, nil // throttled, not failed: the rest at the next poll, which comes at once
 		default:
 			return false, fmt.Errorf("database: storing a row failed: %w", err)
 		}

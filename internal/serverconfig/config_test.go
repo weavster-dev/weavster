@@ -65,7 +65,7 @@ auth:
 			}
 		}},
 		{name: "zero concurrency", yaml: "processing: {maxConcurrent: 0}\n", wantErr: "processing.maxConcurrent must be between 1 and 10000"},
-		{name: "negative wait", yaml: "processing: {waitMs: -1}\n", wantErr: "processing.waitMs must be between 0 and 600000"},
+		{name: "negative wait", yaml: "processing: {waitMs: -1}\n", wantErr: "processing.waitMs must be between 0 and 60000"},
 		{name: "negative shutdown timeout", yaml: "listen: {shutdownTimeoutMs: -5}\n", wantErr: "listen.shutdownTimeoutMs"},
 		{name: "zero delivery attempts", yaml: "delivery: {maxAttempts: 0}\n", wantErr: "delivery.maxAttempts"},
 		{name: "huge retry interval", yaml: "delivery: {retryIntervalMs: 9223372036854775807}\n", wantErr: "delivery.retryIntervalMs must be between"},

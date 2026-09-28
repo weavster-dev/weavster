@@ -38,9 +38,17 @@ func TestBackpressure(t *testing.T) {
 	createFlow(t, c, `{"id":"intake","destinations":[{"name":"next","type":"flow","flow":"store"}]}`)
 
 	first := make(chan int, 1)
-	go func() {
-		code, _, _ := c.do(http.MethodPost, "/api/v1/flows/slow/messages", `{"n":1}`, admin)
-		first <- code
+	go func() { // not c.do: its t.Fatal must not run outside the test goroutine
+		req, _ := http.NewRequest(http.MethodPost, "http://"+addr+"/api/v1/flows/slow/messages", strings.NewReader(`{"n":1}`))
+		admin(req)
+		req.Header.Set("X-Weavster-CSRF", "1")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			first <- 0
+			return
+		}
+		_ = resp.Body.Close()
+		first <- resp.StatusCode
 	}()
 	// Wait until the first message holds the slot (its delivery is blocked).
 	deadline := time.Now().Add(10 * time.Second)
