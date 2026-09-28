@@ -314,7 +314,7 @@ JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a>,
 </tr>
 <tr>
 <td><code>type</code></td>
-<td><code>http</code> (send to <code>url</code>) or <code>file</code> (write one file per message into <code>dir</code>, named by message ID).</td>
+<td><code>http</code> (send to <code>url</code>), <code>file</code> (write one file per message into <code>dir</code>, named by message ID), or <code>mllp</code> (send HL7 v2 to <code>address</code> over TCP; see <a href="#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>).</td>
 </tr>
 <tr>
 <td><code>url</code></td>
@@ -325,12 +325,16 @@ JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a>,
 <td>Required for <code>file</code>. Created if missing.</td>
 </tr>
 <tr>
+<td><code>address</code></td>
+<td>Required for <code>mllp</code>: <code>host:port</code> of the receiving system, for example <code>lab.example.com:2575</code>.</td>
+</tr>
+<tr>
 <td><code>method</code></td>
 <td><code>http</code> only: <code>POST</code> (default), <code>PUT</code>, or <code>PATCH</code>.</td>
 </tr>
 <tr>
 <td><code>timeoutMs</code></td>
-<td><code>http</code> only: time allowed for one delivery request, including reading the response, 1000–120000 ms; default 30000. A request that takes longer is a failed attempt and is retried. Stopping or pausing the flow, and stopping the server, wait for deliveries in progress, so keep it as short as the receiver allows.</td>
+<td><code>http</code> and <code>mllp</code>: time allowed for one delivery, including reading the response or ACK, 1000–120000 ms; default 30000. A request that takes longer is a failed attempt and is retried. Stopping or pausing the flow, and stopping the server, wait for deliveries in progress, so keep it as short as the receiver allows.</td>
 </tr>
 <tr>
 <td><code>maxRedirects</code></td>
@@ -508,6 +512,33 @@ the body of a request) as rows:</p>
 <li>The whole file is one message. A transform reaches rows by position (<code>rows.0</code>, <code>rows.1</code>); there
   are no loops yet, and splitting a file into one message per row comes later.</li>
 <li>The transform's output is JSON, delivered as <code>application/json</code>.</li>
+</ul>
+<h3 id="send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</h3>
+<p>An <code>mllp</code> destination sends each message to another HL7 system over TCP, framed with MLLP, and
+waits for its ACK:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;adt-to-lab&quot;,
+  &quot;inputFormat&quot;: &quot;hl7v2&quot;,
+  &quot;source&quot;: {&quot;type&quot;: &quot;mllp&quot;, &quot;address&quot;: &quot;:2575&quot;},
+  &quot;destinations&quot;: [{&quot;name&quot;: &quot;lab&quot;, &quot;type&quot;: &quot;mllp&quot;, &quot;address&quot;: &quot;lab.example.com:2575&quot;, &quot;timeoutMs&quot;: 10000}]
+}
+</code></pre>
+<ul>
+<li>The destination sends the HL7 message as received. The flow must have <code>"inputFormat":
+  "hl7v2"</code> (so only HL7 v2 messages are accepted), and neither the flow nor the destination may
+  have a <code>transform</code>: transforms output JSON, which an HL7 receiver cannot take, and conversion
+  back to HL7 is not available yet. Such a flow is refused when you create it.</li>
+<li>A message containing the MLLP end bytes (<code>0x1C 0x0D</code>) cannot be framed; its delivery fails.</li>
+<li>Each delivery opens its own connection, sends one frame, and waits for one framed reply within
+  <code>timeoutMs</code> (default 30 seconds; replies over 1 MiB are not read).</li>
+<li>The delivery succeeds only on an ACK with <code>AA</code> (or <code>CA</code>) in MSA-1 whose MSA-2 is the message's
+  control id (MSH-10). An <code>AE</code>/<code>CE</code> or <code>AR</code>/<code>CR</code> ACK, a reply that is not an ACK, an ACK for
+  another control id, a closed connection, or no reply in time is a failed attempt: it is retried
+  and then dead-lettered like any other failure. The attempt's error names the ACK code (for
+  example <code>mllp: ACK AE (application error)</code>), never message content.</li>
+<li>A lost ACK means the message is sent again: delivery is at least once, and MLLP has no field
+  for an idempotency key, so the receiver must tolerate a repeat.</li>
+<li>Traffic is not encrypted; use a VPN or TLS tunnel between sites until TLS for MLLP is added.</li>
 </ul>
 <h3 id="redirects">Redirects</h3>
 <p>By default an <code>http</code> destination does not follow redirects: a <code>3xx</code> reply is a failed delivery,
@@ -1355,7 +1386,7 @@ again as a new message instead, use <code>reprocess</code>.</p>
 <li>Statistics and events are kept in memory: they restart from zero when the server restarts,
   and only the newest 10,000 events are kept.</li>
 <li>The first delivery attempt runs while your request waits; retries run in the background.</li>
-<li>Only <code>http</code> and <code>file</code> destinations are available.</li>
+<li>Only <code>http</code>, <code>file</code>, and <code>mllp</code> destinations are available.</li>
 <li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a> and
   <a href="#receive-messages-over-http">http sources</a>, and <a href="#receive-hl7-v2-over-mllp">mllp sources</a>;
   database sources are not available yet.</li>

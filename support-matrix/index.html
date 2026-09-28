@@ -506,6 +506,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestPipelineEndToEnd</code>, <code>TestHTTPDestinationOptions</code>. <code>http</code> takes <code>method</code> (POST/PUT/PATCH), <code>timeoutMs</code>, and <code>maxRedirects</code> (default 0; only 307/308, never https to http).</td>
 </tr>
 <tr>
+<td><code>mllp</code> destination: sends HL7 v2 over TCP (<code>address</code>, <code>timeoutMs</code>) and succeeds only on an <code>AA</code>/<code>CA</code> ACK for the message's control id</td>
+<td>Implemented (wired)</td>
+<td><code>TestMLLPDestination</code>, <code>TestMLLPSinkACK</code>. Needs <code>inputFormat: hl7v2</code> and no transforms (HL7 passthrough); a connection per delivery; no TLS yet. See <a href="../processing-messages/#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>.</td>
+</tr>
+<tr>
 <td>File source: a flow polls a directory (<code>source: {type: file, dir, pattern, pollIntervalMs, moveTo}</code>); files deleted or moved after the message is stored; rejected files moved aside or skipped</td>
 <td>Implemented (wired)</td>
 <td><code>TestFileSource</code>, <code>TestCheckSource</code>. At-least-once; only while the flow is started; regular files directly in <code>dir</code>, not symlinks or subdirectories. See <a href="../processing-messages/#read-files-from-a-directory">Read files from a directory</a>.</td>
@@ -536,9 +541,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestMLLPSource</code>, <code>TestMLLPHandler</code>, <code>TestMLLPServer</code>, <code>TestHL7ACKOptions</code>. No TLS or sender authentication yet; set <code>inputFormat: hl7v2</code> to transform the messages. See <a href="../processing-messages/#receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</a>.</td>
 </tr>
 <tr>
-<td>Other sources and destinations (MLLP destination, database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>
+<td>Other sources and destinations (database, SMTP, SOAP/REST web service, document, in-process inter-flow)</td>
 <td>Library-only</td>
-<td>Only file, http, and mllp sources are wired.</td>
+<td>Only file, http, and mllp sources and http, file, and mllp destinations are wired.</td>
 </tr>
 <tr>
 <td>Per-flow and per-destination statistics (<code>GET /api/v1/flows/{id}/stats</code>)</td>
@@ -850,8 +855,8 @@ not yet true.</p>
 <tr>
 <td>TCP/MLLP</td>
 <td>wired</td>
-<td>library</td>
-<td>at-least-once: <code>AA</code> is sent once the message is stored; if the ACK is lost, the sender resends and the message is stored again</td>
+<td>wired</td>
+<td>at-least-once: the source sends <code>AA</code> once the message is stored, and the destination repeats a delivery whose ACK was lost; either way the receiver may see a message twice</td>
 <td>no (the protocol has no field for one)</td>
 </tr>
 <tr>
