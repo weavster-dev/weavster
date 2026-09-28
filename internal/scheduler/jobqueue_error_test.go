@@ -13,11 +13,84 @@ import (
 // SQL for the lease-lifecycle operations. These are single-line so they match
 // the normalized matcher installed by newPostgresMockQueue verbatim.
 const (
+	createJobsTable   = `CREATE TABLE IF NOT EXISTS jobs`
+	claimSQLiteUpdate = `UPDATE jobs SET claimed_by = ?, lease_until = ?, status = 'running', attempts = attempts + 1
+		WHERE id = (
+			SELECT id FROM jobs
+			WHERE status = 'queued' AND next_run_at <= ? AND lease_until <= ?
+			ORDER BY next_run_at ASC LIMIT 1
+		)
+		RETURNING id, type, payload`
 	heartbeatUpdate = `UPDATE jobs SET lease_until = ? WHERE id = ? AND claimed_by = ?`
 	completeDelete  = `DELETE FROM jobs WHERE id = ? AND claimed_by = ?`
 	requeueUpdate   = `UPDATE jobs SET status = 'queued', claimed_by = '', lease_until = 0, last_error = ? WHERE id = ? AND claimed_by = ?`
 	reconcileUpdate = `UPDATE jobs SET status = 'queued', claimed_by = '' WHERE status = 'running' AND lease_until <= ?`
 )
+
+func TestNewSQLJobQueueDBError(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	wantErr := errors.New("create jobs table failed")
+	mock.ExpectExec(createJobsTable).WillReturnError(wantErr)
+
+	q, err := NewSQLJobQueue(db, "sqlite")
+	if q != nil {
+		t.Errorf("NewSQLJobQueue() queue = %v, want nil", q)
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("NewSQLJobQueue() error = %v, want %v", err, wantErr)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestSQLJobQueueClaimRoutesPostgresError(t *testing.T) {
+	q, mock := newPostgresMockQueue(t)
+	wantErr := errors.New("begin claim transaction failed")
+	mock.ExpectBegin().WillReturnError(wantErr)
+
+	job, ok, err := q.Claim(context.Background(), "node-a", time.Minute)
+	if job != (Job{}) {
+		t.Errorf("Claim() job = %+v, want zero value", job)
+	}
+	if ok {
+		t.Error("Claim() ok = true, want false")
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Claim() error = %v, want %v", err, wantErr)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestSQLJobQueueClaimSQLiteQueryError(t *testing.T) {
+	q, mock := newPostgresMockQueue(t)
+	q.dialect = "sqlite"
+	wantErr := errors.New("claim update failed")
+	mock.ExpectQuery(claimSQLiteUpdate).
+		WithArgs("node-a", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+		WillReturnError(wantErr)
+
+	job, ok, err := q.Claim(context.Background(), "node-a", time.Minute)
+	if job != (Job{}) {
+		t.Errorf("Claim() job = %+v, want zero value", job)
+	}
+	if ok {
+		t.Error("Claim() ok = true, want false")
+	}
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("Claim() error = %v, want %v", err, wantErr)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
 
 // TestSQLJobQueueHeartbeatDBError covers the ExecContext error branch of
 // SQLJobQueue.Heartbeat (line 263): when the lease extension UPDATE fails at
