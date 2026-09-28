@@ -491,6 +491,39 @@ more parallel traffic; lower it to protect slow destinations or a small database
 </tr>
 </tbody>
 </table>
+<h3 id="prune"><code>prune</code></h3>
+<p>Removes old messages from the store (see <a href="../processing-messages/#prune-old-messages">Prune old messages</a>).
+Off by default.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>maxAgeHours</code></td>
+<td><code>0</code> (off)</td>
+<td>Remove messages received more than this many hours ago (1–876000).</td>
+</tr>
+<tr>
+<td><code>maxMessages</code></td>
+<td><code>0</code> (off)</td>
+<td>Keep at most this many messages in the store; the oldest finished ones are removed first. Unfinished messages count toward the limit but are never removed.</td>
+</tr>
+<tr>
+<td><code>intervalMinutes</code></td>
+<td><code>60</code></td>
+<td>How often a pass runs (1–10080, one week). The first pass runs one interval after the server starts.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-yaml">prune: {maxAgeHours: 720, intervalMinutes: 60}   # keep 30 days
+</code></pre>
+<p>Only messages that are done are removed: <code>sent</code>, <code>filtered</code>, <code>errored</code>, and <code>dead-lettered</code>.
+Messages that are <code>received</code>, <code>transformed</code>, or <code>queued</code> are never pruned.</p>
 <h3 id="stats"><code>stats</code></h3>
 <table>
 <thead>

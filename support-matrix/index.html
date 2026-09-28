@@ -323,6 +323,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestSnippets</code>. Stored and managed only: flows do not run snippets yet. See <a href="../snippets/">Code snippets and libraries</a>.</td>
 </tr>
 <tr>
+<td>Message pruning by age and count (<code>prune.maxAgeHours</code>, <code>prune.maxMessages</code>, <code>prune.intervalMinutes</code>; <code>GET /api/v1/system/prune</code>, <code>POST …/start</code>, <code>POST …/stop</code>; <code>messages.pruned</code> event)</td>
+<td>Implemented (wired)</td>
+<td><code>TestPruneMessages</code>, <code>TestPrune</code>, <code>TestPruneControl</code>, <code>TestPruneLoop</code>, <code>TestPruneHandlers</code>. Only finished messages are pruned; busy ones are skipped. See <a href="../processing-messages/#prune-old-messages">Prune old messages</a>.</td>
+</tr>
+<tr>
 <td>Bulk message removal (<code>DELETE /api/v1/messages</code> by the search filters, <code>all=true</code>, <code>restart=true</code>); CLI <code>clearallmessages</code>, <code>dump stats</code>, <code>dump events</code></td>
 <td>Implemented (wired)</td>
 <td><code>TestBulkMessageRemoval</code>. Messages being processed are kept and counted as <code>busy</code>. See <a href="../processing-messages/#remove-many-messages">Processing messages</a>.</td>

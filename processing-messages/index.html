@@ -1829,6 +1829,57 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X DELETE \
   the request again to remove the rest.</li>
 </ul>
 <p>To clear everything from the command-line client, use <code>clearallmessages</code>.</p>
+<h3 id="prune-old-messages">Prune old messages</h3>
+<p>With <a href="../server-config/#prune"><code>prune</code></a> in the server configuration, the server removes old
+messages every <code>intervalMinutes</code>. A pass first removes the messages received more than
+<code>maxAgeHours</code> ago, then, while more than <code>maxMessages</code> are stored, the oldest ones (a few more
+when several were received in the same millisecond). Only messages that are done (<code>sent</code>,
+<code>filtered</code>, <code>errored</code>, <code>dead-lettered</code>) are removed; <code>received</code>, <code>transformed</code>, and <code>queued</code>
+messages are never removed. They still count toward <code>maxMessages</code>, because the limit is on the
+store's size: finished messages are removed first to make room, even the newest, and a store
+whose excess is all unfinished messages stays above <code>maxMessages</code> until they finish. A finished message that is being worked on at that moment (for
+example requeued or reprocessed) is skipped and counted once in <code>busy</code>; the next pass takes it.
+Removed messages are gone for good, so <a href="#export-and-import-messages">export</a> the ones you must
+keep first.</p>
+<table>
+<thead>
+<tr>
+<th>Request</th>
+<th>Permission</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /api/v1/system/prune</code></td>
+<td><code>messages:view</code></td>
+<td>The limits, whether a pass is running, the last pass, and when the next one runs.</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/system/prune/start</code></td>
+<td><code>messages:delete</code></td>
+<td>Runs a pass now, in the background (<code>202</code>). <code>409</code> when one is running, or when neither limit is set; <code>503</code> while the server is starting or shutting down.</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/system/prune/stop</code></td>
+<td><code>messages:delete</code></td>
+<td>Stops the running pass and answers once it has stopped (<code>200</code>); what it removed stays removed. <code>409</code> when no pass is running.</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/system/prune/start
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/system/prune
+</code></pre>
+<pre><code class="language-json">{&quot;maxAgeHours&quot;:720,&quot;maxMessages&quot;:0,&quot;intervalMinutes&quot;:60,&quot;running&quot;:false,
+ &quot;nextRunAt&quot;:&quot;2026-09-28T13:00:00Z&quot;,
+ &quot;lastRun&quot;:{&quot;startedAt&quot;:&quot;2026-09-28T12:00:00Z&quot;,&quot;finishedAt&quot;:&quot;2026-09-28T12:00:02Z&quot;,
+   &quot;removed&quot;:1250,&quot;busy&quot;:0,&quot;stopped&quot;:false}}
+</code></pre>
+<p><code>lastRun.error</code> says why a pass failed (for example a lost database connection), and
+<code>lastRun.stopped</code> is <code>true</code> for a pass that was stopped. Every pass also records a
+<code>messages.pruned</code> <a href="#5-statistics-and-events">event</a> with <code>removed</code> and <code>busy</code>, and <code>stopped</code> or
+<code>error</code> when they apply. Without a message store (<code>store.dialect: disabled</code>) these requests
+return <code>503</code>.</p>
 <h3 id="export-and-import-messages">Export and import messages</h3>
 <p>Export writes the messages that match the search parameters into one gzipped archive (permission
 <code>messages:content</code>, audited). An archive holds complete messages: the content as received and after
