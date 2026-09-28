@@ -446,7 +446,16 @@ What XSLT does and how to do it here:
 
 Not available: XPath functions, sorting, and loops (`xsl:for-each`, `xsl:apply-templates`). A
 template addresses repeated elements by position (`order.item.0`, `order.item.1`), so it fits
-documents with a known shape; lists of any length cannot be reshaped yet.
+documents with a known shape; lists of any length cannot be reshaped yet. Two things to check
+in the documents you receive:
+
+- An element that appears **once** is an object, not a list: with a single `<item>`,
+  `order.item.0.@sku` finds nothing and `order.item.@sku` is the value. A template written for
+  two items does not fit an order with one.
+- A path that finds nothing is written as empty text (`sku=""`), not an error. Add a `filter`
+  step to drop documents without what the template needs, for example
+  `{"filter": {"when": "order.item.1.@sku", "action": "accept"}}`, and a third item is simply not
+  copied.
 
 ### Route by content (`destinationSet`)
 
