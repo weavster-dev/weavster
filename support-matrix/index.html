@@ -705,7 +705,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>weavster test [--filter NAME] [--format junit\|json] [--output DIR]</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestRunTestCommand</code>. Runs four built-in codec round-trip fixtures (<code>identity/hl7</code>, <code>identity/json</code>, <code>identity/xml</code>, <code>identity/raw</code>). It does not discover your flows or fixtures.</td>
+<td><code>TestRunTestCommand</code>, <code>TestCodecRoundTrips</code>, <code>TestCodecRoundTrip</code>. Runs five built-in codec round-trip samples (<code>identity/hl7</code>, <code>identity/json</code>, <code>identity/xml</code>, <code>identity/delimited</code>, <code>identity/raw</code>); each passes only if the output equals the input. It does not discover your flows or fixtures. See <a href="../cli/#codec-self-test-weavster-test">Codec self-test</a>.</td>
 </tr>
 </tbody>
 </table>
@@ -781,14 +781,13 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'PASSWORD' -s smoke.txt
 Those are Enterprise items with no code in the source tree.</p>
 <h2 id="codecs">Codecs</h2>
 <p>The codecs below are libraries (tier, versions, and notes describe them); you can exercise them
-with <code>weavster test</code>, which covers HL7 v2, JSON, XML, and raw. The server handles HL7 v2, XML,
+with <code>weavster test</code>, which round-trips HL7 v2, JSON, XML, delimited text, and raw bytes. The server handles HL7 v2, XML,
 delimited text, JSON, and raw bytes with its own readers and writers, as the "Server use" column
 says: to read messages for transforms
 (<a href="../processing-messages/#transform-hl7-v2-messages"><code>inputFormat</code></a>), to write
 <a href="../processing-messages/#build-the-output-build"><code>build</code></a> output, and to acknowledge messages an
 <a href="../processing-messages/#receive-hl7-v2-over-mllp">mllp source</a> receives. Where they differ, the
-processing docs describe the server's behavior; for example the server's delimited reader
-handles RFC 4180 quoting, which the library codec does not.</p>
+processing docs describe the server's behavior.</p>
 <!-- codec-table: every cell is checked against codecs.CoverageMatrix() by TestSupportMatrixCodecs -->
 <table>
 <thead>
@@ -808,7 +807,7 @@ handles RFC 4180 quoting, which the library codec does not.</p>
 <td>reads it for transforms (inputFormat delimited): RFC 4180 quoting, one-character delimiter</td>
 <td>any (configurable delimiter)</td>
 <td>no</td>
-<td>tab/pipe/comma; optional header</td>
+<td>tab/pipe/comma; optional header; RFC 4180 quoting; round trip exact for canonical input</td>
 </tr>
 <tr>
 <td><code>hl7v2</code></td>
@@ -816,7 +815,7 @@ handles RFC 4180 quoting, which the library codec does not.</p>
 <td>reads it for transforms (inputFormat hl7v2), writes it (build format hl7v2), acknowledges MLLP messages</td>
 <td>2.1–2.9 segment/field/repetition/component/subcomponent</td>
 <td>yes</td>
-<td>MSH/MSA ACK</td>
+<td>MSH/MSA ACK; round trip byte for byte, any delimiters</td>
 </tr>
 <tr>
 <td><code>json</code></td>
@@ -824,7 +823,7 @@ handles RFC 4180 quoting, which the library codec does not.</p>
 <td>reads and writes it for transforms (the default)</td>
 <td>RFC 8259</td>
 <td>no</td>
-<td>stdlib encoding/json</td>
+<td>stdlib encoding/json; numbers exact; round trip keeps the value (keys sorted)</td>
 </tr>
 <tr>
 <td><code>xml</code></td>
@@ -832,7 +831,7 @@ handles RFC 4180 quoting, which the library codec does not.</p>
 <td>reads it for transforms (inputFormat xml), writes it (build format xml)</td>
 <td>XML 1.0 (XXE-safe)</td>
 <td>no</td>
-<td>no DTD/external-entity resolution by construction</td>
+<td>no DTD/external-entity resolution by construction; round trip keeps namespaces, attribute order, and mixed content order</td>
 </tr>
 <tr>
 <td><code>x12</code></td>
