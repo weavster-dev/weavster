@@ -167,9 +167,15 @@ func firstSegmentLine(in []byte) []byte {
 
 // ParseHL7ACK reads an acknowledgment: its MSA-1 code (AA, AE, AR, or the
 // commit codes CA, CE, CR) and MSA-2, the control id it acknowledges. ok is
-// false when in has no MSA segment with a code.
+// false unless in is an HL7 v2 message (MSH first) with an MSA segment
+// carrying a code. Any message type counts: an application may answer with
+// a response message (ORR, RSP, …) that carries the MSA.
 func ParseHL7ACK(in []byte) (code, controlID string, ok bool) {
 	v, _ := HL7v2().Parse(in) // never fails
+	segs := v.(*HL7Message).Segments
+	if len(segs) == 0 || segs[0].Name != "MSH" {
+		return "", "", false
+	}
 	msa := findSegment(v.(*HL7Message), "MSA")
 	// hl7Value numbers fields as MSH does (MSH-1 is the separator), so
 	// MSA-1 is its field 2 and MSA-2 its field 3.

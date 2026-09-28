@@ -213,6 +213,9 @@ func TestParseHL7ACKAndControlID(t *testing.T) {
 		{"MSH|^~\\&|A\rMSA|AR\r", "AR", "", true},
 		{"MSH|^~\\&|A\r", "", "", false},
 		{"MSH|^~\\&|A\rMSA||MSG1\r", "", "", false},
+		{"MSA|AA|MSG1\r", "", "", false},
+		{"PID|1\rMSA|AA|MSG1\r", "", "", false},
+		{"MSH|^~\\&|A|B|C|D|1||ORR^O02|X|P|2.5\rMSA|AA|MSG1\r", "AA", "MSG1", true},
 		{"hello", "", "", false},
 	} {
 		code, id, ok := ParseHL7ACK([]byte(tt.in))

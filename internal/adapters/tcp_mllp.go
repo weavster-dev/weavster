@@ -129,7 +129,7 @@ func (s *MLLPSink) Write(ctx context.Context, m Message) error {
 	case code == codecs.AckApplicationReject || code == codecs.AckCommitReject:
 		return fmt.Errorf("mllp: ACK %s (application reject)", code)
 	case code != codecs.AckApplicationAccept && code != codecs.AckCommitAccept:
-		return errors.New("mllp: ACK with an unknown code")
+		return fmt.Errorf("mllp: ACK with an unknown code %q", code[:min(len(code), 8)]) // bounded: from the receiver
 	case acked != codecs.HL7ControlID(m.Body):
 		// An accept counts only for this message.
 		return errors.New("mllp: the ACK is for another message (MSA-2 does not match MSH-10)")
