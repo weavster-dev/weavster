@@ -212,11 +212,25 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := s.cfg.Ingest.Ingest(r.Context(), r.PathValue("id"), body)
-	if err != nil {
+	writeIngestResult(w, res, err)
+}
+
+// writeIngestResult answers a message sent or reprocessed. A message stored
+// before a later failure is accepted (202), as every source does: the
+// server finishes it after a restart, and a resend would store it twice
+// under a new id and idempotency key (#107 D-80).
+func writeIngestResult(w http.ResponseWriter, res IngestResult, err error) {
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusAccepted, res)
+	case res.ID != "":
+		if res.Status == "" {
+			res.Status = "received" // stored; processing resumes
+		}
+		writeJSON(w, http.StatusAccepted, res)
+	default:
 		writeFlowError(w, err)
-		return
 	}
-	writeJSON(w, http.StatusAccepted, res)
 }
 
 func (s *Server) handleFlowAction(w http.ResponseWriter, r *http.Request) {

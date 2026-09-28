@@ -203,17 +203,22 @@ func TestProcessErrors(t *testing.T) {
 }
 
 // flakyStore fails the Nth Put or Get (1-based; 0 = never).
+// flakyStore fails its failPut-th write or failGet-th read; with sticky, a
+// failed write takes the store down for good (every later call fails), as
+// if the server had stopped there.
 type flakyStore struct {
 	*state.MemStore
 	puts, gets       int
 	failPut, failGet int
+	sticky, down     bool
 }
 
 var errStore = errors.New("store down")
 
 func (s *flakyStore) Put(ctx context.Context, m state.Message) error {
 	s.puts++
-	if s.puts == s.failPut {
+	if s.puts == s.failPut || s.down {
+		s.down = s.sticky
 		return errStore
 	}
 	return s.MemStore.Put(ctx, m)
@@ -221,10 +226,17 @@ func (s *flakyStore) Put(ctx context.Context, m state.Message) error {
 
 func (s *flakyStore) Get(ctx context.Context, id string) (state.Message, error) {
 	s.gets++
-	if s.gets == s.failGet {
+	if s.gets == s.failGet || s.down {
 		return state.Message{}, errStore
 	}
 	return s.MemStore.Get(ctx, id)
+}
+
+func (s *flakyStore) Search(ctx context.Context, q state.Query) ([]state.Message, error) {
+	if s.down {
+		return nil, errStore
+	}
+	return s.MemStore.Search(ctx, q)
 }
 
 // TestProcessStoreFailures fails each persistence call in turn and checks

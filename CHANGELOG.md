@@ -105,6 +105,7 @@ All notable changes to this project are documented here, following
 - End-to-end acceptance test (#353): a file source, a transform with a filter, HTTP and file destinations, stored statuses, statistics, events, topology, and a queued delivery completing after a restart, all through the real server (`TestEndToEnd`).
 - Bounded processing (#355): server config `processing: {maxConcurrent, waitMs}` (defaults 32 and 5000) limits the messages received and processed at once; a message that finds no free slot in time is refused as busy — `503` with `Retry-After` from the API and http sources, `AE` from mllp sources, a later poll for file and database sources. Flow-to-flow handoffs share the sender's slot.
 - Docs (#357): [Capacity and limits](docs/limits.md) lists every size, count, time, and retention limit with its default and what happens at it; [Production setup](docs/production.md) lists the secure defaults and gives an HTTPS-only production configuration with a durable store (`docs/examples/production/weavster-server.yaml`), which a test starts the server from.
+- Crash consistency (#359): `TestCrashAtEveryWrite` stops the store at each of a message's writes in turn (delivered, queued, and filtered paths) and checks the next start finishes it with one idempotency key per destination; the processing docs state when each source acknowledges a message, that every step is written with the message on a durable store, and where a duplicate can still arise.
 
 ### Changed
 
@@ -144,6 +145,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- `POST /api/v1/flows/{id}/messages` and `POST /api/v1/messages/{id}/reprocess` answer `202` with the stored message's id when a later step fails after the message was stored (previously `500`), as every source already did, so a client does not resend a message the server already has and will finish (#359).
 - A retry pass that read a message just before its first processing finished no longer works on it again: it rechecks the stored message, so a sent message is not counted twice in the flow statistics and events, and a destination not yet reached by the first pass is not delivered twice (found by `TestEndToEnd`, #353).
 
 - HL7 v2 parsing (#300): components and repetitions were split with the wrong MSH-2 characters (the repetition and escape characters), so a field such as `ADT^A01` was never split into components; HL7 ACKs now also carry MSH-8, so the message type is in MSH-9, and MSH-7 is the time the ACK was made instead of the original message's.

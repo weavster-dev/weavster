@@ -891,8 +891,8 @@ curl -s -X POST http://127.0.0.1:9001/adt -d '{"PID":{"5":{"1":"Doe"}}}'
   a message the flow refuses (for example not a JSON object when the flow has a transform, or not
   HL7 v2 with `inputFormat: hl7v2`) `400`.
   While the flow is stopping, or after it was removed, requests get `503`.
-- A message stored before a later failure is still answered `202` (the API answers `500`): the
-  flow has it, and resending it would store it twice. A flow that is not running answers `503`
+- A message stored before a later failure is still answered `202`, as the API does: the flow
+  has it, and resending it would store it twice. A flow that is not running answers `503`
   (the API answers `409`), so the sender tries again later. A server processing as many messages
   as [`processing.maxConcurrent`](server-config.md#processing) allows answers `503` with
   `Retry-After: 1`, as the API does.
@@ -1295,7 +1295,7 @@ counts once, in its current status.
 | `GET /api/v1/messages/{id}` | `messages:view` | The message as in the search results. |
 | `GET /api/v1/messages/{id}/content?part=raw` | `messages:content` | The content as received (`part=transformed`: after the flow transform), as bytes. A message with no transformed content (for example one that errored in its transform) returns `404` for `part=transformed`. |
 | `POST /api/v1/messages/{id}/requeue` | `messages:view`, `messages:send` | Gives a dead-lettered message another round of delivery attempts; see [Dead-lettered messages](#dead-lettered-messages). |
-| `POST /api/v1/messages/{id}/reprocess` | `messages:send` | Sends the original content through the message's flow again. The new message (`202`, same reply as sending) keeps the old message's metadata (except its `error`) and adds `reprocessedFrom` with the old id. The flow must be `started` (`409` otherwise). |
+| `POST /api/v1/messages/{id}/reprocess` | `messages:send` | Sends the original content through the message's flow again. The new message (`202`, same reply as sending, also `202` with status `received` when a later step failed after it was stored) keeps the old message's metadata (except its `error`) and adds `reprocessedFrom` with the old id. The flow must be `started` (`409` otherwise). |
 | `DELETE /api/v1/messages/{id}` | `messages:delete` | Removes the message (`204`). A message that is being processed or retried right now returns `409`; try again. |
 
 An unknown id returns `404`. Message content can hold protected health information, so
@@ -1512,6 +1512,21 @@ A failed destination is retried in the background. The delay before retry *n* is
 same `Idempotency-Key`, so an HTTP receiver can ignore duplicates. When a destination has failed
 `delivery.maxAttempts` times (default 5), the message becomes `dead-lettered` and a
 `message.dead-lettered` event is logged. See [Server configuration](server-config.md#delivery).
+
+A message is acknowledged to its sender only after it is stored: the API and http sources answer
+`202` (also when a later step then fails: the message is kept and finished), an mllp source
+`AA`, a file source removes or moves the file, and a database source marks the row. If storing
+fails, the sender gets an error (`500`, `AE`, or the file or row stays for the next poll) and can
+send it again. With a durable store (`store.dialect: sqlite`), each later step (the transformed
+result, each destination's result, the final status) is written in one step with the message,
+so a stop at any point leaves the message in a state the next start can finish; with `memory`
+a stop loses every message.
+
+Between storing a message and acknowledging it there is a short gap. A stop there, or a file
+that cannot be removed or a row that cannot be marked, makes the sender or source deliver it
+again, and it is stored a second time as a new message with its own idempotency key. So a
+receiver that must not see duplicates should also check a business key (an HL7 control id, an
+order number), not only `Idempotency-Key`.
 
 Retry times are stored with the message. After a restart, the server resumes pending
 retries right away. With `store.dialect: sqlite`, a message that was `queued` when the server

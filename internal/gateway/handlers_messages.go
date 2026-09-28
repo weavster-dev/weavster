@@ -346,9 +346,5 @@ func (s *Server) handleMessageReprocess(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	res, err := s.cfg.Messages.Reprocess(r.Context(), r.PathValue("id"))
-	if err != nil {
-		writeFlowError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusAccepted, res)
+	writeIngestResult(w, res, err)
 }
