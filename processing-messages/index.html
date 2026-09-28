@@ -566,7 +566,24 @@ waits for its ACK:</p>
   example <code>mllp: ACK AE (application error)</code>), never message content.</li>
 <li>A lost ACK means the message is sent again: delivery is at least once, and MLLP has no field
   for an idempotency key, so the receiver must tolerate a repeat.</li>
-<li>Traffic is not encrypted; use a VPN or TLS tunnel between sites until TLS for MLLP is added.</li>
+<li>Traffic is not encrypted unless you set <code>tls</code> (below).</li>
+</ul>
+<p>To send over TLS, set <code>"tls": true</code>. The destination checks the receiver's certificate and that it
+is issued for the host in <code>address</code>; there is no setting to skip the check. By default the
+system's trusted certificate authorities are used. For a receiver whose certificate comes from a
+private CA, set <code>caFile</code> to a PEM file with that CA's certificate (for a self-signed receiver, the
+certificate itself); only the certificates in <code>caFile</code> are then trusted:</p>
+<pre><code class="language-json">{&quot;name&quot;: &quot;lab&quot;, &quot;type&quot;: &quot;mllp&quot;, &quot;address&quot;: &quot;lab.example.com:2576&quot;, &quot;tls&quot;: true, &quot;caFile&quot;: &quot;/etc/weavster/lab-ca.pem&quot;}
+</code></pre>
+<ul>
+<li><code>caFile</code> must be an absolute path on the server and needs <code>"tls": true</code>. It is read for each
+  message, so a replaced file is used without a restart.</li>
+<li>The server's <code>tls.minVersion</code> applies (TLS 1.2 by default). A receiver whose certificate cannot be verified, or a missing or
+  unreadable <code>caFile</code>, fails the attempt before anything is sent; the attempt's error says why
+  (for example <code>x509: certificate signed by unknown authority</code>), and it is retried like any
+  other failure.</li>
+<li><code>tls</code> and <code>caFile</code> apply only to mllp destinations; an http destination uses TLS with an
+  <code>https://</code> URL.</li>
 </ul>
 <h3 id="redirects">Redirects</h3>
 <p>By default an <code>http</code> destination does not follow redirects: a <code>3xx</code> reply is a failed delivery,
@@ -1134,6 +1151,10 @@ layer protocol (MLLP), while it is started, and answers every message with an HL
 <td><code>address</code></td>
 <td>Required. <code>host:port</code> to listen on, for example <code>127.0.0.1:2575</code>, or <code>:2575</code> for every interface.</td>
 </tr>
+<tr>
+<td><code>certFile</code>, <code>keyFile</code></td>
+<td>Optional, together. Absolute paths of a PEM certificate chain and its private key; the port then accepts MLLP over TLS only (see below).</td>
+</tr>
 </tbody>
 </table>
 <p>Point the sending system (an interface engine, a lab or ADT feed) at the address. Each message
@@ -1171,8 +1192,29 @@ MSA|AA|MSG1
   flow source per port, never the server's own ports, <code>source.mllp.failed</code> events when the port
   cannot be opened, and <code>flow:&lt;id&gt;</code> in <code>weavster flow ports</code>. Stopping the flow or the server
   answers the message being handled, then closes the connections.</li>
-<li>Messages cross the network unencrypted and senders are not authenticated. Listen on
-  <code>127.0.0.1</code> or a private network, or use a VPN or TLS tunnel, until TLS for MLLP is added.</li>
+<li>Without <code>certFile</code> and <code>keyFile</code>, messages cross the network unencrypted. Senders are not
+  authenticated either way: listen on <code>127.0.0.1</code> or a private network, or allow only the
+  senders' addresses in your firewall.</li>
+</ul>
+<p>To accept MLLP over TLS, give the source a certificate and key:</p>
+<pre><code class="language-json">{
+  &quot;id&quot;: &quot;adt&quot;,
+  &quot;source&quot;: {&quot;type&quot;: &quot;mllp&quot;, &quot;address&quot;: &quot;0.0.0.0:2576&quot;, &quot;certFile&quot;: &quot;/etc/weavster/adt.crt&quot;, &quot;keyFile&quot;: &quot;/etc/weavster/adt.key&quot;},
+  &quot;destinations&quot;: [{&quot;name&quot;: &quot;archive&quot;, &quot;type&quot;: &quot;file&quot;, &quot;dir&quot;: &quot;/var/lib/weavster/out/adt&quot;}]
+}
+</code></pre>
+<p>Test it with <code>openssl s_client</code>:</p>
+<pre><code class="language-bash">printf '\x0bMSH|^~\\&amp;|LAB|HOSP|WEAVSTER|HOSP|20260927120000||ADT^A01|MSG1|P|2.5\rPID|1||12345||DOE^JOHN\r\x1c\r' \
+  | openssl s_client -quiet -connect 127.0.0.1:2576 -CAfile /etc/weavster/adt-ca.pem | tr '\r' '\n'
+</code></pre>
+<ul>
+<li>The port accepts TLS connections only; a sender connecting without TLS gets no ACK and is
+  disconnected, as is one that does not finish the TLS handshake within 30 seconds. The server's <code>tls.minVersion</code> applies (TLS 1.2 by default).</li>
+<li>The certificate and key are read when the port opens; after replacing the files, stop and
+  start the flow. A source whose files cannot be loaded stays closed (it never falls back to
+  plain TCP) and records a <code>source.mllp.failed</code> event with the reason, as an
+  <a href="#receive-messages-over-http">http source</a> does. The server's own TLS key is refused.</li>
+<li>Client certificates (mutual TLS) are not requested.</li>
 </ul>
 <h2 id="2-deploy-and-start-the-flow">2. Deploy and start the flow</h2>
 <p>A new flow is <code>undeployed</code> and rejects messages until you deploy and start it (permission

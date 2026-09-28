@@ -506,9 +506,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestPipelineEndToEnd</code>, <code>TestHTTPDestinationOptions</code>. <code>http</code> takes <code>method</code> (POST/PUT/PATCH), <code>timeoutMs</code>, and <code>maxRedirects</code> (default 0; only 307/308, never https to http).</td>
 </tr>
 <tr>
-<td><code>mllp</code> destination: sends HL7 v2 over TCP (<code>address</code>, <code>timeoutMs</code>) and succeeds only on an <code>AA</code>/<code>CA</code> ACK for the message's control id</td>
+<td><code>mllp</code> destination: sends HL7 v2 over TCP (<code>address</code>, <code>timeoutMs</code>; <code>tls</code> with an optional <code>caFile</code>) and succeeds only on an <code>AA</code>/<code>CA</code> ACK for the message's control id</td>
 <td>Implemented (wired)</td>
-<td><code>TestMLLPDestination</code>, <code>TestMLLPSinkACK</code>. Needs an HL7 v2 message: HL7 passthrough (<code>inputFormat: hl7v2</code>, no transforms) or a <code>build</code> step with <code>format: hl7v2</code>; a connection per delivery; no TLS yet. See <a href="../processing-messages/#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>.</td>
+<td><code>TestMLLPDestination</code>, <code>TestMLLPSinkACK</code>, <code>TestMLLPTLS</code>, <code>TestMLLPSinkTLS</code>, <code>TestMLLPClientTLS</code>. Needs an HL7 v2 message: HL7 passthrough (<code>inputFormat: hl7v2</code>, no transforms) or a <code>build</code> step with <code>format: hl7v2</code>; a connection per delivery; with <code>tls</code> the receiver's certificate and host name are always verified. See <a href="../processing-messages/#send-hl7-v2-over-mllp">Send HL7 v2 over MLLP</a>.</td>
 </tr>
 <tr>
 <td>File source: a flow polls a directory (<code>source: {type: file, dir, pattern, pollIntervalMs, moveTo, recursive}</code>); files deleted or moved after the message is stored; rejected files moved aside or skipped</td>
@@ -566,9 +566,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestHL7Input</code>, <code>TestProcessHL7Input</code>, <code>TestHL7JSON</code>. Output is JSON unless a <code>build</code> step produces HL7 v2 again. See <a href="../processing-messages/#transform-hl7-v2-messages">Transform HL7 v2 messages</a>.</td>
 </tr>
 <tr>
-<td>MLLP source: a flow accepts HL7 v2 over TCP (<code>source: {type: mllp, address}</code>) while it is started and answers each message with an HL7 ACK (AA stored, AR refused, AE not stored)</td>
+<td>MLLP source: a flow accepts HL7 v2 over TCP (<code>source: {type: mllp, address}</code>, over TLS with <code>certFile</code> and <code>keyFile</code>) while it is started and answers each message with an HL7 ACK (AA stored, AR refused, AE not stored)</td>
 <td>Implemented (wired)</td>
-<td><code>TestMLLPSource</code>, <code>TestMLLPHandler</code>, <code>TestMLLPServer</code>, <code>TestHL7ACKOptions</code>. No TLS or sender authentication yet; set <code>inputFormat: hl7v2</code> to transform the messages. See <a href="../processing-messages/#receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</a>.</td>
+<td><code>TestMLLPSource</code>, <code>TestMLLPHandler</code>, <code>TestMLLPServer</code>, <code>TestHL7ACKOptions</code>, <code>TestMLLPTLS</code>. No sender authentication (no mutual TLS); set <code>inputFormat: hl7v2</code> to transform the messages. See <a href="../processing-messages/#receive-hl7-v2-over-mllp">Receive HL7 v2 over MLLP</a>.</td>
 </tr>
 <tr>
 <td><code>flow</code> destination: hands a message to another flow in-process (<code>flow: &lt;id&gt;</code>), with <code>source.flow</code>/<code>source.message</code> metadata; targets follow the <code>dependsOn</code> rules</td>
