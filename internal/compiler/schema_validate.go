@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/santhosh-tekuri/jsonschema/v5"
 	"gopkg.in/yaml.v3"
@@ -36,8 +37,13 @@ var transformSchema = func() *jsonschema.Schema {
 // checked, so unknown keys are refused rather than dropped.
 func Validate(data []byte) error {
 	var doc any
-	if err := yaml.Unmarshal(data, &doc); err != nil {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	if err := dec.Decode(&doc); err != nil && !errors.Is(err, io.EOF) {
 		return fmt.Errorf("transform is not valid YAML: %w", err)
+	}
+	var extra any
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		return errors.New("transform: one YAML document expected")
 	}
 	doc, err := stringKeys(doc)
 	if err != nil {
