@@ -101,7 +101,7 @@ VS Code, for example, mistakes are underlined and fields are completed:
 | `name` | Unique within the flow; 1–128 characters from `A-Z a-z 0-9 . _ -` (it appears in URLs). Used to report delivery results. |
 | `type` | `http` (send to `url`), `file` (write one file per message into `dir`, named by message ID), or `mllp` (send HL7 v2 to `address` over TCP; see [Send HL7 v2 over MLLP](#send-hl7-v2-over-mllp)). |
 | `url` | Required for `http`: an absolute `http://` or `https://` URL. Each delivery is a request (`POST` unless `method` says otherwise) with `Content-Type: application/json` (transformed messages), the [`build`](#build-the-output-build) format's type, or `application/octet-stream` (passthrough). The request carries an `Idempotency-Key` header, the same value for every attempt to deliver this message to this destination, so the receiver can ignore duplicates. |
-| `dir` | Required for `file`. Created if missing. |
+| `dir` | Required for `file`: an absolute path, created if missing. |
 | `address` | Required for `mllp`: `host:port` of the receiving system, for example `lab.example.com:2575`. |
 | `method` | `http` only: `POST` (default), `PUT`, or `PATCH`. |
 | `timeoutMs` | `http` and `mllp`: time allowed for one delivery, including reading the response or ACK, 1000–120000 ms; default 30000. A request that takes longer is a failed attempt and is retried. Stopping or pausing the flow, and stopping the server, wait for deliveries in progress, so keep it as short as the receiver allows. |
@@ -656,12 +656,21 @@ the flow as a message, and then deletes it (or moves it into `moveTo`):
 | `pattern` | File-name glob (`*.json`, `ADT_*.hl7`); default `*`. No path separators. |
 | `pollIntervalMs` | How often the directory is read: 100–3600000, default 1000. |
 | `moveTo` | Absolute directory processed files are moved into (created if missing; a name that is already there gets the message id appended). Without it, processed files are deleted. |
+| `recursive` | `true` also reads the subdirectories of `dir` (default `false`); see below. |
 
 - The directory is read only while the flow is `started`. Stopping, pausing, or deleting the flow
   stops reading; starting it again picks up what arrived meanwhile.
-- Only regular files directly in `dir` are read: subdirectories, symbolic links, and hidden files
-  (names starting with `.`, such as `rsync` temporary files and `.DS_Store`) are skipped. A
-  pattern starting with `.` reads hidden files.
+- Only regular files directly in `dir` are read, unless `recursive` is `true`: symbolic links
+  (to files or directories) are never followed, and hidden files (names starting with `.`, such as
+  `rsync` temporary files and `.DS_Store`) are skipped. A pattern starting with `.` reads hidden
+  files.
+- With `"recursive": true`, files in subdirectories are read too, up to 32 levels deep, in path
+  order; hidden directories are skipped like hidden files, and `pattern` matches the file name
+  (`*.hl7` finds `2026/09/adt.hl7`). The metadata `source.file` is the path relative to `dir`
+  (`2026/09/adt.hl7`), and `moveTo` (and `moveTo/rejected`) keep that path
+  (`/var/lib/weavster/done/adt/2026/09/adt.hl7`). `moveTo` must then be outside `dir`, or moved
+  files would be read again. Subdirectories are left in place when their files have been
+  processed, and every poll walks the whole tree, so keep it small.
 - A directory can be read by one flow only; a second flow with the same `dir` is refused.
 - Each poll reads at most 100 files, so one busy directory does not hold up other flows; the
   rest are read at the next poll.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -30,6 +31,8 @@ const (
 	// maxFilesPerPoll bounds one flow's turn, so a busy directory cannot
 	// hold up the other flows' sources; the rest waits for the next poll.
 	maxFilesPerPoll = 100
+	// maxSourceDepth bounds how deep a recursive source reads (#107 D-69).
+	maxSourceDepth = 32
 )
 
 // Ports of the file sources: the flows, message ingest, and the event log.
@@ -133,7 +136,7 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
 	if pattern == "" {
 		pattern = "*"
 	}
-	entries, err := os.ReadDir(src.Dir)
+	entries, err := listFiles(src.Dir, src.Recursive, pattern)
 	if err != nil {
 		if msg := err.Error(); s.lastErr[f.ID] != msg { // once per distinct error
 			s.lastErr[f.ID] = msg
@@ -144,19 +147,19 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
 	delete(s.lastErr, f.ID)
 	present := map[string]bool{}
 	read := 0
-	for _, e := range entries { // sorted by name; symlinks are not followed
-		path := filepath.Join(src.Dir, e.Name())
+	for _, e := range entries { // in path order; symlinks are not followed
+		path := e.path
 		present[path] = true
 		if ctx.Err() != nil || read == maxFilesPerPoll {
 			continue
 		}
-		if !e.Type().IsRegular() || hidden(e.Name(), pattern) {
+		if !e.d.Type().IsRegular() || hidden(e.d.Name(), pattern) {
 			continue // directories, symlinks, devices; dotfiles unless asked for
 		}
-		if ok, _ := filepath.Match(pattern, e.Name()); !ok {
+		if ok, _ := filepath.Match(pattern, e.d.Name()); !ok {
 			continue
 		}
-		info, err := e.Info()
+		info, err := e.d.Info()
 		if err != nil {
 			continue // removed meanwhile
 		}
@@ -166,15 +169,58 @@ func (s *fileSources) poll(ctx context.Context, f gateway.Flow, now time.Time) {
 		}
 		delete(s.skip, path)
 		read++
-		if !s.readFile(ctx, f, e.Name(), path, stamp) {
+		if !s.readFile(ctx, f, e.rel, path, stamp) {
 			break
 		}
 	}
+	root := filepath.Clean(src.Dir) + string(filepath.Separator)
 	for path := range s.skip { // forget files that are gone
-		if filepath.Dir(path) == filepath.Clean(src.Dir) && !present[path] {
+		if strings.HasPrefix(path, root) && !present[path] {
 			delete(s.skip, path)
 		}
 	}
+}
+
+// listed is one entry a file source found: its path, its path relative to
+// the source's dir ("/"-separated), and the directory entry.
+type listed struct {
+	path, rel string
+	d         fs.DirEntry
+}
+
+// listFiles lists dir's entries in path order; recursive also lists its
+// subdirectories (at most maxSourceDepth deep), skipping hidden ones and
+// never following symbolic links. A subdirectory that cannot be read is
+// skipped; dir itself not being readable is an error.
+func listFiles(dir string, recursive bool, pattern string) ([]listed, error) {
+	if !recursive {
+		entries, err := os.ReadDir(dir) // sorted by name; symlinks are not followed
+		out := make([]listed, len(entries))
+		for i, e := range entries {
+			out[i] = listed{path: filepath.Join(dir, e.Name()), rel: e.Name(), d: e}
+		}
+		return out, err
+	}
+	root := filepath.Clean(dir)
+	var out []listed
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if path == root {
+			return err // the source's own dir must be readable
+		}
+		if err != nil {
+			return nil // an unreadable subdirectory: skip it
+		}
+		rel, _ := filepath.Rel(root, path) // path is under root
+		if d.IsDir() {
+			if hidden(d.Name(), pattern) || strings.Count(rel, string(filepath.Separator)) >= maxSourceDepth-1 {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		out = append(out, listed{path: path, rel: filepath.ToSlash(rel), d: d})
+		return nil
+	})
+	return out, err
 }
 
 // hidden reports whether name is a dotfile a pattern that does not start
@@ -225,7 +271,7 @@ func (s *fileSources) readFile(ctx context.Context, f gateway.Flow, name, path s
 	if moveTo == "" {
 		err = os.Remove(path)
 	} else {
-		err = moveFile(path, moveTo, name, res.ID)
+		err = moveFile(path, filepath.Join(moveTo, filepath.Dir(name)), filepath.Base(name), res.ID)
 	}
 	if err != nil {
 		// The message is stored: never send this version of the file again.
@@ -240,7 +286,7 @@ func (s *fileSources) readFile(ctx context.Context, f gateway.Flow, name, path s
 func (s *fileSources) reject(f gateway.Flow, name, path string, stamp fileStamp, reason string) {
 	moved := false
 	if f.Source.MoveTo != "" {
-		if err := moveFile(path, filepath.Join(f.Source.MoveTo, "rejected"), name, ""); err == nil {
+		if err := moveFile(path, filepath.Join(f.Source.MoveTo, "rejected", filepath.Dir(name)), filepath.Base(name), ""); err == nil {
 			moved = true
 		} else {
 			s.logger.Warn("file source: cannot move a rejected file", "flow", f.ID, "file", name, "error", err)

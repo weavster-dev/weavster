@@ -1251,6 +1251,9 @@ func checkDefinition(f gateway.Flow) error {
 	if err == nil {
 		err = flowdef.CheckTransforms(f)
 	}
+	if err == nil {
+		err = flowdef.CheckDestinations(f)
+	}
 	var pf pipeline.Flow
 	if err == nil {
 		pf, err = toPipelineFlow(f)

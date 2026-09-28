@@ -293,3 +293,46 @@ func TestFileSourceUsesCurrentMoveTo(t *testing.T) {
 		t.Errorf("not moved to the current moveTo: %v", err)
 	}
 }
+
+// TestListFilesRecursive: recursion stops at maxSourceDepth, an unreadable
+// subdirectory is skipped, and a missing root is an error.
+func TestListFilesRecursive(t *testing.T) {
+	root := t.TempDir()
+	deep := root
+	for i := 0; i < maxSourceDepth+2; i++ {
+		deep = filepath.Join(deep, "d")
+	}
+	if err := os.MkdirAll(deep, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range []string{filepath.Join(root, "top.json"), filepath.Join(deep, "too-deep.json"), filepath.Join(root, "locked", "x.json")} {
+		_ = os.MkdirAll(filepath.Dir(p), 0o750)
+		if err := os.WriteFile(p, []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(filepath.Join(root, "locked"), 0); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(filepath.Join(root, "locked"), 0o750) }()
+	got, err := listFiles(root, true, "*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var files []string
+	for _, e := range got {
+		if !e.d.IsDir() {
+			files = append(files, e.rel)
+		}
+	}
+	want := "top.json"
+	if os.Geteuid() == 0 { // root reads the locked directory anyway
+		want = "locked/x.json,top.json"
+	}
+	if strings.Join(files, ",") != want {
+		t.Errorf("listed %v, want %s (too deep and unreadable skipped)", files, want)
+	}
+	if _, err := listFiles(filepath.Join(root, "missing"), true, "*"); err == nil {
+		t.Error("a missing root listed without error")
+	}
+}

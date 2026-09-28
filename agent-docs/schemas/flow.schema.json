@@ -87,6 +87,13 @@
                 "null"
               ],
               "description": "Absolute directory processed files are moved to (default: deleted)"
+            },
+            "recursive": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Also read subdirectories of dir (default false); symbolic links are not followed"
             }
           }
         },
