@@ -89,6 +89,15 @@ func (s *MemStore) Count(_ context.Context, q Query) (int, error) {
 	return n, nil
 }
 
+func (s *MemStore) ReceivedTimes(ctx context.Context, q Query) ([]time.Time, error) {
+	ms, err := s.Search(ctx, q)
+	out := make([]time.Time, len(ms))
+	for i, m := range ms {
+		out[i] = m.ReceivedAt
+	}
+	return out, err
+}
+
 func (s *MemStore) Search(_ context.Context, q Query) ([]Message, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

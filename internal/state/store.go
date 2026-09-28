@@ -90,6 +90,9 @@ type Store interface {
 	// Count is how many messages match q's filters (Limit, Offset, and
 	// Sort ignored).
 	Count(ctx context.Context, q Query) (int, error)
+	// ReceivedTimes is the receive times of the messages q selects, in q's
+	// order and paging, without loading the messages.
+	ReceivedTimes(ctx context.Context, q Query) ([]time.Time, error)
 	// MessageTrends counts messages per time bucket and status.
 	MessageTrends(ctx context.Context, q TrendQuery) (TrendCounts, error)
 	Close() error
@@ -282,6 +285,29 @@ func (s *sqlStore) Count(ctx context.Context, q Query) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM messages `+where, args...).Scan(&n)
 	return n, err
+}
+
+func (s *sqlStore) ReceivedTimes(ctx context.Context, q Query) ([]time.Time, error) {
+	ctx = s.bind(ctx)
+	where, args := buildWhere(q)
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT received_at FROM messages `+where+` `+buildOrderSort(q.Sort)+` LIMIT ? OFFSET ?`, append(args, limit, q.Offset)...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []time.Time
+	for rows.Next() {
+		var ms int64
+		if err := rows.Scan(&ms); err != nil {
+			return nil, err
+		}
+		out = append(out, time.UnixMilli(ms))
+	}
+	return out, rows.Err()
 }
 
 func (s *sqlStore) Search(ctx context.Context, q Query) ([]Message, error) {

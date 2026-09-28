@@ -65,6 +65,16 @@ func TestSearchFilterParity(t *testing.T) {
 				if n, err := s.Count(ctx, tt.query); err != nil || n != len(all) {
 					t.Errorf("Count = %d (%v), want %d", n, err, len(all))
 				}
+				// ReceivedTimes follows the same filters, order, and paging.
+				times, err := s.ReceivedTimes(ctx, tt.query)
+				if err != nil || len(times) != len(got) {
+					t.Fatalf("ReceivedTimes = %v (%v), want %d", times, err, len(got))
+				}
+				for i := range got {
+					if !times[i].Equal(got[i].ReceivedAt) {
+						t.Errorf("ReceivedTimes[%d] = %v, want %v", i, times[i], got[i].ReceivedAt)
+					}
+				}
 			})
 		}
 	}
@@ -86,6 +96,9 @@ func TestSQLStoreClosedDB(t *testing.T) {
 	}
 	if _, err := s.Count(ctx, Query{}); err == nil {
 		t.Error("Count on closed store: error = nil, want error")
+	}
+	if _, err := s.ReceivedTimes(ctx, Query{}); err == nil {
+		t.Error("ReceivedTimes on closed store: error = nil, want error")
 	}
 	if err := s.Put(ctx, Message{ID: "x", FlowID: "f", Status: StatusReceived}); err == nil {
 		t.Error("Put on closed store: error = nil, want error")

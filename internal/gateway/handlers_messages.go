@@ -352,7 +352,8 @@ func (s *Server) handleMessagesDelete(w http.ResponseWriter, r *http.Request) {
 		res.Restarted, stopErr = s.stopStartedFlows(r, q.FlowID)
 	}
 	if stopErr == nil {
-		res.Deleted, res.Busy, deleteErr = s.cfg.Messages.DeleteMatching(r.Context(), q)
+		// Every match is removed even if the client goes away meanwhile.
+		res.Deleted, res.Busy, deleteErr = s.cfg.Messages.DeleteMatching(context.WithoutCancel(r.Context()), q)
 	}
 	// Start the stopped flows again even if the client has gone away.
 	ctx := context.WithoutCancel(r.Context())

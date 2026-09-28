@@ -120,6 +120,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	statsPort := statsAdapter{flows: flows, stats: stats, series: series}
 	var ingest gateway.MessageIngester
 	var sourcePorts gateway.SourcePorts
+	var prune gateway.Pruner
 	retry := func(context.Context) {}
 	if store != nil {
 		sinks := &sinkFactory{logger: logger, tlsOpts: tlsOptions(cfg), dbs: newDBPool(), delivered: func(ctx context.Context, flowID, key string) (string, error) {
@@ -148,8 +149,11 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		tables := newDatabaseSources(flows, ia, eventLogRecorder{events}, sinks.dbs, logger)
 		listening := newPortSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, logger)
 		sourcePorts = listening
+		pr := newPruner(cfg.Prune, ma, eventLogRecorder{events}, logger)
+		prune = pr
 		retry = func(ctx context.Context) {
-			polled, served, queried := make(chan struct{}), make(chan struct{}), make(chan struct{})
+			polled, served, queried, pruned := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
+			go func() { pr.loop(ctx); close(pruned) }()        // message pruning (#107 D-88)
 			go func() { sources.loop(ctx); close(polled) }()   // flows' file sources (#107 D-56)
 			go func() { listening.loop(ctx); close(served) }() // flows' http and mllp sources (#107 D-57, D-60)
 			go func() { tables.loop(ctx); close(queried) }()   // flows' database sources (#107 D-76)
@@ -157,6 +161,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 			<-polled
 			<-served
 			<-queried
+			<-pruned
 		}
 		closeStore = func() error { // after the API drained: nothing delivers any more
 			sinks.dbs.close()
@@ -195,6 +200,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Transfer:        flows,
 		Stats:           statsPort,
 		DeadLetters:     deadLetters,
+		Pruner:          prune,
 		StatsHistory:    statsPort,
 		Events:          eventsAdapter{events},
 		Topology:        topologyAdapter{flows: flows, stats: stats},
@@ -2343,27 +2349,43 @@ func (m messageAdapter) MessageTrends(ctx context.Context, q gateway.MessageTren
 // variable so tests can page through a few messages).
 var deletePage = 500
 
-// DeleteMatching removes every message matching q's filters. It pages by id
-// from an exclusive cursor, so messages skipped as busy do not shift the
-// pages, and stops only at an empty page. Each message is checked against
-// the filters again while the pipeline holds it, so one that changed since
-// the search (a queued message delivered meanwhile) is kept.
+// DeleteMatching removes every message matching q's filters.
 func (m messageAdapter) DeleteMatching(ctx context.Context, q gateway.MessageQuery) (deleted, busy int, err error) {
 	q.Sort, q.Offset = "id", 0 // every filter, paged by id
-	sq := toStateQuery(q)
-	sq.Limit = deletePage
+	deleted, busyIDs, err := m.removeMatching(ctx, toStateQuery(q), nil)
+	return deleted, len(busyIDs), err
+}
+
+// removeMatching removes every message matching sq that eligible accepts
+// (every one when nil) and returns the ids skipped as busy. It pages by id
+// from an exclusive cursor, so messages skipped do not shift the pages,
+// and stops at an empty page or when ctx ends. Each message is checked
+// again while the pipeline holds it, so one that changed since the search
+// (a queued message delivered meanwhile) is kept.
+func (m messageAdapter) removeMatching(ctx context.Context, sq state.Query, eligible func(state.Message) bool) (deleted int, busy []string, err error) {
+	sq.Sort, sq.Offset, sq.Limit = "id", 0, deletePage
+	accept := func(msg state.Message) bool { return sq.Matches(msg) && (eligible == nil || eligible(msg)) }
 	for {
+		if err := ctx.Err(); err != nil {
+			return deleted, busy, err
+		}
 		page, err := m.store.Search(ctx, sq)
 		if err != nil || len(page) == 0 {
 			return deleted, busy, err
 		}
 		for _, msg := range page {
-			release, ok := m.pipe.Hold(msg.ID)
-			if !ok {
-				busy++
+			if err := ctx.Err(); err != nil {
+				return deleted, busy, err
+			}
+			if eligible != nil && !eligible(msg) {
 				continue
 			}
-			removed, err := m.removeIfMatching(ctx, msg.ID, sq)
+			release, ok := m.pipe.Hold(msg.ID)
+			if !ok {
+				busy = append(busy, msg.ID)
+				continue
+			}
+			removed, err := m.removeIf(ctx, msg.ID, accept)
 			release()
 			if err != nil {
 				return deleted, busy, err
@@ -2378,6 +2400,11 @@ func (m messageAdapter) DeleteMatching(ctx context.Context, q gateway.MessageQue
 
 // removeIfMatching deletes message id if it still matches sq's filters.
 func (m messageAdapter) removeIfMatching(ctx context.Context, id string, sq state.Query) (bool, error) {
+	return m.removeIf(ctx, id, sq.Matches)
+}
+
+// removeIf deletes message id if accept still accepts it as stored.
+func (m messageAdapter) removeIf(ctx context.Context, id string, accept func(state.Message) bool) (bool, error) {
 	msg, err := m.store.Get(ctx, id)
 	if errors.Is(err, state.ErrNotFound) {
 		return false, nil // removed meanwhile
@@ -2385,7 +2412,7 @@ func (m messageAdapter) removeIfMatching(ctx context.Context, id string, sq stat
 	if err != nil {
 		return false, err
 	}
-	if !sq.Matches(msg) { // every filter, as the search applied them
+	if !accept(msg) { // every filter, as the search applied them
 		return false, nil
 	}
 	if err := m.store.Delete(ctx, id); err != nil && !errors.Is(err, state.ErrNotFound) {

@@ -121,10 +121,10 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `GET /api/v1/flows`, `GET /api/v1/flows/{id}`, `GET /api/v1/flows/export`, `GET /api/v1/flows/connector-names`, `GET /api/v1/flows/ports-in-use`, `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | `flows:view` |
 | `POST /api/v1/config/validate` | `flows:edit` |
 | `POST /api/v1/flows`, `PUT /api/v1/flows`, `PUT /api/v1/flows/{id}`, `DELETE /api/v1/flows/{id}`, `POST /api/v1/flows/{id}/{enable,disable}`, `POST /api/v1/flows/import` | `flows:edit` |
-| `GET /api/v1/messages`, `GET /api/v1/messages/{id}`, `GET /api/v1/messages/trends` | `messages:view` |
+| `GET /api/v1/messages`, `GET /api/v1/messages/{id}`, `GET /api/v1/messages/trends`, `GET /api/v1/system/prune` | `messages:view` |
 | `GET /api/v1/messages/{id}/content`, `GET /api/v1/messages/export` | `messages:content` |
 | `POST /api/v1/messages/import` | `messages:import` |
-| `DELETE /api/v1/messages/{id}`, `DELETE /api/v1/messages` | `messages:delete` |
+| `DELETE /api/v1/messages/{id}`, `DELETE /api/v1/messages`, `POST /api/v1/system/prune/{start,stop}` | `messages:delete` |
 | `POST /api/v1/flows/{id}/messages`, `POST /api/v1/messages/{id}/reprocess`, `POST /api/v1/messages/requeue` | `messages:send` |
 | `POST /api/v1/messages/{id}/requeue` | `messages:view`, `messages:send` |
 | `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all`, `POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all`, `POST /api/v1/flows/{id}/destinations/{name}/{start,stop}`, `POST /api/v1/flows/stats/reset`, `POST /api/v1/flows/{id}/stats/reset` | `flows:deploy` |

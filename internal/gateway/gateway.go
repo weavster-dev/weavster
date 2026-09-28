@@ -328,6 +328,8 @@ type Config struct {
 	Stats       StatsProvider
 	// DeadLetters requeues dead-lettered messages.
 	DeadLetters DeadLetterRequeuer
+	// Pruner removes old messages; nil without a message store.
+	Pruner Pruner
 	// StatsHistory reads the sampled statistics time series.
 	StatsHistory StatsHistory
 	Events       EventSearcher

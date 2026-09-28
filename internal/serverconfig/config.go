@@ -32,7 +32,20 @@ type Config struct {
 	Processing Processing `yaml:"processing"`
 	Flows      Flows      `yaml:"flows"`
 	Stats      Stats      `yaml:"stats"`
+	Prune      Prune      `yaml:"prune"`
 }
+
+// Prune removes old messages (spec §2.6.23): those received more than
+// MaxAgeHours ago, and the oldest past MaxMessages, every IntervalMinutes.
+// Zero turns a limit off.
+type Prune struct {
+	MaxAgeHours     int `yaml:"maxAgeHours"`
+	MaxMessages     int `yaml:"maxMessages"`
+	IntervalMinutes int `yaml:"intervalMinutes"`
+}
+
+// Enabled reports whether any prune limit is set.
+func (p Prune) Enabled() bool { return p.MaxAgeHours > 0 || p.MaxMessages > 0 }
 
 // Stats configures time-series statistics (spec §2.11.37): every flow's
 // lifetime counters are sampled every SampleIntervalMs and kept for
@@ -128,6 +141,7 @@ func Default() Config {
 		Processing: Processing{MaxConcurrent: 32, WaitMs: 5000},
 		Flows:      Flows{DeployOnStartup: true},
 		Stats:      Stats{SampleIntervalMs: 60000, RetentionHours: 24},
+		Prune:      Prune{IntervalMinutes: 60},
 	}
 }
 
@@ -218,6 +232,9 @@ func (c Config) Validate() error {
 		return errors.New("config: stats.retentionHours must be between 1 and 8760 (one year)")
 	} else if int64(st.RetentionHours)*3600000/int64(st.SampleIntervalMs)+1 > MaxStatsSamples { // +1: the sample at the start of the window
 		return fmt.Errorf("config: stats.retentionHours / stats.sampleIntervalMs keeps more than %d samples per flow", MaxStatsSamples)
+	}
+	if pr := c.Prune; pr.MaxAgeHours < 0 || pr.MaxAgeHours > 876000 || pr.MaxMessages < 0 || pr.IntervalMinutes < 1 || pr.IntervalMinutes > 10080 {
+		return errors.New("config: prune.maxAgeHours must be 0-876000 (0 = off), prune.maxMessages >= 0 (0 = off), and prune.intervalMinutes 1-10080 (one week)")
 	}
 	p := c.Auth.PasswordPolicy
 	for _, v := range []int{p.MinLength, c.Auth.Lockout.RetryLimit, c.Auth.Lockout.LockoutPeriodSeconds} {
