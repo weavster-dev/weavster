@@ -40,7 +40,7 @@ func TestXMLInput(t *testing.T) {
 	}
 	for body, want := range map[string]string{
 		`<order><unclosed></order>`: "body must be a single well-formed XML document",
-		`{"order":{}}`:               "body must be a single well-formed XML document",
+		`{"order":{}}`:              "body must be a single well-formed XML document",
 		`<!DOCTYPE a [<!ENTITY x SYSTEM "file:///etc/passwd">]><a>&x;</a>`: "body must be a single well-formed XML document",
 	} {
 		if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows/orders/messages", body, admin); code != http.StatusBadRequest || !strings.Contains(resp, want) || strings.Contains(resp, "passwd") {
