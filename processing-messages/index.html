@@ -246,6 +246,11 @@ JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a>,
 <td><code>when</code>, <code>action</code> (<code>reject</code> or <code>accept</code>)</td>
 <td><code>reject</code> drops the message when <code>when</code> is true; <code>accept</code> drops it when <code>when</code> is false.</td>
 </tr>
+<tr>
+<td><code>destinationSet</code></td>
+<td><code>exclude</code> (destination names), optional <code>when</code></td>
+<td>Excludes those destinations for this message when <code>when</code> is true (always without <code>when</code>). Flow <code>transform</code> only; see <a href="#route-by-content-destinationset">Route by content</a>.</td>
+</tr>
 </tbody>
 </table>
 <ul>
@@ -254,7 +259,7 @@ JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a>,
   or <code>&lt;operand&gt; == &lt;operand&gt;</code> / <code>&lt;operand&gt; != &lt;operand&gt;</code>. An operand is a path, a quoted string
   (<code>'x'</code> or <code>"x"</code>), a number (<code>3</code>, <code>-1.5</code>), or <code>true</code>/<code>false</code>. A missing path compares equal
   to <code>''</code>. No other operators exist.</li>
-<li><code>build</code> and <code>destinationSet</code> steps are not supported yet.</li>
+<li><code>build</code> steps are not supported yet.</li>
 <li>Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.</li>
 </ul>
 <p>The transform format is published as
@@ -582,7 +587,8 @@ instead of losing messages. To follow them, set <code>maxRedirects</code>:</p>
    <a href="../flow-lifecycle/#stopping-one-destination">stopped</a> destination holds the message and runs
    its transform (as defined then) when it is started; a destination the message was already
    delivered to is not run again.</li>
-<li><strong>Delivery</strong> to each destination that kept the message.</li>
+<li><strong>Delivery</strong> to each destination that kept the message and was not excluded by a
+   <a href="#route-by-content-destinationset"><code>destinationSet</code></a> step in stage 1.</li>
 <li><strong>Response transform</strong>: if the flow has a
    <a href="#return-a-destinations-reply"><code>responseSelector</code></a> and that destination was delivered to while
    the sender waited, its <code>responseTransform</code> steps run in order on the reply, which is returned to
@@ -598,6 +604,38 @@ instead of losing messages. To follow them, set <code>maxRedirects</code>:</p>
 itself carries: a message without an <code>adult</code> field (a missing value compares equal to <code>''</code>) is
 filtered, whatever <code>age.flag</code> says. A destination's filter on <code>adult</code>, by contrast, always sees
 the flow's finished output, including what the <code>map</code> set.</p>
+<h3 id="route-by-content-destinationset">Route by content (<code>destinationSet</code>)</h3>
+<p>A <code>destinationSet</code> step in the flow's <code>transform</code> leaves destinations out for a message, based on
+its content:</p>
+<pre><code class="language-json">&quot;transform&quot;: {&quot;steps&quot;: [
+  {&quot;destinationSet&quot;: {&quot;exclude&quot;: [&quot;archive&quot;], &quot;when&quot;: &quot;kind == 'orm'&quot;}},
+  {&quot;destinationSet&quot;: {&quot;exclude&quot;: [&quot;ehr&quot;, &quot;lab&quot;], &quot;when&quot;: &quot;test&quot;}}
+]},
+&quot;destinations&quot;: [
+  {&quot;name&quot;: &quot;ehr&quot;, &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://ehr.example.com/in&quot;},
+  {&quot;name&quot;: &quot;lab&quot;, &quot;type&quot;: &quot;http&quot;, &quot;url&quot;: &quot;https://lab.example.com/in&quot;},
+  {&quot;name&quot;: &quot;archive&quot;, &quot;type&quot;: &quot;file&quot;, &quot;dir&quot;: &quot;/var/lib/weavster/archive&quot;}
+]
+</code></pre>
+<ul>
+<li><code>when</code> uses the same syntax as a <code>filter</code>'s <code>when</code>; without it the destinations are always
+  excluded. Steps run in order with the other steps and add up: a message can be excluded from
+  several destinations by several steps.</li>
+<li>An excluded destination gets nothing: its own transform does not run, nothing is delivered,
+  and it counts as done. A message whose every destination is excluded is <code>filtered</code>.</li>
+<li>Destinations can only be excluded (there is no include list), and only by the flow's
+  <code>transform</code>, not by a destination's or response transform. Every name must be a destination of
+  the flow; otherwise the flow is refused when you create or update it.</li>
+<li>The exclusion is decided once, when the message is transformed, and stored with it as the
+  metadata <code>destinationSet.excluded</code> (for example <code>"archive"</code>). Retries, a restart, and starting
+  a stopped destination all keep it, even if you change the flow meanwhile. Reprocessing a
+  message decides again with the flow's current steps.</li>
+<li>If the <a href="#return-a-destinations-reply"><code>responseSelector</code></a> destination is excluded, the sender
+  gets no <code>response</code> for that message (the message is still <code>sent</code> when the other destinations
+  succeed).</li>
+<li><code>weavster config validate</code> checks the names and placement too, so a misspelled destination is
+  reported before you apply the file.</li>
+</ul>
 <h3 id="per-destination-transforms-and-filters">Per-destination transforms and filters</h3>
 <p>A destination's <code>transform</code> runs on the flow's output, just before delivery to that
 destination. The other destinations are not affected. A <code>filter</code> step in it drops the message

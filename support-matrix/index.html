@@ -521,14 +521,19 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestHTTPSource</code>, <code>TestHTTPSourceSecured</code>, <code>TestSourceHandler</code>, <code>TestSourceHandlerBasicAuth</code>, <code>TestCheckSource</code>. Optional HTTP Basic (<code>username</code>, <code>passwordEnv</code>), HTTPS (<code>certFile</code>, <code>keyFile</code>), and <code>readTimeoutMs</code> (<code>TestHTTPSourceReadTimeout</code>); one flow source per port; listed by <code>GET /api/v1/flows/ports-in-use</code>. See <a href="../processing-messages/#receive-messages-over-http">Receive messages over HTTP</a>.</td>
 </tr>
 <tr>
+<td><code>destinationSet</code> step: the flow transform excludes destinations per message (<code>exclude</code>, optional <code>when</code>; exclusion only, D-20); stored with the message as <code>destinationSet.excluded</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestDestinationSet</code>, <code>TestProcessDestinationSet</code>, <code>TestCheckTransforms</code>, <code>TestValidateRefuses</code>. See <a href="../processing-messages/#route-by-content-destinationset">Route by content</a>.</td>
+</tr>
+<tr>
 <td>Processing order: flow transform steps in order → each destination's steps on the flow output → delivery → response transform</td>
 <td>Implemented (wired)</td>
 <td><code>TestProcessingOrder</code>, <code>TestDestinationTransforms</code>. See <a href="../processing-messages/#processing-order">Processing order</a>.</td>
 </tr>
 <tr>
-<td>Transform schema: <code>agent-docs/schemas/transform.schema.json</code> describes exactly the steps that run (<code>map</code>, <code>set</code>, <code>filter</code>); flow, destination, and response transforms are checked against it by the API and <code>config validate</code></td>
+<td>Transform schema: <code>agent-docs/schemas/transform.schema.json</code> describes exactly the steps that run (<code>map</code>, <code>set</code>, <code>filter</code>, <code>destinationSet</code>); flow, destination, and response transforms are checked against it by the API and <code>config validate</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestTransformSchema</code>, <code>TestValidateRefuses</code>, <code>TestSchemaPublishedAndMatchesTypes</code>. <code>build</code> and <code>destinationSet</code> are refused until they run.</td>
+<td><code>TestTransformSchema</code>, <code>TestValidateRefuses</code>, <code>TestSchemaPublishedAndMatchesTypes</code>. <code>build</code> is refused until it runs.</td>
 </tr>
 <tr>
 <td>Delimited input: <code>inputFormat: delimited</code> (<code>delimited: {delimiter, header}</code>) gives transforms <code>{"rows": [...]}</code> (objects by column name, or lists) with RFC 4180 quoting</td>
