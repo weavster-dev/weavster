@@ -212,7 +212,7 @@ func checkDatabaseSource(s *Source) error {
 	case s.IDColumn == "":
 		return errors.New("source.idColumn is required: the column of the query's result that identifies a row")
 	case s.Update == nil:
-		return nil
+		return errors.New("source.update is required: it marks each row once stored, and the query must leave marked rows out")
 	}
 	u := s.Update
 	switch {

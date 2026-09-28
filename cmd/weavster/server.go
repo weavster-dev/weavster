@@ -141,10 +141,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
 		sources := newFileSources(flows, ia, eventLogRecorder{events}, logger)
-		tables := newDatabaseSources(flows, ia, eventLogRecorder{events}, sinks.dbs, func(ctx context.Context, flowID, rowID string) (bool, error) {
-			found, err := store.Search(ctx, state.Query{FlowID: flowID, Metadata: map[string]string{rowIDMetadata: rowID}, Limit: 1})
-			return len(found) > 0, err
-		}, logger)
+		tables := newDatabaseSources(flows, ia, eventLogRecorder{events}, sinks.dbs, logger)
 		listening := newPortSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, logger)
 		sourcePorts = listening
 		retry = func(ctx context.Context) {

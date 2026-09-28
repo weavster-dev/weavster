@@ -12,8 +12,8 @@ import (
 
 // TestDatabaseSource: a started flow with a database source turns each row
 // its query returns into a message and marks it with update; a new row is
-// picked up by the next poll; without update a row is read once per id;
-// an unset variable is reported; invalid sources are refused.
+// picked up by the next poll and marked rows are not read again; an unset
+// variable is reported; invalid sources are refused.
 func TestDatabaseSource(t *testing.T) {
 	dbFile := filepath.Join(t.TempDir(), "his.db")
 	db, err := sql.Open("sqlite", dbFile)
@@ -32,14 +32,11 @@ func TestDatabaseSource(t *testing.T) {
 	defer stop()
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
-	marked, all := t.TempDir(), t.TempDir()
+	marked := t.TempDir()
 	createFlow(t, c, `{"id":"orders","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_HIS",`+
 		`"query":"SELECT id, mrn, amount FROM orders WHERE exported = 0 ORDER BY id","idColumn":"id",`+
 		`"update":{"table":"orders","key":"id","set":{"exported":"1"}},"pollIntervalMs":1000},`+
 		`"destinations":[{"name":"out","type":"file","dir":"`+marked+`"}]}`)
-	createFlow(t, c, `{"id":"all","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_HIS",`+
-		`"query":"SELECT id, mrn FROM orders","idColumn":"id","pollIntervalMs":1000},`+
-		`"destinations":[{"name":"out","type":"file","dir":"`+all+`"}]}`)
 
 	waitFiles := func(dir string, n int) []string {
 		t.Helper()
@@ -81,20 +78,18 @@ func TestDatabaseSource(t *testing.T) {
 		t.Errorf("messages lack the row id: %s", body)
 	}
 
-	// A new row arrives with the next poll; the flow without update still
-	// reads each row once.
+	// A new row arrives with the next poll; marked rows are not read again.
 	if _, err := db.Exec(`INSERT INTO orders (id, mrn, amount) VALUES (3, 'C-3', 1)`); err != nil {
 		t.Fatal(err)
 	}
 	waitFiles(marked, 3)
-	waitFiles(all, 3)
-	time.Sleep(2500 * time.Millisecond) // two more polls of "all"
-	if entries, _ := os.ReadDir(all); len(entries) != 3 {
+	time.Sleep(2500 * time.Millisecond) // two more polls
+	if entries, _ := os.ReadDir(marked); len(entries) != 3 {
 		t.Errorf("rows read again: %d messages, want 3", len(entries))
 	}
 
 	// An unset variable is reported as an event.
-	createFlow(t, c, `{"id":"noenv","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_UNSET","query":"SELECT 1 AS id","idColumn":"id"}}`)
+	createFlow(t, c, `{"id":"noenv","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_UNSET","query":"SELECT 1 AS id","idColumn":"id","update":{"table":"orders","key":"id","set":{"exported":"1"}}}}`)
 	deadline = time.Now().Add(10 * time.Second)
 	for {
 		_, body, _ := c.do(http.MethodGet, "/api/v1/events?flowId=noenv", "", admin)
@@ -110,14 +105,16 @@ func TestDatabaseSource(t *testing.T) {
 	src := func(extra string) string {
 		return `{"id":"x","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_HIS","query":"SELECT id FROM orders","idColumn":"id"` + extra + `}}`
 	}
+	mark := `,"update":{"table":"orders","key":"id","set":{"exported":"1"}}`
 	for body, want := range map[string]string{
-		`{"id":"x","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_HIS","query":"DELETE FROM orders","idColumn":"id"}}`:          "must be one SELECT or WITH statement",
-		`{"id":"x","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_HIS","query":"SELECT 1; DROP TABLE orders","idColumn":"id"}}`: "must be one SELECT or WITH statement",
-		src(`,"update":{"table":"orders; x","key":"id","set":{"a":"1"}}`):                                                                            "flow.schema.json",
-		src(`,"update":{"table":"orders","key":"id","set":{"a b":"1"}}`):                                                                             "flow.schema.json",
-		src(`,"pollIntervalMs":100`): "flow.schema.json",
-		`{"id":"x","inputFormat":"hl7v2","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_HIS","query":"SELECT 1 AS id","idColumn":"id"}}`: "inputFormat must be json",
-		`{"id":"x","source":{"type":"file","dir":"/tmp/x","query":"SELECT 1"}}`:                                                                               "flow.schema.json",
+		`{"id":"x","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_HIS","query":"DELETE FROM orders","idColumn":"id","update":{"table":"orders","key":"id","set":{"exported":"1"}}}}`:          "must be one SELECT or WITH statement",
+		`{"id":"x","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_HIS","query":"SELECT 1; DROP TABLE orders","idColumn":"id","update":{"table":"orders","key":"id","set":{"exported":"1"}}}}`: "must be one SELECT or WITH statement",
+		src(`,"update":{"table":"orders; x","key":"id","set":{"a":"1"}}`): "flow.schema.json",
+		src(`,"update":{"table":"orders","key":"id","set":{"a b":"1"}}`):  "flow.schema.json",
+		src(mark + `,"pollIntervalMs":100`):                               "flow.schema.json",
+		src(``):                                                           "flow.schema.json", // update is required
+		`{"id":"x","inputFormat":"hl7v2","source":{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_HIS","query":"SELECT 1 AS id","idColumn":"id","update":{"table":"orders","key":"id","set":{"exported":"1"}}}}`: "inputFormat must be json",
+		`{"id":"x","source":{"type":"file","dir":"/tmp/x","query":"SELECT 1"}}`: "flow.schema.json",
 	} {
 		if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows", body, admin); code != http.StatusBadRequest || !strings.Contains(resp, want) {
 			t.Errorf("%s: %d %s", body, code, resp)

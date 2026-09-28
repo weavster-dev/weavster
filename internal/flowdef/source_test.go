@@ -51,7 +51,7 @@ func TestCheckSource(t *testing.T) {
 		{"mllp DEL start", &Source{Type: "mllp", Address: ":2575", FrameStart: "7F"}, ""},
 		{"mllp ackMode", &Source{Type: "mllp", Address: ":2575", AckMode: "enhanced"}, "ackMode must be original or none"},
 		{"http framing", &Source{Type: "http", Address: ":9001", AckMode: "none"}, "apply only to mllp sources"},
-		{"database", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id"}, ""},
+		{"database without update", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id"}, "source.update is required"},
 		{"database with update", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id", Update: &SourceUpdate{Table: "his.t", Key: "id", Set: map[string]string{"done": "1"}}, MaxRows: 5, TimeoutMs: 2000, PollIntervalMs: 1000}, ""},
 		{"database with a dir", &Source{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT id FROM t", IDColumn: "id", Dir: "/in"}, "a database source takes only"},
 		{"database driver", &Source{Type: "database", Driver: "mysql", DSNEnv: "WEAVSTER_DB_X", Query: "SELECT 1", IDColumn: "id"}, "source.driver must be"},

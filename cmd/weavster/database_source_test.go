@@ -36,21 +36,22 @@ func TestDatabaseSourcePoll(t *testing.T) {
 		_ = db.QueryRow(`SELECT count(*) FROM t WHERE done = 1`).Scan(&n)
 		return n
 	}
+	quiet := slog.New(slog.NewTextHandler(io.Discard, nil))
 	for _, tt := range []struct {
 		name    string
 		ingest  *fakeIngest
-		stored  func(context.Context, string, string) (bool, error)
+		update  *flowdef.SourceUpdate
 		marked  int
 		events  []string
-		refused bool
+		ingests int
 		dsnEnv  string
 	}{
-		{name: "stored and marked", ingest: &fakeIngest{id: "m"}, marked: 2},
-		{name: "already stored: only marked", ingest: &fakeIngest{err: errors.New("not called")}, stored: func(context.Context, string, string) (bool, error) { return true, nil }, marked: 2},
-		{name: "refused: reported once, not marked", ingest: &fakeIngest{err: gateway.ErrInvalidMessage}, marked: 0, events: []string{"source.database.refused", "source.database.refused"}, refused: true},
-		{name: "stopped flow", ingest: &fakeIngest{err: gateway.ErrFlowNotRunning}, marked: 0},
-		{name: "ingest failure", ingest: &fakeIngest{err: errors.New("disk full")}, marked: 0, events: []string{"source.database.failed"}},
-		{name: "lookup failure", ingest: &fakeIngest{id: "m"}, stored: func(context.Context, string, string) (bool, error) { return false, errors.New("store down") }, events: []string{"source.database.failed"}},
+		{name: "stored and marked", ingest: &fakeIngest{id: "m"}, marked: 2, ingests: 2},
+		{name: "stored, processing failed: marked", ingest: &fakeIngest{id: "m", err: errors.New("transform failed")}, marked: 2, ingests: 2},
+		{name: "refused: reported once, not marked", ingest: &fakeIngest{err: gateway.ErrInvalidMessage}, events: []string{"source.database.refused", "source.database.refused"}, ingests: 2},
+		{name: "stopped flow", ingest: &fakeIngest{err: gateway.ErrFlowNotRunning}, ingests: 2},
+		{name: "ingest failure", ingest: &fakeIngest{err: errors.New("disk full")}, events: []string{"source.database.failed"}, ingests: 2},
+		{name: "update failure", ingest: &fakeIngest{id: "m"}, update: &flowdef.SourceUpdate{Table: "nope", Key: "id", Set: map[string]string{"done": "1"}}, events: []string{"source.database.failed"}, ingests: 2},
 		{name: "unset variable", ingest: &fakeIngest{id: "m"}, dsnEnv: "WEAVSTER_DB_UNSET_POLL", events: []string{"source.database.failed"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -62,19 +63,19 @@ func TestDatabaseSourcePoll(t *testing.T) {
 			if tt.dsnEnv != "" {
 				src.DSNEnv = tt.dsnEnv
 			}
-			f.Source = &src
-			stored := tt.stored
-			if stored == nil {
-				stored = func(context.Context, string, string) (bool, error) { return false, nil }
+			if tt.update != nil {
+				src.Update = tt.update
 			}
+			f.Source = &src
 			events := &fakeEvents{}
 			pool := newDBPool()
 			defer pool.close()
-			s := newDatabaseSources(&fakeFlowList{flows: []gateway.Flow{f}}, tt.ingest, events, pool, stored, slog.New(slog.NewTextHandler(io.Discard, nil)))
+			s := newDatabaseSources(&fakeFlowList{flows: []gateway.Flow{f}}, tt.ingest, events, pool, quiet)
 			now := time.Now()
 			s.now = func() time.Time { return now }
-			for i := 0; i < 2; i++ { // the second poll repeats nothing already reported
+			for i := 0; i < 2; i++ { // the second poll reports nothing already reported
 				s.pass(context.Background())
+				s.polls.Wait()
 				now = now.Add(time.Minute)
 			}
 			if n := done(); n != tt.marked {
@@ -83,17 +84,27 @@ func TestDatabaseSourcePoll(t *testing.T) {
 			if !slices.Equal(events.types, tt.events) {
 				t.Errorf("events %v, want %v", events.types, tt.events)
 			}
-			if tt.refused && len(tt.ingest.files) != 2 {
-				t.Errorf("refused rows ingested %d times, want 2 (once each)", len(tt.ingest.files))
+			if len(tt.ingest.files) < tt.ingests {
+				t.Errorf("%d ingests, want at least %d", len(tt.ingest.files), tt.ingests)
 			}
 		})
 	}
-	// A flow that stops is forgotten.
-	s := newDatabaseSources(&fakeFlowList{flows: []gateway.Flow{{ID: "f", Status: "stopped", Source: flow.Source}}}, &fakeIngest{}, &fakeEvents{}, newDBPool(),
-		func(context.Context, string, string) (bool, error) { return false, nil }, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	s.last["f"], s.failed["f"] = time.Now(), "x"
+
+	// A poll in progress is not started again; a flow that stops or goes
+	// away is forgotten.
+	list := &fakeFlowList{flows: []gateway.Flow{flow}}
+	s := newDatabaseSources(list, &fakeIngest{id: "m"}, &fakeEvents{}, newDBPool(), quiet)
+	s.running["f"] = true
 	s.pass(context.Background())
-	if len(s.last) != 0 || len(s.failed) != 0 {
-		t.Errorf("a stopped flow's state kept: %v %v", s.last, s.failed)
+	if !s.last["f"].IsZero() {
+		t.Error("a second poll started while one was running")
+	}
+	delete(s.running, "f")
+	s.last["f"], s.failed["f"], s.refused["f"] = time.Now(), "x", map[string]bool{"1": true}
+	list.flows = nil
+	s.listed = time.Time{}
+	s.pass(context.Background())
+	if len(s.last) != 0 || len(s.failed) != 0 || len(s.refused) != 0 {
+		t.Errorf("a removed flow's state kept: %v %v %v", s.last, s.failed, s.refused)
 	}
 }

@@ -87,7 +87,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   flow API operation, user administration, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
   a connection file, and `-v` prints the server's version.
 - **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
-  scheduler, the other adapters (SMTP, web service), outbox, codecs other than
+  scheduler, the other adapters (SMTP, web service, and the earlier `DBSink`/`DBSource` library types), outbox, codecs other than
   HL7 v2, XML, and delimited, WASM compiler/executor/registry, PostgreSQL
   store, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
   metrics/tracing.

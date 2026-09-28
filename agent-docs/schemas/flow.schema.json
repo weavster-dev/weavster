@@ -264,7 +264,8 @@
             "driver",
             "dsnEnv",
             "query",
-            "idColumn"
+            "idColumn",
+            "update"
           ],
           "properties": {
             "type": {
@@ -290,20 +291,17 @@
             "idColumn": {
               "type": "string",
               "minLength": 1,
-              "description": "Column of the query's result that identifies a row; a row whose id the flow already stored is not stored again"
+              "description": "Column of the query's result that identifies a row (the update's key value; metadata source.database.id)"
             },
             "update": {
-              "type": [
-                "object",
-                "null"
-              ],
+              "type": "object",
               "additionalProperties": false,
               "required": [
                 "table",
                 "key",
                 "set"
               ],
-              "description": "Marks each stored row: UPDATE table SET … WHERE key = the row's id",
+              "description": "Marks each row once its message is stored: UPDATE table SET … WHERE key = the row's id; the query must leave marked rows out",
               "properties": {
                 "table": {
                   "type": "string",

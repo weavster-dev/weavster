@@ -1373,7 +1373,7 @@ components:
               - {required: [timeoutMs]}
               - {required: [certFile], not: {required: [keyFile]}}
               - {required: [keyFile], not: {required: [certFile]}}
-        - required: [driver, dsnEnv, query, idColumn]
+        - required: [driver, dsnEnv, query, idColumn, update]
           properties: {type: {enum: [database]}}
           not: {anyOf: [{required: [dir]}, {required: [pattern]}, {required: [moveTo]}, {required: [recursive]}, {required: [address]}, {required: [path]}, {required: [method]}, {required: [username]}, {required: [passwordEnv]}, {required: [certFile]}, {required: [keyFile]}, {required: [readTimeoutMs]}, {required: [frameStart]}, {required: [frameEnd]}, {required: [ackMode]}]}
         - required: [address]
@@ -1420,12 +1420,12 @@ components:
         driver: {type: string, enum: [postgres, sqlite], description: "database: postgres, or sqlite (a database file; for local use and tests)"}
         dsnEnv: {type: string, pattern: "^WEAVSTER_DB_[A-Z0-9_]+$", description: "database: server environment variable holding the connection string, WEAVSTER_DB_..."}
         query: {type: string, minLength: 1, description: "database: one SELECT (or WITH) statement run read-only every pollIntervalMs; each row becomes a message"}
-        idColumn: {type: string, minLength: 1, description: "database: column of the result identifying a row; a row whose id the flow already stored is not stored again"}
+        idColumn: {type: string, minLength: 1, description: "database: column of the result identifying a row (the update's key value; metadata source.database.id)"}
         update:
           type: object
           additionalProperties: false
           required: [table, key, set]
-          description: "database: marks each stored row: UPDATE table SET … WHERE key = the row's id"
+          description: "database: marks each row once its message is stored: UPDATE table SET … WHERE key = the row's id; the query must leave marked rows out"
           properties:
             table: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}(\\.[A-Za-z_][A-Za-z0-9_]{0,62})?$"}
             key: {type: string, pattern: "^[A-Za-z_][A-Za-z0-9_]{0,62}$"}

@@ -3,6 +3,7 @@ package adapters
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/base64"
 	"errors"
 	"math"
@@ -41,8 +42,8 @@ type SQLQueryOptions struct {
 
 // QuerySQL runs a database source's query read-only (a READ ONLY
 // transaction on PostgreSQL, PRAGMA query_only on SQLite, which ignores
-// read-only transactions) and returns up to MaxRows rows. Errors never
-// quote values.
+// read-only transactions) with LIMIT MaxRows, and returns the rows. Errors
+// never quote values.
 func QuerySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, error) {
 	if !ValidSelect(o.Query) {
 		return nil, errors.New("database: query must be one SELECT or WITH statement")
@@ -50,9 +51,15 @@ func QuerySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, err
 	if o.Timeout <= 0 {
 		o.Timeout = DBSinkTimeout
 	}
+	if o.MaxRows <= 0 {
+		o.MaxRows = 100
+	}
 	ctx, cancel := context.WithTimeout(ctx, o.Timeout)
 	defer cancel()
 	fail := func(err error) error { return dbError(ctx, o.Dialect, o.Timeout, err) }
+	// The database stops after MaxRows rows, instead of sending the whole
+	// result for the driver to drain.
+	query := "SELECT * FROM (" + strings.TrimRight(strings.TrimSpace(o.Query), "; \t\r\n") + ") AS weavster_rows LIMIT " + strconv.Itoa(o.MaxRows)
 	var rows *sql.Rows
 	if o.Dialect == DialectSQLite {
 		conn, err := db.Conn(ctx)
@@ -63,9 +70,14 @@ func QuerySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, err
 		if _, err := conn.ExecContext(ctx, "PRAGMA query_only = ON"); err != nil {
 			return nil, fail(err)
 		}
-		// Back to writable before the connection returns to the pool.
-		defer func() { _, _ = conn.ExecContext(context.WithoutCancel(ctx), "PRAGMA query_only = OFF") }()
-		if rows, err = conn.QueryContext(ctx, o.Query); err != nil {
+		// Back to writable before the connection returns to the pool; one
+		// that stays read-only is discarded instead.
+		defer func() {
+			if _, err := conn.ExecContext(context.WithoutCancel(ctx), "PRAGMA query_only = OFF"); err != nil {
+				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+			}
+		}()
+		if rows, err = conn.QueryContext(ctx, query); err != nil {
 			return nil, fail(err)
 		}
 	} else {
@@ -74,7 +86,7 @@ func QuerySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, err
 			return nil, fail(err)
 		}
 		defer func() { _ = tx.Rollback() }()
-		if rows, err = tx.QueryContext(ctx, o.Query); err != nil {
+		if rows, err = tx.QueryContext(ctx, query); err != nil {
 			return nil, fail(err)
 		}
 	}
@@ -93,7 +105,7 @@ func QuerySQL(ctx context.Context, db *sql.DB, o SQLQueryOptions) ([]SQLRow, err
 		return nil, errors.New("database: the query's result has no idColumn " + strconv.Quote(o.IDColumn))
 	}
 	var out []SQLRow
-	for len(out) < o.MaxRows && rows.Next() {
+	for rows.Next() {
 		vals := make([]any, len(cols))
 		ptrs := make([]any, len(cols))
 		for i := range vals {
@@ -178,21 +190,11 @@ func (u SQLUpdate) Statement() (string, []string, error) {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	param := func(i int) string {
-		if u.Dialect == DialectPostgres {
-			return "$" + strconv.Itoa(i)
-		}
-		return "?"
-	}
 	sets := make([]string, len(names))
 	for i, n := range names {
-		sets[i] = quoteIdentifier(n) + " = " + param(i+1)
+		sets[i] = quoteIdentifier(n) + " = " + placeholder(u.Dialect, i+1)
 	}
-	table := make([]string, 0, 2)
-	for _, p := range strings.SplitN(u.Table, ".", 2) {
-		table = append(table, quoteIdentifier(p))
-	}
-	return "UPDATE " + strings.Join(table, ".") + " SET " + strings.Join(sets, ", ") + " WHERE " + quoteIdentifier(u.Key) + " = " + param(len(names)+1), names, nil
+	return "UPDATE " + quoteTable(u.Table) + " SET " + strings.Join(sets, ", ") + " WHERE " + quoteIdentifier(u.Key) + " = " + placeholder(u.Dialect, len(names)+1), names, nil
 }
 
 // Mark runs the update for the row with id, as one statement (its own

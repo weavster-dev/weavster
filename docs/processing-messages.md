@@ -939,8 +939,8 @@ curl -s -u 'lab:a long random password' https://weavster.example.com:9443/result
 ### Read rows from a database
 
 A flow with a `database` source runs a query every few seconds while it is started and turns each
-row into a message: a JSON object of the row's columns. Use `update` to mark the rows it has
-taken, so the query does not return them again:
+row into a message: a JSON object of the row's columns. Each row is then marked with `update`,
+and the query must leave marked rows out, so it returns only rows not yet taken:
 
 ```json
 {
@@ -969,25 +969,28 @@ each new order becomes a message such as:
 | `driver` | Required. `postgres`, or `sqlite` (the connection string is then a database file path). |
 | `dsnEnv` | Required. The server environment variable holding the connection string, `WEAVSTER_DB_…`. |
 | `query` | Required. One `SELECT` (or `WITH … SELECT`) statement, without `;` inside it. It runs read-only: a PostgreSQL `READ ONLY` transaction, SQLite `query_only`. |
-| `idColumn` | Required. The column of the result that identifies a row. It is kept with the message as the metadata `source.database.id`. |
-| `update` | Optional. `table` (or `schema.table`), `key` (the table's column holding the row id), and `set` (column → value) mark each row once its message is stored: `UPDATE table SET … WHERE key = <id>`. |
+| `idColumn` | Required. The column of the result that identifies a row: the value `update` matches `key` against, kept with the message as the metadata `source.database.id`. |
+| `update` | Required. `table` (or `schema.table`), `key` (the table's column holding the row id), and `set` (column → value) mark each row once its message is stored: `UPDATE table SET … WHERE key = <id>`. |
 | `pollIntervalMs` | How often the query runs, 1000–3600000 (default 5000). |
-| `maxRows` | Rows read per poll, 1–10000 (default 100); the rest come with the next polls. |
+| `maxRows` | Rows read per poll, 1–10000 (default 100): the query runs with `LIMIT maxRows`, and the rest come with the next polls once these are marked. |
 | `timeoutMs` | Time allowed for the query and for each update, 1000–120000 (default 30000). |
 
 - Values become JSON: numbers, `true`/`false`, text, `null`; times as RFC 3339 text; bytes as
   text, or base64 when they are not UTF-8. The flow reads them with `inputFormat: json` (the
   default); other input formats are refused for a database source.
-- A row is stored at most once per id: before storing a row, the flow looks for a message it
-  already stored with that `source.database.id` and only marks it again if so. So a server that
-  stops between storing a row and marking it does not store it twice, and a query without
-  `update` sends each row once, even when the row changes later (use `update`, or a query that
-  only returns new rows, for changing data).
+- A row is marked once its message is stored, also when processing that message then fails
+  (the failure is the message's: it is retried or dead-lettered, and you can reprocess it).
+  Delivery is at least once: a server that stops between storing a row and marking it reads the
+  row again at the next start (look for two messages with the same `source.database.id`).
+- The query must leave out the rows `update` marked (`WHERE exported = false` above); otherwise
+  it returns the same rows again and they are stored again.
 - `update` values are sent as text and converted to the column's type by the database; names are
   checked and quoted as for the [database destination](#write-rows-to-a-database) (case-sensitive
   in PostgreSQL). Each update is one statement, its own transaction.
-- A row the flow refuses (for example a transform error) is not marked, is reported once as a
-  `source.database.refused` event with its id, and is not read again until the flow restarts.
+- Each flow's source polls on its own, so a slow flow does not delay another's; a flow's next poll
+  starts only after its previous one finished.
+- A row the flow cannot store (larger than the 10 MiB message limit) is not marked, is reported
+  once as a `source.database.refused` event with its id, and is skipped until the flow restarts.
 - A failed poll (an unset variable, a query or update error) is logged and recorded once as a
   `source.database.failed` event with the reason, for example
   `database: environment variable WEAVSTER_DB_HIS is not set`; it is retried at every interval.
