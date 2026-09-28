@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/robfig/cron/v3"
 
@@ -210,8 +211,18 @@ func checkSchedule(s *Source) error {
 	case s.PollIntervalMs != 0:
 		return errors.New("source.schedule and source.pollIntervalMs cannot both be set")
 	}
-	if _, err := cron.ParseStandard(s.Schedule); err != nil {
+	sched, err := cron.ParseStandard(s.Schedule)
+	if err != nil {
 		return fmt.Errorf("source.schedule %q is not a cron expression (minute hour day-of-month month day-of-week, or @hourly, @daily, @every 30s, …; optionally CRON_TZ=Area/City first)", s.Schedule)
+	}
+	if every, ok := sched.(cron.ConstantDelaySchedule); ok {
+		// robfig rounds anything shorter up to a second without saying so.
+		if d, err := time.ParseDuration(strings.TrimSpace(s.Schedule[strings.Index(s.Schedule, "@every")+len("@every"):])); err != nil || d < time.Second || d != every.Delay {
+			return fmt.Errorf("source.schedule %q: @every takes whole seconds of at least 1s (use pollIntervalMs for shorter intervals)", s.Schedule)
+		}
+	}
+	if sched.Next(time.Now()).IsZero() {
+		return fmt.Errorf("source.schedule %q never runs (no such date)", s.Schedule)
 	}
 	return nil
 }

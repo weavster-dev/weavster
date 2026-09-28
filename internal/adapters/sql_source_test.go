@@ -24,9 +24,12 @@ func TestQuerySQL(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	rows, err := QuerySQL(ctx, db, SQLQueryOptions{Dialect: DialectSQLite, Query: "SELECT id, n, f, s, b, z FROM t ORDER BY id;", IDColumn: "id", MaxRows: 2})
-	if err != nil {
-		t.Fatal(err)
+	rows, more, err := QuerySQL(ctx, db, SQLQueryOptions{Dialect: DialectSQLite, Query: "SELECT id, n, f, s, b, z FROM t ORDER BY id;", IDColumn: "id", MaxRows: 2})
+	if err != nil || !more {
+		t.Fatalf("%v, more %v", err, more)
+	}
+	if _, more, _ := QuerySQL(ctx, db, SQLQueryOptions{Dialect: DialectSQLite, Query: "SELECT id FROM t", IDColumn: "id", MaxRows: 5}); more {
+		t.Error("more with every row read")
 	}
 	if len(rows) != 2 || rows[0].ID != "a" || string(rows[0].Body) != `{"b":"AP8=","f":1.5,"id":"a","n":1,"s":"x","z":null}` ||
 		string(rows[1].Body) != `{"b":"text","f":2.5,"id":"b","n":2,"s":"y","z":null}` {
@@ -41,11 +44,11 @@ func TestQuerySQL(t *testing.T) {
 		{SQLQueryOptions{Dialect: DialectSQLite, Query: "SELECT z AS id FROM t", IDColumn: "id", MaxRows: 1}, "idColumn is NULL"},
 		{SQLQueryOptions{Dialect: DialectSQLite, Query: "SELECT id FROM nope", IDColumn: "id", MaxRows: 1}, "no such table"},
 	} {
-		if _, err := QuerySQL(ctx, db, tt.o); err == nil || !strings.Contains(err.Error(), tt.want) {
+		if _, _, err := QuerySQL(ctx, db, tt.o); err == nil || !strings.Contains(err.Error(), tt.want) {
 			t.Errorf("%s: %v, want %q", tt.o.Query, err, tt.want)
 		}
 	}
-	if ro, err := QuerySQL(ctx, db, SQLQueryOptions{Dialect: DialectSQLite, Query: "SELECT query_only AS id FROM pragma_query_only", IDColumn: "id", MaxRows: 1}); err != nil || len(ro) != 1 || ro[0].ID != "1" {
+	if ro, _, err := QuerySQL(ctx, db, SQLQueryOptions{Dialect: DialectSQLite, Query: "SELECT query_only AS id FROM pragma_query_only", IDColumn: "id", MaxRows: 1}); err != nil || len(ro) != 1 || ro[0].ID != "1" {
 		t.Errorf("the query did not run read-only: %+v %v", ro, err)
 	}
 	if _, err := db.Exec(`INSERT INTO t (id) VALUES ('d')`); err != nil {

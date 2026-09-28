@@ -108,7 +108,15 @@
             "required": [
               "pollIntervalMs",
               "schedule"
-            ]
+            ],
+            "properties": {
+              "pollIntervalMs": {
+                "type": "integer"
+              },
+              "schedule": {
+                "type": "string"
+              }
+            }
           }
         },
         {
@@ -377,7 +385,15 @@
             "required": [
               "pollIntervalMs",
               "schedule"
-            ]
+            ],
+            "properties": {
+              "pollIntervalMs": {
+                "type": "integer"
+              },
+              "schedule": {
+                "type": "string"
+              }
+            }
           }
         }
       ]

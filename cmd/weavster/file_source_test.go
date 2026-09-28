@@ -287,7 +287,7 @@ func TestFileSourceUsesCurrentMoveTo(t *testing.T) {
 	settled(t, dir, "b.json", "{}")
 	flows.flows[0].Source = &gateway.FlowSource{Type: "file", Dir: dir, MoveTo: newTo} // updated; the cache is older
 	s.listed = s.now()                                                                 // keep the cached list for this pass
-	s.last["f"] = time.Time{}
+	s.clock.last["f"] = time.Time{}
 	s.pass(context.Background())
 	if _, err := os.Stat(filepath.Join(newTo, "b.json")); err != nil {
 		t.Errorf("not moved to the current moveTo: %v", err)

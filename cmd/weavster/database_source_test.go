@@ -101,15 +101,15 @@ func TestDatabaseSourcePoll(t *testing.T) {
 	s := newDatabaseSources(list, &fakeIngest{id: "m"}, &fakeEvents{}, newDBPool(), quiet)
 	s.running["f"] = true
 	s.pass(context.Background())
-	if !s.last["f"].IsZero() {
+	if !s.clock.last["f"].IsZero() {
 		t.Error("a second poll started while one was running")
 	}
 	delete(s.running, "f")
-	s.last["f"], s.failed["f"], s.refused["f"] = time.Now(), "x", map[string]bool{"1": true}
+	s.clock.last["f"], s.failed["f"], s.refused["f"] = time.Now(), "x", map[string]bool{"1": true}
 	list.flows = nil
 	s.listed = time.Time{}
 	s.pass(context.Background())
-	if len(s.last) != 0 || len(s.failed) != 0 || len(s.refused) != 0 {
-		t.Errorf("a removed flow's state kept: %v %v %v", s.last, s.failed, s.refused)
+	if len(s.clock.last) != 0 || len(s.failed) != 0 || len(s.refused) != 0 {
+		t.Errorf("a removed flow's state kept: %v %v %v", s.clock.last, s.failed, s.refused)
 	}
 }

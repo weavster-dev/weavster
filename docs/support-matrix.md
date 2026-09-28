@@ -102,7 +102,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | Topology flow-node `activity` from real counters, zeros included | Implemented (wired) | `TestStatsEventsTopology`. Edge activity is not reported. |
 | YAML DSL `map`, `set`, `filter` steps | Implemented (wired) | `TestPipelineEndToEnd`. `build` and `destinationSet` are not supported. |
 | WASM executor (wazero), module registry | Library-only | Not used by the server. The executor has no WASI host. |
-| File and database sources poll on an interval (`pollIntervalMs`) or a cron `schedule` (5 fields or `@hourly`/`@every`, optional `CRON_TZ=`) | Implemented (wired) | `TestSourceSchedules`, `TestPollDue`. See [Poll on a schedule](processing-messages.md#poll-on-a-schedule). |
+| File and database sources poll on an interval (`pollIntervalMs`) or a cron `schedule` (5 fields or `@hourly`/`@every`, optional `CRON_TZ=`) | Implemented (wired) | `TestSourceSchedules`, `TestPollClock`. See [Poll on a schedule](processing-messages.md#poll-on-a-schedule). |
 | Scheduler library (durable jobs, leases, SQL job queue) | Library-only | The server's polling sources and retries do not use its job queue. |
 | Graceful shutdown bounded by `listen.shutdownTimeoutMs`; unfinished work resumes on the next start | Implemented (wired) | `TestGracefulShutdownRequeuesInFlightWork` |
 | Delivery retries with persisted backoff, `dead-lettered` status, restart recovery | Implemented (wired) | `TestRetryRecoversQueuedMessage`, `TestQueuedWorkSurvivesRestart`, `TestDeadLetterAfterMaxAttempts`. Dead letters can be listed, requeued, and removed (next row). |

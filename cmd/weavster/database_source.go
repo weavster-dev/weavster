@@ -39,8 +39,8 @@ type databaseSources struct {
 	cached []gateway.Flow
 	polls  sync.WaitGroup
 
-	mu      sync.Mutex                 // guards the maps, which the polls update
-	last    map[string]time.Time       // flow id -> last poll started
+	mu      sync.Mutex                 // guards the clock and maps, which the polls update
+	clock   pollClock                  // when each flow polls
 	running map[string]bool            // flow id -> a poll in progress
 	failed  map[string]string          // flow id -> last failure reported
 	refused map[string]map[string]bool // flow id -> row ids refused (reported once)
@@ -48,7 +48,7 @@ type databaseSources struct {
 
 func newDatabaseSources(flows flowLister, ingest messageIngester, events eventRecorder, dbs *dbPool, logger *slog.Logger) *databaseSources {
 	return &databaseSources{flows: flows, ingest: ingest, events: events, dbs: dbs, logger: logger, now: time.Now,
-		last: map[string]time.Time{}, running: map[string]bool{}, failed: map[string]string{}, refused: map[string]map[string]bool{}}
+		clock: newPollClock(), running: map[string]bool{}, failed: map[string]string{}, refused: map[string]map[string]bool{}}
 }
 
 // loop polls until ctx is cancelled, then waits for the polls in progress
@@ -92,28 +92,41 @@ func (s *databaseSources) pass(ctx context.Context) {
 			continue
 		}
 		active[f.ID] = true
-		if s.running[f.ID] || !pollDue(src, s.last, f.ID, now, defaultDBPollInterval) {
+		if s.running[f.ID] {
+			continue
+		}
+		due, err := s.clock.due(src, f.ID, now, defaultDBPollInterval)
+		if err != nil {
+			s.fail(f.ID, err.Error())
+		}
+		if !due {
 			continue
 		}
 		s.running[f.ID] = true
 		s.polls.Add(1)
 		go func(f gateway.Flow) {
 			defer s.polls.Done()
-			err := s.poll(ctx, f)
+			more, err := s.poll(ctx, f)
 			s.mu.Lock()
 			defer s.mu.Unlock()
 			delete(s.running, f.ID)
 			switch {
 			case err != nil && ctx.Err() == nil:
 				s.fail(f.ID, err.Error())
+				if f.Source.Schedule != "" { // a scheduled poll is not skipped for a passing error
+					s.clock.retry(f.ID, s.now().Add(defaultDBPollInterval))
+				}
 			case err == nil:
 				delete(s.failed, f.ID)
+				if more { // a backlog is read at once, not at the next interval or scheduled time
+					s.clock.retry(f.ID, s.now())
+				}
 			}
 		}(f)
 	}
-	for id := range s.last {
+	for id := range s.clock.last {
 		if !active[id] && !s.running[id] {
-			delete(s.last, id)
+			s.clock.forget(id)
 			delete(s.failed, id)
 			delete(s.refused, id)
 		}
@@ -121,26 +134,28 @@ func (s *databaseSources) pass(ctx context.Context) {
 }
 
 // poll reads one flow's rows, stores each one, and marks it; a row is
-// marked only once its message is stored.
-func (s *databaseSources) poll(ctx context.Context, f gateway.Flow) error {
+// marked only once its message is stored. more reports that the query
+// stopped at a limit after rows were marked, so more may be waiting.
+func (s *databaseSources) poll(ctx context.Context, f gateway.Flow) (more bool, err error) {
 	src := f.Source
 	dsn := os.Getenv(src.DSNEnv)
 	if dsn == "" {
-		return fmt.Errorf("database: environment variable %s is not set", src.DSNEnv)
+		return false, fmt.Errorf("database: environment variable %s is not set", src.DSNEnv)
 	}
 	db, err := s.dbs.get(src.Driver, src.DSNEnv, dsn)
 	if err != nil {
-		return err
+		return false, err
 	}
 	maxRows := defaultDBMaxRows
 	if src.MaxRows > 0 {
 		maxRows = src.MaxRows
 	}
 	timeout := time.Duration(src.TimeoutMs) * time.Millisecond
-	rows, err := adapters.QuerySQL(ctx, db, adapters.SQLQueryOptions{Dialect: src.Driver, Query: src.Query, IDColumn: src.IDColumn, MaxRows: maxRows, Timeout: timeout})
+	rows, full, err := adapters.QuerySQL(ctx, db, adapters.SQLQueryOptions{Dialect: src.Driver, Query: src.Query, IDColumn: src.IDColumn, MaxRows: maxRows, Timeout: timeout})
 	if err != nil {
-		return err
+		return false, err
 	}
+	marked := 0
 	mark := adapters.SQLUpdate{Dialect: src.Driver, Table: src.Update.Table, Key: src.Update.Key, Set: src.Update.Set, Timeout: timeout}
 	for _, row := range rows {
 		if ctx.Err() != nil || s.wasRefused(f.ID, row.ID) {
@@ -156,22 +171,25 @@ func (s *databaseSources) poll(ctx context.Context, f gateway.Flow) error {
 			// stored: the flow has the row (a processing failure is the
 			// message's, retried or dead-lettered like any other)
 		case errors.Is(err, gateway.ErrFlowNotRunning), errors.Is(err, gateway.ErrFlowNotFound):
-			return nil // stopped meanwhile; the next start reads the row
+			return false, nil // stopped meanwhile; the next start reads the row
 		case errors.Is(err, gateway.ErrInvalidMessage):
 			s.refuse(f.ID, row.ID)
 			continue // not stored, so not marked
 		default:
-			return fmt.Errorf("database: storing a row failed: %w", err)
+			return false, fmt.Errorf("database: storing a row failed: %w", err)
 		}
 		if err := mark.Mark(ctx, db, row.ID); err != nil {
-			return err
+			return false, err
 		}
+		marked++
 	}
-	return nil
+	// Only when rows were marked: refused rows alone fill the window
+	// again, and polling at once would find the same ones.
+	return full && marked > 0, nil
 }
 
 // fail logs and records a flow's source failure once per reason; the poll
-// is retried at the next interval. Callers hold mu.
+// is retried at the next interval (a scheduled one sooner). Callers hold mu.
 func (s *databaseSources) fail(flowID, reason string) {
 	if s.failed[flowID] == reason {
 		return

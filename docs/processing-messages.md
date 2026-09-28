@@ -974,7 +974,7 @@ each new order becomes a message such as:
 | `update` | Required. `table` (or `schema.table`), `key` (the table's column holding the row id), and `set` (column → value) mark each row once its message is stored: `UPDATE table SET … WHERE key = <id>`. |
 | `pollIntervalMs` | How often the query runs, 1000–3600000 (default 5000). |
 | `schedule` | Instead of `pollIntervalMs`: run the query at cron times; see [Poll on a schedule](#poll-on-a-schedule). |
-| `maxRows` | Rows read per poll, 1–10000 (default 100): the query runs with `LIMIT maxRows`, and the rest come with the next polls once these are marked. A poll also stops reading once the rows it holds reach 64 MiB. |
+| `maxRows` | Rows read per poll, 1–10000 (default 100): the query runs with `LIMIT maxRows`. When a poll stops at this limit (or once the rows it holds reach 64 MiB), the next poll runs at once, so a backlog is read without waiting for the next interval or scheduled time. |
 | `timeoutMs` | Time allowed for the query and for each update, 1000–120000 (default 30000). |
 
 - Values become JSON: numbers, `true`/`false`, text, `null`; times as RFC 3339 text; bytes as
@@ -995,7 +995,8 @@ each new order becomes a message such as:
   once as a `source.database.refused` event with its id, and is skipped until the flow restarts.
 - A failed poll (an unset variable, a query or update error) is logged and recorded once as a
   `source.database.failed` event with the reason, for example
-  `database: environment variable WEAVSTER_DB_HIS is not set`; it is retried at every interval.
+  `database: environment variable WEAVSTER_DB_HIS is not set`; it is retried at every interval
+  (with a `schedule`, every 5 seconds until a poll succeeds).
 - Give the database user only what the source needs: `SELECT` on the query's tables, and
   `UPDATE` on the marked columns.
 
@@ -1020,11 +1021,17 @@ export orders at 06:00 Berlin time:
   `@hourly`, `@daily`, `@weekly`, `@monthly`, `@yearly`, and `@every 30s` (an interval).
 - Times are in the server's time zone, unless the expression starts with `CRON_TZ=Area/City `
   (an IANA zone such as `Europe/Berlin` or `America/New_York`; daylight saving is followed).
-- The first poll is at the first scheduled time after the flow starts (not at once, as with
-  `pollIntervalMs`); a poll that runs past the next scheduled time is followed by one poll, not
-  one per missed time.
+- The first poll is at the first scheduled time after the server starts watching the flow: when
+  the flow is started, or when the server starts with the flow already started. Times the flow
+  was stopped or the server was down are not made up. A poll that runs past the next scheduled
+  time is followed by one poll, not one per missed time.
+- At a scheduled time the source finishes its work before waiting for the next one: a backlog
+  larger than one poll (100 files, or `maxRows` rows) is read in back-to-back polls; a file still
+  being written at that moment is read once it has been unchanged for a second; and a poll that
+  fails (a missing directory, a database error) is tried again every few seconds until it works.
 - `schedule` and `pollIntervalMs` cannot both be set, and `schedule` applies only to file and
-  database sources. An invalid expression is refused when you create the flow:
+  database sources. An invalid expression, one that never runs (`0 0 30 2 *`), or `@every` below
+  one second (use `pollIntervalMs`) is refused when you create the flow, for example
   `source.schedule "every day" is not a cron expression (…)`.
 
 ### Receive HL7 v2 over MLLP
