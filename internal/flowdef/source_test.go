@@ -1,6 +1,7 @@
 package flowdef
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -144,6 +145,30 @@ func TestCheckInput(t *testing.T) {
 	} {
 		if err := ValidateJSON([]byte(tt.doc)); (err == nil) != tt.ok {
 			t.Errorf("%s: %v", tt.doc, err)
+		}
+	}
+}
+
+func TestCheckTransforms(t *testing.T) {
+	set := json.RawMessage(`{"steps":[{"destinationSet":{"exclude":["b"],"when":"x"}}]}`)
+	plain := json.RawMessage(`{"steps":[{"set":{"field":"a","expr":"b"}}]}`)
+	dest := func(name string) Destination { return Destination{Name: name, Type: "file", Dir: "/d"} }
+	for _, tt := range []struct {
+		name string
+		f    Flow
+		want string
+	}{
+		{"none", Flow{}, ""},
+		{"ok", Flow{Transform: set, Destinations: []Destination{dest("a"), dest("b")}}, ""},
+		{"not a transform", Flow{Transform: json.RawMessage(`"x"`)}, ""},
+		{"unknown name", Flow{Transform: set, Destinations: []Destination{dest("a")}}, `destinationSet excludes "b", which is not a destination of the flow`},
+		{"in a destination transform", Flow{Destinations: []Destination{dest("a"), {Name: "b", Type: "file", Dir: "/d", Transform: set}}}, "destination b: transform: destinationSet can only be used in the flow's transform"},
+		{"in a response transform", Flow{Destinations: []Destination{{Name: "b", Type: "http", URL: "https://x", ResponseTransform: set}}}, "destination b: responseTransform: destinationSet can only be used"},
+		{"plain destination transform", Flow{Destinations: []Destination{{Name: "b", Type: "file", Dir: "/d", Transform: plain}}}, ""},
+	} {
+		err := CheckTransforms(tt.f)
+		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
+			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
 		}
 	}
 }

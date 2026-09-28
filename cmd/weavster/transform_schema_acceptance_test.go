@@ -21,7 +21,7 @@ func TestTransformSchema(t *testing.T) {
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
 	for flow, want := range map[string]string{
-		`{"id":"a","transform":{"steps":[{"destinationSet":{"exclude":["x"]}}]}}`:                                            "/transform/steps/0",
+		`{"id":"a","transform":{"steps":[{"build":{"template":"x"}}]}}`:                                                      "/transform/steps/0",
 		`{"id":"a","transform":{"steps":[{"filter":{"when":"x","action":"drop"}}]}}`:                                         "/transform/steps/0/filter/action",
 		`{"id":"a","destinations":[{"name":"d","type":"file","dir":"/tmp/x","transform":{"steps":[{"map":{"from":"a"}}]}}]}`: "/destinations/0/transform/steps/0/map",
 		`{"id":"a","destinations":[{"name":"d","type":"http","url":"https://x","responseTransform":{"color":"red"}}]}`:       "/destinations/0/responseTransform",

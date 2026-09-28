@@ -104,24 +104,26 @@ func TestValidateAcceptsValidTransform(t *testing.T) {
 // TestValidateRefuses: the schema describes exactly what runs.
 func TestValidateRefuses(t *testing.T) {
 	for name, doc := range map[string]string{
-		"build":                  "steps:\n  - build: { template: x }",
-		"destinationSet":         "steps:\n  - destinationSet: { exclude: [a] }",
-		"two kinds":              "steps:\n  - map: { from: a, to: b }\n    set: { field: c, expr: d }",
-		"empty step":             "steps:\n  - {}",
-		"unknown key":            "name: t\ncolor: red",
-		"bad action":             "steps:\n  - filter: { when: a, action: drop }",
-		"bad type":               "steps:\n  - map: { from: a, to: b, type: date }",
-		"missing to":             "steps:\n  - map: { from: a }",
-		"empty path":             "steps:\n  - map: { from: '', to: b }",
-		"not YAML":               "steps: [",
-		"unknown step key":       "steps:\n  - map: { from: a, to: b, via: c }",
-		"second document":        "name: t\n---\ncolor: red",
-		"broken second document": "name: t\n---\n[",
-		"empty path segment":     "steps:\n  - map: { from: a..b, to: c }",
-		"trailing dot":           "steps:\n  - set: { field: a., expr: x }",
-		"blank when":             "steps:\n  - filter: { when: '  ', action: reject }",
-		"number key":             "1: x",
-		"bool key in step":       "steps:\n  - {true: x}",
+		"build":                     "steps:\n  - build: { template: x }",
+		"destinationSet include":    "steps:\n  - destinationSet: { include: [a] }",
+		"destinationSet empty":      "steps:\n  - destinationSet: { exclude: [] }",
+		"destinationSet blank when": "steps:\n  - destinationSet: { exclude: [a], when: ' ' }",
+		"two kinds":                 "steps:\n  - map: { from: a, to: b }\n    set: { field: c, expr: d }",
+		"empty step":                "steps:\n  - {}",
+		"unknown key":               "name: t\ncolor: red",
+		"bad action":                "steps:\n  - filter: { when: a, action: drop }",
+		"bad type":                  "steps:\n  - map: { from: a, to: b, type: date }",
+		"missing to":                "steps:\n  - map: { from: a }",
+		"empty path":                "steps:\n  - map: { from: '', to: b }",
+		"not YAML":                  "steps: [",
+		"unknown step key":          "steps:\n  - map: { from: a, to: b, via: c }",
+		"second document":           "name: t\n---\ncolor: red",
+		"broken second document":    "name: t\n---\n[",
+		"empty path segment":        "steps:\n  - map: { from: a..b, to: c }",
+		"trailing dot":              "steps:\n  - set: { field: a., expr: x }",
+		"blank when":                "steps:\n  - filter: { when: '  ', action: reject }",
+		"number key":                "1: x",
+		"bool key in step":          "steps:\n  - {true: x}",
 	} {
 		if err := Validate([]byte(doc)); err == nil {
 			t.Errorf("%s: accepted", name)
@@ -130,8 +132,9 @@ func TestValidateRefuses(t *testing.T) {
 }
 
 // TestSchemaPublishedAndMatchesTypes: agent-docs holds the embedded schema,
-// and its properties are the Go types' JSON fields (build and
-// destinationSet steps are not run yet, so the schema leaves them out).
+// and its properties are the Go types' JSON fields (build is not run yet,
+// and destination sets are exclusion only, so the schema leaves out build
+// and include).
 func TestSchemaPublishedAndMatchesTypes(t *testing.T) {
 	published, err := os.ReadFile("../../agent-docs/schemas/transform.schema.json")
 	if err != nil || !bytes.Equal(published, Schema) {
@@ -157,13 +160,13 @@ func TestSchemaPublishedAndMatchesTypes(t *testing.T) {
 		sort.Strings(out)
 		return out
 	}
-	for name, v := range map[string]any{"Transform": Transform{}, "MapStep": MapStep{}, "SetStep": SetStep{}, "FilterStep": FilterStep{}, "Step": Step{}} {
+	for name, v := range map[string]any{"Transform": Transform{}, "MapStep": MapStep{}, "SetStep": SetStep{}, "FilterStep": FilterStep{}, "Step": Step{}, "DestinationSetStep": DestinationSetStep{}} {
 		var got []string
 		for k := range s.Defs[name].Properties {
 			got = append(got, k)
 		}
 		sort.Strings(got)
-		if want := fields(v, "build", "destinationSet"); !slices.Equal(got, want) {
+		if want := fields(v, "build", "include"); !slices.Equal(got, want) {
 			t.Errorf("$defs/%s properties %v, Go fields %v", name, got, want)
 		}
 	}

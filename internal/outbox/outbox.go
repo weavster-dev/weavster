@@ -52,20 +52,29 @@ func (o *Outbox) Receive(ctx context.Context, m state.Message) error {
 	return o.store.Put(ctx, m)
 }
 
-// Transform applies fn to the raw content and persists the result
-// (transform -> persist result, gap #5).
-func (o *Outbox) Transform(ctx context.Context, id string, fn func([]byte) ([]byte, error)) error {
+// SetTransformed stores out as the message's transformed content (transform
+// -> persist result, gap #5) and sets metadata (an empty value removes the
+// key), in one write, so what the transform decided (such as excluded
+// destinations) is never stored without its output or the other way round.
+// It returns the stored message.
+func (o *Outbox) SetTransformed(ctx context.Context, id string, out []byte, metadata map[string]string) (state.Message, error) {
 	m, err := o.store.Get(ctx, id)
 	if err != nil {
-		return err
+		return state.Message{}, err
 	}
-	out, err := fn(m.Raw)
-	if err != nil {
-		return err
+	for k, v := range metadata {
+		switch {
+		case v == "":
+			delete(m.Metadata, k)
+		case m.Metadata == nil:
+			m.Metadata = map[string]string{k: v}
+		default:
+			m.Metadata[k] = v
+		}
 	}
 	m.Transformed = out
 	m.Status = state.StatusTransformed
-	return o.store.Put(ctx, m)
+	return m, o.store.Put(ctx, m)
 }
 
 // Deliver sends the message to one destination and records the outcome. It

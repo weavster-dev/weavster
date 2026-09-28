@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -433,5 +434,71 @@ func TestProcessDelimitedInput(t *testing.T) {
 		if !errors.As(err, &invalid) || invalid.Reason != want {
 			t.Errorf("%q: %v, want %q", body, err, want)
 		}
+	}
+}
+
+// TestProcessDestinationSet: the flow's destinationSet steps exclude
+// destinations for a message, the exclusion is stored with the message and
+// honored by retries, and a message with every destination excluded is
+// filtered.
+func TestProcessDestinationSet(t *testing.T) {
+	ctx := context.Background()
+	sinks := map[string]*recordingSink{"ehr": {}, "archive": {}}
+	store := state.NewMemStore()
+	p := New(store, func(d Destination) (Sink, error) { return sinks[d.Name], nil }, nil, Options{MaxAttempts: 3})
+	f := Flow{ID: "f",
+		Transform:    transform(t, "name: t\nsteps:\n  - destinationSet: { exclude: [ehr], when: \"kind == 'orm'\" }\n  - destinationSet: { exclude: [archive], when: test }"),
+		Destinations: []Destination{{Name: "ehr", Type: "file", Dir: "d"}, {Name: "archive", Type: "file", Dir: "d"}}}
+	for _, tt := range []struct {
+		body, status, ehr, archive, excluded string
+	}{
+		{`{"kind":"adt"}`, "sent", "1", "1", ""},
+		{`{"kind":"orm"}`, "sent", "1", "2", "ehr"},
+		{`{"kind":"orm","test":true}`, "filtered", "1", "2", "archive,ehr"},
+	} {
+		res, err := p.Process(ctx, f, []byte(tt.body))
+		if err != nil || string(res.Status) != tt.status {
+			t.Fatalf("%s: %+v %v", tt.body, res, err)
+		}
+		m, _ := store.Get(ctx, res.ID)
+		if got := fmt.Sprint(len(sinks["ehr"].bodies), len(sinks["archive"].bodies)); got != tt.ehr+" "+tt.archive || m.Metadata[ExcludedMetadata] != tt.excluded {
+			t.Errorf("%s: deliveries ehr/archive %s, excluded %q; want %s %s, %q", tt.body, got, m.Metadata[ExcludedMetadata], tt.ehr, tt.archive, tt.excluded)
+		}
+	}
+
+	// A reprocessed message arrives with the old exclusion in its metadata;
+	// this run excludes nothing, so it is removed and ehr gets the message.
+	// The same holds for a flow with no transform at all.
+	plain := Flow{ID: "p", Destinations: f.Destinations}
+	res0, err := p.ProcessWithMetadata(ctx, plain, []byte(`{}`), map[string]string{ExcludedMetadata: "ehr"})
+	if err != nil || res0.Status != state.StatusSent {
+		t.Fatalf("reprocessed, no transform: %+v %v", res0, err)
+	}
+	if m, _ := store.Get(ctx, res0.ID); m.Metadata[ExcludedMetadata] != "" || len(sinks["ehr"].bodies) != 2 {
+		t.Errorf("no transform: excluded %q, ehr deliveries %d; want none, 2", m.Metadata[ExcludedMetadata], len(sinks["ehr"].bodies))
+	}
+	res, err := p.ProcessWithMetadata(ctx, f, []byte(`{"kind":"adt"}`), map[string]string{ExcludedMetadata: "ehr"})
+	if err != nil || res.Status != state.StatusSent {
+		t.Fatalf("reprocessed: %+v %v", res, err)
+	}
+	if m, _ := store.Get(ctx, res.ID); m.Metadata[ExcludedMetadata] != "" || len(sinks["ehr"].bodies) != 3 {
+		t.Errorf("reprocessed: excluded %q, ehr deliveries %d; want none, 3", m.Metadata[ExcludedMetadata], len(sinks["ehr"].bodies))
+	}
+
+	// A retry honors the stored exclusion even though archive failed first.
+	sinks["archive"].fail = errors.New("down")
+	res, err = p.Process(ctx, f, []byte(`{"kind":"orm"}`))
+	if err != nil || res.Status != state.StatusQueued {
+		t.Fatalf("with archive down: %+v %v", res, err)
+	}
+	sinks["archive"].fail = nil
+	m, _ := store.Get(ctx, res.ID)
+	m.Attempts["archive"] = state.DestinationAttempt{Attempts: 1, LastError: "down"} // due now
+	_ = store.Put(ctx, m)
+	if _, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) { return f, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ = store.Get(ctx, res.ID); m.Status != state.StatusSent || len(sinks["ehr"].bodies) != 3 {
+		t.Errorf("after retry: status %s, ehr deliveries %d (want sent, 3: ehr stays excluded)", m.Status, len(sinks["ehr"].bodies))
 	}
 }

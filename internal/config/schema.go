@@ -125,7 +125,7 @@ func checkArtifacts(c *Config) []string {
 	var errs []string
 	for _, k := range sortedKeys(c.Flows) {
 		f := c.Flows[k]
-		for _, err := range []error{flowdef.CheckSource(f.Source), flowdef.CheckInput(f)} {
+		for _, err := range []error{flowdef.CheckSource(f.Source), flowdef.CheckInput(f), flowdef.CheckTransforms(f)} {
 			if err != nil {
 				errs = append(errs, "flows."+k+": "+err.Error())
 			}
