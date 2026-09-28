@@ -144,6 +144,39 @@ import "backups/all flows.json" force
 | `help` | Lists the commands. |
 | `quit`, `exit` | End the interactive shell; ignored in batch mode. |
 
+## Codec self-test (`weavster test`)
+
+`weavster test` checks that this build reads and writes each data format without changing it:
+it parses a built-in sample of each format and writes it back, and a sample passes only if the
+output is byte for byte the input. It needs no server or database.
+
+| Sample | Covers |
+|---|---|
+| `identity/hl7` | HL7 v2 with subcomponents, escape sequences, repetitions, and a second message with custom delimiters (`MSH#$%!@`) |
+| `identity/json` | JSON with a 23-digit number and a decimal kept exactly, and `<`, `&`, non-ASCII text unescaped |
+| `identity/xml` | XML with a declaration, a comment, namespace prefixes and declarations, text mixed with elements, a processing instruction, and an empty element |
+| `identity/delimited` | Pipe-delimited text with RFC 4180 quoting: a field holding the delimiter, doubled quotes, and a line break |
+| `identity/raw` | Binary bytes, NUL and CR LF included |
+
+```bash
+weavster test --format json
+```
+
+```json
+[
+  {"name": "identity/hl7", "passed": true},
+  {"name": "identity/json", "passed": true},
+  …
+]
+```
+
+- `--filter NAME` runs the samples whose name contains `NAME`; `--format junit` (default) writes
+  JUnit XML, `--format json` JSON; `--output DIR` writes `results.xml` or `results.json` into
+  `DIR` instead of printing it.
+- A failed sample says what changed, for example
+  `xml: the round trip changed the content (212 bytes in, 208 out)`, and the command exits `1`.
+- It does not run your flows or your own fixtures.
+
 ## Deprecated command names
 
 Scripts written for older tools can keep their command names. A deprecated name prints a warning

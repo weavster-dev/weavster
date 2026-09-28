@@ -2,8 +2,8 @@ package codecs
 
 import (
 	"bytes"
+	"encoding/csv"
 	"fmt"
-	"strings"
 )
 
 // Delimited is the structured form of a delimited-text payload.
@@ -26,21 +26,18 @@ func NewDelimited(delim byte, hasHeader bool) *DelimitedCodec {
 
 func (c *DelimitedCodec) Name() string { return "delimited" }
 
+// Parse reads records with RFC 4180 quoting ("a, b" and "say ""hi"""
+// are one field each; a quoted field may span lines); blank lines are
+// skipped and rows may differ in length (#107 D-74).
 func (c *DelimitedCodec) Parse(in []byte) (any, error) {
-	text := strings.TrimRight(string(in), "\r\n")
+	r := csv.NewReader(bytes.NewReader(in))
+	r.Comma = rune(c.delim)
+	r.FieldsPerRecord = -1
+	rows, err := r.ReadAll()
+	if err != nil {
+		return nil, fmt.Errorf("codec: delimited: %w", err)
+	}
 	d := &Delimited{}
-	if text == "" {
-		return d, nil
-	}
-	lines := strings.Split(text, "\n")
-	rows := make([][]string, 0, len(lines))
-	for _, line := range lines {
-		line = strings.TrimRight(line, "\r")
-		if strings.TrimSpace(line) == "" {
-			continue
-		}
-		rows = append(rows, strings.Split(line, string(c.delim)))
-	}
 	if c.hasHeader && len(rows) > 0 {
 		d.Header = rows[0]
 		d.Rows = rows[1:]
@@ -50,24 +47,28 @@ func (c *DelimitedCodec) Parse(in []byte) (any, error) {
 	return d, nil
 }
 
+// Serialize writes the header and rows, quoting a field only when it needs
+// it (it holds the delimiter, a quote, a line break, or starts with a
+// space); rows end with \n, except the last.
 func (c *DelimitedCodec) Serialize(v any) ([]byte, error) {
 	d, ok := v.(*Delimited)
 	if !ok {
 		return nil, fmt.Errorf("codec: delimited: serialize expects *Delimited, got %T", v)
 	}
 	var buf bytes.Buffer
-	lines := make([][]string, 0, len(d.Rows)+1)
+	w := csv.NewWriter(&buf)
+	w.Comma = rune(c.delim)
 	if len(d.Header) > 0 {
-		lines = append(lines, d.Header)
+		_ = w.Write(d.Header) // a bytes.Buffer does not fail
 	}
-	lines = append(lines, d.Rows...)
-	for i, row := range lines {
-		buf.WriteString(strings.Join(row, string(c.delim)))
-		if i < len(lines)-1 {
-			buf.WriteByte('\n')
-		}
+	for _, row := range d.Rows {
+		_ = w.Write(row)
 	}
-	return buf.Bytes(), nil
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return nil, fmt.Errorf("codec: delimited: %w", err)
+	}
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
 }
 
 func (c *DelimitedCodec) Acknowledge([]byte) ([]byte, error) { return nil, ErrNotSupported }

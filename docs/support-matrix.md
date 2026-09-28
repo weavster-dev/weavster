@@ -122,7 +122,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | `-c connection-file` | Implemented (wired) | `TestShell`. YAML with `address`, `user`, `password`; `-a/-u/-p` override it; a missing or invalid file exits `2`. |
 | `-d` | Implemented (wired) | `TestShell/debug_shows_causes`. Adds each underlying cause to error output. |
 | Interactive shell | Implemented (wired) | `TestShell`. Same commands as batch mode. See [Command-line client](cli.md). |
-| `weavster test [--filter NAME] [--format junit\|json] [--output DIR]` | Implemented (wired) | `TestRunTestCommand`. Runs four built-in codec round-trip fixtures (`identity/hl7`, `identity/json`, `identity/xml`, `identity/raw`). It does not discover your flows or fixtures. |
+| `weavster test [--filter NAME] [--format junit\|json] [--output DIR]` | Implemented (wired) | `TestRunTestCommand`, `TestCodecRoundTrips`, `TestCodecRoundTrip`. Runs five built-in codec round-trip samples (`identity/hl7`, `identity/json`, `identity/xml`, `identity/delimited`, `identity/raw`); each passes only if the output equals the input. It does not discover your flows or fixtures. See [Codec self-test](cli.md#codec-self-test-weavster-test). |
 
 Example:
 
@@ -162,22 +162,21 @@ Those are Enterprise items with no code in the source tree.
 ## Codecs
 
 The codecs below are libraries (tier, versions, and notes describe them); you can exercise them
-with `weavster test`, which covers HL7 v2, JSON, XML, and raw. The server handles HL7 v2, XML,
+with `weavster test`, which round-trips HL7 v2, JSON, XML, delimited text, and raw bytes. The server handles HL7 v2, XML,
 delimited text, JSON, and raw bytes with its own readers and writers, as the "Server use" column
 says: to read messages for transforms
 ([`inputFormat`](processing-messages.md#transform-hl7-v2-messages)), to write
 [`build`](processing-messages.md#build-the-output-build) output, and to acknowledge messages an
 [mllp source](processing-messages.md#receive-hl7-v2-over-mllp) receives. Where they differ, the
-processing docs describe the server's behavior; for example the server's delimited reader
-handles RFC 4180 quoting, which the library codec does not.
+processing docs describe the server's behavior.
 
 <!-- codec-table: every cell is checked against codecs.CoverageMatrix() by TestSupportMatrixCodecs -->
 | Codec | Tier | Server use | Versions / segments | Acknowledgment | Notes |
 |---|---|---|---|---|---|
-| `delimited` | Library-only | reads it for transforms (inputFormat delimited): RFC 4180 quoting, one-character delimiter | any (configurable delimiter) | no | tab/pipe/comma; optional header |
-| `hl7v2` | Library-only | reads it for transforms (inputFormat hl7v2), writes it (build format hl7v2), acknowledges MLLP messages | 2.1–2.9 segment/field/repetition/component/subcomponent | yes | MSH/MSA ACK |
-| `json` | Library-only | reads and writes it for transforms (the default) | RFC 8259 | no | stdlib encoding/json |
-| `xml` | Library-only | reads it for transforms (inputFormat xml), writes it (build format xml) | XML 1.0 (XXE-safe) | no | no DTD/external-entity resolution by construction |
+| `delimited` | Library-only | reads it for transforms (inputFormat delimited): RFC 4180 quoting, one-character delimiter | any (configurable delimiter) | no | tab/pipe/comma; optional header; RFC 4180 quoting; round trip exact for canonical input |
+| `hl7v2` | Library-only | reads it for transforms (inputFormat hl7v2), writes it (build format hl7v2), acknowledges MLLP messages | 2.1–2.9 segment/field/repetition/component/subcomponent | yes | MSH/MSA ACK; round trip byte for byte, any delimiters |
+| `json` | Library-only | reads and writes it for transforms (the default) | RFC 8259 | no | stdlib encoding/json; numbers exact; round trip keeps the value (keys sorted) |
+| `xml` | Library-only | reads it for transforms (inputFormat xml), writes it (build format xml) | XML 1.0 (XXE-safe) | no | no DTD/external-entity resolution by construction; round trip keeps namespaces, attribute order, and mixed content order |
 | `x12` | Library-only |  | ISA/GS/ST envelope | yes | 997 functional acknowledgment |
 | `ncpdp` | Library-only |  | Telecommunication (FS/GS/RS delimiters) | no | fixed-width amount formatting; response limited |
 | `raw` | Library-only | passes messages through unchanged (flows without transforms) | any binary | no | passthrough |
