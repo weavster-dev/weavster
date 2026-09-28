@@ -665,12 +665,14 @@ the flow as a message, and then deletes it (or moves it into `moveTo`):
   `rsync` temporary files and `.DS_Store`) are skipped. A pattern starting with `.` reads hidden
   files.
 - With `"recursive": true`, files in subdirectories are read too, up to 32 levels deep, in path
-  order; hidden directories are skipped like hidden files, and `pattern` matches the file name
+  order; hidden directories are always skipped (a pattern starting with `.` reads hidden files,
+  not hidden directories), and `pattern` matches the file name
   (`*.hl7` finds `2026/09/adt.hl7`). The metadata `source.file` is the path relative to `dir`
   (`2026/09/adt.hl7`), and `moveTo` (and `moveTo/rejected`) keep that path
   (`/var/lib/weavster/done/adt/2026/09/adt.hl7`). `moveTo` must then be outside `dir`, or moved
   files would be read again. No other flow may read a directory, or move files, inside a
-  recursive source's `dir`. A subdirectory that cannot be read is logged (once) and its files are
+  recursive source's `dir`; these checks also compare paths with symbolic links resolved (links
+  created after the flow was saved are not detected). A subdirectory that cannot be read is logged (once) and its files are
   not read. Subdirectories are left in place when their files have been processed, and every poll
   walks the whole tree, so keep it small. A `dir` that is itself a symbolic link is followed;
   links inside it are not.

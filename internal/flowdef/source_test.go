@@ -2,6 +2,8 @@ package flowdef
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -195,6 +197,31 @@ func TestCheckDestinations(t *testing.T) {
 		err := CheckDestinations(Flow{Destinations: []Destination{tt.dest}})
 		if (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)) {
 			t.Errorf("%+v: %v, want %q", tt.dest, err, tt.want)
+		}
+	}
+}
+
+// TestWithinResolvesLinks: containment holds through a symbolic link, also
+// for a directory that does not exist yet.
+func TestWithinResolvesLinks(t *testing.T) {
+	real := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		path, dir string
+		want      bool
+	}{
+		{filepath.Join(real, "done"), link, true},
+		{filepath.Join(link, "done", "later"), real, true},
+		{real, link, true},
+		{filepath.Join(t.TempDir(), "x"), link, false},
+		{"/in/done", "/in", true},
+		{"/inbox", "/in", false},
+	} {
+		if got := Within(tt.path, tt.dir); got != tt.want {
+			t.Errorf("Within(%s, %s) = %v, want %v", tt.path, tt.dir, got, tt.want)
 		}
 	}
 }

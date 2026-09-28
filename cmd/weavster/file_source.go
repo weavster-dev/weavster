@@ -227,7 +227,9 @@ func listFiles(dir string, recursive bool, pattern string) (files []listed, skip
 		}
 		if d.IsDir() {
 			// rel of a directory n levels down has n-1 separators.
-			if hidden(d.Name(), pattern) || strings.Count(rel, string(filepath.Separator))+1 > maxSourceDepth {
+			// Hidden directories are always skipped (a pattern starting
+			// with a dot opts into hidden files only).
+			if strings.HasPrefix(d.Name(), ".") || strings.Count(rel, string(filepath.Separator))+1 > maxSourceDepth {
 				return filepath.SkipDir
 			}
 			return nil

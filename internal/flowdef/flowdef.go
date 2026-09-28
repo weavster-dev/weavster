@@ -244,10 +244,34 @@ func CheckSource(s *Source) error {
 	return nil
 }
 
-// Within reports whether path is dir or inside it.
+// Within reports whether path is dir or inside it, comparing both as
+// written and with symbolic links resolved (a recursive source follows a
+// linked dir, so /link/done and /real/done can be the same place).
 func Within(path, dir string) bool {
-	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(path))
+	return inside(filepath.Clean(path), filepath.Clean(dir)) || inside(resolve(path), resolve(dir))
+}
+
+func inside(path, dir string) bool {
+	rel, err := filepath.Rel(dir, path)
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolve is p with symbolic links resolved in its longest existing
+// prefix (a directory may not exist yet: moveTo is created on first use).
+func resolve(p string) string {
+	p = filepath.Clean(p)
+	rest := ""
+	for {
+		if real, err := filepath.EvalSymlinks(p); err == nil {
+			return filepath.Join(real, rest)
+		}
+		parent := filepath.Dir(p)
+		if parent == p {
+			return filepath.Join(p, rest)
+		}
+		rest = filepath.Join(filepath.Base(p), rest)
+		p = parent
+	}
 }
 
 // Listens reports whether s is a source with its own port (http or mllp).

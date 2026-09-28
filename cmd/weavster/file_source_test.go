@@ -325,6 +325,15 @@ func TestListFilesRecursive(t *testing.T) {
 	if err := os.Symlink(root, link); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.MkdirAll(filepath.Join(root, ".cache"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".cache", ".x.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if files, _, _ := listFiles(root, true, ".*"); len(files) != 0 {
+		t.Errorf("a dot pattern entered a hidden directory: %v", files)
+	}
 	deepest := strings.Repeat("d/", maxSourceDepth) + "deepest.json"
 	for _, dir := range []string{root, link} {
 		files, skipped, err := listFiles(dir, true, "*.json")
