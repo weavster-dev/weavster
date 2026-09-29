@@ -55,6 +55,7 @@ auth:
 		{name: "bad dialect", yaml: "store: {dialect: mysql}\n", wantErr: "store.dialect must be"},
 		{name: "postgres without dsn", yaml: "store: {dialect: postgres}\n", wantErr: "needs store.dsn or store.dsnEnv"},
 		{name: "postgres with both", yaml: "store: {dialect: postgres, dsn: \"postgres://h/db\", dsnEnv: WEAVSTER_STORE_DSN}\n", wantErr: "needs store.dsn or store.dsnEnv"},
+		{name: "dsnEnv a flow could read", yaml: "store: {dialect: postgres, dsnEnv: WEAVSTER_DB_STORE}\n", wantErr: "uses a prefix flows may read"},
 		{name: "bad dsnEnv", yaml: "store: {dialect: postgres, dsnEnv: ../dsn}\n", wantErr: "store.dsnEnv must be a secret name"},
 		{name: "relative secrets dir", yaml: "secrets: {dir: secrets}\n", wantErr: "secrets.dir must be an absolute path"},
 		{name: "sqlite removed", yaml: "store: {dialect: sqlite, dsn: /var/lib/weavster/weavster.db}\n", wantErr: "sqlite is no longer supported: use postgres"},

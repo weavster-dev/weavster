@@ -135,7 +135,7 @@ and serves nothing.
 |---|---|---|
 | `dialect` | `memory` | `memory`, `postgres`, or `disabled`. |
 | `dsn` | `""` | For `postgres`, a URL such as `postgres://weavster@db:5432/weavster?sslmode=verify-full`. |
-| `dsnEnv` | `""` | For `postgres`, instead of `dsn`: the name of a [secret](#secrets) holding the URL, so its password stays out of this file. Letters, digits, and `_`. |
+| `dsnEnv` | `""` | For `postgres`, instead of `dsn`: the name of a [secret](#secrets) holding the URL, so its password stays out of this file. Letters, digits, and `_`, not starting with `WEAVSTER_DB_` or `WEAVSTER_SOURCE_` (flows may read those), for example `WEAVSTER_STORE_DSN`. |
 | `maxConnections` | `10` | Maximum open PostgreSQL connections. |
 | `maxRetry` | `3` | PostgreSQL only: extra connection attempts after the first failure. |
 | `retryWaitMs` | `1000` | PostgreSQL only: wait between attempts, in milliseconds. |
@@ -305,10 +305,15 @@ install -m 0600 /dev/null /etc/weavster/secrets/WEAVSTER_STORE_DSN
 echo 'postgres://weavster:the-password@db.internal:5432/weavster?sslmode=verify-full' > /etc/weavster/secrets/WEAVSTER_STORE_DSN
 ```
 
-- An empty variable or file counts as not set. A missing secret is reported as
-  `environment variable NAME is not set, and there is no file /etc/weavster/secrets/NAME`.
-- Secrets are read when they are used (a database connection opens, an http source's port opens),
-  so a changed file applies without a restart for database connections.
+- An empty variable or file counts as not set; an empty variable does not hide the file. A missing
+  secret is reported as
+  `environment variable NAME is not set, and there is no file /etc/weavster/secrets/NAME`, and a
+  file the server's account cannot read as `secret NAME: … permission denied`.
+- Database connection strings are read for every message and poll, so a changed secret applies
+  at once. An http source reads its password when its port opens: after changing it, stop and
+  start the flow.
+- If `secrets.dir` is set to something other than `/run/secrets` and is not a directory, the
+  server logs a warning at start and reads secrets from environment variables only.
 - Keep the directory readable by the server's account only (`chmod 0700`), and each file `0600`.
 
 ### `auth`

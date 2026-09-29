@@ -51,3 +51,14 @@ func TestOpenPostgresSecret(t *testing.T) {
 		t.Errorf("err = %v", err)
 	}
 }
+
+// TestSecretReaderUnreadable: a secret file that cannot be read says so.
+func TestSecretReaderUnreadable(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "WEAVSTER_DB_DIR"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := newSecretReader(dir).value(context.Background(), "WEAVSTER_DB_DIR"); err == nil || !strings.HasPrefix(err.Error(), "secret WEAVSTER_DB_DIR: ") {
+		t.Errorf("err = %v", err)
+	}
+}

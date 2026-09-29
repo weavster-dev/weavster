@@ -84,7 +84,7 @@ func TestEnvSecretNames(t *testing.T) {
 		}
 	}
 	e := NewEnv(filepath.Join(dir, "sub"))
-	if err := os.Mkdir(e.Dir(), 0o700); err != nil {
+	if err := os.Mkdir(filepath.Join(dir, "sub"), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	for _, tt := range []struct{ key, want string }{{"../LF", ""}, {`..\LF`, ""}, {"..", ""}, {".", ""}, {"", ""}} {
@@ -97,5 +97,25 @@ func TestEnvSecretNames(t *testing.T) {
 		if got, err := e.Get(context.Background(), key); err != nil || string(got) != want {
 			t.Errorf("Get(%s) = %q, %v; want %q", key, got, err, want)
 		}
+	}
+}
+
+// TestEnvFallbacks: an empty variable does not hide the file, and a file
+// that cannot be read is an error, not ErrNotFound.
+func TestEnvFallbacks(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "WEAVSTER_EMPTY_ENV"), []byte("from-file"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "A_DIRECTORY"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("WEAVSTER_EMPTY_ENV", "")
+	e := NewEnv(dir)
+	if got, err := e.Get(context.Background(), "WEAVSTER_EMPTY_ENV"); err != nil || string(got) != "from-file" {
+		t.Errorf("empty variable = %q, %v", got, err)
+	}
+	if _, err := e.Get(context.Background(), "A_DIRECTORY"); err == nil || errors.Is(err, ErrNotFound) {
+		t.Errorf("unreadable = %v", err)
 	}
 }

@@ -226,6 +226,9 @@ func (c Config) Validate() error {
 		if c.Store.DSNEnv != "" && !secretName.MatchString(c.Store.DSNEnv) {
 			return fmt.Errorf("config: store.dsnEnv must be a secret name (letters, digits, _), got %q", c.Store.DSNEnv)
 		}
+		if strings.HasPrefix(c.Store.DSNEnv, "WEAVSTER_DB_") || strings.HasPrefix(c.Store.DSNEnv, "WEAVSTER_SOURCE_") {
+			return fmt.Errorf("config: store.dsnEnv %s uses a prefix flows may read (WEAVSTER_DB_, WEAVSTER_SOURCE_): give the store's secret another name, such as WEAVSTER_STORE_DSN", c.Store.DSNEnv)
+		}
 	default:
 		return fmt.Errorf("config: store.dialect must be memory, postgres, or disabled, got %q", c.Store.Dialect)
 	}

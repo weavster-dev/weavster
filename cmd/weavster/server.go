@@ -51,6 +51,9 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 // workers (delivery retries) for runServer to run for the server's lifetime.
 func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Writer, cfg serverconfig.Config) (http.Handler, func() error, func(context.Context), error) {
 	secretsReader := newSecretReader(cfg.Secrets.Dir)
+	if info, err := os.Stat(cfg.Secrets.Dir); (err != nil || !info.IsDir()) && cfg.Secrets.Dir != serverconfig.Default().Secrets.Dir {
+		logger.Warn("secrets.dir is not a directory: secrets are read from environment variables only", "dir", cfg.Secrets.Dir)
+	}
 	store, err := openStore(ctx, logger, cfg, secretsReader)
 	if err != nil {
 		return nil, nil, nil, err
@@ -256,7 +259,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 
 // openStore connects the configured message store, retrying PostgreSQL
 // connections (spec §11). The disabled dialect returns a nil Store.
-func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config, secrets secretReader) (state.Store, error) {
+func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config, secrets secretValues) (state.Store, error) {
 	sc := cfg.Store
 	switch sc.Dialect {
 	case serverconfig.DialectDisabled:
@@ -290,7 +293,7 @@ func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config
 // openPostgres connects to the store's PostgreSQL database, reading the
 // connection string from the secret store.dsnEnv when that is set (at
 // every attempt: the secret may appear meanwhile).
-func openPostgres(ctx context.Context, sc serverconfig.Store, secrets secretReader) (state.Store, error) {
+func openPostgres(ctx context.Context, sc serverconfig.Store, secrets secretValues) (state.Store, error) {
 	dsn := sc.DSN
 	if sc.DSNEnv != "" {
 		var err error
@@ -1985,7 +1988,7 @@ type dbPool struct {
 	dbs    map[string]pooledDB
 	closed bool
 	// secrets holds the connection strings (dsnEnv).
-	secrets secretReader
+	secrets secretValues
 }
 
 // pooledDB is a pool and the connection string it was opened with.
@@ -1994,7 +1997,7 @@ type pooledDB struct {
 	db  *sql.DB
 }
 
-func newDBPool(secrets secretReader) *dbPool {
+func newDBPool(secrets secretValues) *dbPool {
 	return &dbPool{dbs: map[string]pooledDB{}, secrets: secrets}
 }
 

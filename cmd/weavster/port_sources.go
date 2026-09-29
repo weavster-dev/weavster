@@ -51,7 +51,7 @@ type portSources struct {
 	tlsOpts   gateway.TLSOptions
 	serverKey string
 	// secrets holds the Basic passwords (passwordEnv).
-	secrets secretReader
+	secrets secretValues
 
 	mu     sync.Mutex // guards open, which ports-in-use reads
 	open   map[string]*sourceListener
@@ -64,7 +64,7 @@ type sourceFailure struct {
 	reason string
 }
 
-func newPortSources(flows flowLister, ingest gateway.SourceIngester, events eventRecorder, reserved map[int]string, tlsOpts gateway.TLSOptions, serverKey string, secrets secretReader, logger *slog.Logger) *portSources {
+func newPortSources(flows flowLister, ingest gateway.SourceIngester, events eventRecorder, reserved map[int]string, tlsOpts gateway.TLSOptions, serverKey string, secrets secretValues, logger *slog.Logger) *portSources {
 	return &portSources{flows: flows, ingest: ingest, events: events, reserved: reserved, tlsOpts: tlsOpts, serverKey: serverKey, secrets: secrets, logger: logger,
 		open: map[string]*sourceListener{}, failed: map[string]sourceFailure{}}
 }
@@ -121,16 +121,16 @@ func (s *portSources) reconcile(ctx context.Context) {
 		_, isOpen := s.open[id]
 		s.mu.Unlock()
 		if !isOpen && ctx.Err() == nil {
-			s.start(id, src)
+			s.start(ctx, id, src)
 		}
 	}
 }
 
 // start opens id's listener; a failure is logged and recorded once per
 // source definition and reason, and retried on the next reconcile.
-func (s *portSources) start(id string, src gateway.FlowSource) {
+func (s *portSources) start(ctx context.Context, id string, src gateway.FlowSource) {
 	port, _ := flowdef.SourcePort(&src) // validated with the definition
-	ln, password, tlsCfg, err := s.listen(src, port)
+	ln, password, tlsCfg, err := s.listen(ctx, src, port)
 	if err != nil {
 		if f := (sourceFailure{src, err.Error()}); s.failed[id] != f {
 			s.failed[id] = f
@@ -200,14 +200,14 @@ func serveHTTPSource(id string, src gateway.FlowSource, ln net.Listener, passwor
 // listen opens src's port, reads its Basic password from its secret,
 // and loads its certificate (#107 D-58, D-71). A secured source whose password
 // or certificate is missing stays closed rather than open without.
-func (s *portSources) listen(src gateway.FlowSource, port int) (net.Listener, string, *tls.Config, error) {
+func (s *portSources) listen(ctx context.Context, src gateway.FlowSource, port int) (net.Listener, string, *tls.Config, error) {
 	if name := s.reserved[port]; name != "" {
 		return nil, "", nil, fmt.Errorf("port %d is the server's %s port", port, name)
 	}
 	var password string
 	if src.PasswordEnv != "" {
 		var err error
-		if password, err = s.secrets.value(context.Background(), src.PasswordEnv); err != nil {
+		if password, err = s.secrets.value(ctx, src.PasswordEnv); err != nil {
 			return nil, "", nil, err
 		}
 	}
