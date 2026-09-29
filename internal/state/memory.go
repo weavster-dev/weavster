@@ -10,12 +10,14 @@ import (
 // MemStore is an in-memory Store (passthrough/buffered backend; tests + local
 // DX, constraint #3).
 type MemStore struct {
-	mu      sync.RWMutex
-	m       map[string]Message
-	flows   map[string]FlowDefinition
-	users   map[string]UserDocument
-	items   map[string]map[string]json.RawMessage // kind -> name -> value
-	lookups map[string]map[string]string          // group -> key -> value
+	mu       sync.RWMutex
+	m        map[string]Message
+	flows    map[string]FlowDefinition
+	users    map[string]UserDocument
+	items    map[string]map[string]json.RawMessage // kind -> name -> value
+	lookups  map[string]map[string]string          // group -> key -> value
+	audit    []AuditRecord                         // oldest first
+	auditSeq int64
 }
 
 // NewMemStore returns an empty in-memory store.

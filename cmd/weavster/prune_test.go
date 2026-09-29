@@ -21,7 +21,11 @@ import (
 func testPruner(store state.Store, cfg serverconfig.Prune, now time.Time) (*pruner, *pipeline.Pipeline, *observability.EventLog) {
 	pipe := pipeline.New(store, newSink, nil, pipeline.Options{})
 	events := observability.NewEventLog()
-	p := newPruner(cfg, messageAdapter{store: store, pipe: pipe}, eventLogRecorder{events}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	audits, _ := store.(auditRepository)
+	if audits == nil {
+		audits = state.NewMemStore()
+	}
+	p := newPruner(cfg, messageAdapter{store: store, pipe: pipe}, audits, eventLogRecorder{events}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	p.now = func() time.Time { return now }
 	p.base = context.Background() // as while the server runs
 	return p, pipe, events
@@ -218,5 +222,28 @@ func TestPruneLoop(t *testing.T) {
 	}
 	if st := p.Status(); st.NextRun != nil {
 		t.Errorf("status after the loop = %+v, want no next run", st)
+	}
+}
+
+// TestPruneAudit: prune.auditMaxAgeDays removes older audit entries only;
+// the pass reports how many.
+func TestPruneAudit(t *testing.T) {
+	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	store := state.NewMemStore()
+	ctx := context.Background()
+	for _, at := range []time.Time{now.AddDate(0, 0, -40), now.AddDate(0, 0, -31), now.AddDate(0, 0, -1)} {
+		if _, err := store.AppendAudit(ctx, state.AuditRecord{At: at, Actor: "a", Action: "x"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	p, _, events := testPruner(store, serverconfig.Prune{AuditMaxAgeDays: 30, IntervalMinutes: 60}, now)
+	if run := runPass(t, p); run.AuditRemoved != 2 || run.Removed != 0 {
+		t.Errorf("run = %+v, want 2 audit entries removed", run)
+	}
+	if left, _ := store.SearchAudit(ctx, state.AuditQuery{}); len(left) != 1 {
+		t.Errorf("left %d entries, want 1", len(left))
+	}
+	if evs := events.Search(observability.EventFilter{Type: "messages.pruned"}); len(evs) != 1 || evs[0].Data["auditRemoved"] != "2" {
+		t.Errorf("event = %+v", evs)
 	}
 }

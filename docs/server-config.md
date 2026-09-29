@@ -246,6 +246,9 @@ Off by default.
 | `maxAgeHours` | `0` (off) | Remove messages received more than this many hours ago (1–876000). |
 | `maxMessages` | `0` (off) | Keep at most this many messages in the store; the oldest finished ones are removed first. Unfinished messages count toward the limit but are never removed. |
 | `intervalMinutes` | `60` | How often a pass runs (1–10080, one week). The first pass runs one interval after the server starts. |
+| `auditMaxAgeDays` | `0` (keep) | Remove stored [audit entries](audit-log.md#search-the-audit-log) older than this many days (1–36500). |
+
+Pruning needs a message store: with `store.dialect: disabled` a `prune` section stops the server at startup.
 
 ```yaml
 prune: {maxAgeHours: 720, intervalMinutes: 60}   # keep 30 days

@@ -10,7 +10,7 @@ import (
 var (
 	ErrPruneRunning    = errors.New("a prune pass is already running")
 	ErrPruneNotRunning = errors.New("no prune pass is running")
-	ErrPruneOff        = errors.New("pruning is not configured: set prune.maxAgeHours or prune.maxMessages")
+	ErrPruneOff        = errors.New("pruning is not configured: set prune.maxAgeHours, prune.maxMessages, or prune.auditMaxAgeDays")
 	// ErrPruneUnavailable: the server is starting or stopping (503).
 	ErrPruneUnavailable = errors.New("pruning is unavailable while the server starts or stops")
 )
@@ -28,6 +28,7 @@ type Pruner interface {
 type PruneStatus struct {
 	MaxAgeHours     int        `json:"maxAgeHours"`
 	MaxMessages     int        `json:"maxMessages"`
+	AuditMaxAgeDays int        `json:"auditMaxAgeDays"`
 	IntervalMinutes int        `json:"intervalMinutes"`
 	Running         bool       `json:"running"`
 	NextRun         *time.Time `json:"nextRunAt,omitempty"`
@@ -40,8 +41,10 @@ type PruneRun struct {
 	FinishedAt *time.Time `json:"finishedAt,omitempty"`
 	Removed    int        `json:"removed"`
 	Busy       int        `json:"busy"`
-	Stopped    bool       `json:"stopped"`
-	Error      string     `json:"error,omitempty"`
+	// AuditRemoved counts audit entries removed (prune.auditMaxAgeDays).
+	AuditRemoved int    `json:"auditRemoved"`
+	Stopped      bool   `json:"stopped"`
+	Error        string `json:"error,omitempty"`
 }
 
 func (s *Server) handlePruneStatus(w http.ResponseWriter, _ *http.Request) {

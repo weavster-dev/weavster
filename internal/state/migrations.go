@@ -163,6 +163,35 @@ func Migrations() []Migration {
 				return nil
 			},
 		},
+		{
+			// Audit entries (who did what, to what, when), searchable.
+			Version: 13,
+			Name:    "audit-log",
+			Apply: func(ctx context.Context, tx *sql.Tx) error {
+				id := `id INTEGER PRIMARY KEY AUTOINCREMENT`
+				if migratingPostgres(ctx) {
+					id = `id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY`
+				}
+				for _, stmt := range []string{
+					`CREATE TABLE audit_log (` + id + `,
+						at BIGINT NOT NULL,
+						actor TEXT NOT NULL,
+						action TEXT NOT NULL,
+						resource TEXT NOT NULL,
+						detail TEXT NOT NULL DEFAULT '{}'
+					)`,
+					`CREATE INDEX audit_log_at ON audit_log (at)`,
+					`CREATE INDEX audit_log_actor ON audit_log (actor, id)`,
+					`CREATE INDEX audit_log_action ON audit_log (action, id)`,
+					`CREATE INDEX audit_log_resource ON audit_log (resource, id)`,
+				} {
+					if _, err := tx.ExecContext(ctx, stmt); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
 	}
 }
 

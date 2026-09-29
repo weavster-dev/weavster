@@ -80,7 +80,7 @@ func TestAuthorizerAdapterAuthorize(t *testing.T) {
 func TestAuditAdapterRecord(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	sink := audit.NewLocalSink(logger)
-	a := auditAdapter{s: sink}
+	a := auditAdapter{s: sink, repo: state.NewMemStore(), logger: logger}
 
 	if err := a.Record(context.Background(), gateway.AuditEvent{Actor: "alice", Action: "create", Resource: "flow/f1"}); err != nil {
 		t.Errorf("Record: %v", err)
@@ -151,6 +151,9 @@ func TestStoresImplementFlowRepository(t *testing.T) {
 		}
 		if _, ok := s.(lookupRepository); !ok {
 			t.Errorf("%T does not implement lookupRepository", s)
+		}
+		if _, ok := s.(auditRepository); !ok {
+			t.Errorf("%T does not implement auditRepository", s)
 		}
 	}
 }
