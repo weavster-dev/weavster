@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -14,10 +15,10 @@ import (
 // transform), GET /metrics reports the same counts as the flow statistics
 // and the events, and it needs credentials.
 func TestOperationalMetrics(t *testing.T) {
-	fail := false
+	var fail atomic.Bool
 	downstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.Copy(io.Discard, r.Body)
-		if fail {
+		if fail.Load() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 		}
 	}))
@@ -34,7 +35,7 @@ func TestOperationalMetrics(t *testing.T) {
 	createFlow(t, c, `{"id":"conv","transform":{"name":"t","steps":[{"map":{"from":"n","to":"n","type":"number"}}]}}`)
 	c.do(http.MethodPost, "/api/v1/flows/lab/messages", `{"n":1}`, admin)       // sent
 	c.do(http.MethodPost, "/api/v1/flows/lab/messages", `{"skip":true}`, admin) // filtered
-	fail = true
+	fail.Store(true)
 	c.do(http.MethodPost, "/api/v1/flows/lab/messages", `{"n":2}`, admin)    // queued
 	c.do(http.MethodPost, "/api/v1/flows/conv/messages", `{"n":"x"}`, admin) // errored in the transform
 

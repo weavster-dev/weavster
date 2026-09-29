@@ -109,6 +109,7 @@ paths:
   /metrics:
     get:
       summary: "Prometheus metrics: messages by flow, connector, and outcome; flows by status; processing slots (requires flows:view; no CSRF marker needed)"
+      security: [{basicAuth: []}, {bearerAuth: []}]
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: Prometheus text exposition format, content: {text/plain: {schema: {type: string}, example: "weavster_flow_messages_total{flow=\"adt\",outcome=\"sent\"} 120\n"}}}
