@@ -104,22 +104,19 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	var all []testResult
+	var results []testResult // only what --filter selects is run
 	for _, fx := range builtinFixtures() {
+		if !strings.Contains(fx.name, *filter) {
+			continue
+		}
 		err := runTransform(fx.codec, fx.content)
 		r := testResult{Name: fx.name, Passed: err == nil}
 		if err != nil {
 			r.Failure = err.Error()
 		}
-		all = append(all, r)
+		results = append(results, r)
 	}
-	all = append(all, found.runFixtures()...)
-	var results []testResult
-	for _, r := range all {
-		if strings.Contains(r.Name, *filter) {
-			results = append(results, r)
-		}
-	}
+	results = append(results, found.runFixtures(*filter)...)
 
 	failures := 0
 	for _, r := range results {

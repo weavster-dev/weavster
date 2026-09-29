@@ -191,3 +191,55 @@ func TestFixtureErrors(t *testing.T) {
 		t.Errorf("a passing case failed: %s", errb.String())
 	}
 }
+
+// TestFixtureDiscovery: overlapping paths read each file once; a document
+// without version counts; other YAML (a compose file, version 1.0) and
+// unreadable directories are skipped; --filter runs only what it selects;
+// expected nulls and top-level mismatches are checked.
+func TestFixtureDiscovery(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"flows.yaml":           "flows:\n  p: {id: p, transform: {steps: [{map: {from: a, to: b}}]}}\n", // no version
+		"compose.yml":          "version: 1.0\nservices: {}\n",
+		"package.json":         `{"name": "x", "scripts": {}}`,
+		"tests/p.test.yaml":    "flow: p\ncases:\n  - {name: null field, input: '{\"a\":1,\"n\":null}', expect: {output: {n: null, b: 1}}}\n  - {name: missing is not null, input: '{\"a\":1}', expect: {output: {m: null}}}\n  - {name: top, input: '{\"a\":1}', expect: {destinations: {}, output: 5}}\n",
+		"broken/bad.test.yaml": "flow: nope\ncases: [{name: x, input: '{}'}]\n",
+		"locked/x.test.yaml":   "flow: p\ncases: [{name: x, input: '{}'}]\n",
+	} {
+		path := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(filepath.Join(dir, "locked"), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Join(dir, "locked"), 0o755) })
+
+	var out, errb bytes.Buffer
+	code := run([]string{"test", "--format", "json", "--filter", "tests/p", dir, filepath.Join(dir, "tests"), filepath.Join(dir, "flows.yaml")}, strings.NewReader(""), &out, &errb)
+	if code != 1 {
+		t.Fatalf("exit %d: %s", code, errb.String())
+	}
+	var results []testResult
+	if err := json.Unmarshal(out.Bytes(), &results); err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 3 { // each case once, the broken fixture not run
+		t.Errorf("results = %+v", results)
+	}
+	got := map[string]string{}
+	for _, r := range results {
+		got[r.Name[strings.LastIndex(r.Name, "/")+1:]] = r.Failure
+	}
+	if got["null field"] != "" || !strings.Contains(got["missing is not null"], "output differs at m (missing)") ||
+		!strings.Contains(got["top"], "output differs at the top") {
+		t.Errorf("failures = %v", got)
+	}
+	if strings.Contains(errb.String(), "defined in more than one document") || strings.Contains(errb.String(), "compose") || strings.Contains(errb.String(), "package") {
+		t.Errorf("stderr = %s", errb.String())
+	}
+}

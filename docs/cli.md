@@ -178,11 +178,16 @@ next to your [config-as-code documents](config-as-code.md), and run the command 
 weavster test --format junit --output artifacts/ .
 ```
 
-It looks under each `PATH` (default: the current directory, hidden directories skipped) for:
+It looks under each `PATH` (default: the current directory) for:
 
-- **config-as-code documents**: `*.yaml`, `*.yml`, or `*.json` files with `version: "1"`. Their
-  flows are the ones the fixtures test. Other YAML and JSON files are left alone.
+- **config-as-code documents**: `*.yaml`, `*.yml`, or `*.json` files with `version: "1"`, or
+  without a `version` when every top-level key is a config section (`flows`, `alerts`, …).
+  Their flows are the ones the fixtures test. Other YAML and JSON (a compose file, a CI
+  workflow, `package.json`) is left alone.
 - **fixture files**: `*.test.yaml`, `*.test.yml`, or `*.test.json`.
+
+Hidden directories, `node_modules`, and directories it cannot read are skipped, and a file under
+two of the paths is read once.
 
 A fixture file names one flow and lists cases:
 
@@ -213,7 +218,7 @@ then the own `transform` of each destination the message reaches. Nothing is sto
 |---|---|---|
 | `status` | `transformed`, `filtered` (a filter step dropped it), or `errored` (the input could not be read, or a step failed) | `transformed` |
 | `error` | Text the error must contain (with `status: errored`) | not checked |
-| `output` | The flow's JSON output has these fields with these values; fields you leave out are ignored, arrays and values must be equal | not checked |
+| `output` | The flow's JSON output has these fields with these values; fields you leave out are ignored, arrays and values must be equal. A field expected as `null` must be there, with `null` | not checked |
 | `outputText` | The flow's output, exactly (for a build step's HL7 v2, XML, or text) | not checked |
 | `excluded` | The destinations `destinationSet` steps left out (`[]`: none) | not checked |
 | `destinations.NAME` | That destination's own transform: `status`, `error`, `output`, `outputText` as above | not checked |
@@ -235,8 +240,8 @@ FAIL tests/adt/admit: output differs at patient.lastName: it is {"patient":{"las
 - `--format junit` (default) writes JUnit XML, `--format json` JSON; `--output DIR` writes
   `results.xml` or `results.json` into `DIR` instead of printing it. Failures are also printed
   to stderr, one line each (`FAIL name: reason`).
-- `--filter TEXT` runs the cases whose name contains `TEXT`. If none does, the command fails
-  with `no case matches --filter "TEXT"`.
+- `--filter TEXT` runs only the cases whose name contains `TEXT` (others are not run at all). If
+  none does, the command fails with `no case matches --filter "TEXT"`.
 - A fixture that cannot be run fails with the reason: a flow no document defines, a flow defined
   in two documents, an unknown key (`field casez not found`), a case without a name, or a missing
   `inputFile`. A config-as-code document that does not parse fails as well.

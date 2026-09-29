@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -43,7 +44,7 @@ type fixtureCase struct {
 type expectation struct {
 	Status       string                         `yaml:"status"`
 	Error        string                         `yaml:"error"`
-	Output       any                            `yaml:"output"`
+	Output       jsonValue                      `yaml:"output"`
 	OutputText   *string                        `yaml:"outputText"`
 	Excluded     []string                       `yaml:"excluded"`
 	Destinations map[string]destinationExpected `yaml:"destinations"`
@@ -51,10 +52,22 @@ type expectation struct {
 
 // destinationExpected is a destination transform's expected result.
 type destinationExpected struct {
-	Status     string  `yaml:"status"`
-	Error      string  `yaml:"error"`
-	Output     any     `yaml:"output"`
-	OutputText *string `yaml:"outputText"`
+	Status     string    `yaml:"status"`
+	Error      string    `yaml:"error"`
+	Output     jsonValue `yaml:"output"`
+	OutputText *string   `yaml:"outputText"`
+}
+
+// jsonValue is an expected output: set when the fixture gives one, null
+// included.
+type jsonValue struct {
+	set bool
+	v   any
+}
+
+func (j *jsonValue) UnmarshalYAML(n *yaml.Node) error {
+	j.set = true
+	return n.Decode(&j.v)
 }
 
 // maxFixtureInput bounds an inputFile.
@@ -67,22 +80,33 @@ type discovered struct {
 	flows    map[string]gateway.Flow
 	defined  map[string][]string // flow id -> documents
 	errs     []testResult        // documents that could not be read
+	seen     map[string]bool     // files already read (paths may overlap)
 }
 
-// discover walks the paths (files or directories; hidden directories are
-// skipped) for fixture files and config-as-code documents (version "1").
+// discover walks the paths (files or directories) for fixture files and
+// config-as-code documents. Hidden directories, node_modules, and
+// directories that cannot be read are skipped; a file under two of the
+// paths is read once.
 func discover(paths []string) (discovered, error) {
-	d := discovered{flows: map[string]gateway.Flow{}, defined: map[string][]string{}}
+	d := discovered{flows: map[string]gateway.Flow{}, defined: map[string][]string{}, seen: map[string]bool{}}
 	for _, root := range paths {
 		if _, err := os.Stat(root); err != nil {
 			return d, err
 		}
 		err := filepath.WalkDir(root, func(path string, e fs.DirEntry, err error) error {
+			if abs, aerr := filepath.Abs(path); aerr == nil && e != nil && !e.IsDir() {
+				if d.seen[abs] {
+					return nil
+				}
+				d.seen[abs] = true
+			}
 			switch {
+			case err != nil && path != root && errors.Is(err, fs.ErrPermission):
+				return filepath.SkipDir
 			case err != nil:
 				return err
 			case e.IsDir():
-				if path != root && strings.HasPrefix(e.Name(), ".") {
+				if path != root && (strings.HasPrefix(e.Name(), ".") || e.Name() == "node_modules") {
 					return filepath.SkipDir
 				}
 				return nil
@@ -109,11 +133,8 @@ func (d *discovered) document(path string) {
 		d.errs = append(d.errs, testResult{Name: filepath.ToSlash(path), Failure: err.Error()})
 		return
 	}
-	var head struct {
-		Version any `yaml:"version"`
-	}
-	if yaml.Unmarshal(data, &head) != nil || fmt.Sprint(head.Version) != "1" {
-		return // not a config-as-code document
+	if !configDocument(data) {
+		return
 	}
 	cfg, err := config.Parse(data)
 	if err != nil {
@@ -121,19 +142,50 @@ func (d *discovered) document(path string) {
 		return
 	}
 	for id, f := range cfg.Flows {
-		if f.ID == "" {
-			f.ID = id
-		}
 		d.flows[id] = f
 		d.defined[id] = append(d.defined[id], path)
 	}
 }
 
-// runFixtures runs every case of every fixture file.
-func (d discovered) runFixtures() []testResult {
-	results := append([]testResult(nil), d.errs...)
+// configSections are the top-level keys of a config-as-code document.
+var configSections = []string{"version", "flows", "alerts", "snippets", "snippetLibraries", "scripts", "configmap", "settings"}
+
+// configDocument reports whether data is meant as a config-as-code
+// document: a mapping whose version is exactly 1 (then any mistake in it
+// is reported), or, without a version, whose keys are all its sections.
+// Other YAML and JSON (a compose file with version 1.0, a CI workflow, a
+// package.json) is left alone.
+func configDocument(data []byte) bool {
+	var root yaml.Node
+	if yaml.Unmarshal(data, &root) != nil || len(root.Content) != 1 || root.Content[0].Kind != yaml.MappingNode {
+		return false
+	}
+	m := root.Content[0]
+	if len(m.Content) == 0 {
+		return false
+	}
+	sections := true
+	for i := 0; i < len(m.Content); i += 2 {
+		k, v := m.Content[i].Value, m.Content[i+1]
+		if k == "version" {
+			return v.Value == "1" && (v.Tag == "!!str" || v.Tag == "!!int")
+		}
+		sections = sections && slices.Contains(configSections, k)
+	}
+	return sections
+}
+
+// runFixtures runs the cases of every fixture file whose name contains
+// filter (every case when it is empty).
+func (d discovered) runFixtures(filter string) []testResult {
+	var results []testResult
+	for _, r := range d.errs {
+		if strings.Contains(r.Name, filter) {
+			results = append(results, r)
+		}
+	}
 	for _, path := range d.fixtures {
-		results = append(results, d.runFixture(path)...)
+		results = append(results, d.runFixture(path, filter)...)
 	}
 	return results
 }
@@ -147,9 +199,12 @@ func fixtureName(path string) string {
 	return filepath.ToSlash(path)
 }
 
-func (d discovered) runFixture(path string) []testResult {
+func (d discovered) runFixture(path, filter string) []testResult {
 	name := fixtureName(path)
 	fail := func(format string, a ...any) []testResult {
+		if !strings.Contains(name, filter) {
+			return nil // a broken fixture shows only when its name matches
+		}
 		return []testResult{{Name: name, Failure: fmt.Sprintf(format, a...)}}
 	}
 	data, err := readDocument(path)
@@ -180,6 +235,9 @@ func (d discovered) runFixture(path string) []testResult {
 	seen := map[string]bool{}
 	for i, c := range file.Cases {
 		r := testResult{Name: name + "/" + c.Name}
+		if !strings.Contains(r.Name, filter) {
+			continue // not run at all
+		}
 		switch {
 		case c.Name == "" || seen[c.Name]:
 			r.Name, r.Failure = fmt.Sprintf("%s/%d", name, i+1), "every case needs a name of its own"
@@ -209,11 +267,16 @@ func runCase(f pipeline.Flow, dir string, c fixtureCase) error {
 		if !filepath.IsAbs(path) {
 			path = filepath.Join(dir, path)
 		}
-		b, err := os.ReadFile(path)
+		file, err := os.Open(path)
 		if err != nil {
 			return fmt.Errorf("inputFile: %w", err)
 		}
-		if len(b) > maxFixtureInput {
+		b, err := io.ReadAll(io.LimitReader(file, maxFixtureInput+1))
+		_ = file.Close()
+		switch {
+		case err != nil:
+			return fmt.Errorf("inputFile: %w", err)
+		case len(b) > maxFixtureInput:
 			return fmt.Errorf("inputFile %s is larger than 10 MiB", c.InputFile)
 		}
 		input = b
@@ -223,7 +286,7 @@ func runCase(f pipeline.Flow, dir string, c fixtureCase) error {
 	if err := checkResult("", e.Status, e.Error, e.Output, e.OutputText, got.Status, got.Error, got.Output); err != nil {
 		return err
 	}
-	if e.Excluded != nil && !slices.Equal(sorted(e.Excluded), got.Excluded) && (len(e.Excluded) != 0 || len(got.Excluded) != 0) {
+	if e.Excluded != nil && !slices.Equal(sorted(e.Excluded), got.Excluded) {
 		return fmt.Errorf("excluded destinations are %v, want %v", got.Excluded, sorted(e.Excluded))
 	}
 	names := make([]string, 0, len(e.Destinations))
@@ -251,7 +314,7 @@ func sorted(s []string) []string {
 }
 
 // checkResult compares a status, error, and output with the expected ones.
-func checkResult(prefix, wantStatus, wantErr string, wantOutput any, wantText *string, status, errText string, output []byte) error {
+func checkResult(prefix, wantStatus, wantErr string, wantOutput jsonValue, wantText *string, status, errText string, output []byte) error {
 	if wantStatus == "" {
 		wantStatus = "transformed"
 	}
@@ -267,12 +330,12 @@ func checkResult(prefix, wantStatus, wantErr string, wantOutput any, wantText *s
 	if wantText != nil && string(output) != *wantText {
 		return fmt.Errorf("%soutput is %q, want %q", prefix, output, *wantText)
 	}
-	if wantOutput != nil {
+	if wantOutput.set {
 		var got, want any
 		if err := json.Unmarshal(output, &got); err != nil {
 			return fmt.Errorf("%soutput is not JSON (%q); compare it with outputText", prefix, output)
 		}
-		b, err := json.Marshal(wantOutput)
+		b, err := json.Marshal(wantOutput.v)
 		if err != nil {
 			return fmt.Errorf("%sexpected output: %w", prefix, err)
 		}
@@ -300,6 +363,9 @@ func includes(got, want any, at string) (string, bool) {
 	}
 	gm, ok := got.(map[string]any)
 	if !ok {
+		if at == "" {
+			return "the top (not an object)", false
+		}
 		return strings.TrimPrefix(at, ".") + " (not an object)", false
 	}
 	keys := make([]string, 0, len(wm))
@@ -308,7 +374,11 @@ func includes(got, want any, at string) (string, bool) {
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		if where, ok := includes(gm[k], wm[k], at+"."+k); !ok {
+		g, present := gm[k]
+		if !present { // an expected null too needs the field
+			return strings.TrimPrefix(at+"."+k, ".") + " (missing)", false
+		}
+		if where, ok := includes(g, wm[k], at+"."+k); !ok {
 			return strings.TrimPrefix(where, "."), false
 		}
 	}

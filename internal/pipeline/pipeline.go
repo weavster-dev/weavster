@@ -604,11 +604,19 @@ func applyTransform(f Flow, raw []byte) (out []byte, contentType string, exclude
 	if f.Transform == nil {
 		return raw, "raw", nil, false, nil
 	}
-	prog, err := dsl.Compile(*f.Transform)
+	return execute(*f.Transform, f, raw)
+}
+
+// execute runs transform t over body, read the way format's input options
+// say: the output (a build step's, else the document as JSON), its format,
+// the destinations destinationSet steps excluded, and whether a filter
+// dropped it. Flow and destination transforms both run through it.
+func execute(t compiler.Transform, format Flow, body []byte) (out []byte, outFormat string, excluded []string, filtered bool, err error) {
+	prog, err := dsl.Compile(t)
 	if err != nil {
 		return nil, "", nil, false, err
 	}
-	doc, err := decodeInput(f, raw)
+	doc, err := decodeInput(format, body)
 	if err != nil {
 		return nil, "", nil, false, err
 	}
@@ -775,23 +783,8 @@ func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 // destinationOutput runs transform t over body, the flow's output, read the
 // way format's input options say.
 func destinationOutput(t compiler.Transform, format Flow, body []byte) (out []byte, outFormat string, filtered bool, err error) {
-	prog, err := dsl.Compile(t)
-	if err != nil {
-		return nil, "", false, err
-	}
-	doc, err := decodeInput(format, body)
-	if err != nil {
-		return nil, "", false, err
-	}
-	res, err := prog.Execute(doc)
-	if err != nil || res.Filtered {
-		return nil, "", res.Filtered, err
-	}
-	if res.Body != nil { // a build step rendered the output
-		return res.Body, res.Format, false, nil
-	}
-	out, err = json.Marshal(res.Doc)
-	return out, "json", false, err
+	out, outFormat, _, filtered, err = execute(t, format, body)
+	return out, outFormat, filtered, err
 }
 
 // ExcludedMetadata is the message metadata listing (comma-separated) the
