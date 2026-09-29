@@ -1,5 +1,9 @@
 # Flow dependencies, export, and import
 
+Flow definition requests (`POST /api/v1/flows` and `PUT /api/v1/flows/{id}`)
+accept bodies up to 50 MiB, including whitespace. A larger body returns `413`
+without creating or updating the flow. Reduce the document before retrying.
+
 ## Dependencies
 
 A flow can declare the flows it needs with `dependsOn` (a list of flow ids):
