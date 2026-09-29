@@ -187,6 +187,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#run-the-server-weavster-server" class="nav-link">Run the server (weavster server)</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#deprecated-command-names" class="nav-link">Deprecated command names</a>
               <ul class="nav flex-column">
               </ul>
@@ -441,7 +445,11 @@ name, or a name several flows share, is an error that lists their ids.</p>
 </tr>
 <tr>
 <td><code>snippet list</code>, <code>snippet import "path"</code>, <code>snippet export "path"</code>, <code>snippet remove &lt;name&gt;</code></td>
-<td>Manages code snippets; <code>snippet library …</code> does the same for libraries. See <a href="../snippets/">Code snippets and libraries</a>.</td>
+<td>Manages code snippets.</td>
+</tr>
+<tr>
+<td><code>snippet library list</code>, <code>snippet library import "path"</code>, <code>snippet library export "path"</code>, <code>snippet library remove &lt;name&gt;</code></td>
+<td>The same for snippet libraries. See <a href="../snippets/">Code snippets and libraries</a>.</td>
 </tr>
 <tr>
 <td><code>config validate "path"</code></td>
@@ -682,6 +690,19 @@ statement of what it expects, for both runs.</p>
 <li><code>output</code> compares JSON values: <code>"12345"</code> (text) and <code>12345</code> (a number) differ. HL7 v2 fields
   are text.</li>
 <li>A flow without a <code>transform</code> passes messages through unchanged, so any input is <code>transformed</code>.</li>
+</ul>
+<h2 id="run-the-server-weavster-server">Run the server (<code>weavster server</code>)</h2>
+<pre><code class="language-bash">weavster server --config /etc/weavster/weavster-server.yaml
+weavster server --config weavster-server.yaml 127.0.0.1:9090   # the address overrides listen.address
+weavster server                                                  # defaults: 127.0.0.1:8080, memory store
+</code></pre>
+<ul>
+<li><code>--config FILE</code> reads the <a href="../server-config/">server configuration</a>; without it the defaults
+  apply (a memory store: nothing is kept after the server stops).</li>
+<li>An address after the flags replaces <code>listen.address</code> from the file.</li>
+<li>The server runs until <code>SIGINT</code> or <code>SIGTERM</code>, then drains in-flight messages for up to
+  <code>listen.shutdownTimeoutMs</code> and exits <code>0</code>. It refuses to run as root unless
+  <code>WEAVSTER_ALLOW_ROOT=1</code> is set.</li>
 </ul>
 <h2 id="deprecated-command-names">Deprecated command names</h2>
 <p>Scripts written for older tools can keep their command names. A deprecated name prints a warning

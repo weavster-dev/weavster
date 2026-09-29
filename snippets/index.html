@@ -235,7 +235,11 @@ permission.</p>
 </tr>
 </tbody>
 </table>
-<p><code>/api/v1/snippet-libraries</code> has the same operations for libraries (without <code>?summary</code>).</p>
+<p>Libraries have the same operations (without <code>?summary</code>):</p>
+<ul>
+<li><code>GET</code>, <code>POST</code>, and <code>PUT /api/v1/snippet-libraries</code></li>
+<li><code>GET</code>, <code>PUT</code>, and <code>DELETE /api/v1/snippet-libraries/{name}</code></li>
+</ul>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/snippet-libraries \
   -d '{&quot;name&quot;:&quot;hl7&quot;,&quot;description&quot;:&quot;HL7 helpers&quot;}'
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/snippets \

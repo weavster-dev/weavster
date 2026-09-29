@@ -322,7 +322,7 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 </thead>
 <tbody>
 <tr>
-<td><code>GET /api/v1/system</code> and <code>/api/v1/system/about</code>, <code>/password-requirements</code>, <code>/resources</code>, <code>/guid</code>, <code>/api/v1/auth/me</code>, <code>POST /api/v1/auth/password</code>, <code>/api/v1/auth/password/check</code>, <code>POST /api/v1/auth/logout</code></td>
+<td><code>GET /api/v1/system</code> and <code>/api/v1/system/about</code>, <code>/password-requirements</code>, <code>/resources</code>, <code>/guid</code>, <code>GET /api/v1/auth/me</code>, <code>POST /api/v1/auth/password</code>, <code>POST /api/v1/auth/password/check</code>, <code>POST /api/v1/auth/logout</code></td>
 <td>any signed-in user</td>
 </tr>
 <tr>
@@ -492,7 +492,9 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 </ul>
 <h2 id="preferences-sign-in-status-and-password-checks">Preferences, sign-in status, and password checks</h2>
 <p>Each user can keep their own preferences: a JSON object of names to text values, such as a UI
-theme or a default flow. <code>PUT</code> replaces the whole set; <code>GET</code> returns it (<code>{}</code> when none).</p>
+theme or a default flow.
+<code>PUT /api/v1/users/{name}/preferences</code> replaces the whole set;
+<code>GET /api/v1/users/{name}/preferences</code> returns it (<code>{}</code> when none).</p>
 <pre><code class="language-bash">curl -s -u 'ops:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT \
   http://127.0.0.1:8080/api/v1/users/ops/preferences -d '{&quot;theme&quot;:&quot;dark&quot;,&quot;dashboard.flow&quot;:&quot;adt&quot;}'
 curl -s -u 'ops:PASSWORD' http://127.0.0.1:8080/api/v1/users/ops/preferences

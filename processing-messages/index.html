@@ -283,6 +283,9 @@ JSON view of an <a href="#transform-hl7-v2-messages">HL7 v2 message</a>,
   (<code>'x'</code> or <code>"x"</code>), a number (<code>3</code>, <code>-1.5</code>), or <code>true</code>/<code>false</code>. A missing path compares equal
   to <code>''</code>. No other operators exist.</li>
 <li>Numbers keep their exact digits (for example 20-digit identifiers) unless a step converts them.</li>
+<li>Besides <code>steps</code>, a transform may have <code>name</code> (shown in its errors, for example
+  <code>dsl: to-ehr: step 2: …</code>), <code>kind</code> (free text, <code>Transform</code> when omitted), and <code>inputs</code> (a list of
+  text); <code>kind</code> and <code>inputs</code> are labels only and change nothing.</li>
 </ul>
 <p>The transform format is published as
 <a href="https://github.com/weavster-dev/weavster/blob/main/agent-docs/schemas/transform.schema.json"><code>transform.schema.json</code></a>.
@@ -931,7 +934,8 @@ its content:</p>
   several destinations by several steps.</li>
 <li>An excluded destination gets nothing: its own transform does not run, nothing is delivered,
   and it counts as done. A message whose every destination is excluded is <code>filtered</code>.</li>
-<li>Destinations can only be excluded (there is no include list), and only by the flow's
+<li>Destinations can only be excluded (there is no include list: a step with <code>include</code> is refused
+  with <code>/transform/steps/0/destinationSet: additionalProperties 'include' not allowed</code>), and only by the flow's
   <code>transform</code>, not by a destination's or response transform. Every name must be a destination of
   the flow; otherwise the flow is refused when you create or update it.</li>
 <li>The exclusion is decided once, when the message is transformed, and stored with it as the

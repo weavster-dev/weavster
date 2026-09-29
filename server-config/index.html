@@ -654,7 +654,7 @@ echo 'postgres://weavster:the-password@db.internal:5432/weavster?sslmode=verify-
 <td>Minimum password length in characters (<code>0</code> = none).</td>
 </tr>
 <tr>
-<td><code>passwordPolicy.minUpper</code> / <code>minLower</code> / <code>minNumeric</code> / <code>minSpecial</code></td>
+<td><code>passwordPolicy.minUpper</code> / <code>passwordPolicy.minLower</code> / <code>passwordPolicy.minNumeric</code> / <code>passwordPolicy.minSpecial</code></td>
 <td><code>1</code> / <code>1</code> / <code>1</code> / <code>0</code></td>
 <td>Required characters of each class. <code>-1</code> forbids the class. A special character is anything that is not a letter (of any script) or digit, spaces included. <code>GET /api/v1/system/password-requirements</code> shows the rules in words.</td>
 </tr>
