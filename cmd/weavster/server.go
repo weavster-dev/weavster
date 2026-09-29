@@ -196,10 +196,11 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		<-sampled
 	}
 
+	accounts := userAdminAdapter{p: provider, mu: &sync.Mutex{}}
 	srv := gateway.New(gateway.Config{
 		Auth:            authAdapter{provider},
 		Passwords:       passwordAdapter{provider},
-		Users:           userAdminAdapter{p: provider, mu: &sync.Mutex{}},
+		Users:           accounts,
 		Items:           itemsAdapter{repo: items},
 		Snippets:        snippetsAdapter{repo: items, mu: &sync.Mutex{}},
 		Alerts:          alertsAdapter{repo: items, mu: &sync.Mutex{}},
@@ -209,6 +210,8 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Authorizer:      authorizerAdapter{},
 		Audit:           auditAdapter{s: sink, repo: audits, logger: logger},
 		AuditLog:        auditAdapter{s: sink, repo: audits, logger: logger, settle: auditSettle},
+		Preferences:     accounts,
+		PasswordCheck:   provider,
 		Flows:           flows,
 		Messages:        messages,
 		Trends:          trends,

@@ -117,7 +117,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 
 | Route | Required permission |
 |---|---|
-| `GET /api/v1/system` and `/api/v1/system/about`, `/password-requirements`, `/resources`, `/guid`, `/api/v1/auth/me`, `POST /api/v1/auth/password`, `POST /api/v1/auth/logout` | any signed-in user |
+| `GET /api/v1/system` and `/api/v1/system/about`, `/password-requirements`, `/resources`, `/guid`, `/api/v1/auth/me`, `POST /api/v1/auth/password`, `/api/v1/auth/password/check`, `POST /api/v1/auth/logout` | any signed-in user |
 | `GET /api/v1/flows`, `GET /api/v1/flows/{id}`, `GET /api/v1/flows/export`, `GET /api/v1/flows/connector-names`, `GET /api/v1/flows/ports-in-use`, `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | `flows:view` |
 | `POST /api/v1/config/validate` | `flows:edit` |
 | `POST /api/v1/flows`, `PUT /api/v1/flows`, `PUT /api/v1/flows/{id}`, `DELETE /api/v1/flows/{id}`, `POST /api/v1/flows/{id}/{enable,disable}`, `POST /api/v1/flows/import` | `flows:edit` |
@@ -132,6 +132,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `GET /api/v1/events`, `/api/v1/events/{id}`, `/count`, `/max-id`, `/export` | `events:view` |
 | `GET /api/v1/audit` | `audit:view` |
 | `GET/POST /api/v1/users`, `GET/PUT/DELETE /api/v1/users/{name}`, `POST /api/v1/users/{name}/password` | `users:admin` |
+| `GET/PUT /api/v1/users/{name}/preferences`, `GET /api/v1/users/{name}/loggedin` | the user named, or `users:admin` |
 | `/api/v1/configmap`, `/api/v1/configmap/{name}` (all methods) | `configmap:edit` |
 | `/api/v1/scripts`, `/api/v1/scripts/{name}` (all methods) | `scripts:edit` |
 | `/api/v1/settings`, `/api/v1/settings/{name}` (all methods) | `settings:edit` |
@@ -189,6 +190,62 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
   session, yours included.
 - Invalid input returns `400` with the reason, an existing username `409`, and an unknown user
   `404`.
+
+## Preferences, sign-in status, and password checks
+
+Each user can keep their own preferences: a JSON object of names to text values, such as a UI
+theme or a default flow. `PUT` replaces the whole set; `GET` returns it (`{}` when none).
+
+```bash
+curl -s -u 'ops:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT \
+  http://127.0.0.1:8080/api/v1/users/ops/preferences -d '{"theme":"dark","dashboard.flow":"adt"}'
+curl -s -u 'ops:PASSWORD' http://127.0.0.1:8080/api/v1/users/ops/preferences
+```
+
+```json
+{"dashboard.flow":"adt","theme":"dark"}
+```
+
+- Preferences are stored with the account, so they are kept across restarts on a PostgreSQL
+  store, and deleted with the account.
+- Up to 100 preferences; each name is 1–100 characters and each value text of at most 4096 bytes.
+  Anything else, or a value that is not a string, returns `400`.
+- A user reads and changes only their own; `users:admin` can reach anyone's, except that only an
+  account with `admin` can change the preferences of an account that has `admin`. Another user's
+  gets `403`, and an unknown user `404`.
+- The request body is at most 1 MiB; a larger one returns `400` with `request body too large`.
+
+`GET /api/v1/users/{name}/loggedin` tells whether the user has an open login session (a bearer
+token from `/api/v1/auth/login` that has not expired or been ended). Basic credentials are not
+sessions. The same rule applies: the user themselves, or `users:admin`.
+
+```bash
+curl -s -u 'admin:PASSWORD' http://127.0.0.1:8080/api/v1/users/ops/loggedin
+```
+
+```json
+{"loggedIn":true,"sessions":1}
+```
+
+An unknown user returns `404`. Sessions are held in memory, so
+after a restart every user shows `false` until they sign in again.
+
+`POST /api/v1/auth/password/check` tells any signed-in user whether a candidate password meets
+[`auth.passwordPolicy`](server-config.md#auth), without setting it:
+
+```bash
+curl -s -u 'ops:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
+  http://127.0.0.1:8080/api/v1/auth/password/check -d '{"password":"short"}'
+```
+
+```json
+{"valid":false,"reason":"password shorter than 8 characters"}
+```
+
+A password that passes returns `{"valid":true}`. The check also works while the user must still
+change their password, so a sign-in screen can check the new one first. It does not look at the
+user's current password; a change to the same password is still refused by
+`POST /api/v1/auth/password`.
 
 ## CLI
 
