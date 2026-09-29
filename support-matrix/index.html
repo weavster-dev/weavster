@@ -38,6 +38,9 @@
                                 <a href=".." class="nav-link">Home</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../getting-started/" class="nav-link">Getting Started</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../install/" class="nav-link">Install, Upgrade, Roll Back</a>
                             </li>
                             <li class="nav-item">
@@ -362,6 +365,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td>Statistics over time (<code>GET /api/v1/stats/series</code>: sampled lifetime statistics per flow; server config <code>stats.sampleIntervalMs</code>, <code>stats.retentionHours</code>)</td>
 <td>Implemented (wired)</td>
 <td><code>TestStatsSeries</code>, <code>TestStatsSurviveRestart</code>, <code>TestStats</code> (every store backend). Samples and current/lifetime statistics are stored with every sample, after a reset and at stop, and loaded again at start, so they survive a restart with PostgreSQL. See <a href="../processing-messages/#statistics-over-time">Processing messages</a>.</td>
+</tr>
+<tr>
+<td>Getting started to a processed message (<code>docs/getting-started.md</code>, <code>examples/getting-started/</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestGettingStartedDoc</code>; CI <code>compose</code> job runs <code>scripts/getting-started.sh</code> against Docker Compose. See <a href="../getting-started/">Getting started</a>.</td>
 </tr>
 <tr>
 <td>CI/CD samples: GitHub Actions and GitLab CI, plan on pull/merge request and apply on merge to <code>main</code> (<code>docs/examples/ci/</code>)</td>

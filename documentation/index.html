@@ -38,6 +38,9 @@
                                 <a href=".." class="nav-link">Home</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../getting-started/" class="nav-link">Getting Started</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../install/" class="nav-link">Install, Upgrade, Roll Back</a>
                             </li>
                             <li class="nav-item">
@@ -194,7 +197,7 @@
 <h1 id="documentation-site">Documentation Site</h1>
 <p>This page describes <strong>how</strong> the documentation site is built, served, and deployed.
 For <strong>what</strong> goes into it (user-facing examples, CLI docs, API refs), see
-<a href="../AGENTS.md#documentation">AGENTS.md §Documentation</a>.</p>
+<a href="https://github.com/weavster-dev/weavster/blob/main/AGENTS.md#documentation">AGENTS.md §Documentation</a>.</p>
 <h2 id="stack">Stack</h2>
 <table>
 <thead>
@@ -210,11 +213,11 @@ For <strong>what</strong> goes into it (user-facing examples, CLI docs, API refs
 </tr>
 <tr>
 <td>Theme</td>
-<td>mkdocs default (readthedocs)</td>
+<td>MkDocs' built-in <code>mkdocs</code> theme (no <code>theme:</code> key)</td>
 </tr>
 <tr>
 <td>Hosting</td>
-<td>GitHub Pages (<code>gh-pages</code> branch)</td>
+<td>GitHub Pages (<code>gh-pages</code> branch), at <a href="https://docs.weavster.dev/">https://docs.weavster.dev/</a> (<code>docs/CNAME</code>)</td>
 </tr>
 <tr>
 <td>Deploy trigger</td>
@@ -236,24 +239,27 @@ mkdocs serve
 # Open http://localhost:8000
 </code></pre>
 <p>Changes to <code>docs/</code> files appear immediately in the browser. The MkDocs
-config is at <a href="../mkdocs.yml"><code>mkdocs.yml</code></a> (repo root).</p>
+config is at <a href="https://github.com/weavster-dev/weavster/blob/main/mkdocs.yml"><code>mkdocs.yml</code></a> (repo root).</p>
+<p>Build it the way CI does before you push:</p>
+<pre><code class="language-bash">mkdocs build --strict
+</code></pre>
+<p>Every build is strict (<code>strict: true</code> in <code>mkdocs.yml</code>): a broken link, a link to a heading that
+does not exist, or a page left out of the nav fails it. Link to files outside <code>docs/</code> with their
+full GitHub URL; MkDocs does not check those, so check them yourself when you move a file.</p>
 <h2 id="navigation">Navigation</h2>
 <p>The site nav is defined in <code>mkdocs.yml</code> under the <code>nav:</code> key. Each entry
-maps a display title to a file under <code>docs/</code>. Current pages:</p>
-<ul>
-<li><strong>Home</strong> — <code>docs/index.md</code></li>
-<li><strong>User Guide</strong> — <code>docs/guide/</code> (CLI, config, API, adapters, etc.)</li>
-<li><em>(expand as features ship)</em></li>
-</ul>
-<p>To add a page, create the <code>.md</code> file and add a <code>nav:</code> entry.</p>
+maps a display title to a file directly under <code>docs/</code> (there are no sub-folders of pages). To
+add a page, create the <code>.md</code> file and add a <code>nav:</code> entry; a page missing from the nav fails the
+build.</p>
 <h2 id="deploy">Deploy</h2>
-<p>The docs deploy automatically on every push to <code>main</code> via
-<a href="../.github/workflows/docs.yml"><code>.github/workflows/docs.yml</code></a>:</p>
+<p>Every pull request builds the site (the <code>docs</code> job in
+<a href="https://github.com/weavster-dev/weavster/blob/main/.github/workflows/ci.yml"><code>ci.yml</code></a>). The docs deploy automatically on every push to
+<code>main</code> via <a href="https://github.com/weavster-dev/weavster/blob/main/.github/workflows/docs.yml"><code>docs.yml</code></a>:</p>
 <pre><code class="language-bash"># Manual trigger (equivalent to what CI does):
 mkdocs gh-deploy --force
 </code></pre>
 <p>This builds the site into <code>site/</code> and pushes it to the <code>gh-pages</code> branch.
-GitHub Pages serves it at <code>https://weavster-dev.github.io/weavster/</code>.</p>
+GitHub Pages serves it at <a href="https://docs.weavster.dev/">https://docs.weavster.dev/</a>.</p>
 <h2 id="versioning">Versioning</h2>
 <p>Not yet versioned. The <code>gh-pages</code> branch always reflects <code>main</code>. When
 versioned docs are added, the plan is to use
