@@ -23,8 +23,9 @@ jobs:
         run: go build ./...
 
   postgres:
-    # The store, the database adapters, and the server against PostgreSQL 16
-    # (D-21, D-55): tests use WEAVSTER_TEST_POSTGRES_DSN, a fresh schema each.
+    # The store, the database adapters, the server, and the black-box suites
+    # (test/e2e) against PostgreSQL 16 (D-21, D-55): tests use
+    # WEAVSTER_TEST_POSTGRES_DSN, a fresh schema each.
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -47,7 +48,7 @@ jobs:
         with:
           go-version: '1.22'
       - name: Test against PostgreSQL 16
-        run: go test -race ./internal/state/... ./internal/adapters/... ./internal/scheduler/... ./cmd/weavster/...
+        run: go test -race ./internal/state/... ./internal/adapters/... ./internal/scheduler/... ./cmd/weavster/... ./test/e2e/...
 
   golden:
     # The golden-path fixtures for each codec, run offline by the built
