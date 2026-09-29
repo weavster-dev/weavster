@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -64,6 +65,32 @@ func TestEnvFromSecretsDir(t *testing.T) {
 	}
 	if string(got) != "s3cret" {
 		t.Errorf("got %q", got)
+	}
+}
+
+func TestEnvMissingSecretReturnsNotFound(t *testing.T) {
+	const key = "WEAVSTER_TEST_SECRET_THAT_DOES_NOT_EXIST"
+	old, present := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("unset %s: %v", key, err)
+	}
+	t.Cleanup(func() {
+		if present {
+			_ = os.Setenv(key, old)
+		} else {
+			_ = os.Unsetenv(key)
+		}
+	})
+
+	got, err := NewEnv(t.TempDir()).Get(context.Background(), key)
+	if got != nil {
+		t.Errorf("Get returned bytes %q, want nil", got)
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("Get error = %v, want ErrNotFound", err)
+	}
+	if !strings.Contains(err.Error(), key) {
+		t.Errorf("Get error = %q, want requested key", err)
 	}
 }
 
