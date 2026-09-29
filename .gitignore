@@ -22,3 +22,4 @@ coverage.out
 
 # MkDocs build output
 /site/
+/dist/
