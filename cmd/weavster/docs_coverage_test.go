@@ -7,13 +7,14 @@ import (
 	"path/filepath"
 	"reflect"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/weavster-dev/weavster/internal/compiler"
+	"github.com/weavster-dev/weavster/internal/config"
 	"github.com/weavster-dev/weavster/internal/flowdef"
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
@@ -304,16 +305,53 @@ func TestDocsCLI(t *testing.T) {
 	}
 }
 
-// TestDocsDSL: every field of a transform, every step, and each of its
-// fields is in processing-messages.md.
+// TestDocsDSL: every field of a transform is in processing-messages.md,
+// and every step is a row of its steps table that names each of the step's
+// fields. What a transform may hold is read from its published schema.
 func TestDocsDSL(t *testing.T) {
 	page := docsPage(t, "processing-messages.md")
-	fields(reflect.TypeOf(compiler.Transform{}), "json", "", func(path string, _ bool) {
-		name := path[strings.LastIndex(path, ".")+1:]
+	b, err := os.ReadFile(filepath.Join("..", "..", "agent-docs", "schemas", "transform.schema.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	type object struct {
+		Properties map[string]struct {
+			Ref string `json:"$ref"`
+		} `json:"properties"`
+	}
+	var schema struct {
+		Defs map[string]object `json:"$defs"`
+	}
+	if err := json.Unmarshal(b, &schema); err != nil {
+		t.Fatal(err)
+	}
+	def := func(ref string) object { return schema.Defs[strings.TrimPrefix(ref, "#/$defs/")] }
+	for name := range schema.Defs["Transform"].Properties {
 		if !strings.Contains(page, "`"+name+"`") {
-			t.Errorf("processing-messages.md does not document %s", path)
+			t.Errorf("processing-messages.md does not document the transform's %s", name)
 		}
-	})
+	}
+	steps := schema.Defs["Step"].Properties
+	if len(steps) < 5 {
+		t.Fatalf("steps not read from the schema: %v", steps)
+	}
+	for step, ref := range steps {
+		// Its row in the steps table: "| `map` | `from`, `to`, …".
+		row := ""
+		for _, line := range strings.Split(page, "\n") {
+			if strings.HasPrefix(line, "| `"+step+"` |") {
+				row = line
+			}
+		}
+		if row == "" {
+			t.Errorf("processing-messages.md has no row for the %s step", step)
+		}
+		for field := range def(ref.Ref).Properties {
+			if !strings.Contains(row, "`"+field+"`") {
+				t.Errorf("processing-messages.md does not document %s.%s in the %s row", step, field, step)
+			}
+		}
+	}
 }
 
 // TestDocsFlowDefinition: every property of a flow, its source, and its
@@ -362,7 +400,18 @@ func TestDocsFlowDefinition(t *testing.T) {
 // named in config-as-code.md.
 func TestDocsConfigAsCode(t *testing.T) {
 	page := docsPage(t, "config-as-code.md")
-	for _, section := range configSections {
+	var sections []string
+	fields(reflect.TypeOf(config.Config{}), "json", "", func(path string, _ bool) {
+		if !strings.Contains(path, ".") {
+			sections = append(sections, path)
+		}
+	})
+	// weavster test tells a config-as-code document from other YAML by
+	// these sections, so its list must be the same.
+	if !slices.Equal(sections, configSections) {
+		t.Errorf("configSections is %v, but a document has the sections %v", configSections, sections)
+	}
+	for _, section := range sections {
 		if !strings.Contains(page, "`"+section+"`") {
 			t.Errorf("config-as-code.md does not document the `%s` section", section)
 		}

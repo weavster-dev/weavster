@@ -120,7 +120,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 
 | Route | Required permission |
 |---|---|
-| `GET /api/v1/system` and `/api/v1/system/about`, `/password-requirements`, `/resources`, `/guid`, `GET /api/v1/auth/me`, `POST /api/v1/auth/password`, `/api/v1/auth/password/check`, `POST /api/v1/auth/logout` | any signed-in user |
+| `GET /api/v1/system` and `/api/v1/system/about`, `/password-requirements`, `/resources`, `/guid`, `GET /api/v1/auth/me`, `POST /api/v1/auth/password`, `POST /api/v1/auth/password/check`, `POST /api/v1/auth/logout` | any signed-in user |
 | `GET /api/v1/flows`, `GET /api/v1/flows/{id}`, `GET /api/v1/flows/export`, `GET /api/v1/flows/connector-names`, `GET /api/v1/flows/ports-in-use`, `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | `flows:view` |
 | `POST /api/v1/config/validate` | `flows:edit` |
 | `POST /api/v1/flows`, `PUT /api/v1/flows`, `PUT /api/v1/flows/{id}`, `DELETE /api/v1/flows/{id}`, `POST /api/v1/flows/{id}/{enable,disable}`, `POST /api/v1/flows/import` | `flows:edit` |
