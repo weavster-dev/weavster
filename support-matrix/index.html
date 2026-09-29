@@ -311,6 +311,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestUsersSurviveRestart</code>. Durable with <code>store.dialect: postgres</code>; the first-run <code>admin</code> is created once per database.</td>
 </tr>
 <tr>
+<td>Secrets from environment variables or files (<code>secrets.dir</code>, default <code>/run/secrets</code>) for <code>dsnEnv</code>, <code>passwordEnv</code>, and the store's <code>store.dsnEnv</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestSecretsFromFiles</code>, <code>TestSecretReader</code>, <code>TestEnvSecretNames</code>. See <a href="../server-config/#secrets">Server configuration</a>.</td>
+</tr>
+<tr>
 <td>User administration (<code>/api/v1/users</code>, CLI <code>user list/add/remove/changepw</code>)</td>
 <td>Implemented (wired)</td>
 <td><code>TestUserAdministration</code>, <code>TestPermissionMatrix</code>. Permission <code>users:admin</code>. See <a href="../authentication/#manage-users">Authentication</a>.</td>

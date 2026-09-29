@@ -357,6 +357,11 @@ and serves nothing.</p>
 <td>For <code>postgres</code>, a URL such as <code>postgres://weavster@db:5432/weavster?sslmode=verify-full</code>.</td>
 </tr>
 <tr>
+<td><code>dsnEnv</code></td>
+<td><code>""</code></td>
+<td>For <code>postgres</code>, instead of <code>dsn</code>: the name of a <a href="#secrets">secret</a> holding the URL, so its password stays out of this file. Letters, digits, and <code>_</code>, not starting with <code>WEAVSTER_DB_</code> or <code>WEAVSTER_SOURCE_</code> (flows may read those), for example <code>WEAVSTER_STORE_DSN</code>.</td>
+</tr>
+<tr>
 <td><code>maxConnections</code></td>
 <td><code>10</code></td>
 <td>Maximum open PostgreSQL connections.</td>
@@ -375,12 +380,14 @@ and serves nothing.</p>
 </table>
 <ul>
 <li><strong><code>memory</code></strong>: messages, flow definitions, and users live in process memory and are lost on restart.</li>
-<li><strong><code>postgres</code></strong>: <code>dsn</code> is required, for example
+<li><strong><code>postgres</code></strong>: <code>dsn</code> or <code>dsnEnv</code> is required (not both), for example
   <code>postgres://weavster@db.internal:5432/weavster?sslmode=verify-full</code> (tested with PostgreSQL
   16). The server creates and migrates its tables on the first start; the account needs to create
   tables in the database (or in the schema named by <code>search_path</code> in the URL, for example
-  <code>…&amp;search_path=weavster</code>). Keep the password out of the file: put it in <code>~/.pgpass</code> of the
-  server's account, on a line for the database's host only.</li>
+  <code>…&amp;search_path=weavster</code>). Keep the password out of the file: put the whole URL in a secret
+  and name it with <code>dsnEnv</code>, or put the password in <code>~/.pgpass</code> of the server's account, on a
+  line for the database's host only. A missing secret counts as a failed connection attempt
+  (<code>maxRetry</code>), and the server exits <code>1</code> naming it when the attempts run out.</li>
 <li><strong><code>disabled</code></strong>: runs with no message store. <code>GET /api/v1/messages</code> returns <code>503 messages unavailable</code>.
   Flow definitions and users are kept in memory.</li>
 <li><strong><code>sqlite</code></strong> is no longer a server store. The server exits <code>1</code> with
@@ -580,6 +587,51 @@ each flow's current and lifetime statistics, and loaded again at start; stored s
   sampleIntervalMs: 10000   # every 10 seconds
   retentionHours: 48
 </code></pre>
+<h3 id="secrets"><code>secrets</code></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dir</code></td>
+<td><code>/run/secrets</code></td>
+<td>Where secret files are read from. An absolute path.</td>
+</tr>
+</tbody>
+</table>
+<p>A secret named <code>NAME</code> (a flow's <code>dsnEnv</code> or <code>passwordEnv</code>, or <code>store.dsnEnv</code>) is the server's
+environment variable <code>NAME</code> or, when that is not set, the file <code>NAME</code> in <code>secrets.dir</code>. One
+trailing newline in the file is ignored. <code>/run/secrets</code> is where Docker and Kubernetes mount
+secrets, so a secret mounted there with the name a flow uses needs no other setup:</p>
+<pre><code class="language-yaml">store:
+  dialect: postgres
+  dsnEnv: WEAVSTER_STORE_DSN     # the file /etc/weavster/secrets/WEAVSTER_STORE_DSN
+secrets:
+  dir: /etc/weavster/secrets
+</code></pre>
+<pre><code class="language-bash">install -m 0600 /dev/null /etc/weavster/secrets/WEAVSTER_STORE_DSN
+echo 'postgres://weavster:the-password@db.internal:5432/weavster?sslmode=verify-full' &gt; /etc/weavster/secrets/WEAVSTER_STORE_DSN
+</code></pre>
+<ul>
+<li>An empty variable or file counts as not set; an empty variable does not hide the file. A missing
+  secret is reported as
+  <code>environment variable NAME is not set, and there is no file /etc/weavster/secrets/NAME</code>, and a
+  file the server's account cannot read as <code>secret NAME: … permission denied</code>.</li>
+<li>Database connection strings are read for every message and poll, so a changed secret applies
+  at once. An http source reads its password when its port opens: after changing it, stop and
+  start the flow.</li>
+<li>If <code>secrets.dir</code> is set to something other than <code>/run/secrets</code> and is not a directory, the
+  server logs a warning at start and reads secrets from environment variables only.</li>
+<li>Keep the directory readable by the server's account only (<code>chmod 0700</code>), and each file <code>0600</code>.</li>
+<li>A secret file may be a link to another file in the directory (as Kubernetes mounts secrets); a
+  link to anywhere outside it is refused with <code>secret NAME: … links to outside the secrets directory</code>.</li>
+<li>Only one trailing line ending (<code>\n</code> or <code>\r\n</code>) is removed.</li>
+</ul>
 <h3 id="auth"><code>auth</code></h3>
 <table>
 <thead>

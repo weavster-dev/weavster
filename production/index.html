@@ -198,8 +198,8 @@
 <li>verifies the certificate of every <code>https://</code> http destination and every mllp destination with
   <code>tls: true</code>, with no option to skip the check (database connections use TLS as their connection
   string's <code>sslmode</code> says: use <code>sslmode=verify-full</code>);</li>
-<li>reads secrets used by flows only from environment variables whose names start with
-  <code>WEAVSTER_SOURCE_</code> or <code>WEAVSTER_DB_</code>, never from the flow definitions;</li>
+<li>reads secrets used by flows only from environment variables or <a href="../server-config/#secrets">secret files</a>
+  whose names start with <code>WEAVSTER_SOURCE_</code> or <code>WEAVSTER_DB_</code>, never from the flow definitions;</li>
 <li>refuses to run as root unless <code>WEAVSTER_ALLOW_ROOT=1</code> is set.</li>
 </ul>
 <h2 id="a-production-configuration">A production configuration</h2>
@@ -260,6 +260,10 @@ database:</p>
 export WEAVSTER_DB_WAREHOUSE=&quot;postgres://loader:$(cat /run/secrets/warehouse-password)@warehouse.internal/dw?sslmode=verify-full&quot;
 weavster server --config /etc/weavster/weavster-server.yaml
 </code></pre>
+<p>Or leave them in files: a flow's <code>WEAVSTER_DB_…</code> or <code>WEAVSTER_SOURCE_…</code> secret, and the store's
+URL with <code>store.dsnEnv</code>, can be files named after the secret in
+<a href="../server-config/#secrets"><code>secrets.dir</code></a> (<code>/run/secrets</code> by default), such as Docker or
+Kubernetes secrets mounted there.</p>
 <p>Put each database's password in its own <code>WEAVSTER_DB_…</code> connection string. Do not set
 <code>PGPASSWORD</code> for the server: PostgreSQL clients use it for every connection string without a
 password, so it would be sent to every database your flows read and write.</p>

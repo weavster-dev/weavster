@@ -821,7 +821,7 @@ weavster server --config weavster.yaml
 </tr>
 <tr>
 <td><code>dsnEnv</code></td>
-<td>Required. The server environment variable holding the connection string; its name must start with <code>WEAVSTER_DB_</code>. The connection string never appears in the flow.</td>
+<td>Required. The server environment variable holding the connection string, or else the file of that name in <a href="../server-config/#secrets"><code>secrets.dir</code></a>; its name must start with <code>WEAVSTER_DB_</code>. The connection string never appears in the flow.</td>
 </tr>
 <tr>
 <td><code>table</code></td>
@@ -865,7 +865,7 @@ weavster server --config weavster.yaml
 <li>The connection string is read for every message, so a changed variable (a rotated password)
   applies without a restart: the old connections are closed and new ones opened. Connections
   are pooled per variable; a SQLite database gets one connection, so its inserts take turns. An unset variable fails the delivery:
-  <code>database: environment variable WEAVSTER_DB_WAREHOUSE is not set</code>.</li>
+  <code>database: environment variable WEAVSTER_DB_WAREHOUSE is not set, and there is no file /run/secrets/WEAVSTER_DB_WAREHOUSE</code>.</li>
 <li>Errors never quote values: PostgreSQL errors are reported by kind and SQLSTATE (for example
   <code>database: the table does not exist (SQLSTATE 42P01)</code>), and a failed connection as
   <code>database: could not connect (check the host, credentials, and TLS settings in the connection string)</code>.</li>
@@ -1180,7 +1180,7 @@ the configured method and path is a message:</p>
 </tr>
 <tr>
 <td><code>username</code>, <code>passwordEnv</code></td>
-<td>Optional, together: senders must use HTTP Basic authentication with this user name (no <code>:</code>, which separates user and password in Basic authentication) and the password in the server's environment variable <code>passwordEnv</code>. The variable name must start with <code>WEAVSTER_SOURCE_</code> followed by capital letters, digits, or <code>_</code>, so a flow cannot use the server's other secrets. The password never goes into the flow definition.</td>
+<td>Optional, together: senders must use HTTP Basic authentication with this user name (no <code>:</code>, which separates user and password in Basic authentication) and the password in the server's environment variable <code>passwordEnv</code> (or else the file of that name in <a href="../server-config/#secrets"><code>secrets.dir</code></a>). The name must start with <code>WEAVSTER_SOURCE_</code> followed by capital letters, digits, or <code>_</code>, so a flow cannot use the server's other secrets. The password never goes into the flow definition.</td>
 </tr>
 <tr>
 <td><code>readTimeoutMs</code></td>
@@ -1284,7 +1284,7 @@ each new order becomes a message such as:</p>
 </tr>
 <tr>
 <td><code>dsnEnv</code></td>
-<td>Required. The server environment variable holding the connection string, <code>WEAVSTER_DB_…</code>.</td>
+<td>Required. The server environment variable holding the connection string, <code>WEAVSTER_DB_…</code>, or else the file of that name in <a href="../server-config/#secrets"><code>secrets.dir</code></a>.</td>
 </tr>
 <tr>
 <td><code>query</code></td>
@@ -1335,7 +1335,7 @@ each new order becomes a message such as:</p>
   once as a <code>source.database.refused</code> event with its id, and is skipped until the flow restarts.</li>
 <li>A failed poll (an unset variable, a query or update error) is logged and recorded once as a
   <code>source.database.failed</code> event with the reason, for example
-  <code>database: environment variable WEAVSTER_DB_HIS is not set</code>; it is retried at every interval
+  <code>database: environment variable WEAVSTER_DB_HIS is not set, and there is no file /run/secrets/WEAVSTER_DB_HIS</code>; it is retried at every interval
   (with a <code>schedule</code>, every 5 seconds until a poll succeeds).</li>
 <li>Give the database user only what the source needs: <code>SELECT</code> on the query's tables, and
   <code>UPDATE</code> on the marked columns.</li>
