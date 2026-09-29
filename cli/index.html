@@ -183,7 +183,7 @@
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#codec-self-test-weavster-test" class="nav-link">Codec self-test (weavster test)</a>
+            <li class="nav-item" data-bs-level="2"><a href="#test-your-flows-weavster-test" class="nav-link">Test your flows (weavster test)</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -548,56 +548,116 @@ import &quot;backups/all flows.json&quot; force
 </tr>
 </tbody>
 </table>
-<h2 id="codec-self-test-weavster-test">Codec self-test (<code>weavster test</code>)</h2>
-<p><code>weavster test</code> checks this build's codecs: it parses a built-in sample of each data format and
-writes it back, and a sample passes only if the output is byte for byte the input. The codecs
-read XML and delimited text with the same checks and limits as flows with <code>inputFormat: xml</code> or
-<code>delimited</code>, but the samples do not run a flow or the server. It needs no server or database.</p>
+<h2 id="test-your-flows-weavster-test">Test your flows (<code>weavster test</code>)</h2>
+<p><code>weavster test</code> runs your flows' transforms against sample messages, on your machine: no server
+and no database. Keep sample messages and what each flow must make of them in <strong>fixture files</strong>
+next to your <a href="../config-as-code/">config-as-code documents</a>, and run the command in CI before
+<code>config apply</code>.</p>
+<pre><code class="language-bash">weavster test --format junit --output artifacts/ .
+</code></pre>
+<p>It looks under each <code>PATH</code> (default: the current directory) for:</p>
+<ul>
+<li><strong>config-as-code documents</strong>: <code>*.yaml</code>, <code>*.yml</code>, or <code>*.json</code> files with <code>version: "1"</code>, or
+  without a <code>version</code> when every top-level key is a config section (<code>flows</code>, <code>alerts</code>, …).
+  Their flows are the ones the fixtures test. Other YAML and JSON (a compose file, a CI
+  workflow, <code>package.json</code>) is left alone.</li>
+<li><strong>fixture files</strong>: <code>*.test.yaml</code>, <code>*.test.yml</code>, or <code>*.test.json</code>.</li>
+</ul>
+<p>Hidden directories, <code>node_modules</code>, and directories it cannot read are skipped, and a file under
+two of the paths is read once.</p>
+<p>A fixture file names one flow and lists cases:</p>
+<pre><code class="language-yaml"># tests/adt.test.yaml
+flow: adt
+cases:
+  - name: admit
+    inputFile: a01.hl7              # relative to this file; or `input:` with the message inline
+    expect:
+      output: {patient: {lastName: DOE, mrn: &quot;12345&quot;}}
+      excluded: []
+      destinations:
+        his: {output: {id: &quot;12345&quot;}}
+  - name: update is filtered
+    input: &quot;MSH|^~\\&amp;|LAB|H|EHR|H|20240101120000||ADT^A08|2|P|2.5\rPID|1||12345^^^MRN||DOE^JOHN\r&quot;
+    expect: {status: filtered}
+  - name: not hl7
+    input: hello
+    expect: {status: errored, error: HL7 v2}
+</code></pre>
+<p>Each case runs the message through the flow exactly as the server processes it: read with the
+flow's <code>inputFormat</code>, then its <code>transform</code> (filters, maps, sets, <code>destinationSet</code>, a build step),
+then the own <code>transform</code> of each destination the message reaches. Nothing is stored or delivered.</p>
 <table>
 <thead>
 <tr>
-<th>Sample</th>
-<th>Covers</th>
+<th><code>expect</code> key</th>
+<th>Checks</th>
+<th>Default</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>identity/hl7</code></td>
-<td>HL7 v2 with subcomponents, escape sequences, repetitions, and a second message with custom delimiters (<code>MSH#$%!@</code>)</td>
+<td><code>status</code></td>
+<td><code>transformed</code>, <code>filtered</code> (a filter step dropped it), or <code>errored</code> (the input could not be read, or a step failed)</td>
+<td><code>transformed</code></td>
 </tr>
 <tr>
-<td><code>identity/json</code></td>
-<td>JSON with a 23-digit number and a decimal kept exactly, and <code>&lt;</code>, <code>&amp;</code>, non-ASCII text unescaped</td>
+<td><code>error</code></td>
+<td>Text the error must contain (with <code>status: errored</code>)</td>
+<td>not checked</td>
 </tr>
 <tr>
-<td><code>identity/xml</code></td>
-<td>XML with a declaration, a comment, namespace prefixes and declarations, text mixed with elements, a processing instruction, and an empty element</td>
+<td><code>output</code></td>
+<td>The flow's JSON output has these fields with these values; fields you leave out are ignored, arrays and values must be equal. A field expected as <code>null</code> must be there, with <code>null</code></td>
+<td>not checked</td>
 </tr>
 <tr>
-<td><code>identity/delimited</code></td>
-<td>Pipe-delimited text with RFC 4180 quoting: a field holding the delimiter, doubled quotes, and a line break</td>
+<td><code>outputText</code></td>
+<td>The flow's output, exactly (for a build step's HL7 v2, XML, or text)</td>
+<td>not checked</td>
 </tr>
 <tr>
-<td><code>identity/raw</code></td>
-<td>Binary bytes, NUL and CR LF included</td>
+<td><code>excluded</code></td>
+<td>The destinations <code>destinationSet</code> steps left out (<code>[]</code>: none)</td>
+<td>not checked</td>
+</tr>
+<tr>
+<td><code>destinations.NAME</code></td>
+<td>That destination's own transform: <code>status</code>, <code>error</code>, <code>output</code>, <code>outputText</code> as above</td>
+<td>not checked</td>
 </tr>
 </tbody>
 </table>
-<pre><code class="language-bash">weavster test --format json
-</code></pre>
-<pre><code class="language-json">[
+<p>Each case is named <code>&lt;fixture file without .test.yaml&gt;/&lt;case name&gt;</code>, for example
+<code>tests/adt/admit</code>. The built-in codec checks also run, named <code>identity/…</code>: each parses a sample
+of a data format (HL7 v2, JSON, XML, delimited, raw) and must write it back byte for byte.</p>
+<pre><code class="language-text">$ weavster test --format json tests
+FAIL tests/adt/admit: output differs at patient.lastName: it is {&quot;patient&quot;:{&quot;lastName&quot;:&quot;DOE&quot;,…}}, want the fields {&quot;patient&quot;:{&quot;lastName&quot;:&quot;SMITH&quot;}}
+[
   {&quot;name&quot;: &quot;identity/hl7&quot;, &quot;passed&quot;: true},
-  {&quot;name&quot;: &quot;identity/json&quot;, &quot;passed&quot;: true},
   …
+  {&quot;name&quot;: &quot;tests/adt/admit&quot;, &quot;passed&quot;: false, &quot;failure&quot;: &quot;output differs at patient.lastName: …&quot;}
 ]
 </code></pre>
 <ul>
-<li><code>--filter NAME</code> runs the samples whose name contains <code>NAME</code>; <code>--format junit</code> (default) writes
-  JUnit XML, <code>--format json</code> JSON; <code>--output DIR</code> writes <code>results.xml</code> or <code>results.json</code> into
-  <code>DIR</code> instead of printing it.</li>
-<li>A failed sample says what changed, for example
-  <code>xml: the round trip changed the content (212 bytes in, 208 out)</code>, and the command exits <code>1</code>.</li>
-<li>It does not run your flows or your own fixtures.</li>
+<li><code>--format junit</code> (default) writes JUnit XML, <code>--format json</code> JSON; <code>--output DIR</code> writes
+  <code>results.xml</code> or <code>results.json</code> into <code>DIR</code> instead of printing it. Failures are also printed
+  to stderr, one line each (<code>FAIL name: reason</code>).</li>
+<li><code>--filter TEXT</code> runs only the cases whose name contains <code>TEXT</code> (others are not run at all). If
+  none does, the command fails with <code>no case matches --filter "TEXT"</code>.</li>
+<li>A fixture that cannot be run fails with the reason: a flow no document defines, a flow defined
+  in two documents, an unknown key (<code>field casez not found</code>), more than one YAML document in the
+  file, a case without a name, or a missing <code>inputFile</code>. A config-as-code document that does not
+  parse fails the run as well, whatever <code>--filter</code> selects.</li>
+<li>Numbers in <code>output</code> compare by exact value: <code>1</code> and <code>1.0</code> are equal, but two 20-digit ids that
+  differ in the last digit are not.</li>
+</ul>
+<h3 id="pitfalls">Pitfalls</h3>
+<ul>
+<li>A fixture only sees the documents under the paths you give. Pass the directory that holds both
+  (<code>weavster test .</code>), not just the tests directory.</li>
+<li><code>output</code> compares JSON values: <code>"12345"</code> (text) and <code>12345</code> (a number) differ. HL7 v2 fields
+  are text.</li>
+<li>A flow without a <code>transform</code> passes messages through unchanged, so any input is <code>transformed</code>.</li>
 </ul>
 <h2 id="deprecated-command-names">Deprecated command names</h2>
 <p>Scripts written for older tools can keep their command names. A deprecated name prints a warning
@@ -657,9 +717,9 @@ adt started ADT Inbound
 </tr>
 <tr>
 <td><code>weavster test</code></td>
-<td>Every fixture passed, or <code>-h</code></td>
-<td>A fixture failed</td>
-<td>An unknown flag, or the results could not be written</td>
+<td>Every case passed, or <code>-h</code></td>
+<td>A case or fixture failed, a config-as-code document did not parse, or <code>--filter</code> matched nothing</td>
+<td>An unknown flag, <code>--format</code> other than <code>junit</code> or <code>json</code>, a <code>PATH</code> that does not exist, or the results could not be written</td>
 </tr>
 <tr>
 <td><code>weavster config validate FILE...</code></td>

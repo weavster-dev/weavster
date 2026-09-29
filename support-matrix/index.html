@@ -781,9 +781,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestShell</code>. Same commands as batch mode. See <a href="../cli/">Command-line client</a>.</td>
 </tr>
 <tr>
-<td><code>weavster test [--filter NAME] [--format junit\|json] [--output DIR]</code></td>
+<td><code>weavster test [--filter NAME] [--format junit\|json] [--output DIR] [PATH...]</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestRunTestCommand</code>, <code>TestCodecRoundTrips</code>, <code>TestCodecRoundTrip</code>. Runs five built-in codec round-trip samples (<code>identity/hl7</code>, <code>identity/json</code>, <code>identity/xml</code>, <code>identity/delimited</code>, <code>identity/raw</code>); each passes only if the output equals the input. It does not discover your flows or fixtures. See <a href="../cli/#codec-self-test-weavster-test">Codec self-test</a>.</td>
+<td><code>TestFixtures</code>, <code>TestFixtureErrors</code>, <code>TestRun</code>, <code>TestCodecRoundTrips</code>. Finds fixture files (<code>*.test.yaml</code>, <code>*.test.yml</code>, <code>*.test.json</code>) and the flows of the config-as-code documents under the paths, and runs every case offline through the same transform code as the server (input format, flow transform, destinationSet, destination transforms); plus five built-in codec round trips. See <a href="../cli/#test-your-flows-weavster-test">Test your flows</a>.</td>
 </tr>
 </tbody>
 </table>
