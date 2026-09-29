@@ -72,6 +72,34 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "204": {description: Password changed, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: New password rejected by the password policy, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/auth/password/check:
+    post:
+      summary: Check a candidate password against the password policy without setting it (any signed-in user)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: {type: string}
+            example: {"password": "Candidate-Passw0rd"}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: Whether the policy accepts it, and why not
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid]
+                properties:
+                  valid: {type: boolean}
+                  reason: {type: string, description: Why the policy rejects it (only when valid is false)}
+              example: {"valid": false, "reason": "password shorter than 8 characters"}
+        "400": {description: The body is not JSON with password, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/system:
     get:
       summary: "System status, computed per request: version, time, uptime, and TLS as configured (any signed-in user)"
@@ -1229,6 +1257,48 @@ paths:
         "204": {description: Set, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: The password policy rejects the password, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/users/{name}/preferences:
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string}}
+    get:
+      summary: The user's preferences, name to text value (the user themselves, or users:admin)
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: "The preferences, {} when none", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Preferences"}}}}
+        "403": {description: Another user's preferences without users:admin, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+    put:
+      summary: Replace the user's preferences (the user themselves, or users:admin)
+      requestBody:
+        required: true
+        content:
+          application/json: {schema: {$ref: "#/components/schemas/Preferences"}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: The stored preferences, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Preferences"}}}}
+        "400": {description: "Not an object of text values, or over the limits", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "403": {description: Another user's preferences without users:admin, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/users/{name}/loggedin:
+    parameters:
+      - {name: name, in: path, required: true, schema: {type: string}}
+    get:
+      summary: Whether the user has an active login session (the user themselves, or users:admin)
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: Logged-in status
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [loggedIn, sessions]
+                properties:
+                  loggedIn: {type: boolean}
+                  sessions: {type: integer, description: How many active login sessions the user has}
+              example: {"loggedIn": true, "sessions": 1}
+        "403": {description: Another user without users:admin, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/messages/export:
     get:
       summary: An archive of the complete messages matching the search filters (requires messages:content; audited)
@@ -2040,6 +2110,12 @@ components:
         permissions: {type: array, items: {type: string}}
         email: {type: string, description: Kept when omitted}
         org: {type: string, description: Kept when omitted}
+    Preferences:
+      type: object
+      description: "Up to 100 preferences; names are 1-100 characters, values text of at most 4096 bytes"
+      maxProperties: 100
+      additionalProperties: {type: string, maxLength: 4096}
+      example: {"theme": "dark", "dashboard.flow": "adt"}
     PasswordSet:
       example: {"password": "A-New-Passw0rd"}
       type: object

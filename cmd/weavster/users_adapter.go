@@ -189,3 +189,15 @@ func userErr(err error) error {
 	}
 	return err
 }
+
+// preferencesAdapter keeps users' preferences with their accounts.
+type preferencesAdapter struct{ p *auth.LocalProvider }
+
+func (a preferencesAdapter) Preferences(ctx context.Context, username string) (map[string]string, error) {
+	prefs, err := a.p.Preferences(ctx, username)
+	return prefs, userErr(err)
+}
+
+func (a preferencesAdapter) SetPreferences(ctx context.Context, username string, prefs map[string]string) error {
+	return userErr(a.p.SetPreferences(ctx, username, prefs))
+}

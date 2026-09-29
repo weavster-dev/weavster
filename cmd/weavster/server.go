@@ -209,6 +209,8 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Authorizer:      authorizerAdapter{},
 		Audit:           auditAdapter{s: sink, repo: audits, logger: logger},
 		AuditLog:        auditAdapter{s: sink, repo: audits, logger: logger, settle: auditSettle},
+		Preferences:     preferencesAdapter{provider},
+		PasswordCheck:   provider,
 		Flows:           flows,
 		Messages:        messages,
 		Trends:          trends,

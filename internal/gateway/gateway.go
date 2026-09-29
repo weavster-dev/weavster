@@ -339,6 +339,10 @@ type Config struct {
 	ContextPath string
 	// AuditLog searches the stored audit entries; nil answers 503.
 	AuditLog AuditLog
+	// Preferences keeps users' preferences; nil answers 503.
+	Preferences UserPreferences
+	// PasswordCheck checks candidate passwords; nil answers 503.
+	PasswordCheck PasswordChecker
 	// StatsHistory reads the sampled statistics time series.
 	StatsHistory StatsHistory
 	Events       EventSearcher
