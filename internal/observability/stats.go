@@ -324,6 +324,33 @@ func (ts *TimeSeries) Load(points []TimeSeriesPoint) {
 	ts.points = slices.Clone(points[max(0, len(points)-ts.maxPoints):])
 }
 
+// Recent returns each flow's snapshots from the newest one taken before
+// from onwards, in recording order, in one pass. RecordAll samples every
+// flow at one time, so the pass stops after the first sampling time before
+// from.
+func (ts *TimeSeries) Recent(from time.Time) map[string][]TimeSeriesPoint {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	out := map[string][]TimeSeriesPoint{}
+	var before time.Time // the first sampling time before from
+	for i := len(ts.points) - 1; i >= 0; i-- {
+		p := ts.points[i]
+		if p.At.Before(from) {
+			if before.IsZero() {
+				before = p.At
+			}
+			if !p.At.Equal(before) {
+				break
+			}
+		}
+		out[p.Flow] = append(out[p.Flow], p)
+	}
+	for _, pts := range out {
+		slices.Reverse(pts)
+	}
+	return out
+}
+
 // Forget drops every snapshot of flow.
 func (ts *TimeSeries) Forget(flow string) {
 	ts.mu.Lock()
@@ -333,14 +360,18 @@ func (ts *TimeSeries) Forget(flow string) {
 
 // Series returns the newest limit (0 = all) snapshots whose flow satisfies
 // keep, taken at or after from and at or before to (zero = open), in
-// recording order.
+// recording order. Snapshots are recorded in time order, so the search
+// stops at the first one before from.
 func (ts *TimeSeries) Series(keep func(flow string) bool, from, to time.Time, limit int) []TimeSeriesPoint {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	out := make([]TimeSeriesPoint, 0)
 	for i := len(ts.points) - 1; i >= 0 && (limit == 0 || len(out) < limit); i-- {
 		p := ts.points[i]
-		if keep(p.Flow) && (from.IsZero() || !p.At.Before(from)) && (to.IsZero() || !p.At.After(to)) {
+		if !from.IsZero() && p.At.Before(from) {
+			break
+		}
+		if keep(p.Flow) && (to.IsZero() || !p.At.After(to)) {
 			out = append(out, p)
 		}
 	}

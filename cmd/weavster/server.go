@@ -36,7 +36,6 @@ import (
 	"github.com/weavster-dev/weavster/internal/pipeline"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 	"github.com/weavster-dev/weavster/internal/state"
-	"github.com/weavster-dev/weavster/internal/topology"
 )
 
 // buildServer wires the ports/adapters selected by cfg into the single binary
@@ -248,7 +247,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		ContextPath:     cfg.Listen.ContextPath,
 		StatsHistory:    statsPort,
 		Events:          eventsAdapter{events},
-		Topology:        topologyAdapter{flows: flows, stats: stats},
+		Topology:        topologyAdapter{flows: flows, stats: stats, series: series},
 		System:          newSystemAdapter(cfg, policy),
 		Listeners:       listeners(cfg.Listen),
 		Sources:         sourcePorts,
@@ -2470,55 +2469,6 @@ func (a eventsAdapter) CountEvents(_ context.Context, q gateway.EventQuery) (int
 }
 
 func (a eventsAdapter) MaxEventID(context.Context) (int64, error) { return a.log.MaxID(), nil }
-
-type topologyAdapter struct {
-	flows gateway.FlowStore
-	stats *observability.StatsRegistry // nil: no activity
-}
-
-// activity is the flow's topology activity from its current counters.
-func (t topologyAdapter) activity(flowID string) *topology.Activity {
-	if t.stats == nil {
-		return nil
-	}
-	s := t.stats.Snapshot(flowID, false)
-	a := &topology.Activity{Received: s.Received, Sent: s.Sent, Errored: s.Errored, Queued: s.Queued}
-	if s.LastMessageAt != nil {
-		a.LastMessageAt = s.LastMessageAt.UTC().Format(time.RFC3339)
-	}
-	return a
-}
-
-func (t topologyAdapter) Overview(ctx context.Context) (topology.Graph, error) {
-	flows, err := t.flows.List(ctx)
-	if err != nil {
-		return topology.Graph{}, err
-	}
-	summaries := make([]topology.FlowSummary, 0, len(flows))
-	for _, f := range flows {
-		var routes []string
-		for _, d := range f.Destinations {
-			if d.Type == "flow" && d.Flow != "" && !slices.Contains(routes, d.Flow) {
-				routes = append(routes, d.Flow)
-			}
-		}
-		summaries = append(summaries, topology.FlowSummary{ID: f.ID, Name: f.Name, Status: f.Status, Activity: t.activity(f.ID),
-			Routes: routes, Deps: f.DependsOn})
-	}
-	return topology.Overview(summaries), nil
-}
-
-func (t topologyAdapter) FlowInternal(ctx context.Context, id string) (topology.Graph, error) {
-	f, err := t.flows.Get(ctx, id)
-	if err != nil {
-		return topology.Graph{}, err
-	}
-	detail := topology.FlowDetail{ID: f.ID, Name: f.Name, Status: f.Status}
-	if typ := f.SourceKind(); typ != "" {
-		detail.Sources = []topology.Connector{{ID: f.ID + "-source", Label: typ + "://incoming", Type: typ, Status: f.Status}}
-	}
-	return topology.FlowInternal(detail), nil
-}
 
 // messageAdapter serves the message API from the store; deletes and
 // reprocessing go through the pipeline, which knows what is in flight.

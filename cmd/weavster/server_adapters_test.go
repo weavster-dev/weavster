@@ -166,7 +166,8 @@ func TestStoresImplementFlowRepository(t *testing.T) {
 func TestTopologyAdapter(t *testing.T) {
 	ctx := context.Background()
 	flows := flowAdapter{store: state.NewMemStore()}
-	if _, err := flows.Create(ctx, gateway.Flow{ID: "admit", Name: "Patient Admit", SourceType: "file"}); err != nil {
+	if _, err := flows.Create(ctx, gateway.Flow{ID: "admit", Name: "Patient Admit", SourceType: "file",
+		Destinations: []gateway.FlowDestination{{Name: "out", Type: "file", Dir: "/tmp/out"}}}); err != nil {
 		t.Fatal(err)
 	}
 	ta := topologyAdapter{flows: flows}
@@ -174,7 +175,8 @@ func TestTopologyAdapter(t *testing.T) {
 	if graph, err := ta.Overview(ctx); err != nil || len(graph.Nodes) != 1 {
 		t.Errorf("Overview = %+v, %v; want one flow node", graph, err)
 	}
-	if graph, err := ta.FlowInternal(ctx, "admit"); err != nil || len(graph.Nodes) == 0 {
+	// A free-text sourceType is not a source: only the destination is drawn.
+	if graph, err := ta.FlowInternal(ctx, "admit"); err != nil || len(graph.Nodes) != 1 || graph.Nodes[0].ID != "destination:out" {
 		t.Errorf("FlowInternal admit = %+v, %v", graph, err)
 	}
 	if _, err := ta.FlowInternal(ctx, "noflow"); err == nil {

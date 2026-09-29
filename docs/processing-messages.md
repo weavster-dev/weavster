@@ -1554,8 +1554,9 @@ falls behind, events are kept in the event log but not stored, and the server lo
 To save statistics or events to a file from the command-line client, use `dump stats "path"` or
 `dump events "path"` (the newest 10,000 events).
 
-The topology overview (`GET /api/v1/topology`) shows each flow's `received`, `sent`,
-`errored`, and `queued` counts under `activity`. Zero counts are included.
+The [topology](topology.md) (`GET /api/v1/topology`, and one flow with
+`GET /api/v1/topology/flows/{flowId}`) shows each flow's, source's, and destination's `received`,
+`sent`, `errored`, and `queued` counts under `activity`. Zero counts are included.
 
 ### Statistics over time
 
