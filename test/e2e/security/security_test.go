@@ -107,13 +107,25 @@ func TestAuthentication(t *testing.T) {
 	}
 
 	t.Run("lockout", func(t *testing.T) {
+		_, unknown, _ := req(t, http.MethodGet, "/api/v1/flows", "", "nobody", "Wrong-Password-1", false)
+		var wrong string
 		for i := 0; i < 3; i++ {
-			if code, _, _ := req(t, http.MethodGet, "/api/v1/flows", "", ops, "Wrong-Password-1", false); code != http.StatusUnauthorized {
+			code, body, _ := req(t, http.MethodGet, "/api/v1/flows", "", ops, "Wrong-Password-1", false)
+			if code != http.StatusUnauthorized {
 				t.Fatalf("wrong password %d: %d", i+1, code)
 			}
+			if i == 0 { // before the lockout
+				wrong = body
+			}
 		}
-		if code, body, _ := req(t, http.MethodGet, "/api/v1/flows", "", ops, opsPassword, false); code != http.StatusUnauthorized {
-			t.Errorf("the right password after the lockout: %d %s, want 401", code, body)
+		code, locked, _ := req(t, http.MethodGet, "/api/v1/flows", "", ops, opsPassword, false)
+		if code != http.StatusUnauthorized {
+			t.Errorf("the right password after the lockout: %d %s, want 401", code, locked)
+		}
+		// Anti-enumeration: the answer does not tell an unknown user, a
+		// wrong password, and a locked account apart.
+		if unknown != wrong || wrong != locked {
+			t.Errorf("login failures differ:\nunknown user: %s\nwrong password: %s\nlocked: %s", unknown, wrong, locked)
 		}
 		if code, body, _ := req(t, http.MethodGet, "/api/v1/flows", "", admin, adminPassword, false); code != http.StatusOK {
 			t.Errorf("another account is not locked: %d %s", code, body)

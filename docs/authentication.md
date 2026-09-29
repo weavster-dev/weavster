@@ -167,18 +167,18 @@ An account with `users:admin` (or `admin`) manages the other accounts.
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/users -d '{
   "username": "ops", "password": "A-Temp-Passw0rd",
   "permissions": ["flows:view", "flows:deploy", "events:view"],
-  "email": "ops@example.com"
+  "email": "ops@example.com", "org": "Radiology"
 }'
 ```
 
 ```json
-{"username":"ops","email":"ops@example.com","permissions":["events:view","flows:deploy","flows:view"],"mustChangePassword":true,"locked":false}
+{"username":"ops","email":"ops@example.com","org":"Radiology","permissions":["events:view","flows:deploy","flows:view"],"mustChangePassword":true,"locked":false}
 ```
 
 | Request | What it does |
 |---|---|
 | `GET /api/v1/users`, `GET /api/v1/users/{name}` | Lists accounts, or shows one. Password data is never returned. `locked` is true during a lockout. |
-| `POST /api/v1/users` | Creates an account (`201`). `username` is 1–64 characters from `A-Z a-z 0-9 . _ @ -`; `permissions` must be from the list above; the [password policy](server-config.md#auth) applies. The user must choose a new password at the first login unless you send `"mustChangePassword": false`. |
+| `POST /api/v1/users` | Creates an account (`201`), with optional `email` and `org` (organization). `username` is 1–64 characters from `A-Z a-z 0-9 . _ @ -`; `permissions` must be from the list above; the [password policy](server-config.md#auth) applies. The user must choose a new password at the first login unless you send `"mustChangePassword": false`. |
 | `PUT /api/v1/users/{name}` | Replaces `permissions` (required; `[]` for none). `email` and `org` change only when you send them. |
 | `POST /api/v1/users/{name}/password` | Sets a new password (`{"password":"…"}`, `204`). The user must change it at the next login, and a lockout ends. |
 | `DELETE /api/v1/users/{name}` | Deletes the account (`204`). |
