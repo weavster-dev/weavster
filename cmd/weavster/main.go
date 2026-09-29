@@ -138,7 +138,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintf(w, `Usage: weavster [flags]            interactive shell (or batch mode with -s)
        weavster server [--config FILE] [address]
-       weavster test [--filter NAME] [--format junit|json] [--output DIR]
+       weavster test [--filter NAME] [--format junit|json] [--output DIR] [PATH...]
        weavster config validate FILE...   check config-as-code files offline
 
 Flags:

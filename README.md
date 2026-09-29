@@ -87,8 +87,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   config-as-code document and planning and applying it (`config validate`, `diff`, `plan`,
   `apply`). These are stored and managed only: flows do not
   use snippets, scripts, or the config map yet.
-- **CLI**: `weavster server`, `weavster test` (five built-in codec round-trip samples,
-  JUnit/JSON output), and the command-line client: a bare `weavster` opens the interactive
+- **CLI**: `weavster server`, `weavster test` (runs your fixture files through your flows'
+  transforms offline, plus built-in codec round trips; JUnit/JSON output), and the command-line client: a bare `weavster` opens the interactive
   shell, and `-s` runs batch scripts, with `help`, `status`, `version`, `flow` commands for every
   flow API operation, user administration, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
   a connection file, and `-v` prints the server's version.
