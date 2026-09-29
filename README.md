@@ -104,7 +104,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
 ```bash
 go build -o bin/weavster ./cmd/weavster
 go test -race ./...
-weavster test --format junit --output artifacts/
+weavster test --format junit --output artifacts/ examples/
 ```
 
 ## Run

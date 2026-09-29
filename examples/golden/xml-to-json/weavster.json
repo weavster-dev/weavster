@@ -1,0 +1,23 @@
+{
+  "version": "1",
+  "flows": {
+    "xml-to-json": {
+      "inputFormat": "xml",
+      "transform": {
+        "steps": [
+          {
+            "map": {
+              "from": "order.patient.name.#text",
+              "to": "patient"
+            }
+          },
+          {
+            "build": {
+              "template": "{\"id\": \"{{order.@id}}\", \"patient\": \"{{patient}}\"}"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

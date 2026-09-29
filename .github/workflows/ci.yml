@@ -49,6 +49,39 @@ jobs:
       - name: Test against PostgreSQL 16
         run: go test -race ./internal/state/... ./internal/adapters/... ./internal/scheduler/... ./cmd/weavster/...
 
+  golden:
+    # The golden-path fixtures for each codec, run offline by the built
+    # binary as a user's CI would; the JUnit results are kept as an artifact.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build
+        run: go build -o bin/weavster ./cmd/weavster
+      - name: weavster test
+        run: bin/weavster test --format junit --output artifacts/ examples/
+      - name: Keep the JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weavster-test-junit
+          path: artifacts/results.xml
+
+  docs:
+    # The documentation site builds with --strict (warnings fail) on every PR.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install mkdocs
+        run: pip install -r requirements.txt
+      - name: Build the docs
+        run: mkdocs build --strict
+
   lint:
     runs-on: ubuntu-latest
     steps:

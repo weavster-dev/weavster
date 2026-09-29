@@ -1,0 +1,17 @@
+{
+  "version": "1",
+  "flows": {
+    "json-to-text": {
+      "transform": {
+        "steps": [
+          {
+            "build": {
+              "format": "text",
+              "template": "Dear {{patient.first}} {{patient.last}},\nyour appointment is on {{appointment.date}}.\n"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

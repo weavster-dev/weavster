@@ -46,6 +46,7 @@ type expectation struct {
 	Error        string                         `yaml:"error"`
 	Output       jsonValue                      `yaml:"output"`
 	OutputText   *string                        `yaml:"outputText"`
+	OutputFile   string                         `yaml:"outputFile"`
 	Excluded     []string                       `yaml:"excluded"`
 	Destinations map[string]destinationExpected `yaml:"destinations"`
 }
@@ -56,6 +57,7 @@ type destinationExpected struct {
 	Error      string    `yaml:"error"`
 	Output     jsonValue `yaml:"output"`
 	OutputText *string   `yaml:"outputText"`
+	OutputFile string    `yaml:"outputFile"`
 }
 
 // jsonValue is an expected output: set when the fixture gives one, null
@@ -262,27 +264,15 @@ func runCase(f pipeline.Flow, dir string, c fixtureCase) error {
 	case c.Input != nil:
 		input = []byte(*c.Input)
 	default:
-		path := c.InputFile
-		if !filepath.IsAbs(path) {
-			path = filepath.Join(dir, path)
-		}
-		file, err := os.Open(path)
+		b, err := readFixtureFile(dir, c.InputFile)
 		if err != nil {
 			return fmt.Errorf("inputFile: %w", err)
-		}
-		b, err := io.ReadAll(io.LimitReader(file, maxFixtureInput+1))
-		_ = file.Close()
-		switch {
-		case err != nil:
-			return fmt.Errorf("inputFile: %w", err)
-		case len(b) > maxFixtureInput:
-			return fmt.Errorf("inputFile %s is larger than 10 MiB", c.InputFile)
 		}
 		input = b
 	}
 	got := pipeline.Run(f, input)
 	e := c.Expect
-	if err := checkResult("", e.Status, e.Error, e.Output, e.OutputText, got.Status, got.Error, got.Output); err != nil {
+	if err := checkResult(dir, "", e.Status, e.Error, e.Output, e.OutputText, e.OutputFile, got.Status, got.Error, got.Output); err != nil {
 		return err
 	}
 	if e.Excluded != nil && !slices.Equal(sorted(e.Excluded), got.Excluded) {
@@ -299,11 +289,47 @@ func runCase(f pipeline.Flow, dir string, c fixtureCase) error {
 		if !ok {
 			return fmt.Errorf("destination %s: no transform result (it has no transform of its own, is excluded, or does not exist)", n)
 		}
-		if err := checkResult("destination "+n+": ", de.Status, de.Error, de.Output, de.OutputText, dr.Status, dr.Error, dr.Output); err != nil {
+		if err := checkResult(dir, "destination "+n+": ", de.Status, de.Error, de.Output, de.OutputText, de.OutputFile, dr.Status, dr.Error, dr.Output); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// readFixtureFile reads a file a fixture names, relative to the fixture's
+// directory, at most maxFixtureInput bytes.
+func readFixtureFile(dir, name string) ([]byte, error) {
+	path := name
+	if !filepath.IsAbs(path) {
+		path = filepath.Join(dir, path)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = file.Close() }()
+	b, err := io.ReadAll(io.LimitReader(file, maxFixtureInput+1))
+	if err == nil && len(b) > maxFixtureInput {
+		err = fmt.Errorf("%s is larger than 10 MiB", name)
+	}
+	return b, err
+}
+
+// outputText is the exact output a case expects: outputText, or the
+// contents of outputFile (not both).
+func outputText(dir string, text *string, file string) (*string, error) {
+	switch {
+	case file == "":
+		return text, nil
+	case text != nil:
+		return nil, errors.New("give outputText or outputFile, not both")
+	}
+	b, err := readFixtureFile(dir, file)
+	if err != nil {
+		return nil, fmt.Errorf("outputFile: %w", err)
+	}
+	s := string(b)
+	return &s, nil
 }
 
 func sorted(s []string) []string {
@@ -312,8 +338,9 @@ func sorted(s []string) []string {
 	return out
 }
 
-// checkResult compares a status, error, and output with the expected ones.
-func checkResult(prefix, wantStatus, wantErr string, wantOutput jsonValue, wantText *string, status, errText string, output []byte) error {
+// checkResult compares a status, error, and output with the expected ones;
+// an outputFile (in dir) is read only once the status is as expected.
+func checkResult(dir, prefix, wantStatus, wantErr string, wantOutput jsonValue, wantText *string, wantFile string, status, errText string, output []byte) error {
 	if wantStatus == "" {
 		wantStatus = "transformed"
 	}
@@ -325,6 +352,10 @@ func checkResult(prefix, wantStatus, wantErr string, wantOutput jsonValue, wantT
 	}
 	if wantErr != "" && !strings.Contains(errText, wantErr) {
 		return fmt.Errorf("%serror is %q, want it to contain %q", prefix, errText, wantErr)
+	}
+	wantText, err := outputText(dir, wantText, wantFile)
+	if err != nil {
+		return fmt.Errorf("%s%w", prefix, err)
 	}
 	if wantText != nil && string(output) != *wantText {
 		return fmt.Errorf("%soutput is %q, want %q", prefix, output, *wantText)
