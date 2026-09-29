@@ -642,7 +642,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Scheduler library (durable jobs, leases, SQL job queue)</td>
 <td>Library-only</td>
-<td>The server's polling sources and retries do not use its job queue.</td>
+<td>The server's polling sources and retries do not use its job queue. Its SQL runs on PostgreSQL 16, claims with <code>FOR UPDATE SKIP LOCKED</code> (a locked job is skipped, not waited for), and hands each job to exactly one claimer: <code>TestPostgresJobLifecycle</code>, <code>TestPostgresClaimSkipLocked</code>, <code>TestPostgresConcurrentClaims</code> (<code>postgres</code> CI job).</td>
 </tr>
 <tr>
 <td>Graceful shutdown bounded by <code>listen.shutdownTimeoutMs</code>; unfinished work resumes on the next start</td>
