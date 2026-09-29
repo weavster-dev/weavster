@@ -220,8 +220,9 @@ then the own `transform` of each destination the message reaches. Nothing is sto
 | `error` | Text the error must contain (with `status: errored`) | not checked |
 | `output` | The flow's JSON output has these fields with these values; fields you leave out are ignored, arrays and values must be equal. A field expected as `null` must be there, with `null` | not checked |
 | `outputText` | The flow's output, exactly (for a build step's HL7 v2, XML, or text) | not checked |
+| `outputFile` | The flow's output, exactly as in this file (relative to the fixture file); instead of `outputText` | not checked |
 | `excluded` | The destinations `destinationSet` steps left out (`[]`: none) | not checked |
-| `destinations.NAME` | That destination's own transform: `status`, `error`, `output`, `outputText` as above | not checked |
+| `destinations.NAME` | That destination's own transform: `status`, `error`, `output`, `outputText`, `outputFile` as above | not checked |
 
 Each case is named `<fixture file without .test.yaml>/<case name>`, for example
 `tests/adt/admit`. The built-in codec checks also run, named `identity/…`: each parses a sample
@@ -248,6 +249,29 @@ FAIL tests/adt/admit: output differs at patient.lastName: it is {"patient":{"las
   parse fails the run as well, whatever `--filter` selects.
 - Numbers in `output` compare by exact value: `1` and `1.0` are equal, but two 20-digit ids that
   differ in the last digit are not.
+
+### A complete example
+
+The repository's [`examples/golden`](https://github.com/weavster-dev/weavster/tree/main/examples/golden)
+directory has one case per data format: HL7 v2 to JSON and to HL7 v2, XML to JSON and to XML (and
+one that is filtered), delimited text to JSON, and JSON to JSON and to text. Each case directory
+holds a one-flow `weavster.json`, the sample `input.*`, the `expected.*` output, and a fixture:
+
+```yaml
+# examples/golden/hl7v2-to-json/hl7v2-to-json.test.yaml
+flow: hl7v2-to-json
+cases:
+  - name: golden
+    inputFile: input.hl7
+    expect: {outputFile: expected.json}
+```
+
+```bash
+weavster test --format junit --output artifacts/ examples/golden
+```
+
+Weavster's own CI runs exactly this, keeps `results.xml`, and sends the same inputs through a
+running server to check that it produces the same outputs.
 
 ### Pitfalls
 

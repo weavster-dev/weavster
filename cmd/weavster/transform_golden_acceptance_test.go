@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,16 +20,23 @@ var (
 	goldenType = map[string]string{"json": "application/json", "hl7v2": "x-application/hl7-v2+er7", "xml": "application/xml", "text": "text/plain; charset=utf-8"}
 )
 
-// TestTransformGolden runs every case under testdata/transforms through
-// the real server. A case has flow.json (a flow definition without id or
-// destinations; its inputFormat says how input.* is read), one input.*
-// file, and either expected.<ext> (the output, <ext> named by the output
-// format: the transform's build format, else json) or expected.status
-// holding "filtered". The input is sent with the API to an http
-// destination, whose body and Content-Type are checked. Run with -update
-// to rewrite expected.<ext> (stale expected.* files are removed).
+// goldenDir holds the golden cases, a directory each: an example
+// repository that `weavster test examples/golden` also runs offline
+// (TestGoldenFixtures), so the server and the test command are held to the
+// same expected outputs.
+const goldenDir = "../../examples/golden"
+
+// TestTransformGolden runs every case under examples/golden through the
+// real server. A case has weavster.json (a config-as-code document with
+// one flow, named like the directory, without destinations; its
+// inputFormat says how input.* is read), one input.* file, and either
+// expected.<ext> (the output, <ext> named by the output format: the
+// transform's build format, else json) or expected.status holding
+// "filtered". The input is sent with the API to an http destination, whose
+// body and Content-Type are checked. Run with -update to rewrite
+// expected.<ext> (stale expected.* files are removed).
 func TestTransformGolden(t *testing.T) {
-	cases, err := filepath.Glob("testdata/transforms/*")
+	cases, err := filepath.Glob(filepath.Join(goldenDir, "*"))
 	if err != nil || len(cases) == 0 {
 		t.Fatalf("no golden cases: %v", err)
 	}
@@ -53,16 +61,20 @@ func TestTransformGolden(t *testing.T) {
 			mu.Lock()
 			bodies, types = nil, nil
 			mu.Unlock()
-			raw, err := os.ReadFile(filepath.Join(dir, "flow.json"))
+			raw, err := os.ReadFile(filepath.Join(dir, "weavster.json"))
 			if err != nil {
 				t.Fatal(err)
 			}
-			var flow map[string]any
-			if err := json.Unmarshal(raw, &flow); err != nil {
-				t.Fatalf("flow.json: %v", err)
+			var doc struct {
+				Version string
+				Flows   map[string]map[string]any
 			}
-			if flow["id"] != nil || flow["destinations"] != nil {
-				t.Fatal("flow.json must not set id or destinations; the test adds them")
+			if err := json.Unmarshal(raw, &doc); err != nil || doc.Version != "1" || len(doc.Flows) != 1 {
+				t.Fatalf("weavster.json must be a version 1 document with one flow (%v)", err)
+			}
+			flow, ok := doc.Flows[name]
+			if !ok || flow["id"] != nil || flow["destinations"] != nil {
+				t.Fatal("weavster.json's flow must be named like the directory, without id or destinations; the test adds them")
 			}
 			flow["id"] = name
 			flow["destinations"] = []any{map[string]any{"name": "out", "type": "http", "url": receiver.URL}}
@@ -153,4 +165,28 @@ func buildFormat(flow map[string]any) string {
 		return format
 	}
 	return "json"
+}
+
+// TestGoldenFixtures: `weavster test --format junit` runs the golden cases
+// offline, as CI does, and every one passes, with the codec round trips.
+func TestGoldenFixtures(t *testing.T) {
+	out := t.TempDir()
+	var stdout, stderr strings.Builder
+	if code := run([]string{"test", "--format", "junit", "--output", out, goldenDir}, strings.NewReader(""), &stdout, &stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	junit, err := os.ReadFile(filepath.Join(out, "results.xml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cases, _ := filepath.Glob(filepath.Join(goldenDir, "*"))
+	if want := `tests="` + fmt.Sprint(5+len(cases)) + `" failures="0"`; !strings.Contains(string(junit), want) {
+		t.Errorf("JUnit lacks %s:\n%s", want, junit)
+	}
+	for _, dir := range cases {
+		name := filepath.ToSlash(filepath.Join(dir, filepath.Base(dir))) + "/golden"
+		if !strings.Contains(string(junit), `name="`+name+`"`) {
+			t.Errorf("no result for %s", name)
+		}
+	}
 }

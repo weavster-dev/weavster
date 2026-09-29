@@ -1,0 +1,38 @@
+{
+  "version": "1",
+  "flows": {
+    "delimited-to-json": {
+      "inputFormat": "delimited",
+      "delimited": {
+        "delimiter": ";"
+      },
+      "transform": {
+        "steps": [
+          {
+            "map": {
+              "from": "rows.0.lastName",
+              "to": "first"
+            }
+          },
+          {
+            "map": {
+              "from": "rows.1.lastName",
+              "to": "second"
+            }
+          },
+          {
+            "map": {
+              "from": "rows.1.note",
+              "to": "note"
+            }
+          },
+          {
+            "build": {
+              "template": "{\"first\": \"{{first}}\", \"second\": \"{{second}}\", \"note\": \"{{note}}\"}"
+            }
+          }
+        ]
+      }
+    }
+  }
+}
