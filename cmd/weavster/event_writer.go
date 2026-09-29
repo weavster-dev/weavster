@@ -102,10 +102,10 @@ func (w *eventWriter) loop(ctx context.Context) {
 		case e := <-w.queue:
 			batch = append(batch, record(e))
 			if len(batch) >= eventBatch {
-				batch = w.write(batch)
+				batch = w.write(context.Background(), batch)
 			}
 		case <-ticker.C:
-			batch = w.write(batch)
+			batch = w.write(context.Background(), batch)
 		case <-ctx.Done():
 			w.drain(batch)
 			return
@@ -113,11 +113,12 @@ func (w *eventWriter) loop(ctx context.Context) {
 	}
 }
 
-// drain writes what is still queued, in batches, until the queue is empty
-// or eventDrainLimit has passed; what is left then is reported as not
-// stored.
+// drain writes what is still queued, in batches, within eventDrainLimit
+// in all (every write shares that deadline); what is left then is reported
+// as not stored.
 func (w *eventWriter) drain(batch []state.EventRecord) {
-	deadline := time.Now().Add(eventDrainLimit)
+	ctx, cancel := context.WithTimeout(context.Background(), eventDrainLimit)
+	defer cancel()
 	for {
 		select {
 		case e := <-w.queue:
@@ -126,16 +127,16 @@ func (w *eventWriter) drain(batch []state.EventRecord) {
 				continue
 			}
 		default:
-			w.write(batch)
+			w.write(ctx, batch)
 			return
 		}
-		batch = w.write(batch)
-		if time.Now().After(deadline) {
+		batch = w.write(ctx, batch)
+		if ctx.Err() != nil {
 			w.dropped.Add(int64(len(w.queue)))
 			for len(w.queue) > 0 {
 				<-w.queue
 			}
-			w.write(nil) // reports the dropped ones
+			w.write(ctx, nil) // reports the dropped ones
 			return
 		}
 	}
@@ -151,14 +152,14 @@ func event(r state.EventRecord) observability.Event {
 
 // write stores batch (logging a failure) and reports dropped events; it
 // returns the emptied batch for reuse.
-func (w *eventWriter) write(batch []state.EventRecord) []state.EventRecord {
+func (w *eventWriter) write(parent context.Context, batch []state.EventRecord) []state.EventRecord {
 	if n := w.dropped.Swap(0); n > 0 {
 		w.logger.Warn("events not stored: the store falls behind (they stay in the event log until the server stops)", "dropped", n)
 	}
 	if len(batch) == 0 {
 		return batch
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), eventWriteLimit)
+	ctx, cancel := context.WithTimeout(parent, eventWriteLimit)
 	defer cancel()
 	if err := w.repo.AppendEvents(ctx, batch); err != nil {
 		w.logger.Warn("events not stored", "count", len(batch), "error", err)

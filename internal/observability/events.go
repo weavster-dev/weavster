@@ -51,12 +51,19 @@ type EventLog struct {
 	seq    int64
 	events []Event // ring buffer of at most MaxEvents
 	next   int     // index of the oldest event once full
+	newest int64   // the newest event's id (0 before any)
 	sink   func(Event)
+	// sinkMu is held (read) while an event goes to the sink, so SetSink
+	// returns only once no event is still on its way to the old one.
+	sinkMu sync.RWMutex
 }
 
 // SetSink sends every event added from now on to sink too (after it is
-// logged, outside the log's lock): the store's writer.
+// logged, outside the log's lock): the store's writer. It returns once
+// events already on their way to the previous sink have reached it.
 func (l *EventLog) SetSink(sink func(Event)) {
+	l.sinkMu.Lock()
+	defer l.sinkMu.Unlock()
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.sink = sink
@@ -71,8 +78,12 @@ func (l *EventLog) Load(events []Event, maxID int64) {
 		events = events[len(events)-MaxEvents:]
 	}
 	l.events, l.next = append([]Event(nil), events...), 0
+	l.newest = 0
+	if len(l.events) > 0 {
+		l.newest = l.events[len(l.events)-1].ID
+	}
 	if maxID > l.seq {
-		l.seq = maxID
+		l.seq = maxID // new ids start after it; MaxID stays the newest event's
 	}
 }
 
@@ -84,8 +95,11 @@ const MaxEvents = 10000
 
 // Add records an event and returns it.
 func (l *EventLog) Add(typ, actor, flow string, data map[string]string) Event {
+	l.sinkMu.RLock()
+	defer l.sinkMu.RUnlock()
 	l.mu.Lock()
 	l.seq++
+	l.newest = l.seq
 	e := Event{ID: l.seq, At: time.Now(), Type: typ, Actor: actor, Flow: flow, Data: data}
 	if len(l.events) < MaxEvents {
 		l.events = append(l.events, e)
@@ -138,7 +152,7 @@ func (l *EventLog) Get(id int64) (Event, bool) {
 func (l *EventLog) MaxID() int64 {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.seq
+	return l.newest
 }
 
 // Count returns the number of events matching the filter (Limit is

@@ -91,7 +91,7 @@ func TestEventWriter(t *testing.T) {
 		full.add(observability.Event{ID: 1})
 	}
 	repo.fail = true
-	full.write([]state.EventRecord{{ID: 99999}})
+	full.write(context.Background(), []state.EventRecord{{ID: 99999}})
 	if !strings.Contains(logs.String(), "dropped=3") || !strings.Contains(logs.String(), "events not stored") {
 		t.Errorf("log = %s", logs.String())
 	}
@@ -148,4 +148,50 @@ func TestEventWriterLifecycle(t *testing.T) {
 		t.Errorf("the log has %d events, want 3", n)
 	}
 	(&eventWriter{}).stop() // never started: nothing to do
+}
+
+// TestEventLogMaxIDAfterRestore: with no events after a restart, max id is
+// 0 although new ids start after the time floor.
+func TestEventLogMaxIDAfterRestore(t *testing.T) {
+	log := observability.NewEventLog()
+	w := newEventWriter(&countingEvents{MemStore: state.NewMemStore()}, slog.New(slog.NewTextHandler(&bytes.Buffer{}, nil)))
+	now := time.Now()
+	if err := w.restore(context.Background(), log, now); err != nil {
+		t.Fatal(err)
+	}
+	if got := log.MaxID(); got != 0 {
+		t.Errorf("max id with no events = %d, want 0", got)
+	}
+	e := log.Add("a", "", "", nil)
+	if log.MaxID() != e.ID || e.ID <= now.UnixMicro() {
+		t.Errorf("max id %d, event %d", log.MaxID(), e.ID)
+	}
+}
+
+// TestEventWriterDrainDeadline: a store that hangs at shutdown does not
+// hold stop beyond the drain limit.
+func TestEventWriterDrainDeadline(t *testing.T) {
+	var logs bytes.Buffer
+	w := newEventWriter(hangingEvents{state.NewMemStore()}, slog.New(slog.NewTextHandler(&logs, nil)))
+	w.every = time.Hour
+	for i := range 3 * eventBatch {
+		w.add(observability.Event{ID: int64(i + 1)})
+	}
+	w.start()
+	started := time.Now()
+	w.stop()
+	if d := time.Since(started); d > eventDrainLimit+2*time.Second {
+		t.Errorf("stop took %s", d)
+	}
+	if !strings.Contains(logs.String(), "events not stored") {
+		t.Errorf("log = %s", logs.String())
+	}
+}
+
+// hangingEvents never finishes a write before its context ends.
+type hangingEvents struct{ *state.MemStore }
+
+func (hangingEvents) AppendEvents(ctx context.Context, _ []state.EventRecord) error {
+	<-ctx.Done()
+	return ctx.Err()
 }
