@@ -18,6 +18,8 @@ type MemStore struct {
 	lookups  map[string]map[string]string          // group -> key -> value
 	audit    []AuditRecord                         // oldest first
 	auditSeq int64
+	events   []EventRecord // by id
+	eventIDs map[int64]bool
 }
 
 // NewMemStore returns an empty in-memory store.

@@ -110,6 +110,18 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		audits = store.(auditRepository)
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
+	// Events kept across restarts (#107 D-94): the newest are loaded back
+	// before anything records one (a flow deployed at start), and new ones
+	// are stored in the background until the store closes.
+	var ew *eventWriter
+	if store != nil {
+		ew = newEventWriter(store.(eventRepository), logger)
+		if err := ew.restore(ctx, events, time.Now()); err != nil {
+			_ = store.Close()
+			return nil, nil, nil, fmt.Errorf("store: events: %w", err)
+		}
+		ew.start()
+	}
 	series := observability.NewTimeSeries(time.Duration(cfg.Stats.RetentionHours)*time.Hour, maxStatsPoints)
 	serverPorts := map[int]string{}
 	for _, l := range listeners(cfg.Listen) {
@@ -153,7 +165,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		tables := newDatabaseSources(flows, ia, eventLogRecorder{events}, sinks.dbs, logger)
 		listening := newPortSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, logger)
 		sourcePorts = listening
-		pr := newPruner(cfg.Prune, ma, audits, eventLogRecorder{events}, logger)
+		pr := newPruner(cfg.Prune, ma, audits, store.(eventRepository), eventLogRecorder{events}, logger)
 		prune = pr
 		retry = func(ctx context.Context) {
 			polled, served, queried, pruned := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -168,6 +180,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 			<-pruned
 		}
 		closeStore = func() error { // after the API drained: nothing delivers any more
+			ew.stop() // the last events, then no more
 			sinks.dbs.close()
 			return store.Close()
 		}

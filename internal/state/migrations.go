@@ -192,6 +192,30 @@ func Migrations() []Migration {
 				return nil
 			},
 		},
+		{
+			// The event log (processing outcomes, source failures, lifecycle,
+			// prune passes), kept across restarts. Ids are the event log's.
+			Version: 14,
+			Name:    "events",
+			Apply: func(ctx context.Context, tx *sql.Tx) error {
+				for _, stmt := range []string{
+					`CREATE TABLE events (
+						id BIGINT PRIMARY KEY,
+						at BIGINT NOT NULL,
+						type TEXT NOT NULL,
+						actor TEXT NOT NULL,
+						flow TEXT NOT NULL,
+						data TEXT NOT NULL DEFAULT '{}'
+					)`,
+					`CREATE INDEX events_at ON events (at)`,
+				} {
+					if _, err := tx.ExecContext(ctx, stmt); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
 	}
 }
 

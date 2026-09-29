@@ -25,7 +25,11 @@ func testPruner(store state.Store, cfg serverconfig.Prune, now time.Time) (*prun
 	if audits == nil {
 		audits = state.NewMemStore()
 	}
-	p := newPruner(cfg, messageAdapter{store: store, pipe: pipe}, audits, eventLogRecorder{events}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	stored, _ := store.(eventRepository)
+	if stored == nil {
+		stored = state.NewMemStore()
+	}
+	p := newPruner(cfg, messageAdapter{store: store, pipe: pipe}, audits, stored, eventLogRecorder{events}, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	p.now = func() time.Time { return now }
 	p.base = context.Background() // as while the server runs
 	return p, pipe, events
@@ -244,6 +248,27 @@ func TestPruneAudit(t *testing.T) {
 		t.Errorf("left %d entries, want 1", len(left))
 	}
 	if evs := events.Search(observability.EventFilter{Type: "messages.pruned"}); len(evs) != 1 || evs[0].Data["auditRemoved"] != "2" {
+		t.Errorf("event = %+v", evs)
+	}
+}
+
+// TestPruneEvents: prune.eventMaxAgeDays removes older stored events.
+func TestPruneEvents(t *testing.T) {
+	now := time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC)
+	store := state.NewMemStore()
+	if err := store.AppendEvents(context.Background(), []state.EventRecord{
+		{ID: 1, At: now.AddDate(0, 0, -10)}, {ID: 2, At: now.AddDate(0, 0, -1)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	p, _, events := testPruner(store, serverconfig.Prune{EventMaxAgeDays: 7, IntervalMinutes: 60}, now)
+	if run := runPass(t, p); run.EventsRemoved != 1 {
+		t.Errorf("run = %+v, want 1 event removed", run)
+	}
+	if left, _, _ := store.RecentEvents(context.Background(), 10); len(left) != 1 || left[0].ID != 2 {
+		t.Errorf("left %+v", left)
+	}
+	if evs := events.Search(observability.EventFilter{Type: "messages.pruned"}); len(evs) != 1 || evs[0].Data["eventsRemoved"] != "1" {
 		t.Errorf("event = %+v", evs)
 	}
 }

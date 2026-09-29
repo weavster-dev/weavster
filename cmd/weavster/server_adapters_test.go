@@ -155,6 +155,9 @@ func TestStoresImplementFlowRepository(t *testing.T) {
 		if _, ok := s.(auditRepository); !ok {
 			t.Errorf("%T does not implement auditRepository", s)
 		}
+		if _, ok := s.(eventRepository); !ok {
+			t.Errorf("%T does not implement eventRepository", s)
+		}
 	}
 }
 

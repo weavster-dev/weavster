@@ -10,7 +10,7 @@ import (
 var (
 	ErrPruneRunning    = errors.New("a prune pass is already running")
 	ErrPruneNotRunning = errors.New("no prune pass is running")
-	ErrPruneOff        = errors.New("pruning is not configured: set prune.maxAgeHours, prune.maxMessages, or prune.auditMaxAgeDays")
+	ErrPruneOff        = errors.New("pruning is not configured: set prune.maxAgeHours, prune.maxMessages, prune.auditMaxAgeDays, or prune.eventMaxAgeDays")
 	// ErrPruneUnavailable: the server is starting or stopping (503).
 	ErrPruneUnavailable = errors.New("pruning is unavailable while the server starts or stops")
 )
@@ -29,6 +29,7 @@ type PruneStatus struct {
 	MaxAgeHours     int        `json:"maxAgeHours"`
 	MaxMessages     int        `json:"maxMessages"`
 	AuditMaxAgeDays int        `json:"auditMaxAgeDays"`
+	EventMaxAgeDays int        `json:"eventMaxAgeDays"`
 	IntervalMinutes int        `json:"intervalMinutes"`
 	Running         bool       `json:"running"`
 	NextRun         *time.Time `json:"nextRunAt,omitempty"`
@@ -42,9 +43,11 @@ type PruneRun struct {
 	Removed    int        `json:"removed"`
 	Busy       int        `json:"busy"`
 	// AuditRemoved counts audit entries removed (prune.auditMaxAgeDays).
-	AuditRemoved int    `json:"auditRemoved"`
-	Stopped      bool   `json:"stopped"`
-	Error        string `json:"error,omitempty"`
+	AuditRemoved int `json:"auditRemoved"`
+	// EventsRemoved counts stored events removed (prune.eventMaxAgeDays).
+	EventsRemoved int    `json:"eventsRemoved"`
+	Stopped       bool   `json:"stopped"`
+	Error         string `json:"error,omitempty"`
 }
 
 func (s *Server) handlePruneStatus(w http.ResponseWriter, _ *http.Request) {
