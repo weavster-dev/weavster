@@ -432,13 +432,13 @@ change are marked with their configuration key or flow field.</p>
 </tr>
 <tr>
 <td>Statistics (current, lifetime)</td>
-<td>Server memory</td>
-<td>Until reset or restart.</td>
+<td>Server memory and the store</td>
+<td>Until reset or the flow is deleted; saved with every sample and at stop, so kept across restarts with PostgreSQL. With <code>memory</code>, until the server stops.</td>
 </tr>
 <tr>
 <td>Statistics over time</td>
-<td>Server memory</td>
-<td><code>stats.retentionHours</code> (default 24, up to 8760), at most 100,000 samples per flow and 1,000,000 in all.</td>
+<td>Server memory and the store</td>
+<td><code>stats.retentionHours</code> (default 24, up to 8760), at most 100,000 samples per flow; in memory at most 1,000,000 in all, the newest of which are loaded again at start.</td>
 </tr>
 <tr>
 <td>Audit log</td>

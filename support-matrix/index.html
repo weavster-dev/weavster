@@ -353,7 +353,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Statistics over time (<code>GET /api/v1/stats/series</code>: sampled lifetime statistics per flow; server config <code>stats.sampleIntervalMs</code>, <code>stats.retentionHours</code>)</td>
 <td>Implemented (wired)</td>
-<td><code>TestStatsSeries</code>. Samples are held in memory and restart empty. See <a href="../processing-messages/#statistics-over-time">Processing messages</a>.</td>
+<td><code>TestStatsSeries</code>, <code>TestStatsSurviveRestart</code>, <code>TestStats</code> (every store backend). Samples and current/lifetime statistics are stored with every sample, after a reset and at stop, and loaded again at start, so they survive a restart with PostgreSQL. See <a href="../processing-messages/#statistics-over-time">Processing messages</a>.</td>
 </tr>
 <tr>
 <td>CI/CD samples: GitHub Actions and GitLab CI, plan on pull/merge request and apply on merge to <code>main</code> (<code>docs/examples/ci/</code>)</td>

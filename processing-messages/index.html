@@ -1011,7 +1011,9 @@ response to <a href="#3-send-a-message"><code>POST /api/v1/flows/{id}/messages</
   restart.</li>
 <li><code>queued</code> messages are retried against the current definition. A changed destination URL is
   used for them, and a removed destination is no longer retried for them.</li>
-<li>Statistics of a removed or renamed destination remain listed until the server restarts.</li>
+<li>Statistics of a removed or renamed destination remain listed, also after a restart, until you
+  <a href="#5-statistics-and-events">reset</a> the flow's statistics (<code>?lifetime=true</code> for the lifetime
+  totals).</li>
 <li>The same checks as create apply (<code>400</code> with the reason).</li>
 <li><code>id</code> comes from the URL: a different <code>id</code> in the body, or any <code>status</code> field, returns <code>400</code>.</li>
 <li>Unknown flows return <code>404</code>.</li>
@@ -1947,6 +1949,11 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST 'http://127.0.0.1:80
 </code></pre>
 <p>Both return <code>204</code>. Without <code>lifetime=true</code> only the current counters are cleared; the lifetime
 totals keep counting. An unknown flow returns <code>404</code>.</p>
+<p>With <code>store.dialect: postgres</code>, current counters and lifetime totals are kept across restarts.
+They are saved with every <a href="#statistics-over-time">sample</a> (<code>stats.sampleIntervalMs</code>, every minute
+by default), after every reset, and when the server stops. After a crash, the counts of the last
+interval before it are lost; the messages themselves are not. With <code>memory</code>, statistics start
+from zero at every start.</p>
 <p>Events (permission <code>events:view</code>). Each processed message adds one event of type
 <code>message.sent</code>, <code>message.queued</code>, <code>message.filtered</code>, or <code>message.errored</code>:</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
@@ -2047,9 +2054,12 @@ the samples for 24 hours
   flow's samples are returned, interleaved by time.</li>
 <li>At most <code>limit</code> samples are returned (default 1000, up to 10000): the newest ones that match,
   still oldest first. Narrow with <code>flowId</code> or <code>from</code> to reach older samples.</li>
-<li>Samples are kept in memory: they start again after a restart, and a lifetime reset shows as a
-  drop to zero. Deleting a flow drops its samples, so a new flow with the same <code>id</code> starts a new
-  series. The server keeps at most 1,000,000 samples in total and drops the oldest past that.</li>
+<li>With <code>store.dialect: postgres</code>, samples are stored and loaded again at start, so the series
+  continues across a restart (with a gap while the server was down). With <code>memory</code> they start
+  again after a restart. A lifetime reset shows as a drop to zero.</li>
+<li>Deleting a flow drops its samples, also from the store, so a new flow with the same <code>id</code> starts
+  a new series. The server holds at most 1,000,000 samples in memory and drops the oldest past
+  that; the store keeps samples for <code>stats.retentionHours</code>.</li>
 <li>An unknown <code>flowId</code> returns <code>404</code>; a bad time, <code>from</code> after <code>to</code>, or a <code>limit</code> outside 1–10000
   returns <code>400</code>.</li>
 <li>For message counts by status over hours or days from the stored messages, use
@@ -2147,8 +2157,8 @@ someone just requeued is never removed; <code>deadletter remove</code> uses it. 
 again as a new message instead, use <code>reprocess</code>.</p>
 <h2 id="limits-today">Limits today</h2>
 <ul>
-<li>Statistics are kept in memory and restart from zero when the server restarts. The events API
-  shows the newest 10,000 events (kept across restarts with PostgreSQL).</li>
+<li>The events API shows the newest 10,000 events. Events and statistics are kept across restarts
+  with PostgreSQL only.</li>
 <li>The first delivery attempt runs while your request waits; retries run in the background.</li>
 <li>Only <code>http</code>, <code>file</code>, <code>mllp</code>, and <code>flow</code> destinations are available.</li>
 <li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a> and
