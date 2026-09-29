@@ -67,13 +67,22 @@ type testResult struct {
 }
 
 // runTest implements `weavster test [--filter NAME] [--format junit|json]
-// [--output DIR]` (architecture §7).
+// [--output DIR] [PATH...]` (architecture §7, #107 D-101): the built-in
+// codec round trips, and the fixture files under the paths (default .),
+// run offline through the flows of the config-as-code documents there.
+// It exits 0 when every case passed, 1 when one failed (or nothing
+// matched --filter), and 2 on a usage error or when the results cannot be
+// written.
 func runTest(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("test", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	filter := fs.String("filter", "", "run fixtures whose name contains this substring")
+	filter := fs.String("filter", "", "run the cases whose name contains this text")
 	format := fs.String("format", "junit", "output format: junit|json")
-	output := fs.String("output", "", "output directory")
+	output := fs.String("output", "", "write results.xml or results.json into this directory")
+	fs.Usage = func() {
+		_, _ = fmt.Fprintln(fs.Output(), "Usage: weavster test [--filter NAME] [--format junit|json] [--output DIR] [PATH...]")
+		fs.PrintDefaults()
+	}
 	if code, ok := parseFlags(fs, args, stderr); !ok {
 		if code == 0 {
 			fs.SetOutput(stdout)
@@ -81,10 +90,23 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 		}
 		return code
 	}
+	if *format != "junit" && *format != "json" {
+		_, _ = fmt.Fprintf(stderr, "Error: --format must be junit or json, got %q\n", *format)
+		return 2
+	}
+	paths := fs.Args()
+	if len(paths) == 0 {
+		paths = []string{"."}
+	}
+	found, err := discover(paths)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+		return 2
+	}
 
-	var results []testResult
+	var results []testResult // only what --filter selects is run
 	for _, fx := range builtinFixtures() {
-		if *filter != "" && !strings.Contains(fx.name, *filter) {
+		if !strings.Contains(fx.name, *filter) {
 			continue
 		}
 		err := runTransform(fx.codec, fx.content)
@@ -94,27 +116,29 @@ func runTest(args []string, stdout, stderr io.Writer) int {
 		}
 		results = append(results, r)
 	}
+	results = append(results, found.runFixtures(*filter)...)
 
 	failures := 0
 	for _, r := range results {
 		if !r.Passed {
 			failures++
+			_, _ = fmt.Fprintf(stderr, "FAIL %s: %s\n", r.Name, r.Failure)
 		}
 	}
-
-	var err error
-	switch *format {
-	case "json":
+	if *format == "json" {
 		err = writeJSONResults(*output, stdout, results)
-	default:
+	} else {
 		err = writeJUnitResults(*output, stdout, results)
 	}
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
 		return 2
 	}
-
-	if failures > 0 {
+	switch {
+	case len(results) == 0:
+		_, _ = fmt.Fprintf(stderr, "Error: no case matches --filter %q\n", *filter)
+		return 1
+	case failures > 0:
 		return 1
 	}
 	return 0

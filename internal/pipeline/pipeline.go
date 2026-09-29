@@ -537,39 +537,21 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 	}
 	ob := p.outbox(f, m.ContentType, nil, nil)
 	if m.Status == state.StatusReceived {
-		transformed := m.Raw
 		// Every newly received message decides its own exclusions: the key
 		// is cleared ("") unless the flow transform sets it, so one carried
 		// over (a reprocessed message keeps its metadata) never applies.
 		routed := map[string]string{ExcludedMetadata: ""}
 		// What the stored output is, decided now (not at receive time, since
 		// the flow may have changed): passthrough, JSON, or a build format.
-		contentType := "raw"
-		if f.Transform != nil {
-			prog, err := dsl.Compile(*f.Transform)
-			if err != nil {
-				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
-			}
-			doc, err := decodeInput(f, m.Raw)
-			if err != nil {
-				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
-			}
-			out, err := prog.Execute(doc)
-			if err != nil {
-				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
-			}
-			if out.Filtered {
-				return p.complete(ctx, id, state.StatusFiltered, nil, retry, nil)
-			}
-			contentType = "json"
-			if out.Body != nil { // a build step rendered the output
-				transformed, contentType = out.Body, out.Format
-			} else if transformed, err = json.Marshal(out.Doc); err != nil {
-				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
-			}
-			routed[ExcludedMetadata] = strings.Join(out.Excluded, ",")
+		out, contentType, excluded, filtered, err := applyTransform(f, m.Raw)
+		switch {
+		case err != nil:
+			return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
+		case filtered:
+			return p.complete(ctx, id, state.StatusFiltered, nil, retry, nil)
 		}
-		stored, err := ob.SetTransformed(ctx, id, transformed, contentType, routed)
+		routed[ExcludedMetadata] = strings.Join(excluded, ",")
+		stored, err := ob.SetTransformed(ctx, id, out, contentType, routed)
 		if err != nil {
 			return Result{}, err
 		}
@@ -613,6 +595,88 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 // object, a failing step) or filters, returns nil.
 // isJSONNull reports whether b is the JSON literal null.
 func isJSONNull(b []byte) bool { return bytes.Equal(bytes.TrimSpace(b), []byte("null")) }
+
+// applyTransform runs f's transform over raw, read the way f's input options
+// say: the output, its content type (raw when the flow has no transform,
+// json, or a build step's format), the destinations destinationSet steps
+// excluded, and whether a filter dropped the message.
+func applyTransform(f Flow, raw []byte) (out []byte, contentType string, excluded []string, filtered bool, err error) {
+	if f.Transform == nil {
+		return raw, "raw", nil, false, nil
+	}
+	return execute(*f.Transform, f, raw)
+}
+
+// execute runs transform t over body, read the way format's input options
+// say: the output (a build step's, else the document as JSON), its format,
+// the destinations destinationSet steps excluded, and whether a filter
+// dropped it. Flow and destination transforms both run through it.
+func execute(t compiler.Transform, format Flow, body []byte) (out []byte, outFormat string, excluded []string, filtered bool, err error) {
+	prog, err := dsl.Compile(t)
+	if err != nil {
+		return nil, "", nil, false, err
+	}
+	doc, err := decodeInput(format, body)
+	if err != nil {
+		return nil, "", nil, false, err
+	}
+	res, err := prog.Execute(doc)
+	if err != nil || res.Filtered {
+		return nil, "", nil, res.Filtered, err
+	}
+	if res.Body != nil { // a build step rendered the output
+		return res.Body, res.Format, res.Excluded, false, nil
+	}
+	out, err = json.Marshal(res.Doc)
+	return out, "json", res.Excluded, false, err
+}
+
+// RunResult is what Run found a message would become.
+type RunResult struct {
+	Status      string   // transformed, filtered, or errored
+	Error       string   // why, when errored
+	Output      []byte   // the flow's output (transformed)
+	ContentType string   // its content type
+	Excluded    []string // destinations the flow's destinationSet steps excluded
+	// Destinations are the results of the destinations with their own
+	// transform that the message reaches.
+	Destinations map[string]DestinationRun
+}
+
+// DestinationRun is a destination transform's result.
+type DestinationRun struct {
+	Status      string // transformed, filtered, or errored
+	Error       string
+	Output      []byte
+	ContentType string
+}
+
+// Run is what processing would make of body, without storing or
+// delivering anything: the flow's transform, then each reached
+// destination's own transform, exactly as a message is processed (the
+// weavster test command runs fixtures through it).
+func Run(f Flow, body []byte) RunResult {
+	out, contentType, excluded, filtered, err := applyTransform(f, body)
+	switch {
+	case err != nil:
+		return RunResult{Status: "errored", Error: err.Error()}
+	case filtered:
+		return RunResult{Status: "filtered"}
+	}
+	res := RunResult{Status: "transformed", Output: out, ContentType: contentType, Excluded: excluded, Destinations: map[string]DestinationRun{}}
+	m := state.Message{Transformed: out, ContentType: contentType, Metadata: map[string]string{ExcludedMetadata: strings.Join(excluded, ",")}}
+	for name, r := range destinationOutputs(f, m) {
+		d := DestinationRun{Status: "transformed", Output: r.body, ContentType: r.format}
+		switch {
+		case r.err != nil:
+			d = DestinationRun{Status: "errored", Error: r.err.Error()}
+		case r.filtered:
+			d = DestinationRun{Status: "filtered"}
+		}
+		res.Destinations[name] = d
+	}
+	return res
+}
 
 func responseOutput(f Flow, r *Reply) json.RawMessage {
 	var t *compiler.Transform
@@ -719,23 +783,8 @@ func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 // destinationOutput runs transform t over body, the flow's output, read the
 // way format's input options say.
 func destinationOutput(t compiler.Transform, format Flow, body []byte) (out []byte, outFormat string, filtered bool, err error) {
-	prog, err := dsl.Compile(t)
-	if err != nil {
-		return nil, "", false, err
-	}
-	doc, err := decodeInput(format, body)
-	if err != nil {
-		return nil, "", false, err
-	}
-	res, err := prog.Execute(doc)
-	if err != nil || res.Filtered {
-		return nil, "", res.Filtered, err
-	}
-	if res.Body != nil { // a build step rendered the output
-		return res.Body, res.Format, false, nil
-	}
-	out, err = json.Marshal(res.Doc)
-	return out, "json", false, err
+	out, outFormat, _, filtered, err = execute(t, format, body)
+	return out, outFormat, filtered, err
 }
 
 // ExcludedMetadata is the message metadata listing (comma-separated) the

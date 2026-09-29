@@ -134,7 +134,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | `-c connection-file` | Implemented (wired) | `TestShell`, `TestConnectionCA`. YAML with `address`, `user`, `password`, `ca` (a relative `ca` is next to the file); `-a/-u/-p/-ca` override it; a missing or invalid file exits `2`. |
 | `-d` | Implemented (wired) | `TestShell/debug_shows_causes`. Adds each underlying cause to error output. |
 | Interactive shell | Implemented (wired) | `TestShell`. Same commands as batch mode. See [Command-line client](cli.md). |
-| `weavster test [--filter NAME] [--format junit\|json] [--output DIR]` | Implemented (wired) | `TestRunTestCommand`, `TestCodecRoundTrips`, `TestCodecRoundTrip`. Runs five built-in codec round-trip samples (`identity/hl7`, `identity/json`, `identity/xml`, `identity/delimited`, `identity/raw`); each passes only if the output equals the input. It does not discover your flows or fixtures. See [Codec self-test](cli.md#codec-self-test-weavster-test). |
+| `weavster test [--filter NAME] [--format junit\|json] [--output DIR] [PATH...]` | Implemented (wired) | `TestFixtures`, `TestFixtureErrors`, `TestRun`, `TestCodecRoundTrips`. Finds fixture files (`*.test.yaml`, `*.test.yml`, `*.test.json`) and the flows of the config-as-code documents under the paths, and runs every case offline through the same transform code as the server (input format, flow transform, destinationSet, destination transforms); plus five built-in codec round trips. See [Test your flows](cli.md#test-your-flows-weavster-test). |
 
 Example:
 

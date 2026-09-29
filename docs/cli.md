@@ -167,39 +167,95 @@ import "backups/all flows.json" force
 | `help` | Lists the commands. |
 | `quit`, `exit` | End the interactive shell; ignored in batch mode. |
 
-## Codec self-test (`weavster test`)
+## Test your flows (`weavster test`)
 
-`weavster test` checks this build's codecs: it parses a built-in sample of each data format and
-writes it back, and a sample passes only if the output is byte for byte the input. The codecs
-read XML and delimited text with the same checks and limits as flows with `inputFormat: xml` or
-`delimited`, but the samples do not run a flow or the server. It needs no server or database.
-
-| Sample | Covers |
-|---|---|
-| `identity/hl7` | HL7 v2 with subcomponents, escape sequences, repetitions, and a second message with custom delimiters (`MSH#$%!@`) |
-| `identity/json` | JSON with a 23-digit number and a decimal kept exactly, and `<`, `&`, non-ASCII text unescaped |
-| `identity/xml` | XML with a declaration, a comment, namespace prefixes and declarations, text mixed with elements, a processing instruction, and an empty element |
-| `identity/delimited` | Pipe-delimited text with RFC 4180 quoting: a field holding the delimiter, doubled quotes, and a line break |
-| `identity/raw` | Binary bytes, NUL and CR LF included |
+`weavster test` runs your flows' transforms against sample messages, on your machine: no server
+and no database. Keep sample messages and what each flow must make of them in **fixture files**
+next to your [config-as-code documents](config-as-code.md), and run the command in CI before
+`config apply`.
 
 ```bash
-weavster test --format json
+weavster test --format junit --output artifacts/ .
 ```
 
-```json
+It looks under each `PATH` (default: the current directory) for:
+
+- **config-as-code documents**: `*.yaml`, `*.yml`, or `*.json` files with `version: "1"`, or
+  without a `version` when every top-level key is a config section (`flows`, `alerts`, …).
+  Their flows are the ones the fixtures test. Other YAML and JSON (a compose file, a CI
+  workflow, `package.json`) is left alone.
+- **fixture files**: `*.test.yaml`, `*.test.yml`, or `*.test.json`.
+
+Hidden directories, `node_modules`, and directories it cannot read are skipped, and a file under
+two of the paths is read once.
+
+A fixture file names one flow and lists cases:
+
+```yaml
+# tests/adt.test.yaml
+flow: adt
+cases:
+  - name: admit
+    inputFile: a01.hl7              # relative to this file; or `input:` with the message inline
+    expect:
+      output: {patient: {lastName: DOE, mrn: "12345"}}
+      excluded: []
+      destinations:
+        his: {output: {id: "12345"}}
+  - name: update is filtered
+    input: "MSH|^~\\&|LAB|H|EHR|H|20240101120000||ADT^A08|2|P|2.5\rPID|1||12345^^^MRN||DOE^JOHN\r"
+    expect: {status: filtered}
+  - name: not hl7
+    input: hello
+    expect: {status: errored, error: HL7 v2}
+```
+
+Each case runs the message through the flow exactly as the server processes it: read with the
+flow's `inputFormat`, then its `transform` (filters, maps, sets, `destinationSet`, a build step),
+then the own `transform` of each destination the message reaches. Nothing is stored or delivered.
+
+| `expect` key | Checks | Default |
+|---|---|---|
+| `status` | `transformed`, `filtered` (a filter step dropped it), or `errored` (the input could not be read, or a step failed) | `transformed` |
+| `error` | Text the error must contain (with `status: errored`) | not checked |
+| `output` | The flow's JSON output has these fields with these values; fields you leave out are ignored, arrays and values must be equal. A field expected as `null` must be there, with `null` | not checked |
+| `outputText` | The flow's output, exactly (for a build step's HL7 v2, XML, or text) | not checked |
+| `excluded` | The destinations `destinationSet` steps left out (`[]`: none) | not checked |
+| `destinations.NAME` | That destination's own transform: `status`, `error`, `output`, `outputText` as above | not checked |
+
+Each case is named `<fixture file without .test.yaml>/<case name>`, for example
+`tests/adt/admit`. The built-in codec checks also run, named `identity/…`: each parses a sample
+of a data format (HL7 v2, JSON, XML, delimited, raw) and must write it back byte for byte.
+
+```text
+$ weavster test --format json tests
+FAIL tests/adt/admit: output differs at patient.lastName: it is {"patient":{"lastName":"DOE",…}}, want the fields {"patient":{"lastName":"SMITH"}}
 [
   {"name": "identity/hl7", "passed": true},
-  {"name": "identity/json", "passed": true},
   …
+  {"name": "tests/adt/admit", "passed": false, "failure": "output differs at patient.lastName: …"}
 ]
 ```
 
-- `--filter NAME` runs the samples whose name contains `NAME`; `--format junit` (default) writes
-  JUnit XML, `--format json` JSON; `--output DIR` writes `results.xml` or `results.json` into
-  `DIR` instead of printing it.
-- A failed sample says what changed, for example
-  `xml: the round trip changed the content (212 bytes in, 208 out)`, and the command exits `1`.
-- It does not run your flows or your own fixtures.
+- `--format junit` (default) writes JUnit XML, `--format json` JSON; `--output DIR` writes
+  `results.xml` or `results.json` into `DIR` instead of printing it. Failures are also printed
+  to stderr, one line each (`FAIL name: reason`).
+- `--filter TEXT` runs only the cases whose name contains `TEXT` (others are not run at all). If
+  none does, the command fails with `no case matches --filter "TEXT"`.
+- A fixture that cannot be run fails with the reason: a flow no document defines, a flow defined
+  in two documents, an unknown key (`field casez not found`), more than one YAML document in the
+  file, a case without a name, or a missing `inputFile`. A config-as-code document that does not
+  parse fails the run as well, whatever `--filter` selects.
+- Numbers in `output` compare by exact value: `1` and `1.0` are equal, but two 20-digit ids that
+  differ in the last digit are not.
+
+### Pitfalls
+
+- A fixture only sees the documents under the paths you give. Pass the directory that holds both
+  (`weavster test .`), not just the tests directory.
+- `output` compares JSON values: `"12345"` (text) and `12345` (a number) differ. HL7 v2 fields
+  are text.
+- A flow without a `transform` passes messages through unchanged, so any input is `transformed`.
 
 ## Deprecated command names
 
@@ -227,7 +283,7 @@ Update your scripts to the new names; the old ones may be removed in a later rel
 | `weavster -s script` (batch) | Every command succeeded | — | Any command failed (the script still runs to the end), a line longer than 1 MiB (the script stops there), an unknown flag, or a missing connection file |
 | `weavster` (interactive shell) | `quit`, `exit`, or end of input, even after failed commands (their errors are shown) | — | A line longer than 1 MiB, a read error, an unknown flag, or a missing connection file |
 | `weavster server` | `-h`, or a clean stop on SIGINT/SIGTERM | The configuration is invalid, the server could not start (store, TLS, bootstrap), or it runs as a privileged user without `WEAVSTER_ALLOW_ROOT=1` | An unknown flag or extra arguments |
-| `weavster test` | Every fixture passed, or `-h` | A fixture failed | An unknown flag, or the results could not be written |
+| `weavster test` | Every case passed, or `-h` | A case or fixture failed, a config-as-code document did not parse, or `--filter` matched nothing | An unknown flag, `--format` other than `junit` or `json`, a `PATH` that does not exist, or the results could not be written |
 | `weavster config validate FILE...` | Every file is valid, or `-h` | A file is invalid | No file given, a file cannot be read or is larger than 50 MiB, or another `config` command (`diff`, `plan`, and `apply` need a server: run them in the shell or with `-s`) |
 
 `-h` (or `--help`) prints usage and exits `0` for every command. Usage errors are checked
