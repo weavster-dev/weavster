@@ -162,17 +162,31 @@ Expected output: the `/api/v1/system` JSON document, followed by one line per fl
 
 ## Enterprise-deferred stubs
 
-Only these stubs exist in the source tree. None of them can be selected from configuration yet.
+Only these stubs exist in the source tree, and none of them can be selected from configuration.
+Each always fails with the same error:
 
-| Stub | Behavior |
+| Stub | Error |
 |---|---|
-| Broker queue/topic source and sink | Returns `adapters: enterprise adapter not implemented in MVP` |
-| DICOM source and sink | Returns `adapters: enterprise adapter not implemented in MVP` |
-| DICOM codec | Returns `codec: enterprise feature requires a licensed library` |
-| KMS/Vault key rotation | Returns `secrets: enterprise feature not available` |
+| Broker queue/topic source and sink | `not implemented in this edition` |
+| DICOM source and sink | `not implemented in this edition` |
+| DICOM codec | `codec: enterprise feature requires a licensed library` |
+| KMS/Vault key rotation | `secrets: enterprise feature not available` |
 
-There are **no** OIDC/SAML, OPA/Cedar, SIEM, Kubernetes, Redis/NATS, or object-storage stubs.
-Those are Enterprise items with no code in the source tree.
+What you see when you try to use one:
+
+- A flow with a `broker` or `dicom` source or destination, or `inputFormat: dicom`, is refused
+  with `400`, and the message lists the types this edition supports, for example
+  `flow does not match flow.schema.json: /destinations/0/type: value must be one of "http", "file", "mllp", "flow", "database"`.
+  `weavster config validate` refuses the same document offline.
+- Nothing in this edition rotates keys: secrets are read from environment variables or files
+  (see [secrets](server-config.md#secrets)).
+
+These Enterprise features are not in this edition, not even as a stub:
+
+- Single sign-on (OIDC/SAML) and multi-factor authentication are not available: sign-in uses the server's own accounts.
+- External authorization policies (OPA/Cedar) are not available: permissions are the [built-in set](authentication.md#permissions).
+- SIEM or immutable audit forwarding is not available: the [audit log](audit-log.md) is written to the store and stderr.
+- A Kubernetes operator, Redis/NATS queues, and object storage are not available.
 
 ## Codecs
 
