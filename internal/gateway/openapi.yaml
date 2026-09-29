@@ -1268,7 +1268,7 @@ paths:
         "403": {description: Another user's preferences without users:admin, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
     put:
-      summary: Replace the user's preferences (the user themselves, or users:admin)
+      summary: Replace the user's preferences (the user themselves, or users:admin; an account that has admin only by one that has admin)
       requestBody:
         required: true
         content:
@@ -1277,7 +1277,7 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: The stored preferences, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/Preferences"}}}}
         "400": {description: "Not an object of text values, or over the limits", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
-        "403": {description: Another user's preferences without users:admin, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "403": {description: "Another user's preferences without users:admin, or an admin's without admin", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/users/{name}/loggedin:
     parameters:
@@ -1299,6 +1299,7 @@ paths:
                   sessions: {type: integer, description: How many active login sessions the user has}
               example: {"loggedIn": true, "sessions": 1}
         "403": {description: Another user without users:admin, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: Unknown user, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/messages/export:
     get:
       summary: An archive of the complete messages matching the search filters (requires messages:content; audited)

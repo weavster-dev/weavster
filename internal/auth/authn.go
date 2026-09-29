@@ -487,7 +487,7 @@ func (p *LocalProvider) SetPreferences(ctx context.Context, username string, pre
 	if err := p.save(ctx, &next); err != nil {
 		return err
 	}
-	p.users[username] = &next
+	*u = next
 	return nil
 }
 

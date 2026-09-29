@@ -210,8 +210,10 @@ curl -s -u 'ops:PASSWORD' http://127.0.0.1:8080/api/v1/users/ops/preferences
   store, and deleted with the account.
 - Up to 100 preferences; each name is 1–100 characters and each value text of at most 4096 bytes.
   Anything else, or a value that is not a string, returns `400`.
-- A user reads and changes only their own; `users:admin` can reach anyone's. Another user's gets
-  `403`, and an unknown user `404`.
+- A user reads and changes only their own; `users:admin` can reach anyone's, except that only an
+  account with `admin` can change the preferences of an account that has `admin`. Another user's
+  gets `403`, and an unknown user `404`.
+- The request body is at most 1 MiB; a larger one returns `400` with `request body too large`.
 
 `GET /api/v1/users/{name}/loggedin` tells whether the user has an open login session (a bearer
 token from `/api/v1/auth/login` that has not expired or been ended). Basic credentials are not
@@ -225,7 +227,7 @@ curl -s -u 'admin:PASSWORD' http://127.0.0.1:8080/api/v1/users/ops/loggedin
 {"loggedIn":true,"sessions":1}
 ```
 
-An unknown user returns `{"loggedIn":false,"sessions":0}`. Sessions are held in memory, so
+An unknown user returns `404`. Sessions are held in memory, so
 after a restart every user shows `false` until they sign in again.
 
 `POST /api/v1/auth/password/check` tells any signed-in user whether a candidate password meets
@@ -240,8 +242,10 @@ curl -s -u 'ops:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
 {"valid":false,"reason":"password shorter than 8 characters"}
 ```
 
-A password that passes returns `{"valid":true}`. The check does not look at the user's current
-password; a change to the same password is still refused by `POST /api/v1/auth/password`.
+A password that passes returns `{"valid":true}`. The check also works while the user must still
+change their password, so a sign-in screen can check the new one first. It does not look at the
+user's current password; a change to the same password is still refused by
+`POST /api/v1/auth/password`.
 
 ## CLI
 

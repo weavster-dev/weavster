@@ -14,8 +14,9 @@ import (
 type UserPreferences interface {
 	// Preferences returns the user's preferences (ErrUserNotFound).
 	Preferences(ctx context.Context, username string) (map[string]string, error)
-	// SetPreferences replaces them (ErrUserNotFound).
-	SetPreferences(ctx context.Context, username string, prefs map[string]string) error
+	// SetPreferences replaces them (ErrUserNotFound). Unless asAdmin, it
+	// refuses an account that has admin (ErrAdminTarget).
+	SetPreferences(ctx context.Context, username string, prefs map[string]string, asAdmin bool) error
 }
 
 // PasswordChecker checks a candidate password against the password policy.
@@ -59,8 +60,10 @@ func (s *Server) handlePreferencesPut(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var prefs map[string]string
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-	if err := dec.Decode(&prefs); err != nil || prefs == nil {
+	if !decodeStrict(w, r, &prefs) {
+		return
+	}
+	if prefs == nil {
 		writeStatusError(w, http.StatusBadRequest, "body must be a JSON object of text values")
 		return
 	}
@@ -68,7 +71,13 @@ func (s *Server) handlePreferencesPut(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusBadRequest, msg)
 		return
 	}
-	if err := s.cfg.Preferences.SetPreferences(r.Context(), name, prefs); err != nil {
+	// Your own preferences are yours to change; another's follow the
+	// same admin rule as the other user changes.
+	self := false
+	if id, ok := IdentityFrom(r.Context()); ok {
+		self = id.Username == name
+	}
+	if err := s.cfg.Preferences.SetPreferences(r.Context(), name, prefs, self || asAdmin(r)); err != nil {
 		writeUserError(w, err)
 		return
 	}
@@ -96,10 +105,10 @@ func checkPreferences(prefs map[string]string) string {
 		return fmt.Sprintf("at most %d preferences", maxPreferences)
 	}
 	for k, v := range prefs {
-		if n := utf8.RuneCountInString(k); n == 0 || n > maxPreferenceKey || !utf8.ValidString(k) || strings.ContainsRune(k, 0) {
+		if n := utf8.RuneCountInString(k); n == 0 || n > maxPreferenceKey || strings.ContainsRune(k, 0) {
 			return fmt.Sprintf("preference names must be 1-%d characters of text", maxPreferenceKey)
 		}
-		if len(v) > maxPreferenceValue || !utf8.ValidString(v) || strings.ContainsRune(v, 0) {
+		if len(v) > maxPreferenceValue || strings.ContainsRune(v, 0) {
 			return fmt.Sprintf("the value of %q must be text of at most %d bytes", k, maxPreferenceValue)
 		}
 	}
@@ -117,6 +126,12 @@ func (s *Server) handleLoggedIn(w http.ResponseWriter, r *http.Request) {
 	if !s.selfOrAdmin(r, name) {
 		writeError(w, http.StatusForbidden, "FORBIDDEN", "only the user themselves or users:admin")
 		return
+	}
+	if s.cfg.Users != nil {
+		if _, err := s.cfg.Users.GetUser(r.Context(), name); err != nil {
+			writeUserError(w, err)
+			return
+		}
 	}
 	n := s.sessions.active(name)
 	writeJSON(w, http.StatusOK, loggedInResponse{LoggedIn: n > 0, Sessions: n})

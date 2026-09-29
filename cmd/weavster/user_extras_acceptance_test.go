@@ -17,13 +17,13 @@ func TestUserExtras(t *testing.T) {
 	stop := startCLI(t, args, "http://"+addr+"/api/openapi.yaml")
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
-	for _, u := range []string{"alice", "bob"} {
+	for u, perms := range map[string]string{"alice": `"flows:view"`, "bob": `"flows:view"`, "manager": `"users:admin"`} {
 		if code, body, _ := c.do(http.MethodPost, "/api/v1/users",
-			`{"username":"`+u+`","password":"User-Pass-1","permissions":["flows:view"],"mustChangePassword":false}`, admin); code != http.StatusCreated {
+			`{"username":"`+u+`","password":"User-Pass-1","permissions":[`+perms+`],"mustChangePassword":false}`, admin); code != http.StatusCreated {
 			t.Fatalf("create %s: %d %s", u, code, body)
 		}
 	}
-	alice, bob := basic("alice", "User-Pass-1"), basic("bob", "User-Pass-1")
+	alice, bob, manager := basic("alice", "User-Pass-1"), basic("bob", "User-Pass-1"), basic("manager", "User-Pass-1")
 
 	if code, body, _ := c.do(http.MethodPut, "/api/v1/users/alice/preferences", `{"theme":"dark","dashboard.flow":"adt"}`, alice); code != http.StatusOK {
 		t.Fatalf("set preferences: %d %s", code, body)
@@ -42,8 +42,22 @@ func TestUserExtras(t *testing.T) {
 			t.Errorf("%s: %d %s", tt.name, code, body)
 		}
 	}
-	if code, body, _ := c.do(http.MethodPut, "/api/v1/users/alice/preferences", `{"":"x"}`, alice); code != http.StatusBadRequest {
-		t.Errorf("an empty name: %d %s", code, body)
+	for _, tt := range []struct {
+		name, path, body string
+		creds            func(*http.Request)
+		status           int
+	}{
+		{"an empty name", "/api/v1/users/alice/preferences", `{"":"x"}`, alice, http.StatusBadRequest},
+		{"a manager sets a user's", "/api/v1/users/alice/preferences", `{"theme":"dark","dashboard.flow":"adt"}`, manager, http.StatusOK},
+		{"a manager cannot set the admin's", "/api/v1/users/" + bootstrapAdmin + "/preferences", `{"theme":"x"}`, manager, http.StatusForbidden},
+		{"the admin sets their own", "/api/v1/users/" + bootstrapAdmin + "/preferences", `{"theme":"x"}`, admin, http.StatusOK},
+	} {
+		if code, body, _ := c.do(http.MethodPut, tt.path, tt.body, tt.creds); code != tt.status {
+			t.Errorf("%s: %d %s", tt.name, code, body)
+		}
+	}
+	if code, body, _ := c.do(http.MethodGet, "/api/v1/users/ghost/loggedin", "", admin); code != http.StatusNotFound {
+		t.Errorf("an unknown user's status: %d %s", code, body)
 	}
 
 	if _, body, _ := c.do(http.MethodGet, "/api/v1/users/alice/loggedin", "", admin); !strings.Contains(body, `"loggedIn":false`) {

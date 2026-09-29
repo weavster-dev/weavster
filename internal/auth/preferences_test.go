@@ -19,8 +19,12 @@ func TestPreferences(t *testing.T) {
 	if prefs, err := p.Preferences(ctx, "u"); err != nil || prefs == nil || len(prefs) != 0 {
 		t.Errorf("new user's preferences = %v %v", prefs, err)
 	}
+	before := p.users["u"]
 	if err := p.SetPreferences(ctx, "u", map[string]string{"theme": "dark"}); err != nil {
 		t.Fatal(err)
+	}
+	if p.users["u"] != before { // an authentication in progress must not see a change
+		t.Error("SetPreferences replaced the user record")
 	}
 	if store.users["u"].Preferences["theme"] != "dark" {
 		t.Errorf("stored = %+v", store.users["u"])

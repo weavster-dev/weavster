@@ -159,7 +159,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			return
 		}
 		info.id = id
-		if id.MustChangePassword && r.URL.Path != "/api/v1/auth/password" &&
+		if id.MustChangePassword && r.URL.Path != "/api/v1/auth/password" && r.URL.Path != "/api/v1/auth/password/check" &&
 			r.URL.Path != "/api/v1/auth/logout" && r.URL.Path != "/api/v1/auth/me" {
 			writeError(w, http.StatusForbidden, "PASSWORD_CHANGE_REQUIRED",
 				"change your password with POST /api/v1/auth/password before using the API")
