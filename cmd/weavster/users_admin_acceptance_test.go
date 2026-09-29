@@ -112,7 +112,7 @@ func TestUserAdministration(t *testing.T) {
 	}
 	// Editing your own account keeps your own session.
 	own := token("useradm", upw)
-	if code, body, _ := c.do(http.MethodPut, "/api/v1/users/useradm", `{"permissions":["users:admin","flows:view"],"email":"me@example.com"}`, bearer(own)); code != http.StatusOK || !strings.Contains(body, `"email":"me@example.com"`) {
+	if code, body, _ := c.do(http.MethodPut, "/api/v1/users/useradm", `{"permissions":["users:admin","flows:view"],"email":"me@example.com","org":"Radiology"}`, bearer(own)); code != http.StatusOK || !strings.Contains(body, `"email":"me@example.com","org":"Radiology"`) {
 		t.Errorf("own update: %d %q", code, body)
 	}
 	if code, _, _ := c.do(http.MethodGet, "/api/v1/users", "", bearer(own)); code != http.StatusOK {
@@ -125,9 +125,9 @@ func TestUserAdministration(t *testing.T) {
 	if code, _, _ := c.do(http.MethodGet, "/api/v1/users", "", bearer(own)); code != http.StatusUnauthorized {
 		t.Errorf("own session after resetting your own password: %d, want 401", code)
 	}
-	// Omitted email keeps it.
-	if _, body, _ := c.do(http.MethodPut, "/api/v1/users/useradm", `{"permissions":["users:admin","flows:view"]}`, admin); !strings.Contains(body, `"email":"me@example.com"`) {
-		t.Errorf("update without email cleared it: %s", body)
+	// Omitted email and org keep them.
+	if _, body, _ := c.do(http.MethodPut, "/api/v1/users/useradm", `{"permissions":["users:admin","flows:view"]}`, admin); !strings.Contains(body, `"email":"me@example.com","org":"Radiology"`) {
+		t.Errorf("update without email and org cleared them: %s", body)
 	}
 
 	// CLI.

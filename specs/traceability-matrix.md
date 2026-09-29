@@ -1,0 +1,181 @@
+# Traceability matrix
+
+Every MUST/SHALL sentence of the [black-box functional spec](black-box-functional-spec.md) and every
+acceptance criterion of `agentic-manifest.json`, with the tests that prove it or its explicit
+deferment. `TestTraceabilityMatrix` (cmd/weavster) keeps this file complete and every test it names real.
+
+- **tested**: the named tests pass in CI (`go test -race ./...`, and the `postgres` job for the
+  PostgreSQL and durability suites).
+- **partial**: the part the MVP includes is tested; the rest is deferred as stated.
+- **deferred**: not in this edition. 🔒 marks an item #107 defers from the MVP (D-55); D-NN are
+  decisions in #107.
+
+## Functional spec (MUST/SHALL)
+
+| Line | Requirement | Status | Evidence |
+|---|---|---|---|
+| L36 | 1. The system SHALL allow an authorized user to create a flow (pipeline) by specifying a source (listener/reader), an ordered set of zero or more destinations (writers/senders), and per-destination filters, transformers, and response handling. | tested | `TestPipelineEndToEnd`, `TestDestinationTransforms`, `TestResponseSelector` |
+| L37 | 2. The system MUST allow a flow to be defined in an undeployed (draft) state and SHALL persist that definition until explicitly removed. | tested | `TestFlowLifecycle`, `TestFlowsSurviveRestart` |
+| L38 | 3. The system SHALL allow naming, renaming, enabling, and disabling of flows, and SHALL preserve cross-flow dependencies when flows are imported/exported. | tested | `TestFlowUpdateAndEnable`, `TestFlowExportImport` |
+| L41 | 4. The system MUST allow per-flow and per-destination filter and transform logic to be authored as script-based rules/steps and as declarative steps (field mapping, building/assembling output, XSLT-style conversion), executed in a defined order. | partial | `TestProcessingOrder`, `TestTransformGolden`, `TestBuildOutput`. Script-based rules: 🔒 custom WASM modules (D-55); global scripts and snippets are stored, not run. |
+| L42 | 5. The system MUST support a "destination set" filter that excludes specific destinations from processing a given message. | tested | `TestDestinationSet` |
+| L43 | 6. The system MUST expose a set of reusable utility functions (message construction, response generation, serialization, date handling, hashing) available within flow logic. | deferred | 🔒 crypto/hash/UUID/date/message-construction/response utility capabilities (D-55). |
+| L44 | 7. The system SHALL support response-transformer and response-selector logic distinct from the initial filter/transform. | tested | `TestResponseSelector`, `TestProcessingOrder` (declarative stages, D-34; stages driven by user logic are 🔒). |
+| L47 | 8. The system MUST route each accepted message to every enabled destination that is not excluded by the destination-set filter. | tested | `TestPipelineEndToEnd`, `TestDestinationSet`, `TestDestinationStartStop` |
+| L48 | 9. The system SHALL support routing a message into another flow in-process (inter-flow routing) by name or identifier, including from within user logic. | partial | `TestFlowDestination` (by flow id, D-70). From user logic: 🔒 inter-flow routing from user logic (D-55). |
+| L49 | 10. The system SHALL allow per-destination transmission modes and protocol-specific options (e.g., length-framed transmission). | tested | `TestMLLPModes`, `TestHTTPDestinationOptions` |
+| L52 | 11. The system MUST allow a polling/scheduled source to specify an interval and SHALL trigger acquisition at that interval. | tested | `TestFileSource`, `TestDatabaseSource`, `TestPollClock` |
+| L53 | 12. The system SHALL support scheduled/recurring acquisition in interval or cron-like form. | tested | `TestSourceSchedules`, `TestPollClock` |
+| L56 | 13. The system MUST support per-destination queuing of messages that fail to send, with configurable retry behavior. | tested | `TestRetryRecoversQueuedMessage`, `TestDeadLetterAfterMaxAttempts`, `TestDestinationStartStop` |
+| L57 | 14. The system SHALL track, for each queued message and destination, the number of send attempts and the last-failure error code. | tested | `TestAttemptCodes`, `TestMessageSearch` |
+| L58 | 15. The system MUST support returning a failed message to a queued state and SHALL allow the queue to be processed later. | tested | `TestDeadLetterRequeue`, `TestDestinationStartStop` |
+| L59 | 16. The system SHALL recover/process messages that remain queued after a restart or outage. | tested | `TestQueuedWorkSurvivesRestart`, `TestCrashKeepsQueuedMessages`, `TestDeadLetterSurvivesRestart` |
+| L62 | 17. The system MUST store received, intermediate, and sent message content per a configurable storage policy and per-content-type options. | partial | `TestMessagesAPI` (raw and transformed forms, D-87). Storage policies: 🔒 (D-55). |
+| L63 | 18. The system SHALL allow searching stored messages by identifier ranges, date range, status, send-attempt count, content subtypes, metadata values, and custom metadata columns, with pagination and sorting. | tested | `TestMessageSearch`, `TestMessagesAPI` (custom columns are `metadata.KEY`, D-86). |
+| L64 | 19. The system MUST support exporting messages in multiple content forms (raw, processed raw, transformed, encoded, response, original) with optional archive, compression, and encryption. | partial | `TestMessageArchive` (gzip archive, optional AES-256-GCM). Selectable forms, KDF, streaming: 🔒 (D-87, D-55). |
+| L65 | 20. The system MUST support importing messages back into the store (from a path or archive) for reprocessing. | partial | `TestMessageArchive` (import from an uploaded archive). Import from a server path: 🔒 (D-55). |
+| L66 | 21. The system MUST support reprocessing stored messages (individually, by filter, or by reference to a prior flow) and SHALL record results as new message content. | partial | `TestMessagesAPI` (one message, result stored as a new message). By filter, bulk, prior flow: 🔒 (D-55). |
+| L67 | 22. The system MUST allow removal of messages (individually, by search results, or all for a flow) and SHALL restart running flows when clearing all messages if required. | tested | `TestBulkMessageRemoval`, `TestMessagesAPI` (restart is opt-in, D-42). |
+| L68 | 23. The system SHALL provide data pruning by age and/or size, with start/stop/status control. | tested | `TestPruneMessages`, `TestPruneControl` (size is a message count, D-88). |
+| L71 | 24. The system MUST allow alert definitions triggered by message-processing errors (and related conditions), with configurable triggers, recipients, and flow/source scope. | partial | `TestAlerts` (definitions stored and validated). Trigger evaluation: 🔒 (D-55, D-43). |
+| L72 | 25. The system SHALL allow alerts to be enabled/disabled, imported/exported, and tested, and SHALL notify configured recipients when a trigger fires. | partial | `TestAlerts`, `TestAlertInfo` (enable/disable, import/export, dry-run test). Notification delivery: 🔒 (D-96, D-55). |
+| L75 | 26. The system MUST support creating, listing, updating, and removing user accounts (name, organization, email, credential) and password changes. | tested | `TestUserAdministration`, `TestBootstrapGeneratedPassword` (name, email, org; create, list, update, remove; password change). |
+| L76 | 27. The system MUST enforce per-user permissions scoped by resource category (alerts, flows, messages, events, code snippets, global scripts, config map, settings, extensions, resources, etc.). | partial | `TestPermissionMatrix`, `TestAuthentication`. Remaining categories (extensions, resources): 🔒 (D-55). |
+| L77 | 28. The system MUST support an external authorization hook that can override built-in credential validation, and a pluggable multi-factor hook invoked after successful primary authentication. | deferred | 🔒 configurable external-auth and MFA hooks (D-55); the port contract is `TestEnterpriseExtensionPorts` (D-102). |
+| L80 | 29. The system MUST support exporting/importing flows (single or bulk), full system configuration, alerts, global scripts, code snippets/libraries, and the config map, to/from files. | tested | `TestFlowExportImport`, `TestConfigTransfer`, `TestConfigItems`, `TestAlerts`, `TestSnippets` |
+| L81 | 30. The system SHALL support importing full configuration with options to suppress deployment and to overwrite the existing config map. | tested | `TestConfigTransfer` (`nodeploy`, `overwriteConfigMap`). |
+| L82 | 31. The system SHALL detect and surface file-not-found and import-overwrite conflicts (with a force mode). | tested | `TestConfigTransfer`, `TestFlowExportImport` |
+| L85 | 32. The system MUST provide a scriptable command shell (interactive and batch-from-script-file). | tested | `TestShell`, `TestSupportMatrixCLI`, `TestFlowCLI` |
+| L86 | 33. The system SHALL support programmatic client automation over the network interface. | tested | `TestCISamples`, `TestOpenAPIContract`, `TestConfigApply` |
+| L87 | 34. The system SHALL support version-controlled (git-style) management of flows, code snippets/libraries, and global scripts — commit, push, pull, history, working-tree diff, restore. | deferred | In-server Git removed from the MVP, revived for Enterprise (D-55); `TestGitIntegrationRemoved` checks it is gone. Files in the user's repository are the source of truth (config-as-code). |
+| L90 | 35. The system MUST record an event log of administrative and operational actions, with search, count, and export. | tested | `TestEventsAPI`, `TestAuditLogStored`, `TestEventsSurviveRestart` |
+| L91 | 36. The system MUST collect per-flow statistics (received, filtered, transformed, sent, errored, queued, connector-level counters) with reset (current and/or lifetime) and dump-to-file. | tested | `TestStatsEventsTopology`, `TestAllFlowsLifecycleAndStats`, `TestBulkMessageRemoval` |
+| L92 | 37. The system SHALL provide time-series statistics for trending and a server log viewer. | partial | `TestStatsSeries`, `TestMessageTrends`. Log viewer: 🔒 (D-55). |
+| L93 | 38. The system MUST expose system status (identifier, version, build date, timezone, time, runtime info, charsets, protocols/cipher suites, license info). | tested | `TestSystemInfo`, `TestSupportMatrixWired` (time, uptime, TLS protocols and ciphers, about; charsets and license are documented but not asserted). |
+| L96 | 39. The system MUST keep historical revisions of versioned configuration artifacts and SHALL allow viewing file history, content-at-revision, and repository log. | deferred | 🔒 Git history, content-at-revision, log (D-55). |
+| L97 | 40. The system MUST support committing/pushing selected artifacts, pulling remote changes (remote-wins conflicts), and restoring from backup. | deferred | 🔒 Git commit/push/pull and restore from backup (D-55); backup and restore of the database are documented (docs/operations.md). |
+| L100 | 41. The system MUST enforce a configurable password policy (min length, character-class requirements, expiration, grace period, reuse constraints) on creation/change. | partial | `TestBootstrapGeneratedPassword`, `TestBootstrapPasswordSources`, `TestSystemInfo` (length and character classes). Expiry, grace, reuse: 🔒 (D-55). |
+| L101 | 42. The system MUST enforce account lockout after a configurable number of failed attempts for a configurable period. | tested | `TestAuthentication`, `TestBootstrapPasswordSources` (lockout). |
+| L102 | 43. The system MUST be able to return a generic login-failure message that does not reveal username existence or lockout state (anti-enumeration). | tested | `TestLoginLogout`, `TestAuthentication`, `TestLockoutAndDecay` (unknown user, wrong password and locked account all 401; bodies compared at package level only). |
+| L103 | 44. The system MUST support HTTPS with configurable TLS protocols/ciphers and a managed credential store. | partial | `TestTLS`, `TestServerConfigTLS`, `TestCLIOverHTTPS` (HTTPS, `tls.minVersion`). Cipher tuning, credential store: 🔒 (D-55). |
+| L104 | 45. The system MUST emit transport-hardening headers (clickjacking, CSP, HSTS, content-type sniffing) and reject cross-site requests lacking the required marker header. | tested | `TestSupportMatrixWired`, `TestAuthentication`, `TestSecurityHeaders` |
+
+Line 33 ("The system MUST / SHALL …") states the convention and is not a requirement.
+
+## Manifest acceptance criteria
+
+| Id | Module | Criterion | Status | Evidence |
+|---|---|---|---|---|
+| M0.0 | API Gateway | Serves the REST API over chi router with OpenAPI 3.1 contract published to agent-docs/openapi.yaml (spec §5). | tested | `TestOpenAPIPublished`, `TestOpenAPIContract`, `TestOpenAPISpec` |
+| M0.1 | API Gateway | Enforces CSRF marker-header check returning HTTP 400 when absent (spec §2.13.45, §10). | tested | `TestSupportMatrixWired`, `TestCSRFMarker`, `TestCSRFMarkerRequired` |
+| M0.2 | API Gateway | Emits HSTS, X-Frame-Options DENY, CSP frame-ancestors 'none', X-Content-Type-Options nosniff; blocks TRACE/TRACK with 405 (spec §10). | tested | `TestSupportMatrixWired`, `TestSecurityHeaders`, `TestBlockTraceAndTrack` |
+| M0.3 | API Gateway | Terminates HTTPS with configurable TLS protocols/ciphers and ephemeral-DH sizing (spec §2.13.44, §4.1). | partial | `TestTLS`, `TestServerConfigTLS` (`tls.minVersion`). Ciphers, DH sizing: 🔒 (D-55). |
+| M0.4 | API Gateway | Passes `go test -race ./internal/gateway/...`. | tested | `TestAuthMiddleware`, `TestCSRFMarker`, `TestOpenAPIValid` |
+| M1.0 | Auth & Authorization | Implements AuthProvider port (local user store) and Authorizer port (resource-category permission set) as interfaces (architecture §3.1). | tested | `TestEnterpriseExtensionPorts`, `TestAuthorizer`, `TestPermissionMatrix` |
+| M1.1 | Auth & Authorization | Supports user CRUD + password change (spec §2.8.26). | tested | `TestUserAdministration`, `TestBootstrapGeneratedPassword`, `TestUserCRUDAndAuthenticate` |
+| M1.2 | Auth & Authorization | Enforces configurable password policy: min length, character-class counts with -1 forbidding, expiration/grace, reuse constraints (spec §2.13.41, §4.4). | partial | `TestBootstrapPasswordSources`, `TestPasswordPolicy`, `TestPasswordValidateSpecialForbidden` (length, classes, -1 forbids). Expiry, grace, reuse: 🔒 (D-55). |
+| M1.3 | Auth & Authorization | Enforces account lockout after N failures for a period with strike decay (spec §2.13.42). | partial | `TestAuthentication`, `TestBootstrapPasswordSources` (lockout). Strike decay wired: 🔒 (library: `TestLockoutAndDecay`). |
+| M1.4 | Auth & Authorization | Generic login failure message by default (anti-enumeration on) (spec §2.13.43). | tested | `TestUserCRUDAndAuthenticate`, `TestExternalAuthenticationErrorUsesGenericFailure`, `TestAuthentication` |
+| M1.5 | Auth & Authorization | Exposes external auth hook + pluggable MFA hook invoked after primary authN (spec §2.8.28). | partial | `TestMFAAndExternalHooks`, `TestEnterpriseExtensionPorts` (ports, D-102). Configurable hooks: 🔒 (D-55). |
+| M1.6 | Auth & Authorization | Passes `go test -race ./internal/auth/...`. | tested | `TestUserCRUDAndAuthenticate`, `TestPasswordPolicy`, `TestAuthorizer` |
+| M2.0 | Audit Log | Implements AuditSink port; local event-store adapter for MVP (architecture §3.1). | tested | `TestLocalSink`, `TestAuditLogStored`, `TestEnterpriseExtensionPorts` |
+| M2.1 | Audit Log | Writes protected-content (PHI) access and query events to the audit/event log, excluding sensitive parameters (spec §10). | tested | `TestAuditLog`, `TestAuditDisclosed`, `TestPHIAccessRedaction` |
+| M2.2 | Audit Log | Passes `go test -race ./internal/audit/...`. | tested | `TestLocalSink`, `TestPHIAccessRedaction`, `TestRedactSensitive` |
+| M3.0 | Scheduler | Implements JobQueue port with Postgres FOR UPDATE SKIP LOCKED claiming (SQLite equivalent for local DX) (architecture §3, §9.1). | tested | `TestPostgresClaimSkipLocked`, `TestPostgresConcurrentClaims`, `TestSQLJobQueueHeartbeat` (library-only queue, D-89). |
+| M3.1 | Scheduler | Triggers polling sources on interval and cron-like schedules (spec §2.4.11-12). | tested | `TestSourceSchedules`, `TestPollClock`, `TestFileSource` |
+| M3.2 | Scheduler | Durable job claim with claimed_by + lease_until heartbeat and a fencing (claim) token; Complete, Requeue, and Heartbeat must present the current token, and the startup reconciler re-claims expired leases so a stale node cannot double-claim or complete a reclaimed job (gap #4 MVP, #107 D-11). | partial | `TestLeaseExpiry`, `TestMemJobQueueCompleteWrongNode`, `TestSchedulerReconcileExpiredLease` (claimed_by, lease, reconcile). Fencing token: 🔒 (D-11, D-55). |
+| M3.3 | Scheduler | Recovers queued jobs after restart/outage (spec §2.5.16). | tested | `TestQueuedWorkSurvivesRestart`, `TestCrashKeepsQueuedMessages`, `TestRetryResumesInterruptedMessages` |
+| M3.4 | Scheduler | Passes `go test -race ./internal/scheduler/...`. | tested | `TestQueueClaimComplete`, `TestSchedulerRunDue`, `TestQueueHeartbeat` |
+| M4.0 | Executor | Implements TransformEngine port over wazero; sandboxed guest: no filesystem/network/clock by default (architecture §4.2). | deferred | 🔒 WASI host and custom WASM modules (D-55); library only (`TestTransformIdentity`, `TestLeastPrivilegeHostFunctions`). |
+| M4.1 | Executor | Enforces max memory pages, a wall-clock deadline (the MVP CPU limit; instruction metering is Enterprise per #107 D-02), and WASI stdio capture on every instantiation; exceeding a limit aborts with structured error carrying module name + version + input hash + limit type (architecture §4.3, gap #3 MVP). | deferred | 🔒 limits on every instantiation, stdio capture, structured failures (D-02, D-55); library: `TestTimeoutLimit`, `TestLimitErrorFields`. |
+| M4.2 | Executor | Registers host functions (parse/serialize, ack, route, store, net, crypto/hash) per-module by declared capabilities (least privilege) (architecture §4.2). | deferred | 🔒 functional host functions and declared capabilities (D-55); library: `TestLeastPrivilegeHostFunctions`, `TestHostRegistryRoute`. |
+| M4.3 | Executor | Runs response-transformer and response-selector stages distinct from the initial transform (spec §2.2.7). | partial | `TestResponseSelector`, `TestProcessingOrder` (declarative, D-34). WASM stages: 🔒 (D-55). |
+| M4.4 | Executor | Fan-out to all non-excluded destinations; inter-flow routing via route host function (spec §2.3.8-9). | partial | `TestDestinationSet`, `TestFlowDestination`, `TestPipelineEndToEnd` (fan-out, inter-flow by id). Route host function: 🔒 (D-55). |
+| M4.5 | Executor | Passes `go test -race ./internal/executor/...`. | tested | `TestTransformIdentity`, `TestTimeoutLimit`, `TestTransformResponse` (library-only package). |
+| M5.0 | State Manager | Implements Store port with Postgres (durable), SQLite (local), and in-memory (passthrough/buffered) backends; no Postgres required for local DX (architecture §3.1, constraint #3). | tested | `TestStoreCRUDAndSearch`, `TestServerConfigStore`, `TestServerOnPostgres` (server store: PostgreSQL or memory, D-55). |
+| M5.1 | State Manager | Persists received/intermediate/sent message content per configurable storage policy and per-content-type options (spec §2.6.17). | partial | `TestMessagesAPI`, `TestPipelineEndToEnd` (raw and transformed, D-87). Storage policies: 🔒 (D-55). |
+| M5.2 | State Manager | Search by id ranges, date, status, send-attempt count, content subtypes, metadata values, custom metadata columns with pagination/sorting (spec §2.6.18). | tested | `TestMessageSearch`, `TestSearchFilterParity`, `TestSearchSortAndPagination` |
+| M5.3 | State Manager | Export in raw/processed/transformed/encoded/response/original forms with archive/compress/encrypt; import messages back (spec §2.6.19-20). | partial | `TestMessageArchive`, `TestArchiveRoundTrip` (gzip, optional encryption, import). Selectable forms: 🔒 (D-87, D-55). |
+| M5.4 | State Manager | Track per-(message,destination) send-attempt count and last error code (spec §2.5.14, §6.3). | tested | `TestAttemptCodes`, `TestDeliverRecordsCode`, `TestErrorCode` |
+| M5.5 | State Manager | Versioned, forward-only migration runner with pre-upgrade backup checkpoint (gap #7). | partial | `TestUpgradeFromEveryVersion`, `TestMigrateForwardOnlySkipsApplied`, `TestMigratesBeforeTraffic`. Pre-upgrade checkpoint hook: 🔒; backup before upgrade is documented (docs/install.md). |
+| M5.6 | State Manager | Passes `go test -race ./internal/state/...`. | tested | `TestStoreCRUDAndSearch`, `TestUpgradeFromEveryVersion`, `TestArchiveRoundTrip` |
+| M6.0 | Adapters | Implements Source and Sink ports with MVP adapters: file, http, tcp (MLLP), in-memory, database, smtp, web-service, document (architecture §3.1, spec §8). | partial | `TestFileSource`, `TestMLLPSource`, `TestDatabaseSource`, `TestHTTPSource`, `TestFlowDestination`. SMTP, web service, document: 🔒 (D-55). |
+| M6.1 | Adapters | Per-destination transmission modes and protocol-specific options (e.g., MLLP framing for TCP sink) (spec §2.3.10). | tested | `TestMLLPModes`, `TestMLLPSinkMode`, `TestHTTPDestinationOptions` |
+| M6.2 | Adapters | Message queue (broker) and DICOM adapters are enterprise ports only — interfaces exist, implementations excluded from MVP (architecture §9.2). | tested | `TestEnterpriseStubsNotImplemented`, `TestEnterpriseAdaptersRefused`, `TestEnterpriseStubsDocumented` |
+| M6.3 | Adapters | Passes `go test -race ./internal/adapters/...`. | tested | `TestFileSourceAndSink`, `TestMLLPSinkACK`, `TestSQLSink` |
+| M7.0 | Data-Type Codecs | Parse/serialize: delimited text, HL7 v2, XML, JSON, X12 EDI, NCPDP, binary/raw; acknowledgment generation where applicable (spec §7). | partial | `TestCodecRoundTrips`, `TestCodecRoundTrip`, `TestHL7Ack` (delimited, HL7 v2, XML, JSON, raw). X12, NCPDP: 🔒 (D-55). |
+| M7.1 | Data-Type Codecs | XXE-safe XML parsing: external entities/DTD disabled by construction (spec §10). | tested | `TestXMLXXESafe`, `TestXMLInput`, `TestXMLJSON` |
+| M7.2 | Data-Type Codecs | DICOM codec flagged Enterprise if a licensed library is required; explicit coverage matrix documented (gap #12). | tested | `TestDICOMEnterprise`, `TestCoverageMatrix`, `TestSupportMatrixCodecs` |
+| M7.3 | Data-Type Codecs | Passes `go test -race ./internal/codecs/...`. | tested | `TestRoundTrips`, `TestHL7Ack`, `TestHL7JSON` |
+| M8.0 | Transform Compiler | Validates declarative YAML DSL transforms (map/build/XSLT-style steps, filter, destination-set exclusion) and lowers them to an IR executed by the embedded, prebuilt WASM DSL interpreter (architecture §4.1, spec §2.2.4-5, #107 D-03). | partial | `TestValidateRefuses`, `TestTransformSchema`, `TestTransformGolden` (validated, run in-process). WASM interpreter: 🔒 (D-03 superseded for the MVP by D-55). |
+| M8.1 | Transform Compiler | YAML is the source of truth; the compiler emits only a validated IR, never per-transform .wasm. The single interpreter .wasm is built reproducibly in CI, embedded via go:embed, and signed (architecture §4.1, #107 D-03). | partial | `TestCompileErrors`, `TestRun`, `TestValidateRefuses` (YAML to IR). Embedded signed interpreter: 🔒 (D-55). |
+| M8.2 | Transform Compiler | Validates every config artifact against its JSON Schema on load and rejects invalid configs (architecture §6). | tested | `TestConfigValidate`, `TestConfigValidateOffline`, `TestFlowSchemaEnforced` |
+| M8.3 | Transform Compiler | The interpreter module is built in CI with a pinned TinyGo toolchain, reproducibly, and embedded + signed; no TinyGo is required on hosts (architecture §10.1, #107 D-03). | deferred | 🔒 interpreter built with pinned TinyGo, embedded and signed (D-03, D-55); no TinyGo is needed on hosts because the DSL runs in-process. |
+| M8.4 | Transform Compiler | Passes `go test -race ./internal/compiler/...`. | tested | `TestParse`, `TestCompileAndValidate`, `TestValidateRefuses` |
+| M9.0 | Module Registry | Content-addressed registry (SHA-256 of .wasm); each module is {name, version, digest, source, signature, created-by} (gap #2). | deferred | 🔒 module registry (D-55); library: `TestDigest`. |
+| M9.1 | Module Registry | Lifecycle states draft → promoted → active → superseded → retired; only active modules instantiable; promotion is explicit + audited (gap #2). | deferred | 🔒 module lifecycle (D-55); library: `TestLifecyclePromoteRollback`. |
+| M9.2 | Module Registry | Rollback = re-promote a prior version (atomic pointer move, no rebuild) (gap #2). | deferred | 🔒 module rollback (D-55); library: `TestLifecyclePromoteRollback`. |
+| M9.3 | Module Registry | Verifies module signature before instantiation; signed (Ed25519, cosign-keyless optional) (gap #2). | deferred | 🔒 signature verification before instantiation (D-55); library: `TestSignatureAndDigestVerification`. |
+| M9.4 | Module Registry | Garbage-collects retired modules with zero active references; surfaces module ls/history/rollback commands (gap #2). | deferred | 🔒 module GC and commands (D-55); library: `TestGarbageCollection`. |
+| M9.5 | Module Registry | Passes `go test -race ./internal/registry/...`. | tested | `TestDigest`, `TestLifecyclePromoteRollback`, `TestGarbageCollection` (library-only package). |
+| M10.0 | Config-as-Code | All flows/alerts/snippets/scripts/maps/settings are YAML/JSON under a versioned config root; single source of truth (architecture §6). | tested | `TestConfigValidate`, `TestConfigFlowIsAPIFlow`, `TestParseYAMLAndJSON` |
+| M10.1 | Config-as-Code | config validate / config diff / apply --dry-run produce a plan of changes (added/updated/removed) before mutation (architecture §6, gap #6). | tested | `TestConfigPlan`, `TestConfigApply`, `TestLivePlan` |
+| M10.2 | Config-as-Code | config plan (dry-run diff) + config apply (mutate) with machine-readable JSON plan and --diff output (gap #6). | tested | `TestConfigPlan`, `TestConfigApply`, `TestCISamples` |
+| M10.3 | Config-as-Code | Drift detection: `config diff` compares a config document from the user's files with the live state, reporting out-of-band changes; the files in the user's repository are the source of truth, and in-server Git is Enterprise (gap #6, #107 D-55). | tested | `TestConfigPlan`, `TestDetectDrift`, `TestGitIntegrationRemoved` |
+| M10.4 | Config-as-Code | Stores applied plans in the audit log (who/what approved) (gap #6). | tested | `TestConfigApply`, `TestConfigApplyHandler` |
+| M10.5 | Config-as-Code | Passes `go test -race ./internal/config/...`. | tested | `TestValidate`, `TestDiff`, `TestApply` |
+| M11.0 | Git Store | Native Git-backed config store: commit, push, pull (remote-wins), history, working-tree diff, restore (spec §2.10.34, §2.12.39-40). | deferred | 🔒 in-server Git, removed from the MVP binary (D-55); library: `TestPushPullRemoteWins`, `TestCommitHistoryContentRestore`. |
+| M11.1 | Git Store | Historical revisions with content-at-revision and repository log endpoints (spec §2.12.39). | deferred | 🔒 revision endpoints (D-55); `TestGitIntegrationRemoved` checks they are gone. |
+| M11.2 | Git Store | Passes `go test -race ./internal/gitstore/...`. | tested | `TestCommitHistoryContentRestore`, `TestPushPullRemoteWins`, `TestInitAndOpen` (library-only package). |
+| M12.0 | Legacy Import ETL | import legacy command + API endpoint consuming the legacy XML/archive export format (gap #1); blocked until anonymized legacy export samples are available and a supported legacy version range is pinned (#107 D-01). | deferred | Blocked on D-01 (no legacy export samples); 🔒 (D-55). |
+| M12.1 | Legacy Import ETL | Three-phase ETL: extract (flows/snippets/scripts/users/config map), transform (legacy constructs → YAML DSL; inexpressible scripts → WASI stub flagged for review), load (validate every generated artifact against JSON Schemas, then seed Store; nothing invalid is written) (gap #1). | deferred | Blocked on D-01; 🔒 (D-55). |
+| M12.2 | Legacy Import ETL | Message history imports metadata + references by default with opt-in --with-content flag (gap #1). | deferred | Blocked on D-01; 🔒 (D-55). |
+| M12.3 | Legacy Import ETL | Dry-run report: counts + list of constructs not auto-translated, before any write (gap #1). | deferred | Blocked on D-01; 🔒 (D-55). Toy schema only: `TestDryRun`. |
+| M12.4 | Legacy Import ETL | Legacy→YAML mapper is versioned and separately tested with its own transform fixtures via `weavster test` (gap #1). | deferred | Blocked on D-01; 🔒 (D-55). Toy schema only: `TestMappingTableVersioned`. |
+| M12.5 | Legacy Import ETL | Passes `go test -race ./internal/migrate/...`. | tested | `TestDryRun`, `TestRunLoadsConfig`, `TestMappingTableVersioned` (the made-up schema only, not legacy support). |
+| M13.0 | Outbox & Idempotency | Transactional outbox: receive → persist → transform → persist result → deliver → mark delivered; crash re-enters same job with same message ID (gap #5). | partial | `TestCrashAtEveryWrite`, `TestCrashKeepsQueuedMessages`, `TestGracefulShutdownRequeuesInFlightWork`. Separate outbox tables: 🔒 (D-55). |
+| M13.1 | Outbox & Idempotency | Deterministic idempotency_key from (message_id, destination), stable across retries (#107 D-10), on every external side effect; at-least-once sinks (raw TCP MLLP) documented as such (gap #5). | partial | `TestIdempotencyKey`, `TestCrashKeepsQueuedMessages`, `TestSupportMatrixDeliveryKeys` (stable key sent by HTTP). Keys for every capable sink: 🔒 (D-10, D-55). |
+| M13.2 | Outbox & Idempotency | On ambiguous-result retry, check status first rather than blindly re-send (gap #5). | partial | `TestFlowSink`, `TestAmbiguousChecksStatusFirst` (flow destination checks first, D-70). Other protocols: 🔒 (D-55). |
+| M13.3 | Outbox & Idempotency | Bounded retries with backoff, a dead-letter state, and a deadletter admin surface (no silent infinite retry) (gap #5). | tested | `TestDeadLetterAfterMaxAttempts`, `TestDeadLetterRequeue`, `TestDeadLetterSurvivesRestart` |
+| M13.4 | Outbox & Idempotency | Passes `go test -race ./internal/outbox/...`. | tested | `TestIdempotencyKey`, `TestDeliverBoundedRetryAndDeadLetter`, `TestBackoff` |
+| M14.0 | Alerts | Alert definitions triggered by processing errors with configurable triggers, recipients, flow/source scope (spec §2.7.24). | partial | `TestAlerts`, `TestAlertInfo` (definitions). Trigger evaluation: 🔒 (D-55). |
+| M14.1 | Alerts | Enable/disable, import/export, and test (fire once) for alerts (spec §2.7.25). | partial | `TestAlerts`, `TestAlertHandlers` (enable/disable, import/export, dry-run test). Firing: 🔒 (D-96, D-55). |
+| M14.2 | Alerts | Notifies configured recipients via Notifier when a trigger fires (spec §2.7.25). | deferred | 🔒 notifier delivery (D-55); library: `TestHandleDeliver`. |
+| M14.3 | Alerts | Passes `go test -race ./internal/alerts/...`. | tested | `TestEvaluateAndHandle`, `TestEnableDisableTest`, `TestImportExport` (library-only package). |
+| M15.0 | Notifier | Implements Notifier port with SMTP and webhook MVP adapters (architecture §3.1). | partial | `TestSMTPNotifier`, `TestWebhookNotifier` (package). Server wiring: 🔒 (D-55). |
+| M15.1 | Notifier | Passes `go test -race ./internal/notify/...`. | tested | `TestSMTPNotifier`, `TestWebhookNotifier`, `TestWebhookNotifierErrorResponse` |
+| M16.0 | Secrets | Implements SecretProvider port; MVP adapters = local credential store + env//run/secrets (architecture §3.1, gap #8). | partial | `TestSecretsFromFiles`, `TestEnvFromSecretsDir`, `TestLocal` (env and /run/secrets, D-98). Encrypted local store: 🔒 (D-55). |
+| M16.1 | Secrets | Cloud KMS/Vault rotation is an enterprise adapter (interface only) (gap #8). | tested | `TestEnterpriseKeyManagerStub`, `TestEnterpriseStubsDocumented` |
+| M16.2 | Secrets | Passes `go test -race ./internal/secrets/...`. | tested | `TestLocal`, `TestEnvFromEnvironment`, `TestEnvSecretNames` |
+| M17.0 | Observability | Implements MetricsExporter port: Prometheus gauges/counters + OTel stdout/OTLP exporter (architecture §3.1). | partial | `TestOperationalMetrics`, `TestPrometheusCounters` (Prometheus). OTel: 🔒 (D-55). |
+| M17.1 | Observability | Per-flow statistics (received/filtered/transformed/sent/errored/queued, connector-level) with reset (current/lifetime) and dump-to-file (spec §2.11.36). | tested | `TestAllFlowsLifecycleAndStats`, `TestBulkMessageRemoval`, `TestStatsEventsTopology` |
+| M17.2 | Observability | Event log with search, count, export (spec §2.11.35). | tested | `TestEventsAPI`, `TestEventLogExport`, `TestEventLogSearchCount` |
+| M17.3 | Observability | Time-series statistics for trending + server log viewer (spec §2.11.37). | partial | `TestStatsSeries`, `TestMessageTrends`. Log viewer: 🔒 (D-55). |
+| M17.4 | Observability | System status endpoint: id, version, build date, timezone, time, runtime info, charsets, protocols/ciphers, license info (spec §2.11.38). | tested | `TestSystemInfo`, `TestSystemStatus`, `TestSupportMatrixWired` |
+| M17.5 | Observability | Structured logs via stdlib log/slog; executor span hooks present for future OTel propagation (gap #3, deferred Enterprise). | partial | `TestLogger`, `TestConfigApply` (slog). Executor span hooks: 🔒 (D-55). |
+| M17.6 | Observability | Passes `go test -race ./internal/observability/...`. | tested | `TestPrometheusCounters`, `TestStatsRegistryResetAndDump`, `TestTimeSeries` |
+| M18.0 | Topology Graph | GET /api/v1/topology returns overview graph (flow nodes + route/dependency edges) per read-only-graph-view-contract.md §3.1. | tested | `TestTopologyGraphs`, `TestOverview`, `TestOverviewDependencyEdgeAndActivity` |
+| M18.1 | Topology Graph | GET /api/v1/topology/flows/{flowId} returns flow-internal graph (source → transform → destination nodes + message-path edges) per contract §3.2. | tested | `TestTopologyGraphs`, `TestFlowInternal`, `TestFlowInternalPaths` |
+| M18.2 | Topology Graph | Stable entity-derived node/edge ids; no server-side layout; rolling activity snapshot (received/sent/errored/queued/lastMessageAt) (contract §2, §4). | tested | `TestTopologyGraphs`, `TestSchemaValidates`, `TestOverviewDependencyEdgeAndActivity` |
+| M18.3 | Topology Graph | Read-only: no mutation endpoints; requires flows:view permission (contract §5). | tested | `TestPermissionMatrix`, `TestReadOnly` |
+| M18.4 | Topology Graph | Passes `go test -race ./internal/topology/...`. | tested | `TestOverview`, `TestFlowInternal`, `TestSchemaPublished` |
+| M19.0 | CLI / Server Entry | Composition root wiring all ports/adapters into the single static binary (architecture §3). | tested | `TestEndToEnd`, `TestPipelineEndToEnd`, `TestMigratesBeforeTraffic` |
+| M19.1 | CLI / Server Entry | Scriptable CLI shell (interactive + batch -s) over the network API with the §3.2 command surface and §3.3 exit-code semantics (spec §3). | tested | `TestShell`, `TestCLIGolden`, `TestExitCodesAndDeprecatedCommands` |
+| M19.2 | CLI / Server Entry | Startup flags -a/-u/-p/-s/-v/-c/-h/-d (spec §3.1). | tested | `TestShell`, `TestSupportMatrixCLI`, `TestRunHelpAndVersion` |
+| M19.3 | CLI / Server Entry | weavster test [--filter NAME] [--format junit\|json] [--output DIR] runs flow transforms against fixtures with no Postgres required (architecture §7). | tested | `TestFixtures`, `TestFixtureErrors`, `TestFixtureDiscovery` |
+| M19.4 | CLI / Server Entry | Refuses to run under a privileged OS account unless allowed; terminates non-zero (spec §11). | tested | `TestSupportMatrixPrivilegedGuard`, `TestPrivilegedGuard` |
+| M19.5 | CLI / Server Entry | Cross-compiles to linux/amd64, linux/arm64, darwin/arm64 with zero CGo (architecture §8). | tested | CI `cross-build` job (`CGO_ENABLED=0`, three targets, checked with `go version -m`); no Go test can cross-compile. |
+| M19.6 | CLI / Server Entry | Passes `go test -race ./cmd/weavster/...` and `go build -o bin/weavster ./cmd/weavster`. | tested | `TestBuildServerServesSystem`, `TestRunHelpAndVersion`, `TestVersionCommand`; `go build` in CI `build`. |
+
+## Totals
+
+145 requirements: 87 tested, 36 partial, 22 deferred.
+
+## Sign-off (D-24)
+
+To be signed by a maintainer who did not implement the mapped items: check each row's evidence,
+then record the name, date, and commit here.
+
+- Reviewer:
+- Date:
+- Commit:
