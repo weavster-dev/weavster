@@ -73,21 +73,31 @@ func TestBuildTinyGoBuildFailure(t *testing.T) {
 	}
 }
 
-func TestBuildSuccess(t *testing.T) {
-	// The fake toolchain writes the .wasm to the -o argument and exits 0,
-	// mirroring a real tinygo build of a WASI module.
+func TestBuildInvokesWASIToolchainAndReadsArtifact(t *testing.T) {
+	workdir := t.TempDir()
+	t.Setenv("WANT_WORKDIR", workdir)
+
+	// Reject any invocation that changes the build subcommand, WASI target,
+	// output location, source directory, or generated source handoff.
 	writeFakeTinyGo(t, `#!/bin/sh
-prev=""
-out=""
-for arg in "$@"; do
-  if [ "$prev" = "-o" ]; then out="$arg"; fi
-  prev="$arg"
-done
-printf 'fake-wasm-bytes' > "$out"
+set -eu
+source=""
+IFS= read -r source < "$WANT_WORKDIR/main.go" || true
+if [ "$#" -ne 5 ] ||
+  [ "$1" != "build" ] ||
+  [ "$2" != "-target=wasi" ] ||
+  [ "$3" != "-o" ] ||
+  [ "$4" != "$WANT_WORKDIR/module.wasm" ] ||
+  [ "$5" != "$WANT_WORKDIR" ] ||
+  [ "$source" != "package main" ]; then
+  printf 'unexpected tinygo invocation:' >&2
+  printf ' <%s>' "$@" >&2
+  exit 64
+fi
+printf 'fake-wasm-bytes' > "$4"
 exit 0
 `)
 
-	workdir := t.TempDir()
 	got, err := Build(context.Background(), []byte("package main"), workdir)
 	if err != nil {
 		t.Fatalf("build: %v", err)
