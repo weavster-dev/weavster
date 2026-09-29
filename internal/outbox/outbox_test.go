@@ -194,6 +194,85 @@ func TestAmbiguousChecksStatusFirst(t *testing.T) {
 	}
 }
 
+func TestAmbiguousStatusCheckFailureDoesNotResend(t *testing.T) {
+	s := state.NewMemStore()
+	ctx := context.Background()
+	m := msg("1")
+	m.Status = state.StatusQueued
+	m.Attempts = map[string]state.DestinationAttempt{
+		"d1": {Attempts: 1, LastError: ErrAmbiguous.Error()},
+	}
+	if err := s.Put(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+
+	statusErr := errors.New("status unavailable")
+	var deliverCalls int32
+	o := New(s, func(context.Context, state.Message, string, string) error {
+		atomic.AddInt32(&deliverCalls, 1)
+		return nil
+	}, Options{CheckStatus: func(context.Context, state.Message, string) (bool, error) {
+		return false, statusErr
+	}})
+
+	if err := o.Deliver(ctx, "1", "d1"); !errors.Is(err, statusErr) {
+		t.Fatalf("Deliver() error = %v, want %v", err, statusErr)
+	}
+	if got := atomic.LoadInt32(&deliverCalls); got != 0 {
+		t.Errorf("deliver called %d times, want 0", got)
+	}
+
+	got, err := s.Get(ctx, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempt := got.Attempts["d1"]; attempt.Attempts != 1 || attempt.LastError != ErrAmbiguous.Error() {
+		t.Errorf("attempt changed after status failure: %+v", attempt)
+	}
+	if got.Status != state.StatusQueued {
+		t.Errorf("status = %s, want queued", got.Status)
+	}
+}
+
+func TestAmbiguousNotDeliveredRetriesWithNextIdempotencyKey(t *testing.T) {
+	s := state.NewMemStore()
+	ctx := context.Background()
+	m := msg("1")
+	m.Status = state.StatusQueued
+	m.Attempts = map[string]state.DestinationAttempt{
+		"d1": {Attempts: 1, LastError: ErrAmbiguous.Error()},
+	}
+	if err := s.Put(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+
+	var gotKey string
+	o := New(s, func(_ context.Context, _ state.Message, _ string, key string) error {
+		gotKey = key
+		return nil
+	}, Options{CheckStatus: func(context.Context, state.Message, string) (bool, error) {
+		return false, nil
+	}})
+
+	if err := o.Deliver(ctx, "1", "d1"); err != nil {
+		t.Fatal(err)
+	}
+	if want := IdempotencyKey("1", "d1", 2); gotKey != want {
+		t.Errorf("idempotency key = %q, want %q", gotKey, want)
+	}
+
+	got, err := s.Get(ctx, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempt := got.Attempts["d1"]; attempt.Attempts != 2 || attempt.LastError != "" {
+		t.Errorf("attempt after retry: %+v", attempt)
+	}
+	if got.Status != state.StatusSent {
+		t.Errorf("status = %s, want sent", got.Status)
+	}
+}
+
 func TestBackoff(t *testing.T) {
 	o := New(state.NewMemStore(), nil, Options{BackoffBase: 100})
 	if o.Backoff(2) <= o.Backoff(1) {
