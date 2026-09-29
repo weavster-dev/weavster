@@ -34,7 +34,7 @@ func newSQLiteQueue(t *testing.T) *SQLJobQueue {
 	if err := state.Migrate(context.Background(), db, state.Migrations()); err != nil {
 		t.Fatal(err)
 	}
-	q, err := NewSQLJobQueue(db, "sqlite")
+	q, err := NewSQLJobQueue(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -259,7 +259,42 @@ func TestSQLJobQueueNeedsMigratedStore(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := NewSQLJobQueue(db, "sqlite"); err == nil || !strings.Contains(err.Error(), "jobs table is missing") {
+	if _, err := NewSQLJobQueue(db); err == nil || !strings.Contains(err.Error(), "jobs table is missing") {
 		t.Fatalf("NewSQLJobQueue() = %v, want the missing table reported", err)
+	}
+}
+
+// TestClaimOrder: every queue claims the earliest due job first, then the
+// lowest id in byte order, whatever the order jobs were enqueued in.
+func TestClaimOrder(t *testing.T) {
+	now := time.Now()
+	for name, q := range testQueue(t) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			for _, j := range []Job{
+				{ID: "b", Type: "poll", NextRunAt: now.Add(-time.Minute)},
+				{ID: "a", Type: "poll", NextRunAt: now.Add(-time.Minute)},
+				{ID: "B", Type: "poll", NextRunAt: now.Add(-time.Minute)},
+				{ID: "z", Type: "poll", NextRunAt: now.Add(-2 * time.Minute)},
+			} {
+				if err := q.Enqueue(ctx, j); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var got []string
+			for {
+				j, ok, err := q.Claim(ctx, "n", time.Minute)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !ok {
+					break
+				}
+				got = append(got, j.ID)
+			}
+			if strings.Join(got, ",") != "z,B,a,b" {
+				t.Errorf("claimed %v, want z,B,a,b", got)
+			}
+		})
 	}
 }

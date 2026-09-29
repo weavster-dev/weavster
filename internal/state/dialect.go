@@ -3,49 +3,20 @@ package state
 import (
 	"context"
 	"database/sql"
-	"strconv"
 	"strings"
 
-	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/weavster-dev/weavster/internal/sqldialect"
 )
 
 // isPostgres reports whether db is a PostgreSQL connection (the pgx
-// driver); otherwise it is SQLite. Used where only a *sql.DB is at hand
-// (Migrate); the store is told its dialect when it opens.
-func isPostgres(db *sql.DB) bool {
-	return db.Driver() == stdlib.GetDefaultDriver()
-}
+// driver); otherwise it is SQLite.
+func isPostgres(db *sql.DB) bool { return sqldialect.IsPostgres(db) }
 
-// byteOrder marks a text comparison or ORDER BY that must use byte order,
-// as SQLite and the memory store do: a comment SQLite ignores, which
-// becomes COLLATE "C" on PostgreSQL (whose default collation follows the
-// database's locale, so pages would differ between backends).
-const byteOrder = "/*C*/"
-
-// rebind rewrites a statement written for SQLite for PostgreSQL: "?"
-// placeholders become $1, $2, … (pgx does not do this), and byteOrder
-// marks become COLLATE "C". The store's statements contain no "?" inside
-// string literals.
-func rebind(postgres bool, query string) string {
-	if !postgres {
-		return query
-	}
-	query = strings.ReplaceAll(query, byteOrder, `COLLATE "C"`)
-	if !strings.Contains(query, "?") {
-		return query
-	}
-	var b strings.Builder
-	n := 0
-	for _, r := range query {
-		if r == '?' {
-			n++
-			b.WriteString("$" + strconv.Itoa(n))
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
-}
+// rebind rewrites a statement written for SQLite for PostgreSQL
+// (sqldialect.Rebind): "?" placeholders, and the /*C*/ byte-order marks
+// the store's statements use where SQLite and the memory store compare
+// bytes. The store's statements hold no "?" inside string literals.
+func rebind(postgres bool, query string) string { return sqldialect.Rebind(postgres, query) }
 
 // dialectDB is the store's database: statements written for SQLite run on
 // PostgreSQL too. It offers only the methods that rebind, so none can be

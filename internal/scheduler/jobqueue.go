@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/weavster-dev/weavster/internal/sqldialect"
 )
 
 // JobStatus is a durable job state.
@@ -70,20 +72,24 @@ func (q *MemJobQueue) Claim(_ context.Context, nodeID string, lease time.Duratio
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	now := time.Now()
+	var next *memJob // the earliest due, then the lowest id, as the SQL queues claim
 	for _, m := range q.jobs {
-		if m.status != StatusQueued {
+		if m.status != StatusQueued || m.job.NextRunAt.After(now) {
 			continue
 		}
-		if !m.job.NextRunAt.IsZero() && m.job.NextRunAt.After(now) {
-			continue
+		if next == nil || m.job.NextRunAt.Before(next.job.NextRunAt) ||
+			(m.job.NextRunAt.Equal(next.job.NextRunAt) && m.job.ID < next.job.ID) {
+			next = m
 		}
-		m.status = StatusRunning
-		m.claimedBy = nodeID
-		m.leaseUntil = now.Add(lease)
-		m.attempts++
-		return m.job, true, nil
 	}
-	return Job{}, false, nil
+	if next == nil {
+		return Job{}, false, nil
+	}
+	next.status = StatusRunning
+	next.claimedBy = nodeID
+	next.leaseUntil = now.Add(lease)
+	next.attempts++
+	return next.job, true, nil
 }
 
 func (q *MemJobQueue) Heartbeat(_ context.Context, id, nodeID string, lease time.Duration) error {
@@ -165,28 +171,33 @@ func (q *MemJobQueue) remove(id string) {
 	q.jobs = out
 }
 
-// SQLJobQueue is a durable JobQueue over database/sql. The "postgres" dialect
-// claims with FOR UPDATE SKIP LOCKED; the "sqlite" dialect uses an atomic
-// conditional UPDATE (the SQLite equivalent; local DX).
+// SQLJobQueue is a durable JobQueue over database/sql. On PostgreSQL it
+// claims with FOR UPDATE SKIP LOCKED; on SQLite with an atomic conditional
+// UPDATE (the SQLite equivalent). Either way jobs are claimed in due order,
+// then by id in byte order.
 type SQLJobQueue struct {
-	db      *sql.DB
-	dialect string
+	db       *sql.DB
+	postgres bool
 }
 
 // NewSQLJobQueue is a durable job queue over an existing database handle
 // whose schema the store's migrations created (the jobs table, migration 9;
-// §6 keeps every table in one ordered migration chain).
-func NewSQLJobQueue(db *sql.DB, dialect string) (*SQLJobQueue, error) {
+// §6 keeps every table in one ordered migration chain). The dialect comes
+// from the handle's driver.
+func NewSQLJobQueue(db *sql.DB) (*SQLJobQueue, error) {
 	if _, err := db.Exec(`SELECT id FROM jobs WHERE 1 = 0`); err != nil {
 		return nil, fmt.Errorf("scheduler: the jobs table is missing (migrate the store first): %w", err)
 	}
-	return &SQLJobQueue{db: db, dialect: dialect}, nil
+	return &SQLJobQueue{db: db, postgres: sqldialect.IsPostgres(db)}, nil
 }
 
+// sql is query in the queue's dialect (sqldialect.Rebind).
+func (q *SQLJobQueue) sql(query string) string { return sqldialect.Rebind(q.postgres, query) }
+
 func (q *SQLJobQueue) Enqueue(ctx context.Context, j Job) error {
-	_, err := q.db.ExecContext(ctx,
+	_, err := q.db.ExecContext(ctx, q.sql(
 		`INSERT INTO jobs (id, type, payload, next_run_at, status) VALUES (?, ?, ?, ?, 'queued')
-		 ON CONFLICT(id) DO NOTHING`,
+		 ON CONFLICT(id) DO NOTHING`),
 		j.ID, j.Type, j.Payload, j.NextRunAt.UnixMilli())
 	return err
 }
@@ -194,7 +205,7 @@ func (q *SQLJobQueue) Enqueue(ctx context.Context, j Job) error {
 func (q *SQLJobQueue) Claim(ctx context.Context, nodeID string, lease time.Duration) (Job, bool, error) {
 	now := time.Now().UnixMilli()
 	leaseUntil := time.Now().Add(lease).UnixMilli()
-	if q.dialect == "postgres" {
+	if q.postgres {
 		return q.claimPostgres(ctx, nodeID, now, leaseUntil)
 	}
 	return q.claimSQLite(ctx, nodeID, now, leaseUntil)
@@ -206,7 +217,7 @@ func (q *SQLJobQueue) claimSQLite(ctx context.Context, nodeID string, now, lease
 		WHERE id = (
 			SELECT id FROM jobs
 			WHERE status = 'queued' AND next_run_at <= ? AND lease_until <= ?
-			ORDER BY next_run_at ASC LIMIT 1
+			ORDER BY next_run_at ASC, id /*C*/ ASC LIMIT 1
 		)
 		RETURNING id, type, payload`, nodeID, leaseUntil, now, now)
 	var j Job
@@ -226,11 +237,11 @@ func (q *SQLJobQueue) claimPostgres(ctx context.Context, nodeID string, now, lea
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	row := tx.QueryRowContext(ctx, `
+	row := tx.QueryRowContext(ctx, q.sql(`
 		SELECT id, type, payload FROM jobs
-		WHERE status = 'queued' AND next_run_at <= $1 AND lease_until <= $1
-		ORDER BY next_run_at ASC LIMIT 1
-		FOR UPDATE SKIP LOCKED`, now)
+		WHERE status = 'queued' AND next_run_at <= ? AND lease_until <= ?
+		ORDER BY next_run_at ASC, id /*C*/ ASC LIMIT 1
+		FOR UPDATE SKIP LOCKED`), now, now)
 	var j Job
 	if err := row.Scan(&j.ID, &j.Type, &j.Payload); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -239,16 +250,19 @@ func (q *SQLJobQueue) claimPostgres(ctx context.Context, nodeID string, now, lea
 		return Job{}, false, err
 	}
 	if _, err := tx.ExecContext(ctx,
-		`UPDATE jobs SET claimed_by = $1, lease_until = $2, status = 'running', attempts = attempts + 1 WHERE id = $3`,
+		q.sql(`UPDATE jobs SET claimed_by = ?, lease_until = ?, status = 'running', attempts = attempts + 1 WHERE id = ?`),
 		nodeID, leaseUntil, j.ID); err != nil {
 		return Job{}, false, err
 	}
-	return j, true, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return Job{}, false, err // not claimed: the update was rolled back
+	}
+	return j, true, nil
 }
 
 func (q *SQLJobQueue) Heartbeat(ctx context.Context, id, nodeID string, lease time.Duration) error {
 	res, err := q.db.ExecContext(ctx,
-		`UPDATE jobs SET lease_until = ? WHERE id = ? AND claimed_by = ?`,
+		q.sql(`UPDATE jobs SET lease_until = ? WHERE id = ? AND claimed_by = ?`),
 		time.Now().Add(lease).UnixMilli(), id, nodeID)
 	if err != nil {
 		return err
@@ -257,7 +271,7 @@ func (q *SQLJobQueue) Heartbeat(ctx context.Context, id, nodeID string, lease ti
 }
 
 func (q *SQLJobQueue) Complete(ctx context.Context, id, nodeID string) error {
-	res, err := q.db.ExecContext(ctx, `DELETE FROM jobs WHERE id = ? AND claimed_by = ?`, id, nodeID)
+	res, err := q.db.ExecContext(ctx, q.sql(`DELETE FROM jobs WHERE id = ? AND claimed_by = ?`), id, nodeID)
 	if err != nil {
 		return err
 	}
@@ -266,7 +280,7 @@ func (q *SQLJobQueue) Complete(ctx context.Context, id, nodeID string) error {
 
 func (q *SQLJobQueue) Requeue(ctx context.Context, id, nodeID, errMsg string) error {
 	res, err := q.db.ExecContext(ctx,
-		`UPDATE jobs SET status = 'queued', claimed_by = '', lease_until = 0, last_error = ? WHERE id = ? AND claimed_by = ?`,
+		q.sql(`UPDATE jobs SET status = 'queued', claimed_by = '', lease_until = 0, last_error = ? WHERE id = ? AND claimed_by = ?`),
 		errMsg, id, nodeID)
 	if err != nil {
 		return err
@@ -276,7 +290,7 @@ func (q *SQLJobQueue) Requeue(ctx context.Context, id, nodeID, errMsg string) er
 
 func (q *SQLJobQueue) Reconcile(ctx context.Context, _ string) (int, error) {
 	res, err := q.db.ExecContext(ctx,
-		`UPDATE jobs SET status = 'queued', claimed_by = '' WHERE status = 'running' AND lease_until <= ?`,
+		q.sql(`UPDATE jobs SET status = 'queued', claimed_by = '' WHERE status = 'running' AND lease_until <= ?`),
 		time.Now().UnixMilli())
 	if err != nil {
 		return 0, err

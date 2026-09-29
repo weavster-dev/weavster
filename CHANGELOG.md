@@ -153,6 +153,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- The scheduler library's SQL job queue works on PostgreSQL (#377): enqueue, heartbeat, complete, requeue, and reconcile used `?` placeholders that PostgreSQL rejects. Every queue, including the in-memory one, claims in due order and then by id in byte order. A failed commit no longer reports a claim, the queue detects its dialect from the database driver, and a new index covers claims. `FOR UPDATE SKIP LOCKED` is verified on PostgreSQL 16. The server does not use this queue.
 - The server binds its API ports before starting sources and retries, so a port that is already in use stops it before a file source has moved a file or an http/mllp source has accepted a message (#361).
 - `POST /api/v1/flows/{id}/messages` and `POST /api/v1/messages/{id}/reprocess` answer `202` with the stored message's id when a later step fails after the message was stored (previously `500`), as every source already did, so a client does not resend a message the server already has and will finish (#359).
 - A retry pass that read a message just before its first processing finished no longer works on it again: it rechecks the stored message, so a sent message is not counted twice in the flow statistics and events, and a destination not yet reached by the first pass is not delivered twice (found by `TestEndToEnd`, #353).

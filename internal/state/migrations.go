@@ -129,6 +129,15 @@ func Migrations() []Migration {
 				return err
 			},
 		},
+		{
+			// The scheduler claims the earliest due queued job, then by id.
+			Version: 11,
+			Name:    "jobs-claim-index",
+			Apply: func(ctx context.Context, tx *sql.Tx) error {
+				_, err := tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS jobs_claim ON jobs (status, next_run_at, id)`)
+				return err
+			},
+		},
 	}
 }
 
