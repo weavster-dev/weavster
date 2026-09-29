@@ -9,7 +9,7 @@ incident. Upgrading and rolling back are in [Install, upgrade, and roll back](in
 |---|---|---|
 | Messages, flows, users, alerts, snippets, config map, scripts, settings, lookups, the audit log, events, statistics | The store's PostgreSQL database (`store.dialect: postgres`) | `pg_dump` (below) |
 | The server configuration | The file you pass to `--config` | Copy the file |
-| TLS certificates and keys | `tls.certFile`, `tls.keyFile`, and each source's `certFile`/`keyFile` | Copy the files (keep them private) |
+| TLS certificates, keys, and CAs | `tls.certFile`, `tls.keyFile`, and every `certFile`, `keyFile`, and `caFile` a flow's source or destination names | Copy the files (keep the keys private) |
 | Secrets | `secrets.dir` (default `/run/secrets`), `~/.pgpass` of the server's account, environment variables | However you manage secrets |
 | Files a flow reads or writes | A file source's `dir` and `moveTo`, a file destination's `dir` | Copy the directories |
 
@@ -33,25 +33,32 @@ schedule that matches how many messages you can afford to lose.
 
 ### Restore the database
 
-1. If you can still reach the server, export the messages received since the backup: they are
-   not in it. The client's `exportmessages "path" *` writes the newest 10,000;
-   `GET /api/v1/messages/export` pages through more (see
-   [Export and import messages](processing-messages.md#export-and-import-messages)).
+1. If you can still reach the server, save the messages received since the backup, since they
+   are not in it:
+   1. Stop every flow (`POST /api/v1/flows/stop-all`, see
+      [Flow lifecycle](flow-lifecycle.md)), so that no message arrives after the export.
+   2. Export the messages. The client's `exportmessages "path" *` writes the newest 10,000;
+      page through more with `GET /api/v1/messages/export` (see
+      [Export and import messages](processing-messages.md#export-and-import-messages)), and check
+      that the archives hold every message since the backup.
 2. Stop the server.
-3. Restore the dump into a new, empty database (add the connection options you use with `pg_dump`). Restoring over the existing database would leave
-   behind tables that a later release added and the backup lacks, and the next upgrade would
-   then fail on them:
+3. Restore the dump into a new, empty database next to the current one (add the connection
+   options you use with `pg_dump`). Do not restore over the current database: that would keep
+   tables a later release added and the backup lacks, and the next upgrade would fail on them.
+   The current database also stays your way back if the restore fails.
 
    ```bash
-   dropdb weavster
-   createdb -O weavster weavster
-   pg_restore --no-owner --role=weavster -d weavster weavster-2026-09-29.dump
+   createdb -O weavster weavster_restore
+   pg_restore --no-owner --role=weavster -d weavster_restore weavster-2026-09-29.dump
    ```
 
-4. Start the same release that took the backup, or a newer one (it upgrades the schema at start).
+4. Point `store.dsn` (or the `store.dsnEnv` secret) at `weavster_restore`, and start the same
+   release that took the backup, or a newer one (it upgrades the schema at start).
 5. Import the messages you exported, replacing the older copies the backup holds:
    `POST /api/v1/messages/import?overwrite=true`. Until then, a message that was `queued` in the
    backup may be delivered again (delivery is at least once).
+6. Once the restored server works, drop the old database (`dropdb weavster`) if you no longer
+   need it.
 
 Sign-in tokens are not kept across restarts: users log in again after a restore.
 
