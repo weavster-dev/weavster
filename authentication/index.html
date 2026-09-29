@@ -446,10 +446,10 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/users -d '{
   &quot;username&quot;: &quot;ops&quot;, &quot;password&quot;: &quot;A-Temp-Passw0rd&quot;,
   &quot;permissions&quot;: [&quot;flows:view&quot;, &quot;flows:deploy&quot;, &quot;events:view&quot;],
-  &quot;email&quot;: &quot;ops@example.com&quot;
+  &quot;email&quot;: &quot;ops@example.com&quot;, &quot;org&quot;: &quot;Radiology&quot;
 }'
 </code></pre>
-<pre><code class="language-json">{&quot;username&quot;:&quot;ops&quot;,&quot;email&quot;:&quot;ops@example.com&quot;,&quot;permissions&quot;:[&quot;events:view&quot;,&quot;flows:deploy&quot;,&quot;flows:view&quot;],&quot;mustChangePassword&quot;:true,&quot;locked&quot;:false}
+<pre><code class="language-json">{&quot;username&quot;:&quot;ops&quot;,&quot;email&quot;:&quot;ops@example.com&quot;,&quot;org&quot;:&quot;Radiology&quot;,&quot;permissions&quot;:[&quot;events:view&quot;,&quot;flows:deploy&quot;,&quot;flows:view&quot;],&quot;mustChangePassword&quot;:true,&quot;locked&quot;:false}
 </code></pre>
 <table>
 <thead>
@@ -465,7 +465,7 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 </tr>
 <tr>
 <td><code>POST /api/v1/users</code></td>
-<td>Creates an account (<code>201</code>). <code>username</code> is 1–64 characters from <code>A-Z a-z 0-9 . _ @ -</code>; <code>permissions</code> must be from the list above; the <a href="../server-config/#auth">password policy</a> applies. The user must choose a new password at the first login unless you send <code>"mustChangePassword": false</code>.</td>
+<td>Creates an account (<code>201</code>), with optional <code>email</code> and <code>org</code> (organization). <code>username</code> is 1–64 characters from <code>A-Z a-z 0-9 . _ @ -</code>; <code>permissions</code> must be from the list above; the <a href="../server-config/#auth">password policy</a> applies. The user must choose a new password at the first login unless you send <code>"mustChangePassword": false</code>.</td>
 </tr>
 <tr>
 <td><code>PUT /api/v1/users/{name}</code></td>
