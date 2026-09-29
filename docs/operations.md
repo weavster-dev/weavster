@@ -33,19 +33,25 @@ schedule that matches how many messages you can afford to lose.
 
 ### Restore the database
 
-1. Stop the server.
-2. Restore the dump into the store's database:
+1. If you can still reach the server, export the messages received since the backup: they are
+   not in it. The client's `exportmessages "path" *` writes the newest 10,000;
+   `GET /api/v1/messages/export` pages through more (see
+   [Export and import messages](processing-messages.md#export-and-import-messages)).
+2. Stop the server.
+3. Restore the dump into a new, empty database (add the connection options you use with `pg_dump`). Restoring over the existing database would leave
+   behind tables that a later release added and the backup lacks, and the next upgrade would
+   then fail on them:
 
    ```bash
-   pg_restore --clean --if-exists -d 'postgres://weavster@db.internal:5432/weavster?sslmode=verify-full' weavster-2026-09-29.dump
+   dropdb weavster
+   createdb -O weavster weavster
+   pg_restore --no-owner --role=weavster -d weavster weavster-2026-09-29.dump
    ```
 
-3. Start the same release that took the backup, or a newer one (it upgrades the schema at start).
-
-Messages received after the backup are not in it. Export them first if you can still reach the
-server (the client's `exportmessages "path" *` writes the newest 10,000; see
-[Export and import messages](processing-messages.md#export-and-import-messages) for more), and
-import them after the restore.
+4. Start the same release that took the backup, or a newer one (it upgrades the schema at start).
+5. Import the messages you exported, replacing the older copies the backup holds:
+   `POST /api/v1/messages/import?overwrite=true`. Until then, a message that was `queued` in the
+   backup may be delivered again (delivery is at least once).
 
 Sign-in tokens are not kept across restarts: users log in again after a restore.
 
@@ -75,8 +81,11 @@ curl -fsS -o /dev/null http://127.0.0.1:8080/api/openapi.yaml && echo up
 ```
 
 With `listen.contextPath: /weavster`, the path is `/weavster/api/openapi.yaml`. The server opens
-its ports only after it has connected to the store and upgraded the schema, so once it answers,
-the API is ready.
+its ports only after it has connected to the store and upgraded the schema, so an answer means it
+has started. The probe does not use the store, so it keeps answering if the database goes away
+later. To check the store too, request something the server reads from it, such as
+`GET /api/v1/flows` with an account that has `flows:view`: it returns an error while the store
+cannot be reached.
 
 For more detail, `GET /api/v1/system` (any signed-in user) returns the version and uptime:
 
@@ -95,7 +104,7 @@ Prometheus configuration and every metric. Alert on:
 |---|---|---|
 | Deliveries failing | `weavster_connector_messages_total{outcome="errored"}` rising | A destination rejects messages or cannot be reached; they are retried, then dead-lettered |
 | Server at capacity | `weavster_processing_refused_total` rising, or `weavster_processing_in_flight` equal to `weavster_processing_slots` | Messages are refused as busy; raise `processing.maxConcurrent` or add capacity |
-| Flows not running | `weavster_flows{status="started"}` lower than expected | A flow was stopped, or failed to deploy at start |
+| Flows not running | `weavster_flows{status="started"}` lower than expected | A flow was stopped, or failed to deploy at start. A status no flow has is not published at all, so write the rule as `(weavster_flows{status="started"} or vector(0)) < 3` to fire when none are started |
 
 Alerts you define in Weavster are stored but do not fire in this edition; alert from your
 monitoring system instead.
@@ -109,7 +118,7 @@ admin password, and warnings such as:
 | Log line | Meaning |
 |---|---|
 | `store connection failed` | At start, the store cannot be reached; the server tries again, up to `store.maxRetry` times |
-| `processing limit reached: messages refused as busy` | Every processing slot is in use |
+| `processing limit reached: messages refused as busy (see processing.maxConcurrent)` | Every processing slot is in use |
 | `delivery retry pass failed` | A pass over queued deliveries failed (often because the store cannot be reached); it runs again on the next interval |
 | `auto-deploy failed` | A flow in the store could not be deployed at start |
 | `audit entry not stored` | An audit entry was logged to stderr but not stored, so `GET /api/v1/audit` lacks it |
@@ -130,7 +139,7 @@ a usage error).
 | `Error: config: the postgres dialect needs store.dsn or store.dsnEnv (one of them)` | Set exactly one of them |
 | `Error: store: postgres: giving up after N attempts: store.dsnEnv: environment variable NAME is not set, and there is no file /run/secrets/NAME` | Provide the secret as a variable or a file in `secrets.dir` (default `/run/secrets`) |
 | `Error: store: postgres: giving up after N attempts: …` | The database cannot be reached: check the host, port, credentials, and `sslmode` in the connection string |
-| `Error: store: state: the database schema is at version N (written by weavster X), newer than this release supports (M): …` | A newer release upgraded the database: run that release, or [restore](#restore-the-database) a backup taken before the upgrade |
+| `Error: store: state: the database schema is at version N (written by weavster X), newer than this release supports (M): …` | A newer release upgraded the database (`written by an unknown weavster release` when it did not record its version): run that release, or [restore](#restore-the-database) a backup taken before the upgrade |
 | `Error: tls: open …: no such file or directory` | A path in `tls.certFile` or `tls.keyFile` is wrong (`permission denied` instead of `no such file or directory`: the server's account cannot read it) |
 | `Error: refusing to run under a privileged OS account; use a dedicated service account or set WEAVSTER_ALLOW_ROOT=1` | Run the server as an unprivileged account |
 
@@ -173,12 +182,19 @@ counted since the last sample are lost; messages are not.
 
 ### A bad change was deployed
 
-Import the previous configuration export, or apply the previous config-as-code document:
+Apply the previous config-as-code document (see [Config-as-code documents](config-as-code.md)).
+It changes what it lists back and removes what its sections no longer list, including flows the
+bad change added.
+
+Or import the previous configuration export:
 
 ```text
 $ weavster -c ops.yaml
 weavster> importcfg "weavster-config.json" force
 ```
+
+An import only adds and replaces. Undeploy and delete any flow the bad change added
+(see [Flow lifecycle](flow-lifecycle.md)), or it keeps running.
 
 Then reprocess the messages the bad change handled: `POST /api/v1/messages/{id}/reprocess` runs a
 stored message through the flow again as a new message. See

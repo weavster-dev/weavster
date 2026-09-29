@@ -69,8 +69,8 @@ func TestOperationsDoc(t *testing.T) {
 			return serve(t, "listen: {address: \""+freeAddr(t)+"\"}\nstore: {dialect: postgres, dsn: \"postgres://weavster@"+closed+"/weavster?sslmode=disable\", maxRetry: 0}\n")
 		},
 		"newer than this release supports": func(t *testing.T) string {
-			// Refusing a real newer database is TestRefusesNewerSchema
-			// (PostgreSQL); here, the error the server prints for it.
+			// TestRefusesNewerSchema (PostgreSQL) makes the server refuse a
+			// newer database and checks it prints this, prefix included.
 			return "Error: store: " + (&state.NewerSchemaError{Version: 16, Supported: 15, WrittenBy: "1.3.0"}).Error()
 		},
 		"tls: open": func(t *testing.T) string {
@@ -85,8 +85,17 @@ func TestOperationsDoc(t *testing.T) {
 			return serve(t, "listen: {address: \""+freeAddr(t)+"\"}\n")
 		},
 	}
-	section := page[strings.Index(page, "## Troubleshoot"):]
-	section = section[:strings.Index(section, "\nWhen the server runs")]
+	// between is the page from one heading up to the next text.
+	between := func(from, to string) string {
+		t.Helper()
+		i := strings.Index(page, from)
+		j := strings.Index(page[max(i, 0):], to)
+		if i < 0 || j < 0 {
+			t.Fatalf("operations.md lacks %q or, after it, %q", from, to)
+		}
+		return page[i : i+j]
+	}
+	section := between("## Troubleshoot", "\nWhen the server runs")
 	rows := regexp.MustCompile("(?m)^\\| `(Error: [^`]*)` \\|").FindAllStringSubmatch(section, -1)
 	if len(rows) != len(mistakes) {
 		t.Errorf("the troubleshooting table has %d errors, the test %d", len(rows), len(mistakes))
@@ -119,7 +128,7 @@ func TestOperationsDoc(t *testing.T) {
 		})
 	}
 
-	// Every log line the page explains is one the server logs.
+	// Every log line the page explains is, in full, one the server logs.
 	var code strings.Builder
 	for _, dir := range []string{".", filepath.Join("..", "..", "internal")} {
 		err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
@@ -134,13 +143,13 @@ func TestOperationsDoc(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	logs := page[strings.Index(page, "### Logs"):strings.Index(page, "## Troubleshoot")]
+	logs := between("### Logs", "## Troubleshoot")
 	lines := regexp.MustCompile("(?m)^\\| `([^`]*)` \\|").FindAllStringSubmatch(logs, -1)
 	if len(lines) < 5 {
 		t.Fatalf("log lines not read from operations.md:\n%s", logs)
 	}
 	for _, line := range lines {
-		if !strings.Contains(code.String(), `"`+line[1]) {
+		if !regexp.MustCompile(`\.(?:Info|Warn|Error)\("` + regexp.QuoteMeta(line[1]) + `"`).MatchString(code.String()) {
 			t.Errorf("the server never logs %q", line[1])
 		}
 	}

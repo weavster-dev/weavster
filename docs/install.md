@@ -125,9 +125,11 @@ Stop the new release and start the previous one:
   Error: store: state: the database schema is at version 16 (written by weavster 1.3.0), newer than this release supports (15): run weavster 1.3.0 or later, or restore a backup taken before the upgrade
   ```
 
-  Restore the backup taken before the upgrade (`pg_restore --clean -d weavster
-  weavster-before-1.3.0.dump`), then start the previous release. Messages received after the
-  upgrade are not in that backup: export them first if you need them (`exportmessages`).
+  Messages received after the upgrade are not in the backup taken before it: export them first
+  if you need them (`exportmessages`). Then restore that backup into a new, empty database
+  (restoring over the upgraded one would keep the tables the upgrade added, and the next upgrade
+  would fail on them), and start the previous release; see
+  [Restore the database](operations.md#restore-the-database).
 
 ## Common pitfalls
 

@@ -148,7 +148,8 @@ func TestRefusesNewerSchema(t *testing.T) {
 
 	var stderr bytes.Buffer
 	code := run([]string{"server", "--config", path}, strings.NewReader(""), io.Discard, &stderr)
-	want := fmt.Sprintf("the database schema is at version %d (written by weavster 99.0.0), newer than this release supports (%d)", latest+1, latest)
+	// As docs/operations.md quotes it (TestOperationsDoc).
+	want := fmt.Sprintf("Error: store: state: the database schema is at version %d (written by weavster 99.0.0), newer than this release supports (%d)", latest+1, latest)
 	if code != 1 || !strings.Contains(stderr.String(), want) {
 		t.Fatalf("exit %d: %s; want 1 with %q", code, stderr.String(), want)
 	}
