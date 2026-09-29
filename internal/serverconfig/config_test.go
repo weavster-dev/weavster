@@ -58,6 +58,14 @@ auth:
 		{name: "context path trailing slash", yaml: "listen: {contextPath: /weavster/}\n", wantErr: "listen.contextPath must look like /weavster"},
 		{name: "context path dot-dot", yaml: "listen: {contextPath: /a/../b}\n", wantErr: "listen.contextPath must look like /weavster"},
 		{name: "context path control character", yaml: "listen: {contextPath: \"/a\\tb\"}\n", wantErr: "listen.contextPath must look like /weavster"},
+		{name: "context path with dots inside a segment", yaml: "listen: {contextPath: /api/..well-known}\n", check: func(t *testing.T, c Config) {
+			if c.Listen.ContextPath != "/api/..well-known" {
+				t.Errorf("contextPath = %q", c.Listen.ContextPath)
+			}
+		}},
+		{name: "context path single quote", yaml: "listen: {contextPath: \"/weav'ster\"}\n", wantErr: "listen.contextPath must look like /weavster"},
+		{name: "context path dot segment", yaml: "listen: {contextPath: /a/./b}\n", wantErr: "listen.contextPath must look like /weavster"},
+		{name: "context path dot-dot segment at the end", yaml: "listen: {contextPath: /a/..}\n", wantErr: "listen.contextPath must look like /weavster"},
 		{name: "context path query", yaml: "listen: {contextPath: \"/a?b\"}\n", wantErr: "listen.contextPath must look like /weavster"},
 		{name: "paths removed", yaml: "paths: {dataDir: /var/lib/weavster}\n", wantErr: "field paths not found"},
 		{name: "zero pool", yaml: "store: {maxConnections: 0}\n", wantErr: "store.maxConnections must be >= 1"},

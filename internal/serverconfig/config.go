@@ -211,9 +211,7 @@ func (c Config) Validate() error {
 	if c.Store.MaxRetry < 0 || c.Store.RetryWaitMs < 0 {
 		return errors.New("config: store.maxRetry and store.retryWaitMs must be >= 0")
 	}
-	if p := c.Listen.ContextPath; p != "" && (!strings.HasPrefix(p, "/") || strings.HasSuffix(p, "/") ||
-		strings.Contains(p, "//") || strings.Contains(p, "/..") || strings.Contains(p, "/./") || strings.HasSuffix(p, "/.") ||
-		strings.ContainsAny(p, "?#% \"\\") || strings.IndexFunc(p, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0) {
+	if p := c.Listen.ContextPath; p != "" && !validContextPath(p) {
 		return fmt.Errorf("config: listen.contextPath must look like /weavster: start with /, not end with /, no empty, . or .. segments, no ?, #, %%, quotes, spaces, or control characters; got %q", p)
 	}
 	if c.Listen.ShutdownTimeoutMs < 1 || c.Listen.ShutdownTimeoutMs > 600000 {
@@ -265,4 +263,20 @@ func (c Config) Validate() error {
 		return errors.New("config: auth.passwordPolicy forbids every character class, so no password can satisfy it")
 	}
 	return nil
+}
+
+// validContextPath: /segment[/segment…], each segment non-empty and not
+// "." or "..", with no ?, #, %, quotes, backslashes, spaces, or control
+// characters.
+func validContextPath(p string) bool {
+	if !strings.HasPrefix(p, "/") || strings.ContainsAny(p, "?#% \"'\\") ||
+		strings.IndexFunc(p, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
+		return false
+	}
+	for _, seg := range strings.Split(p[1:], "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
 }

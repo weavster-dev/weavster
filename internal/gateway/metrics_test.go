@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -65,6 +66,25 @@ func TestContextPath(t *testing.T) {
 		}
 		if tt.status == http.StatusNotFound && !strings.Contains(rec.Body.String(), `"code":"NOT_FOUND"`) {
 			t.Errorf("GET %s body = %s", tt.path, rec.Body.String())
+		}
+	}
+}
+
+// TestContextPathKeepsEscapes: a path parameter's escapes (a lookup key
+// A%2FB) reach the router as they came, whether or not the prefix itself
+// was escaped.
+func TestContextPathKeepsEscapes(t *testing.T) {
+	var got string
+	h := underContextPath("/weavster", http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r.URL.EscapedPath() }))
+	for path, want := range map[string]string{
+		"/weavster/api/v1/lookups/g/A%2FB":   "/api/v1/lookups/g/A%2FB",
+		"/weav%73ter/api/v1/lookups/g/A%2FB": "/api/v1/lookups/g/A%2FB",
+		"/weavster/api/v1/flows":             "/api/v1/flows",
+		"/other/A%2FB":                       "/outside-the-context-path",
+	} {
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, path, nil))
+		if got != want {
+			t.Errorf("%s reached the router as %s, want %s", path, got, want)
 		}
 	}
 }

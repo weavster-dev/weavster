@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -97,9 +98,29 @@ func underContextPath(prefix string, h http.Handler) http.Handler {
 			rest = "/"
 		}
 		r2 := r.Clone(r.Context())
-		r2.URL.Path, r2.URL.RawPath = rest, ""
+		r2.URL.Path, r2.URL.RawPath = rest, rawAfter(r.URL.EscapedPath(), prefix, ok && rest != "/outside-the-context-path")
 		h.ServeHTTP(w, r2)
 	})
+}
+
+// rawAfter is the escaped path after the context prefix (which may itself
+// be escaped), so escaped parameters such as a lookup key A%2FB keep their
+// form; "" when the path is outside the prefix.
+func rawAfter(escaped, prefix string, inside bool) string {
+	if !inside {
+		return ""
+	}
+	for i := len(prefix); i <= len(escaped); i++ {
+		if (i == len(escaped) || escaped[i] == '/') && unescapes(escaped[:i], prefix) {
+			return escaped[i:]
+		}
+	}
+	return ""
+}
+
+func unescapes(escaped, want string) bool {
+	got, err := url.PathUnescape(escaped)
+	return err == nil && got == want
 }
 
 // routes is the API's router.
