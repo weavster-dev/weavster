@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/dop251/goja"
+
+	"github.com/weavster-dev/weavster/internal/gateway"
 )
 
 // TestHandler: the UI's files are served with their types, the CSP, and
@@ -244,5 +246,47 @@ func TestErrorText(t *testing.T) {
 		if got := call(t, vm, o, "errorText", tt.status, graph(t, vm, tt.route), graph(t, vm, tt.body)).String(); got != tt.want && !strings.Contains(got, tt.want) {
 			t.Errorf("%d = %q, want %q", tt.status, got, tt.want)
 		}
+	}
+}
+
+// TestRevalidation: a file's ETag gives 304 when unchanged.
+func TestRevalidation(t *testing.T) {
+	h := Handler()
+	for _, path := range []string{"/", "/app.js", "/app.css"} {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		tag := rec.Header().Get("ETag")
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("If-None-Match", tag)
+		again := httptest.NewRecorder()
+		h.ServeHTTP(again, req)
+		if tag == "" || again.Code != http.StatusNotModified {
+			t.Errorf("%s: ETag %q, revalidation %d", path, tag, again.Code)
+		}
+	}
+}
+
+// TestMarkerHeader: the page sends the gateway's CSRF marker.
+func TestMarkerHeader(t *testing.T) {
+	if want := "'" + gateway.MarkerHeader + "': '" + gateway.MarkerValue + "'"; !strings.Contains(file(t, "app.js"), want) {
+		t.Errorf("app.js does not send %s", want)
+	}
+}
+
+// TestRoutesAndEdgeCases: a malformed escape does not break routing; a
+// flow routing to itself is drawn as a loop; an unnamed flow is titled by
+// its id.
+func TestRoutesAndEdgeCases(t *testing.T) {
+	vm, o := ui(t)
+	if got := call(t, vm, o, "parseRoute", "#/flows/100%").ToObject(vm).Get("id").String(); got != "100%" {
+		t.Errorf("malformed escape = %q", got)
+	}
+	self := call(t, vm, o, "renderGraph", graph(t, vm, `{"nodes":[{"id":"flow:a","kind":"flow","label":"a"}],"edges":[{"id":"e","from":"flow:a","to":"flow:a","kind":"route"}]}`)).String()
+	if !strings.Contains(self, `class="edge kind-route`) || strings.Count(self, "C") < 1 {
+		t.Errorf("self route = %s", self)
+	}
+	view := call(t, vm, o, "renderView", graph(t, vm, `{"phase":"ready","route":{"view":"flow","id":"adt"},"graph":{"flowId":"flow:adt","nodes":[{"id":"destination:d","kind":"destination","label":"d"}],"edges":[]}}`)).String()
+	if !strings.Contains(view, "<h2>adt</h2>") {
+		t.Errorf("unnamed flow title in %s", view)
 	}
 }

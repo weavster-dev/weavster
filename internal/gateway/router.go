@@ -158,12 +158,13 @@ func (s *Server) routes() http.Handler {
 	// with the user's own credentials. / and /ui lead to it, under
 	// listen.contextPath when there is one.
 	if s.cfg.UI != nil {
-		toUI := func(w http.ResponseWriter, _ *http.Request) {
-			w.Header().Set("Location", s.cfg.ContextPath+"/ui/")
-			w.WriteHeader(http.StatusFound)
+		toUI := func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, s.cfg.ContextPath+"/ui/", http.StatusFound)
 		}
-		r.Get("/", toUI)
-		r.Get("/ui", toUI)
+		for _, path := range []string{"/", "/ui"} {
+			r.Get(path, toUI)
+			r.Head(path, toUI)
+		}
 		r.Handle("/ui/*", http.StripPrefix("/ui", s.cfg.UI))
 	}
 

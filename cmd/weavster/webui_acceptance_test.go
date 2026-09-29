@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/topology"
 	"github.com/weavster-dev/weavster/internal/webui"
 )
@@ -69,7 +70,7 @@ func TestWebUI(t *testing.T) {
 			pageCall := func(method, path, token, body string) (int, string) {
 				t.Helper()
 				req, _ := http.NewRequest(method, api.String()+path, strings.NewReader(body))
-				req.Header.Set("X-Weavster-CSRF", "1")
+				req.Header.Set(gateway.MarkerHeader, gateway.MarkerValue)
 				if token != "" {
 					req.Header.Set("Authorization", "Bearer "+token)
 				}

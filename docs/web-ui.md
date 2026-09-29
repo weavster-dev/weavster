@@ -12,8 +12,10 @@ Open `/ui/` on the server's address, for example `http://127.0.0.1:8080/ui/` (th
 open `http://127.0.0.1:8080/weavster/ui/`.
 
 Sign in with a user that has the `flows:view` permission (or `admin`). The page signs in through
-`POST /api/v1/auth/login` and keeps the session token only for the browser tab; closing the tab
-or **Sign out** ends it. A user who must still change their password is told to do that first
+`POST /api/v1/auth/login` and keeps the session token only in the browser tab, never in a cookie.
+**Sign out** ends the session on the server. Closing the tab only makes the page forget the
+token: the session itself stays valid until it expires (12 hours), so sign out on a shared
+computer. A user who must still change their password is told to do that first
 (with the command-line client or `POST /api/v1/auth/password`); the page cannot change passwords.
 
 ## What it shows

@@ -34,6 +34,11 @@ func TestUIMount(t *testing.T) {
 			t.Errorf("GET %s under /weavster = %d %q", path, rec.Code, rec.Header().Get("Location"))
 		}
 	}
+	head := httptest.NewRecorder()
+	s.Router().ServeHTTP(head, httptest.NewRequest(http.MethodHead, "/", nil))
+	if head.Code != http.StatusFound || head.Header().Get("Location") != "/ui/" {
+		t.Errorf("HEAD / = %d %q", head.Code, head.Header().Get("Location"))
+	}
 	rec := httptest.NewRecorder()
 	New(Config{}).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/ui/", nil))
 	if rec.Code != http.StatusNotFound {

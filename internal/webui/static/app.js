@@ -19,7 +19,11 @@
   function parseRoute(hash) {
     var m = /^#\/flows\/(.+)$/.exec(hash || '');
     if (m) {
-      return { view: 'flow', id: decodeURIComponent(m[1]) };
+      var id = m[1];
+      try {
+        id = decodeURIComponent(id);
+      } catch (e) { /* a malformed escape: use the text as it is */ }
+      return { view: 'flow', id: id };
     }
     return { view: 'overview' };
   }
@@ -128,6 +132,11 @@
       return '';
     }
     var x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2, x2 = b.x, y2 = b.y + NODE_H / 2;
+    if (e.from === e.to) { // a flow routing to itself: a loop on its right
+      return '<path class="edge kind-' + esc(e.kind) + ' status-' + esc(e.status || 'none') + '" d="M' + x1 + ',' + (a.y + 14) +
+        ' C' + (x1 + 45) + ',' + (a.y - 10) + ' ' + (x1 + 45) + ',' + (a.y + NODE_H + 10) + ' ' + x1 + ',' + (a.y + NODE_H - 14) +
+        '"><title>' + esc(edgeTitle(e)) + '</title></path>';
+    }
     if (x2 <= x1) { // same column or backwards: loop around below
       x1 = a.x + NODE_W / 2; y1 = a.y + NODE_H; x2 = b.x + NODE_W / 2; y2 = b.y + NODE_H;
       return '<path class="edge kind-' + esc(e.kind) + ' status-' + esc(e.status || 'none') + '" d="M' + x1 + ',' + y1 +
@@ -172,7 +181,7 @@
     }
     var g = state.graph;
     var title = route.view === 'flow'
-      ? '<h2>' + esc(g.flowName || g.flowId) + '</h2><span>' + esc(g.flowStatus || '') + '</span>'
+      ? '<h2>' + esc(g.flowName || String(g.flowId || route.id).replace(/^flow:/, '')) + '</h2><span>' + esc(g.flowStatus || '') + '</span>'
       : '<h2>All flows</h2>';
     var bar = '<div class="bar">' + back + title + '<span class="updated">updated ' + esc(state.updated || g.generatedAt) +
       ', refreshed every ' + POLL_MS / 1000 + ' s</span></div>';
@@ -225,6 +234,7 @@
   var main = document.getElementById('main');
   var signout = document.getElementById('signout');
   var timer = null, seq = 0;
+  var shown = null; // the route key and view (minus its update time) on screen
 
   function token() {
     try { return sessionStorage.getItem('weavster.token'); } catch (e) { return null; }
@@ -253,6 +263,8 @@
 
   function showLogin(message) {
     clearTimeout(timer);
+    seq++; // a request still under way is not shown
+    shown = null;
     signout.hidden = true;
     main.innerHTML = loginView(message);
     document.getElementById('login').addEventListener('submit', function (ev) {
@@ -275,9 +287,10 @@
       showLogin('');
       return;
     }
-    var route = parseRoute(location.hash), mine = ++seq;
-    if (!main.querySelector('.graph')) {
+    var route = parseRoute(location.hash), mine = ++seq, key = topologyPath(route);
+    if (!shown || shown.key !== key) { // a new view: say it is loading
       main.innerHTML = renderView({ phase: 'loading', route: route });
+      shown = { key: key, html: '' };
     }
     signout.hidden = false;
     request('GET', topologyPath(route)).then(function (r) {
@@ -292,14 +305,38 @@
       var state = r.status === 200
         ? { phase: 'ready', route: route, graph: r.body, updated: new Date().toLocaleTimeString() }
         : { phase: 'error', route: route, error: errorText(r.status, route, r.body) };
-      main.innerHTML = renderView(state);
+      show(key, renderView(state));
       schedule();
     }, function () {
       if (mine === seq) {
-        main.innerHTML = renderView({ phase: 'error', route: route, error: 'The server cannot be reached; retrying.' });
+        show(key, renderView({ phase: 'error', route: route, error: 'The server cannot be reached; retrying.' }));
         schedule();
       }
     });
+  }
+
+  // show puts a view on screen. When only its update time changed, just
+  // that is updated, so scrolling, focus, and tooltips stay; otherwise the
+  // graph's scroll position is kept.
+  var UPDATED = /<span class="updated">[^<]*<\/span>/;
+  function show(key, html) {
+    var same = html.replace(UPDATED, '');
+    if (shown && shown.key === key && shown.html === same) {
+      var m = UPDATED.exec(html), el = main.querySelector('.updated');
+      if (m && el) {
+        el.outerHTML = m[0];
+      }
+      return;
+    }
+    var box = main.querySelector('.graph');
+    var left = box ? box.scrollLeft : 0, top = box ? box.scrollTop : 0;
+    main.innerHTML = html;
+    box = main.querySelector('.graph');
+    if (box && shown && shown.key === key) {
+      box.scrollLeft = left;
+      box.scrollTop = top;
+    }
+    shown = { key: key, html: same };
   }
 
   function schedule() {
@@ -314,6 +351,8 @@
   }
 
   signout.addEventListener('click', function () {
+    seq++; // a poll under way is not shown
+    clearTimeout(timer);
     request('POST', 'auth/logout').then(function () {}, function () {}).then(function () {
       setToken(null);
       showLogin('');
