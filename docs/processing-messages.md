@@ -529,7 +529,7 @@ CREATE TABLE lab.results (mrn text, test text, value text, delivery_key text UNI
 
 | Field | Meaning |
 |---|---|
-| `driver` | Required. `postgres`, or `sqlite` (the connection string is then a database file path). |
+| `driver` | Required. `postgres`, or `sqlite` (the connection string is then a database file path). A SQLite connection waits up to 5 seconds for a lock another program or flow holds on the file before failing with `database is locked`; a connection string that sets its own `_pragma=busy_timeout(…)` keeps it. |
 | `dsnEnv` | Required. The server environment variable holding the connection string; its name must start with `WEAVSTER_DB_`. The connection string never appears in the flow. |
 | `table` | Required. `table` or `schema.table`: letters, digits, and `_`. |
 | `columns` | Required. Column name → path of its value in the message, such as `patient.mrn` (numbers index lists: `ids.0`). |
@@ -969,7 +969,7 @@ each new order becomes a message such as:
 
 | Field | Meaning |
 |---|---|
-| `driver` | Required. `postgres`, or `sqlite` (the connection string is then a database file path). |
+| `driver` | Required. `postgres`, or `sqlite` (the connection string is then a database file path). A SQLite connection waits up to 5 seconds for a lock another program or flow holds on the file before failing with `database is locked`; a connection string that sets its own `_pragma=busy_timeout(…)` keeps it. |
 | `dsnEnv` | Required. The server environment variable holding the connection string, `WEAVSTER_DB_…`. |
 | `query` | Required. One `SELECT` (or `WITH … SELECT`) statement, without `;` inside it and without `INSERT`, `UPDATE`, `DELETE`, `MERGE`, or schema statements anywhere in it. It runs read-only: a PostgreSQL `READ ONLY` transaction, SQLite `query_only`. |
 | `idColumn` | Required. The column of the result that identifies a row: the value `update` matches `key` against, kept with the message as the metadata `source.database.id`. |

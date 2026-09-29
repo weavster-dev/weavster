@@ -153,7 +153,7 @@ func TestScheduledSourcesCatchUp(t *testing.T) {
 		t.Errorf("a file that could not be stored retries at %v (%v), want %v", at, ok, six.Add(defaultPollInterval))
 	}
 
-	file := filepath.Join(t.TempDir(), "src.db")
+	file := filepath.Join(t.TempDir(), "src.db") + sqliteShared
 	db, err := sql.Open("sqlite", file)
 	if err != nil {
 		t.Fatal(err)

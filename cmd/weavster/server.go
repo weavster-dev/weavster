@@ -1951,7 +1951,11 @@ func (p *dbPool) get(driver, env, dsn string) (*sql.DB, error) {
 		}
 		_ = old.db.Close() // deliveries using it finish first (database/sql waits)
 	}
-	db, err := sql.Open(sqlDrivers[driver], dsn)
+	open := dsn
+	if driver == adapters.DialectSQLite {
+		open = sqliteWaits(dsn)
+	}
+	db, err := sql.Open(sqlDrivers[driver], open)
 	if err != nil {
 		return nil, errors.New("database: the connection string is not valid for the driver") // not the error: it can quote the string
 	}
@@ -1960,6 +1964,23 @@ func (p *dbPool) get(driver, env, dsn string) (*sql.DB, error) {
 	}
 	p.dbs[key] = pooledDB{dsn: dsn, db: db}
 	return db, nil
+}
+
+// sqliteBusyTimeout is how long a SQLite connection waits for another's
+// lock (another program, or another flow's pool on the same file) before
+// failing with "database is locked" (#389).
+const sqliteBusyTimeout = "_pragma=busy_timeout(5000)"
+
+// sqliteWaits is dsn with sqliteBusyTimeout, unless it sets a busy timeout
+// itself; it joins an existing query with &.
+func sqliteWaits(dsn string) string {
+	if strings.Contains(dsn, "busy_timeout") {
+		return dsn
+	}
+	if strings.Contains(dsn, "?") {
+		return dsn + "&" + sqliteBusyTimeout
+	}
+	return dsn + "?" + sqliteBusyTimeout
 }
 
 // close closes every pool; later gets fail.

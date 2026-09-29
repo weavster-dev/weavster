@@ -15,7 +15,7 @@ import (
 // picked up by the next poll and marked rows are not read again; an unset
 // variable is reported; invalid sources are refused.
 func TestDatabaseSource(t *testing.T) {
-	dbFile := filepath.Join(t.TempDir(), "his.db")
+	dbFile := filepath.Join(t.TempDir(), "his.db") + sqliteShared
 	db, err := sql.Open("sqlite", dbFile)
 	if err != nil {
 		t.Fatal(err)
@@ -25,7 +25,9 @@ func TestDatabaseSource(t *testing.T) {
 		INSERT INTO orders (id, mrn, amount) VALUES (1, 'A-1', 5.5), (2, 'O''Brien', NULL);`); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("WEAVSTER_DB_HIS", dbFile)
+	// The server gets the plain path: its connections wait for the test's
+	// lock by themselves (sqliteWaits).
+	t.Setenv("WEAVSTER_DB_HIS", strings.TrimSuffix(dbFile, sqliteShared))
 	addr := freeAddr(t)
 	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
@@ -64,10 +66,13 @@ func TestDatabaseSource(t *testing.T) {
 		}
 	}
 	exported := func() (n int) {
-		_ = db.QueryRow(`SELECT count(*) FROM orders WHERE exported = 1`).Scan(&n)
+		t.Helper()
+		if err := db.QueryRow(`SELECT count(*) FROM orders WHERE exported = 1`).Scan(&n); err != nil {
+			t.Fatalf("reading the marks: %v", err)
+		}
 		return n
 	}
-	deadline := time.Now().Add(5 * time.Second)
+	deadline := time.Now().Add(15 * time.Second) // beyond a lock wait (5 s)
 	for exported() != 2 && time.Now().Before(deadline) {
 		time.Sleep(50 * time.Millisecond)
 	}

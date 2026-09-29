@@ -157,6 +157,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- SQLite database sources and destinations wait up to 5 seconds for a lock another program or flow holds on the file, instead of failing at once with `database is locked` (#389). A source's mark could fail that way, and the row was read again. A connection string's own `busy_timeout` is kept. The intermittent `TestDatabaseSource` failure came from this.
 - `POST /api/v1/system/prune/stop` answers only after the stopped pass has recorded its `messages.pruned` event (#383). Before, the event could appear a moment after the reply.
 - On PostgreSQL, message searches and paging in id order use indexes (#379). Message ids now compare in byte order (`COLLATE "C"` on `messages.id` and the `message_id` columns), as searches sort them, so the primary key and the message indexes serve those queries. Before, a database with a non-`C` locale sorted the whole table. The upgrade rebuilds the message tables' indexes and locks them while it runs. SQLite is unchanged.
 - The scheduler library's SQL job queue works on PostgreSQL (#377): enqueue, heartbeat, complete, requeue, and reconcile used `?` placeholders that PostgreSQL rejects. Every queue, including the in-memory one, claims in due order and then by id in byte order. A failed commit no longer reports a claim, the queue detects its dialect from the database driver, and a new index covers claims. `FOR UPDATE SKIP LOCKED` is verified on PostgreSQL 16. The server does not use this queue.

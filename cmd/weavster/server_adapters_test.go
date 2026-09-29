@@ -483,3 +483,17 @@ func TestDBPool(t *testing.T) {
 		t.Errorf("buildSink: %v", err)
 	}
 }
+
+// TestSQLiteWaits: a SQLite connection string gets a busy timeout, joined
+// to any query it has, unless it sets one itself.
+func TestSQLiteWaits(t *testing.T) {
+	for in, want := range map[string]string{
+		"/data/x.db":                         "/data/x.db?_pragma=busy_timeout(5000)",
+		"file:/data/x.db?mode=rw":            "file:/data/x.db?mode=rw&_pragma=busy_timeout(5000)",
+		"/data/x.db?_pragma=busy_timeout(1)": "/data/x.db?_pragma=busy_timeout(1)",
+	} {
+		if got := sqliteWaits(in); got != want {
+			t.Errorf("sqliteWaits(%q) = %q, want %q", in, got, want)
+		}
+	}
+}

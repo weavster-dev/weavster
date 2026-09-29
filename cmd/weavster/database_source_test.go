@@ -20,7 +20,7 @@ import (
 // unmarked, a stopped flow ends the poll, and failures are recorded once
 // per reason.
 func TestDatabaseSourcePoll(t *testing.T) {
-	file := filepath.Join(t.TempDir(), "src.db")
+	file := filepath.Join(t.TempDir(), "src.db") + sqliteShared
 	db, err := sql.Open("sqlite", file)
 	if err != nil {
 		t.Fatal(err)
