@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/api-formats/">
+        <link rel="canonical" href="https://docs.weavster.dev/web-ui/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>JSON and XML - Weavster</title>
+        <title>Web UI - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -77,7 +77,7 @@
                                 <a href="../topology/" class="nav-link">Topology</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../web-ui/" class="nav-link">Web UI</a>
+                                <a href="./" class="nav-link active" aria-current="page">Web UI</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
@@ -110,7 +110,7 @@
                                 <a href="../system-info/" class="nav-link">System Information</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">JSON and XML</a>
+                                <a href="../api-formats/" class="nav-link">JSON and XML</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
@@ -130,17 +130,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../system-info/" class="nav-link">
+                                <a rel="prev" href="../topology/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../documentation/" class="nav-link">
+                                <a rel="next" href="../flow-lifecycle/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/api-formats.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/web-ui.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -161,17 +161,21 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#json-and-xml" class="nav-link">JSON and XML</a>
+            <li class="nav-item" data-bs-level="1"><a href="#web-ui" class="nav-link">Web UI</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#ask-for-xml" class="nav-link">Ask for XML</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#how-json-becomes-xml" class="nav-link">How JSON becomes XML</a>
+            <li class="nav-item" data-bs-level="2"><a href="#open-it" class="nav-link">Open it</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#what-stays-as-it-is" class="nav-link">What stays as it is</a>
+            <li class="nav-item" data-bs-level="2"><a href="#what-it-shows" class="nav-link">What it shows</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#security" class="nav-link">Security</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#common-pitfalls" class="nav-link">Common pitfalls</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -182,109 +186,50 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="json-and-xml">JSON and XML</h1>
-<p>The API speaks JSON. A client that explicitly asks for XML gets the API's responses as XML
-instead, errors included.</p>
-<h2 id="ask-for-xml">Ask for XML</h2>
-<p>Send <code>Accept: application/xml</code> (or <code>text/xml</code>):</p>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Accept: application/xml' \
-  http://127.0.0.1:8080/api/v1/flows/adt
-</code></pre>
-<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
-&lt;response&gt;&lt;id&gt;adt&lt;/id&gt;&lt;name&gt;ADT Inbound&lt;/name&gt;&lt;sourceType&gt;&lt;/sourceType&gt;&lt;status&gt;started&lt;/status&gt;&lt;enabled type=&quot;boolean&quot;&gt;true&lt;/enabled&gt;&lt;destinations type=&quot;array&quot;&gt;&lt;item&gt;&lt;name&gt;out&lt;/name&gt;&lt;type&gt;file&lt;/type&gt;&lt;dir&gt;/var/out&lt;/dir&gt;&lt;/item&gt;&lt;/destinations&gt;&lt;/response&gt;
-</code></pre>
-<p>XML is used only when the <code>Accept</code> header names <code>application/xml</code> or <code>text/xml</code> with the highest
-quality (<code>q</code>) of everything it lists, and higher than JSON's. JSON's quality comes from the most
-specific range that matches it: <code>application/json</code>, then <code>application/*</code>, then <code>*/*</code>.
-Otherwise — no <code>Accept</code> header, <code>*/*</code>, or a web browser's usual header — the reply is JSON.</p>
-<table>
-<thead>
-<tr>
-<th><code>Accept</code></th>
-<th>Reply</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>application/xml</code></td>
-<td>XML</td>
-</tr>
-<tr>
-<td><code>application/json;q=0.5, application/xml</code></td>
-<td>XML</td>
-</tr>
-<tr>
-<td><code>application/xml;q=0.9, */*;q=0.8</code></td>
-<td>XML</td>
-</tr>
-<tr>
-<td><code>application/json, application/xml</code></td>
-<td>JSON (same quality)</td>
-</tr>
-<tr>
-<td><code>application/xml, */*</code></td>
-<td>JSON (<code>*/*</code> gives JSON the same quality)</td>
-</tr>
-<tr>
-<td><code>text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8</code> (a browser)</td>
-<td>JSON</td>
-</tr>
-</tbody>
-</table>
-<p>A range with a malformed <code>q</code> (not a number from 0 to 1) is ignored. Replies carry
-<code>Vary: Accept</code>.</p>
-<h2 id="how-json-becomes-xml">How JSON becomes XML</h2>
-<table>
-<thead>
-<tr>
-<th>JSON</th>
-<th>XML</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>The whole reply</td>
-<td><code>&lt;response&gt;</code></td>
-</tr>
-<tr>
-<td>An object</td>
-<td>Its keys as child elements, in the same order: <code>{"id":"adt"}</code> → <code>&lt;id&gt;adt&lt;/id&gt;</code>.</td>
-</tr>
-<tr>
-<td>A key that is not an XML name (<code>ICD/10</code>, <code>1st</code>, the empty key, one starting with <code>xml</code>)</td>
-<td><code>&lt;entry key="ICD/10"&gt;…&lt;/entry&gt;</code></td>
-</tr>
-<tr>
-<td>An array</td>
-<td><code>type="array"</code>, with one <code>&lt;item&gt;</code> per element.</td>
-</tr>
-<tr>
-<td>An empty object <code>{}</code></td>
-<td>An empty element with <code>type="object"</code> (an empty string is an empty element with no <code>type</code>).</td>
-</tr>
-<tr>
-<td>A string</td>
-<td>Text (<code>&lt;</code>, <code>&amp;</code>, and quotes escaped).</td>
-</tr>
-<tr>
-<td>A number, <code>true</code>/<code>false</code>, <code>null</code></td>
-<td>Text with <code>type="number"</code>, <code>type="boolean"</code>, or an empty element with <code>type="null"</code>. Numbers keep every digit.</td>
-</tr>
-</tbody>
-</table>
-<p>An error is the same envelope as in JSON:</p>
-<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
-&lt;response&gt;&lt;error&gt;&lt;code&gt;NOT_FOUND&lt;/code&gt;&lt;message&gt;flow not found&lt;/message&gt;&lt;/error&gt;&lt;/response&gt;
-</code></pre>
-<h2 id="what-stays-as-it-is">What stays as it is</h2>
+<h1 id="web-ui">Web UI</h1>
+<p>The server includes a small read-only web page that draws the <a href="../topology/">topology</a>: every
+flow and how flows route to each other, and for one flow its source, transform, and destinations
+with their status and message counts. It changes nothing. Create and change flows with the API,
+the command-line client, or <code>weavster config apply</code>.</p>
+<h2 id="open-it">Open it</h2>
+<p>Open <code>/ui/</code> on the server's address, for example <code>http://127.0.0.1:8080/ui/</code> (the server's root,
+<code>/</code>, leads there too). With <a href="../server-config/#listen"><code>listen.contextPath</code></a> set to <code>/weavster</code>,
+open <code>http://127.0.0.1:8080/weavster/ui/</code>.</p>
+<p>Sign in with a user that has the <code>flows:view</code> permission (or <code>admin</code>). The page signs in through
+<code>POST /api/v1/auth/login</code> and keeps the session token only in the browser tab, never in a cookie.
+<strong>Sign out</strong> ends the session on the server. Closing the tab only makes the page forget the
+token: the session itself stays valid until it expires (12 hours), so sign out on a shared
+computer. A user who must still change their password is told to do that first
+(with the command-line client or <code>POST /api/v1/auth/password</code>); the page cannot change passwords.</p>
+<h2 id="what-it-shows">What it shows</h2>
 <ul>
-<li><strong>Request bodies are JSON only</strong> (and YAML for <a href="../config-as-code/">config-as-code documents</a>).
-  Send <code>Content-Type: application/json</code>; an XML body is refused as invalid JSON.</li>
-<li>Message content from <code>GET /api/v1/messages/{id}/content</code> is sent exactly as stored, with its
-  own content type, even when it is JSON.</li>
-<li>Message archives (<code>application/gzip</code> or encrypted) and the OpenAPI document
-  (<code>GET /api/openapi.yaml</code>) are never converted.</li>
-<li><code>GET /api/v1/events/export</code> served as XML is named <code>events.xml</code> instead of <code>events.json</code>.</li>
+<li><strong>All flows</strong> (<code>#/</code>): one box per flow with its status and counts (<code>in</code>, <code>sent</code>, <code>err</code>,
+  <code>queued</code>), and arrows for routes between flows; dashed arrows are <code>dependsOn</code>. Select a flow
+  to open it.</li>
+<li><strong>One flow</strong> (<code>#/flows/&lt;id&gt;</code>): the source, the transform, and each destination, with the
+  arrows messages take. A destination that sends to another flow has an arrow to that flow;
+  select it to open that flow.</li>
+<li>Colours follow the status: green <code>started</code>, grey <code>stopped</code>/<code>undeployed</code>/<code>halted</code>, amber
+  <code>paused</code>, blue <code>deployed</code>, red <code>errored</code>. Arrows are green while messages cross them, red when
+  most of those fail, and grey when idle. Hover over a box or arrow for its id and counts.</li>
+</ul>
+<p>The page reloads the graph every 5 seconds while the tab is visible. See <a href="../topology/">Topology</a>
+for what the statuses and counts mean.</p>
+<h2 id="security">Security</h2>
+<ul>
+<li>The page's own files (<code>/ui/…</code>) are public; everything it shows comes from the API with the
+  signed-in user's token and permissions. Without <code>flows:view</code> the page says so.</li>
+<li>It is served with a strict Content Security Policy (only its own script, style, and API; no
+  inline code, no framing).</li>
+<li>Its only requests that are not reads are sign-in and sign-out.</li>
+</ul>
+<h2 id="common-pitfalls">Common pitfalls</h2>
+<ul>
+<li><strong>A blank page or "cannot be reached"</strong>: the page calls the API at <code>../api/v1/</code> next to
+  <code>/ui/</code>, so a reverse proxy must forward both <code>/ui/</code> and <code>/api/</code> (under the same context path).</li>
+<li><strong>Signed out after a restart</strong>: sessions are held in memory, so a server restart ends them;
+  sign in again.</li>
+<li><strong>No layout saved</strong>: boxes are placed automatically in columns along the arrows, every time.</li>
 </ul></div>
             </div>
         </div>
