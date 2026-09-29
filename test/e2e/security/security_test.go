@@ -114,7 +114,9 @@ func TestAuthentication(t *testing.T) {
 			if code != http.StatusUnauthorized {
 				t.Fatalf("wrong password %d: %d", i+1, code)
 			}
-			wrong = body
+			if i == 0 { // before the lockout
+				wrong = body
+			}
 		}
 		code, locked, _ := req(t, http.MethodGet, "/api/v1/flows", "", ops, opsPassword, false)
 		if code != http.StatusUnauthorized {
