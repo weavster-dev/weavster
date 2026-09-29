@@ -9,6 +9,8 @@ import (
 	"io"
 	"net"
 	"os"
+	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -88,6 +90,9 @@ type Listen struct {
 	// ShutdownTimeoutMs bounds how long a stop signal waits for in-flight
 	// requests.
 	ShutdownTimeoutMs int `yaml:"shutdownTimeoutMs"`
+	// ContextPath serves everything under this prefix (spec §4.1), for
+	// example "/weavster"; "" serves at the root.
+	ContextPath string `yaml:"contextPath"`
 }
 
 // TLS configures the HTTPS listener's certificate and protocol floor.
@@ -205,6 +210,11 @@ func (c Config) Validate() error {
 	}
 	if c.Store.MaxRetry < 0 || c.Store.RetryWaitMs < 0 {
 		return errors.New("config: store.maxRetry and store.retryWaitMs must be >= 0")
+	}
+	if p := c.Listen.ContextPath; p != "" && (!strings.HasPrefix(p, "/") || strings.HasSuffix(p, "/") ||
+		strings.Contains(p, "//") || strings.Contains(p, "/..") || strings.Contains(p, "/./") || strings.HasSuffix(p, "/.") ||
+		strings.ContainsAny(p, "?#% \"\\") || strings.IndexFunc(p, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0) {
+		return fmt.Errorf("config: listen.contextPath must look like /weavster: start with /, not end with /, no empty, . or .. segments, no ?, #, %%, quotes, spaces, or control characters; got %q", p)
 	}
 	if c.Listen.ShutdownTimeoutMs < 1 || c.Listen.ShutdownTimeoutMs > 600000 {
 		return errors.New("config: listen.shutdownTimeoutMs must be between 1 and 600000 (ten minutes)")

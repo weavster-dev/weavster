@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -40,5 +41,30 @@ func TestMetricsRoute(t *testing.T) {
 				t.Errorf("GET /metrics = %d %s, want %d", rec.Code, rec.Body.String(), tt.status)
 			}
 		})
+	}
+}
+
+// TestContextPath: under a context path the API answers with the prefix
+// only; other paths, the bare prefix, and an encoded prefix get the
+// router's JSON 404 with its security headers.
+func TestContextPath(t *testing.T) {
+	s := New(Config{ContextPath: "/weavster"})
+	for _, tt := range []struct {
+		path   string
+		status int
+	}{
+		{"/weavster/api/openapi.yaml", http.StatusOK},
+		{"/api/openapi.yaml", http.StatusNotFound},
+		{"/weavster", http.StatusNotFound},
+		{"/weavsterx/api/openapi.yaml", http.StatusNotFound},
+		{"/weav%73ter/api/openapi.yaml", http.StatusOK},
+	} {
+		rec := serve(s, http.MethodGet, tt.path, "", nil)
+		if rec.Code != tt.status || rec.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("GET %s = %d (nosniff %q), want %d", tt.path, rec.Code, rec.Header().Get("X-Content-Type-Options"), tt.status)
+		}
+		if tt.status == http.StatusNotFound && !strings.Contains(rec.Body.String(), `"code":"NOT_FOUND"`) {
+			t.Errorf("GET %s body = %s", tt.path, rec.Body.String())
+		}
 	}
 }

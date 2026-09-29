@@ -7,6 +7,7 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- The CLI over HTTPS with a private CA (#383): `-ca FILE` or `ca:` in the connection file trusts a private or self-signed CA (TLS 1.2 or later). Untrusted or invalid certificates get a hint, and credentials sent over plain HTTP to another host get a warning. The server's `listen.contextPath` serves the API, OpenAPI and `/metrics` under a path such as `/weavster`.
 - `GET /metrics` in the Prometheus text format (#381): `weavster_flow_messages_total` and `weavster_connector_messages_total` by outcome, `weavster_flows` by status, `weavster_processing_in_flight`, `_slots` and `_refused_total`, plus Go runtime and process metrics. The values are read from the server's statistics at scrape time. It needs credentials with `flows:view` but not the CSRF marker, so Prometheus `basic_auth` works.
 - Message pruning (#375): `prune.maxAgeHours` and `prune.maxMessages` remove finished messages (`sent`, `filtered`, `errored`, `dead-lettered`) that are too old or past a count, every `prune.intervalMinutes`. `GET /api/v1/system/prune` shows the status, and `POST /api/v1/system/prune/start` and `/stop` run or stop a pass. Busy messages are skipped, and each pass records a `messages.pruned` event.
 - `phi.access` audit entries record what a read disclosed (#373): a search or an export gives the number of messages and every id (`messages`, `messages.ids` as a JSON array), and a content read gives the part (`raw` when none was asked for).

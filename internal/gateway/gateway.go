@@ -334,6 +334,9 @@ type Config struct {
 	// Metrics serves GET /metrics (Prometheus text format); nil leaves it
 	// unmounted.
 	Metrics http.Handler
+	// ContextPath serves everything under this prefix (listen.contextPath);
+	// "" serves at the root.
+	ContextPath string
 	// StatsHistory reads the sampled statistics time series.
 	StatsHistory StatsHistory
 	Events       EventSearcher

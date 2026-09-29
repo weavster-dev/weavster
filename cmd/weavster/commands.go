@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -124,6 +125,19 @@ var deprecatedCommands = map[string]string{"channel": "flow", "codetemplate": "s
 // type. It returns exit code 2.
 func shellError(stderr io.Writer, debug bool, err error) int {
 	_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+	var unknown x509.UnknownAuthorityError
+	var invalid x509.CertificateInvalidError
+	var hostname x509.HostnameError
+	switch {
+	case errors.As(err, &unknown):
+		_, _ = fmt.Fprintln(stderr, "  The server's certificate is not signed by a CA this machine trusts: pass that CA with -ca FILE (or ca: in the connection file).")
+	case errors.As(err, &hostname):
+		_, _ = fmt.Fprintln(stderr, "  The server's certificate was issued for another name: connect with a name it lists, or reissue it.")
+	case errors.As(err, &invalid) && invalid.Reason == x509.Expired:
+		_, _ = fmt.Fprintln(stderr, "  The server's certificate has expired or is not valid yet: renew it (or check this machine's clock).")
+	case errors.As(err, &invalid):
+		_, _ = fmt.Fprintln(stderr, "  The server's certificate was refused (the error says why, for example a missing server-auth key usage): reissue it.")
+	}
 	if debug {
 		for cause := errors.Unwrap(err); cause != nil; cause = errors.Unwrap(cause) {
 			_, _ = fmt.Fprintf(stderr, "  caused by %T: %v\n", cause, cause)

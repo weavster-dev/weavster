@@ -113,6 +113,7 @@ Keys you leave out keep their default.
 | `tlsAddress` | `""` (off) | HTTPS `host:port`, with the same port rules as `address`. Requires `tls.certFile` and `tls.keyFile`. |
 | `requireMarkerHeader` | `true` | Require `X-Weavster-CSRF: 1` on every `/api/v1` request. Requests without it get `400`. |
 | `shutdownTimeoutMs` | `10000` | On SIGINT/SIGTERM, how long to wait for in-flight requests and the retry worker before closing connections and exiting (1–600000). |
+| `contextPath` | `""` | Serve everything under this path, for example `/weavster` behind a proxy that routes by path: the API is then `/weavster/api/v1/…`, the OpenAPI document `/weavster/api/openapi.yaml`, and metrics `/weavster/metrics`. Other paths answer `404`. It starts with `/` and does not end with one. A flow's own HTTP source listens on its own address and is not affected. |
 
 At least one of `address` and `tlsAddress` must be set.
 
