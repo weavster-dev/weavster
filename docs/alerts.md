@@ -6,7 +6,8 @@ the command-line client. Every request needs the `alerts:edit` permission.
 
 !!! note "Stored, not sent yet"
     Alerts do not fire yet: no email or webhook is sent. Today these endpoints store, validate,
-    and return the definitions, so you can set them up and move them between servers.
+    and return the definitions, so you can set them up and move them between servers. Testing
+    an alert is a dry run that shows what would be sent.
 
 ## An alert
 
@@ -25,7 +26,7 @@ the command-line client. Every request needs the `alerts:edit` permission.
 
 | Field | Rules |
 |---|---|
-| `id` | Required. 1–128 characters from `A-Z a-z 0-9 . _ -`; not `import` or `options`. |
+| `id` | Required. 1–128 characters from `A-Z a-z 0-9 . _ -`; not `import`, `options`, or `statuses`. An alert saved as `statuses` by an earlier release is still listed, exported and deleted, but `GET /api/v1/alerts/statuses` now returns the statuses: export it with `exportalert statuses "file"`, change its id in the file, import it, and delete the old one. |
 | `name` | Required, 1–200 characters. |
 | `enabled` | `true` or `false` (default `false`). |
 | `trigger.events` | At least one of `message.errored` (the transform failed), `message.queued` (a delivery failed and will be retried), `message.dead-lettered` (retries ran out). |
@@ -47,12 +48,39 @@ Unknown fields and invalid values are rejected with `400` and a message naming t
 | `POST /api/v1/alerts/{id}/enable`, `/disable` | Turns an alert on or off and returns it. |
 | `POST /api/v1/alerts/import` | Saves a JSON array of alerts, all or nothing. An id that already exists is `409` and nothing is saved; add `?force=true` to replace existing alerts. |
 | `GET /api/v1/alerts/options` | `{"events": [...], "actionTypes": [...]}`. |
+| `GET /api/v1/alerts/statuses` | Every alert's `id`, `name`, and `enabled`, sorted by id. |
+| `GET /api/v1/alerts/{id}/info` | `{"alert": {...}, "events": [...], "actionTypes": [...]}`: the alert with the values it may use (`404` if unknown). |
+| `POST /api/v1/alerts/{id}/test` | A dry run: whether an event of a flow would trigger the alert, and which actions would run. See below. |
 
 ```bash
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/alerts \
   -d '{"id":"adt-errors","name":"ADT errors","enabled":true,"trigger":{"events":["message.errored"],"flows":["adt"]},"actions":[{"type":"email","to":["ops@example.com"]}]}'
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/alerts/adt-errors/disable
 ```
+
+## Test an alert
+
+`POST /api/v1/alerts/{id}/test` checks an alert against an event without waiting for one. The body
+is optional: `event` defaults to the alert's first trigger event and `flowId` to the first of its
+`trigger.flows`. An alert without `trigger.flows` matches every flow, so `flowId` may be left out.
+
+A disabled alert can be tested too: `matches` and `actions` then show what it would do once
+enabled, and `enabled: false` says that today it does nothing.
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
+  http://127.0.0.1:8080/api/v1/alerts/adt-errors/test -d '{"event":"message.errored","flowId":"adt"}'
+```
+
+```json
+{"matches":true,"enabled":true,"event":"message.errored","flowId":"adt","actions":[{"type":"email","to":["ops@example.com"]}],"delivered":false}
+```
+
+- `matches` is false, with no `actions`, when the event is not in `trigger.events` or the flow
+  is not in `trigger.flows`.
+- `delivered` is always `false`: nothing is sent, not even a test message.
+- An event that is not one of the trigger events in `GET /api/v1/alerts/options`, or an
+  invalid flow id, returns `400`.
 
 ## Command-line client
 

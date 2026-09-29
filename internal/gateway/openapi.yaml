@@ -1035,6 +1035,26 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{events, actionTypes}", content: {application/json: {schema: {type: object, properties: {events: {type: array, items: {type: string}}, actionTypes: {type: array, items: {type: string}}}}, example: {"events": ["message.errored", "message.queued", "message.dead-lettered"], "actionTypes": ["email", "webhook"]}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/alerts/statuses:
+    get:
+      summary: "Every alert's id, name, and whether it is enabled, sorted by id (requires alerts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: The alert statuses
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [id, name, enabled]
+                  properties:
+                    id: {type: string}
+                    name: {type: string}
+                    enabled: {type: boolean}
+              example: [{"id": "adt-errors", "name": "ADT errors", "enabled": true}]
   /api/v1/alerts/{name}:
     parameters:
       - {name: name, in: path, required: true, description: The alert id, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
@@ -1061,6 +1081,64 @@ paths:
         default: {$ref: "#/components/responses/Error"}
         "204": {description: "Deleted", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "400": {description: "A bad id", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown alert", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/alerts/{name}/info:
+    parameters:
+      - {name: name, in: path, required: true, description: The alert id, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    get:
+      summary: "One alert with the trigger events and action types it may use (requires alerts:edit)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: "{alert, events, actionTypes}"
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [alert, events, actionTypes]
+                properties:
+                  alert: {$ref: "#/components/schemas/Alert"}
+                  events: {type: array, items: {type: string}}
+                  actionTypes: {type: array, items: {type: string}}
+              example: {"alert": {"id": "adt-errors", "name": "ADT errors", "enabled": true, "trigger": {"events": ["message.errored"], "flows": ["adt"]}, "actions": [{"type": "email", "to": ["ops@example.com"]}]}, "events": ["message.errored", "message.queued", "message.dead-lettered"], "actionTypes": ["email", "webhook"]}
+        "400": {description: "A bad id", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "404": {description: "Unknown alert", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/alerts/{name}/test:
+    parameters:
+      - {name: name, in: path, required: true, description: The alert id, schema: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$"}}
+    post:
+      summary: "Dry run: would an event of a flow trigger this alert, and which actions would run (requires alerts:edit). Nothing is sent."
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                event: {type: string, description: "A trigger event; default the alert's first"}
+                flowId: {type: string, description: "A flow id; default the alert's first flow"}
+            example: {"event": "message.errored", "flowId": "adt"}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200":
+          description: The result of the dry run
+          headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matches, enabled, event, actions, delivered]
+                properties:
+                  matches: {type: boolean, description: The event and flow match the trigger}
+                  enabled: {type: boolean, description: "Whether the alert is enabled; when false, matches and actions show what it would do once enabled"}
+                  event: {type: string}
+                  flowId: {type: string}
+                  actions: {type: array, items: {$ref: "#/components/schemas/AlertAction"}, description: The actions that would run (none when it does not match)}
+                  delivered: {type: boolean, description: Always false; this release sends no notifications}
+              example: {"matches": true, "enabled": true, "event": "message.errored", "flowId": "adt", "actions": [{"type": "email", "to": ["ops@example.com"]}], "delivered": false}
+        "400": {description: "A bad id, an unknown event, or a bad flow id", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: "Unknown alert", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/alerts/{name}/enable:
     parameters:
@@ -1983,7 +2061,7 @@ components:
       additionalProperties: false
       required: [id, name, trigger, actions]
       properties:
-        id: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$", description: "Not import or options"}
+        id: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$", description: "Not import, options, or statuses"}
         name: {type: string, minLength: 1, maxLength: 200}
         enabled: {type: boolean}
         trigger: {$ref: "#/components/schemas/AlertTrigger"}
@@ -1995,7 +2073,7 @@ components:
       description: "An alert for PUT on /api/v1/alerts/{name}: id is optional and must match the path"
       required: [name, trigger, actions]
       properties:
-        id: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$", description: "Not import or options"}
+        id: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$", description: "Not import, options, or statuses"}
         name: {type: string, minLength: 1, maxLength: 200}
         enabled: {type: boolean}
         trigger: {$ref: "#/components/schemas/AlertTrigger"}
