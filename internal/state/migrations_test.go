@@ -421,9 +421,11 @@ func TestMessageIdsByteOrder(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !postgres {
-				var sqlDef string
-				if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE name = 'messages'`).Scan(&sqlDef); err != nil || strings.Contains(sqlDef, "COLLATE") {
-					t.Errorf("SQLite messages = %s (%v)", sqlDef, err)
+				for _, table := range []string{"messages", "message_metadata", "message_attempts"} {
+					var sqlDef string
+					if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`, table).Scan(&sqlDef); err != nil || strings.Contains(sqlDef, "COLLATE") {
+						t.Errorf("SQLite %s = %s (%v)", table, sqlDef, err)
+					}
 				}
 				return
 			}
