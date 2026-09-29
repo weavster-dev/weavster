@@ -252,6 +252,11 @@ traffic. The data is kept. Each schema change runs in its own transaction, so a 
 leaves the database at the last completed version, and the next start carries on from there.
 Servers that start together on one database take turns: only the first applies the upgrade.
 The database records which weavster release applied each schema version.</p>
+<p>Some upgrades rebuild a table's indexes, and PostgreSQL locks the table while they run: other
+servers using the same database wait for its messages until the upgrade ends (on a large store,
+minutes). Upgrading to this release does this for the message tables on PostgreSQL (message ids
+now compare byte by byte, the order searches use). Stop the other servers, or upgrade at a quiet
+time.</p>
 <p>A database that a <strong>newer</strong> release has already upgraded is refused, and nothing in it changes.
 The server exits <code>1</code> at once (this is not retried) with:</p>
 <pre><code class="language-text">Error: store: state: the database schema is at version 10 (written by weavster 0.3.0), newer than this release supports (9): run weavster 0.3.0 or later, or restore a backup taken before the upgrade
