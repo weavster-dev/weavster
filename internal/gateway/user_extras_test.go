@@ -30,6 +30,16 @@ func (f fakePrefs) SetPreferences(_ context.Context, u string, p map[string]stri
 	return nil
 }
 
+// knownUsers knows every user except "ghost".
+type knownUsers struct{ fakeUsers }
+
+func (knownUsers) GetUser(_ context.Context, name string) (UserInfo, error) {
+	if name == "ghost" {
+		return UserInfo{}, ErrUserNotFound
+	}
+	return UserInfo{Username: name}, nil
+}
+
 // fakeChecker accepts passwords of at least 8 characters.
 type fakeChecker struct{}
 
@@ -51,6 +61,7 @@ func TestUserExtras(t *testing.T) {
 			"fresh": {Username: "fresh", MustChangePassword: true},
 		}},
 		Authorizer:    fakeAuthz{},
+		Users:         knownUsers{},
 		Preferences:   prefs,
 		PasswordCheck: fakeChecker{},
 	})
@@ -85,6 +96,7 @@ func TestUserExtras(t *testing.T) {
 		{"your own as an admin", http.MethodPut, "/api/v1/users/boss/preferences", `{"a":"b"}`, "boss", http.StatusOK, `"a":"b"`},
 		{"too many", http.MethodPut, "/api/v1/users/alice/preferences", many, "alice", http.StatusBadRequest, "at most 100 preferences"},
 		{"logged in", http.MethodGet, "/api/v1/users/alice/loggedin", "", "alice", http.StatusOK, `"loggedIn":false`},
+		{"an unknown user's login", http.MethodGet, "/api/v1/users/ghost/loggedin", "", "root", http.StatusNotFound, "user not found"},
 		{"another's login", http.MethodGet, "/api/v1/users/alice/loggedin", "", "bob", http.StatusForbidden, "users:admin"},
 		{"check a good password", http.MethodPost, "/api/v1/auth/password/check", `{"password":"Long-enough"}`, "bob", http.StatusOK, `"valid":true`},
 		{"check a bad password", http.MethodPost, "/api/v1/auth/password/check", `{"password":"short"}`, "bob", http.StatusOK, `"reason":"password shorter than 8 characters"`},
@@ -112,17 +124,9 @@ func TestUserExtras(t *testing.T) {
 		t.Errorf("after the logout: %s", rec.Body.String())
 	}
 
-	// With user administration, an unknown user's status is 404.
-	withUsers := New(Config{Users: fakeUsers{}})
-	for path, status := range map[string]int{"/api/v1/users/u/loggedin": http.StatusOK, "/api/v1/users/ghost/loggedin": http.StatusNotFound} {
-		if rec := serve(withUsers, http.MethodGet, path, "", nil); rec.Code != status {
-			t.Errorf("GET %s = %d, want %d", path, rec.Code, status)
-		}
-	}
-
 	// Without the backends: 503.
 	bare := New(Config{})
-	for _, path := range []string{"/api/v1/users/a/preferences"} {
+	for _, path := range []string{"/api/v1/users/a/preferences", "/api/v1/users/a/loggedin"} {
 		if rec := serve(bare, http.MethodGet, path, "", nil); rec.Code != http.StatusServiceUnavailable {
 			t.Errorf("GET %s = %d", path, rec.Code)
 		}

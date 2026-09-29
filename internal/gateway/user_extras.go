@@ -122,16 +122,18 @@ type loggedInResponse struct {
 }
 
 func (s *Server) handleLoggedIn(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.Users == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "user administration unavailable")
+		return
+	}
 	name := r.PathValue("name")
 	if !s.selfOrAdmin(r, name) {
 		writeError(w, http.StatusForbidden, "FORBIDDEN", "only the user themselves or users:admin")
 		return
 	}
-	if s.cfg.Users != nil {
-		if _, err := s.cfg.Users.GetUser(r.Context(), name); err != nil {
-			writeUserError(w, err)
-			return
-		}
+	if _, err := s.cfg.Users.GetUser(r.Context(), name); err != nil {
+		writeUserError(w, err)
+		return
 	}
 	n := s.sessions.active(name)
 	writeJSON(w, http.StatusOK, loggedInResponse{LoggedIn: n > 0, Sessions: n})
