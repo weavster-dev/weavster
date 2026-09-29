@@ -401,9 +401,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestAuditLog</code>, <code>TestAuditDisclosed</code>. Written to stderr only; not stored or searchable. See <a href="../audit-log/">Audit log</a>.</td>
 </tr>
 <tr>
-<td>HTTPS listener (<code>listen.tlsAddress</code>, <code>tls.certFile/keyFile/minVersion</code>)</td>
+<td>HTTPS listener (<code>listen.tlsAddress</code>, <code>tls.certFile/keyFile/minVersion</code>), separate from the cleartext one; <code>listen.contextPath</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestServerConfigTLS</code></td>
+<td><code>TestServerConfigTLS</code>, <code>TestCLIOverHTTPS</code> (HTTPS only under <code>/weavster</code>; outside it <code>404</code>)</td>
 </tr>
 <tr>
 <td>mTLS</td>
@@ -742,12 +742,17 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td><code>-u</code>, <code>-p</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestCLICredentials</code>, <code>TestShell</code>. Checked at startup; a failed login prints <code>Could not log in to server.</code> and continues. Sent as HTTP Basic credentials.</td>
+<td><code>TestCLICredentials</code>, <code>TestShell</code>. Checked at startup; a failed login prints <code>Could not log in to server.</code> and continues. Sent as HTTP Basic credentials; a warning when that would be plain HTTP to another host (<code>TestCLIConnectionWarnings</code>).</td>
+</tr>
+<tr>
+<td><code>-ca</code> / <code>ca:</code>: CLI over HTTPS with a private or self-signed CA (TLS 1.2+), with hints for untrusted or invalid certificates</td>
+<td>Implemented (wired)</td>
+<td><code>TestCLIOverHTTPS</code>, <code>TestWithCA</code>, <code>TestCertificateHints</code>, <code>TestConnectionCA</code>. See <a href="../cli/#connect-over-https">Connect over HTTPS</a>.</td>
 </tr>
 <tr>
 <td><code>-c connection-file</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestShell</code>. YAML with <code>address</code>, <code>user</code>, <code>password</code>; <code>-a/-u/-p</code> override it; a missing or invalid file exits <code>2</code>.</td>
+<td><code>TestShell</code>, <code>TestConnectionCA</code>. YAML with <code>address</code>, <code>user</code>, <code>password</code>, <code>ca</code> (a relative <code>ca</code> is next to the file); <code>-a/-u/-p/-ca</code> override it; a missing or invalid file exits <code>2</code>.</td>
 </tr>
 <tr>
 <td><code>-d</code></td>

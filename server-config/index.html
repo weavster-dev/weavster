@@ -298,6 +298,11 @@ before upgrading, and to go back, restore that backup and start the older releas
 <td><code>10000</code></td>
 <td>On SIGINT/SIGTERM, how long to wait for in-flight requests and the retry worker before closing connections and exiting (1–600000).</td>
 </tr>
+<tr>
+<td><code>contextPath</code></td>
+<td><code>""</code></td>
+<td>Serve everything under this path, for example <code>/weavster</code> behind a proxy that routes by path: the API is then <code>/weavster/api/v1/…</code>, the OpenAPI document <code>/weavster/api/openapi.yaml</code>, and metrics <code>/weavster/metrics</code>. Other paths answer <code>404</code>. It starts with <code>/</code> and does not end with one. A flow's own HTTP source listens on its own address and is not affected.</td>
+</tr>
 </tbody>
 </table>
 <p>At least one of <code>address</code> and <code>tlsAddress</code> must be set.</p>
