@@ -6,8 +6,6 @@ Config-driven, message-oriented integration platform — a single static Go bina
 ## Reference
 
 - [Support matrix](support-matrix.md) — what the binary does today
-- [MVP Project Plan](mvp-project-plan.md) — scope, stack, build sequence
-- [Agent Onboarding](agent-onboarding.md) — coding rules for contributors and agents
 
 ## What exists now
 

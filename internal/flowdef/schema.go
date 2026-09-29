@@ -112,7 +112,8 @@ func ValidateDoc(doc map[string]any) error {
 		if loc == "" {
 			loc = "/"
 		}
-		msgs = append(msgs, loc+": "+leaf.Message)
+		// A nullable enum's allowed values end in Go's <nil>: say null.
+		msgs = append(msgs, loc+": "+strings.ReplaceAll(leaf.Message, "<nil>", "null"))
 	}
 	sort.Strings(msgs)
 	if len(msgs) > 3 {

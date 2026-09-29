@@ -62,5 +62,6 @@ versioned docs are added, the plan is to use
 ## Excluded files
 
 Files under `docs/` that are **not** part of the public site are listed
-in `mkdocs.yml` under `exclude_docs:` — currently `prompt-3-kickoff.md`.
+in `mkdocs.yml` under `exclude_docs:` — currently the internal planning documents
+`prompt-3-kickoff.md`, `mvp-project-plan.md`, and `agent-onboarding.md`.
 These are still tracked in the repo but omitted from the built site.
