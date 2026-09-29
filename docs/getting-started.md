@@ -13,9 +13,11 @@ cd weavster
 
 ```bash
 docker compose up -d --build --wait
+until curl -fsS http://127.0.0.1:8080/api/openapi.yaml >/dev/null; do sleep 1; done
 ```
 
-This runs the server on `http://127.0.0.1:8080` with PostgreSQL 16 behind it, and an `admin`
+`--wait` returns once the containers run; the second line waits until the server answers (on
+the first start it migrates the database first, a few seconds). This runs the server on `http://127.0.0.1:8080` with PostgreSQL 16 behind it, and an `admin`
 user with the development password `Weavster-dev-1`. See
 [Docker Compose](docker-compose.md) for what it sets up; for a real deployment, see
 [Production setup](production.md).

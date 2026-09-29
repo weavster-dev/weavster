@@ -7,6 +7,7 @@
 set -euo pipefail
 
 # --- the guide ---
+until curl -fsS http://127.0.0.1:8080/api/openapi.yaml >/dev/null; do sleep 1; done
 go build -o bin/weavster ./cmd/weavster
 bin/weavster test examples/getting-started
 bin/weavster -a http://127.0.0.1:8080 -u admin -p Weavster-dev-1 -s examples/getting-started/setup.txt
