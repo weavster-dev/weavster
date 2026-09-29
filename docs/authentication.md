@@ -120,7 +120,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 
 | Route | Required permission |
 |---|---|
-| `GET /api/v1/system` and `/api/v1/system/about`, `/password-requirements`, `/resources`, `/guid`, `/api/v1/auth/me`, `POST /api/v1/auth/password`, `/api/v1/auth/password/check`, `POST /api/v1/auth/logout` | any signed-in user |
+| `GET /api/v1/system` and `/api/v1/system/about`, `/password-requirements`, `/resources`, `/guid`, `GET /api/v1/auth/me`, `POST /api/v1/auth/password`, `/api/v1/auth/password/check`, `POST /api/v1/auth/logout` | any signed-in user |
 | `GET /api/v1/flows`, `GET /api/v1/flows/{id}`, `GET /api/v1/flows/export`, `GET /api/v1/flows/connector-names`, `GET /api/v1/flows/ports-in-use`, `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | `flows:view` |
 | `POST /api/v1/config/validate` | `flows:edit` |
 | `POST /api/v1/flows`, `PUT /api/v1/flows`, `PUT /api/v1/flows/{id}`, `DELETE /api/v1/flows/{id}`, `POST /api/v1/flows/{id}/{enable,disable}`, `POST /api/v1/flows/import` | `flows:edit` |
@@ -197,7 +197,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 ## Preferences, sign-in status, and password checks
 
 Each user can keep their own preferences: a JSON object of names to text values, such as a UI
-theme or a default flow. `PUT` replaces the whole set; `GET` returns it (`{}` when none).
+theme or a default flow.
+`PUT /api/v1/users/{name}/preferences` replaces the whole set;
+`GET /api/v1/users/{name}/preferences` returns it (`{}` when none).
 
 ```bash
 curl -s -u 'ops:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT \

@@ -132,7 +132,8 @@ Commands that change a flow print the server's reply (the flow, or the import/up
 | `importmessages "path" <flow>` | Imports an archive file into the flow (existing message ids are skipped). |
 | `exportmap "path"`, `importmap "path"` | Writes the config map to a JSON file, or replaces it with one. See [Config map, scripts, and settings](config-items.md). |
 | `exportscripts "path"`, `importscripts "path"` | The same for the global scripts. |
-| `snippet list`, `snippet import "path"`, `snippet export "path"`, `snippet remove <name>` | Manages code snippets; `snippet library …` does the same for libraries. See [Code snippets and libraries](snippets.md). |
+| `snippet list`, `snippet import "path"`, `snippet export "path"`, `snippet remove <name>` | Manages code snippets. |
+| `snippet library list`, `snippet library import "path"`, `snippet library export "path"`, `snippet library remove <name>` | The same for snippet libraries. See [Code snippets and libraries](snippets.md). |
 | `config validate "path"` | Checks a config-as-code document (YAML or JSON) on this machine; it needs no server or login. See [Config-as-code documents](config-as-code.md). |
 | `config diff "path"`, `config plan "path"` | Shows what applying the document would change: `diff` as text (`+`, `~` with changed values, `-`), `plan` as JSON. Nothing changes. |
 | `config apply "path" [--dry-run] [reason…]` | Plans the document, prints the plan, and applies it; refused if the server changed meanwhile, undone completely if a change fails. See [Apply](config-as-code.md#apply). |

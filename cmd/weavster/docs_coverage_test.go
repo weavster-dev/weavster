@@ -130,8 +130,9 @@ func TestDocsServerConfig(t *testing.T) {
 }
 
 // TestDocsAPI: every operation in the OpenAPI contract (method and exact
-// path; path parameters may be named differently) is in the docs, on one
-// line.
+// path; path parameters may be named differently) is in the docs, the
+// method right before the path on one line (or the line says the path takes
+// all methods).
 func TestDocsAPI(t *testing.T) {
 	var spec struct {
 		Paths map[string]map[string]any `yaml:"paths"`
@@ -149,15 +150,20 @@ func TestDocsAPI(t *testing.T) {
 	for path, ops := range spec.Paths {
 		norm := param.ReplaceAllString(path, "{}")
 		// The exact path: not followed by more path.
-		exact := regexp.MustCompile(regexp.QuoteMeta(norm) + `(?:[^A-Za-z0-9/{}_.-]|$)`)
+		exact := regexp.QuoteMeta(norm) + `(?:[^A-Za-z0-9/{}_.-]|$)`
+		allMethods := regexp.MustCompile(exact + ".*all methods")
 		for method := range ops {
 			m := strings.ToUpper(method)
 			if m == "PARAMETERS" {
 				continue
 			}
+			// The method names this route: it comes right before the path,
+			// perhaps in a list of methods ("`GET`, `PUT`, and `DELETE
+			// /api/v1/x`") or before a URL ("-X POST http://host/api/v1/x").
+			named := regexp.MustCompile(`\b` + m + `\b(?:[\s,` + "`" + `]|\band\b|\bor\b|\b(?:GET|POST|PUT|PATCH|DELETE)\b)*(?:https?://[^/\s]+)?` + exact)
 			found := false
 			for _, line := range lines {
-				if exact.MatchString(line) && (strings.Contains(line, m) || strings.Contains(line, "all methods")) {
+				if named.MatchString(line) || allMethods.MatchString(line) {
 					found = true
 					break
 				}
@@ -242,19 +248,38 @@ func TestDocsCLI(t *testing.T) {
 
 	var shell bytes.Buffer
 	printShellHelp(&shell)
+	subcommand := regexp.MustCompile(`^[a-z-]+$`)
 	for _, item := range strings.Split(strings.TrimPrefix(strings.TrimSpace(shell.String()), "commands: "), ", ") {
 		words := strings.Fields(item)
-		if len(words) > 1 && strings.Contains(words[1], "|") && !strings.ContainsAny(words[1], `"<`) {
-			for _, sub := range strings.Split(words[1], "|") { // user add|remove, config diff|plan, dump stats|events
-				if !documented(words[0] + " " + sub) {
-					t.Errorf("cli.md does not document the %s %s command", words[0], sub)
+		// An optional word before the subcommands ("snippet [library]
+		// list|…") names a second form of the command.
+		prefixes, rest := []string{""}, words[1:]
+		if len(rest) > 1 && strings.HasPrefix(rest[0], "[") && strings.HasSuffix(rest[0], "]") {
+			prefixes, rest = append(prefixes, " "+strings.Trim(rest[0], "[]")), rest[1:]
+		}
+		// "list [flow]|show <id>|requeue <id>": each alternative's first
+		// word is a subcommand, unless one is an argument ("id|"name"|*").
+		var subs []string
+		if alternatives := strings.Split(strings.Join(rest, " "), "|"); len(alternatives) > 1 {
+			for _, alt := range alternatives {
+				if f := strings.Fields(alt); len(f) > 0 && subcommand.MatchString(f[0]) {
+					subs = append(subs, f[0])
+				} else {
+					subs = nil
+					break
 				}
 			}
-			continue
 		}
 		for _, name := range strings.Split(words[0], "|") {
-			if !documented(name) {
+			if subs == nil && !documented(name) {
 				t.Errorf("cli.md does not document the %s command", name)
+			}
+			for _, sub := range subs {
+				for _, p := range prefixes {
+					if !documented(name + p + " " + sub) {
+						t.Errorf("cli.md does not document the %s%s %s command", name, p, sub)
+					}
+				}
 			}
 		}
 	}
