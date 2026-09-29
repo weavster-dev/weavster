@@ -38,7 +38,7 @@ paths:
               properties:
                 username: {type: string}
                 password: {type: string}
-                mfaCode: {type: string}
+                mfaCode: {type: string, description: "Accepted and ignored: this edition has no multi-factor authentication"}
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "Token, expiresAt, and user", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/LoginResponse"}}}}
@@ -1529,7 +1529,7 @@ security:
     csrfMarker: []
 components:
   securitySchemes:
-    basicAuth: {type: http, scheme: basic}
+    basicAuth: {type: http, scheme: basic, description: "HTTP Basic credentials of a user. An X-Weavster-MFA header (a one-time code) is accepted and ignored: this edition has no multi-factor authentication."}
     bearerAuth: {type: http, scheme: bearer}
     csrfMarker: {type: apiKey, in: header, name: X-Weavster-CSRF}
   schemas:

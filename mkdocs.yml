@@ -37,12 +37,12 @@ nav:
   - System Information: system-info.md
   - JSON and XML: api-formats.md
   - Docs Site Guide: documentation.md
-  - MVP Project Plan: mvp-project-plan.md
-  - Agent Onboarding: agent-onboarding.md
 
 # Internal build-loop prompt is not part of the public docs site.
 exclude_docs: |
   prompt-3-kickoff.md
+  mvp-project-plan.md
+  agent-onboarding.md
 
 # Specs/manifest/AGENTS links live outside docs/; don't fail the build on them.
 validation:

@@ -89,6 +89,9 @@ curl -s -H 'X-Weavster-CSRF: 1' \
 {"expiresAt":"2026-09-27T04:00:00Z","token":"5f0c…","user":{"username":"admin","permissions":["admin"],"mustChangePassword":false}}
 ```
 
+This edition has no multi-factor authentication: an `mfaCode` field in the login body (or an
+`X-Weavster-MFA` header) is accepted and ignored.
+
 A token is valid for 12 hours, or until you log out, change your password from another
 session, or the server restarts. The scheme name is case-insensitive (`bearer` works too).
 

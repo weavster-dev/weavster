@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+
+	"github.com/weavster-dev/weavster/internal/enterprise"
 )
 
 // Sentinel errors returned by codecs.
@@ -16,7 +18,7 @@ var (
 
 	// ErrEnterprise indicates the operation requires a licensed,
 	// Enterprise-scoped codec (e.g. DICOM).
-	ErrEnterprise = errors.New("codec: enterprise feature requires a licensed library")
+	ErrEnterprise = fmt.Errorf("%w: DICOM codec (requires a licensed library)", enterprise.ErrNotImplemented)
 )
 
 // Codec is the port implemented by every data-type codec: it parses a
