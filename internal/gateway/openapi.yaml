@@ -168,7 +168,8 @@ paths:
         "503": {description: No message store, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/topology:
     get:
-      summary: Flow topology overview graph (read-only)
+      summary: Flow topology overview graph (read-only; requires flows:view)
+      description: "Every flow as a flow:<id> node, with route and dependency edges. The JSON Schema is agent-docs/schemas/topology.schema.json."
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200":
@@ -177,11 +178,13 @@ paths:
           description: Overview graph (flow nodes + route/dependency edges).
   /api/v1/topology/flows/{flowId}:
     get:
-      summary: Flow-internal topology graph (read-only)
+      summary: Flow-internal topology graph (read-only; requires flows:view)
+      description: "The flow's source (source:<type>), transform (transform:dsl:<name>), and destinations (destination:<name>) with message-path edges, and a route edge from each flow destination to flow:<target>. The JSON Schema is agent-docs/schemas/topology.schema.json."
       parameters:
         - name: flowId
           in: path
           required: true
+          description: The flow id, with or without the flow prefix (adt or flow:adt)
           schema:
             type: string
       responses:
@@ -190,6 +193,7 @@ paths:
           content: {application/json: {schema: {$ref: "#/components/schemas/TopologyGraph"}}}
           headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}
           description: Flow-internal graph (source -> transform -> destination nodes + message-path edges).
+        "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/flows:
     get:
       summary: List flows
@@ -1863,7 +1867,7 @@ components:
         id: {type: string}
         kind: {type: string, enum: [flow, source, transform, destination]}
         label: {type: string}
-        status: {type: string}
+        status: {type: string, enum: [undeployed, deployed, started, paused, halted, stopped, errored], description: "Lifecycle state; errored when at least half of a started flow's (or destination's) deliveries in the last 5 minutes failed"}
         activity: {$ref: "#/components/schemas/TopologyActivity"}
         meta: {type: object, additionalProperties: {type: string}}
     TopologyEdge:
@@ -1874,9 +1878,9 @@ components:
         id: {type: string}
         from: {type: string}
         to: {type: string}
-        kind: {type: string}
+        kind: {type: string, enum: [route, message-path, dependency]}
         label: {type: string}
-        status: {type: string}
+        status: {type: string, enum: [active, idle, errored]}
         activity: {$ref: "#/components/schemas/TopologyActivity"}
     TopologyGraph:
       example: {"schemaVersion": "1", "generatedAt": "2026-09-27T10:00:00Z", "nodes": [{"id": "flow:adt", "kind": "flow", "label": "ADT inbound", "status": "started", "activity": {"received": 42, "sent": 39, "errored": 1, "queued": 0, "lastMessageAt": "2026-09-27T10:00:00Z"}}, {"id": "flow:lab", "kind": "flow", "label": "Lab results", "status": "started", "activity": {"received": 0, "sent": 0, "errored": 0, "queued": 0}}], "edges": [{"id": "edge:flow:adt:dependency:flow:lab", "from": "flow:adt", "to": "flow:lab", "kind": "dependency"}]}
@@ -1885,9 +1889,9 @@ components:
       properties:
         schemaVersion: {type: string}
         generatedAt: {type: string, format: date-time}
-        flowId: {type: string}
+        flowId: {type: string, description: "Drill-down only: flow:<id>"}
         flowName: {type: string}
-        flowStatus: {type: string}
+        flowStatus: {type: string, enum: [undeployed, deployed, started, paused, halted, stopped, errored]}
         nodes: {type: array, items: {$ref: "#/components/schemas/TopologyNode"}}
         edges: {type: array, items: {$ref: "#/components/schemas/TopologyEdge"}}
     SystemStatus:

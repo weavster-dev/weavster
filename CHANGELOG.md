@@ -7,6 +7,7 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- Topology from the real flows (#399). `GET /api/v1/topology/flows/{flowId}` shows the flow's source (`source:<type>`, labelled with where messages come from), its transform (`transform:dsl:<name>`, with the number of steps) and every destination (`destination:<name>`), linked by message-path edges, plus a route edge from each flow destination to its target flow. Statuses follow the lifecycle: a stopped destination is `stopped`, and a started flow or destination whose deliveries in the last 5 minutes mostly failed is `errored`. Edges are `active`, `idle` or `errored` and carry activity. The JSON Schema is published as `agent-docs/schemas/topology.schema.json`. See docs/topology.md.
 - Secrets from files (#397). A flow's `dsnEnv` or `passwordEnv` secret is the environment variable of that name or, when it is not set, the file of that name in `secrets.dir` (default `/run/secrets`, where Docker and Kubernetes mount secrets), with one trailing newline ignored. The server's own store can take its connection string from a secret with `store.dsnEnv` instead of `store.dsn`. Secret names that are paths are never looked up.
 - Statistics are kept across restarts (#395). With PostgreSQL, every flow's current counters, lifetime totals and time-series samples are stored with every sample (`stats.sampleIntervalMs`), after a reset and at stop, and loaded again at start. Stored samples older than `stats.retentionHours` are removed, and a deleted flow's statistics are removed from the store too. A crash loses at most the counts of the last interval.
 - Alert statuses, info and a dry-run test (#393). `GET /api/v1/alerts/statuses` lists every alert's id, name and enabled state. `GET /api/v1/alerts/{id}/info` returns the alert with the events and action types it may use. `POST /api/v1/alerts/{id}/test` shows whether an event of a flow would trigger the alert and which actions would run; nothing is sent.
@@ -124,6 +125,7 @@ All notable changes to this project are documented here, following
 
 ### Changed
 
+- Topology drill-down (#399): `flowId` is now `flow:<id>` (the path accepts `adt` or `flow:adt`), the placeholder source (`<type>://incoming`) is gone, and route edges start at the flow destination that sends. A flow whose stored status is empty shows `undeployed`.
 - `statuses` is a reserved alert id (#393). An alert saved with that id by an earlier release can still be listed, exported and deleted, but `GET /api/v1/alerts/statuses` now returns the statuses list. Export it, change its id, import it, and delete the old one (see Alerts).
 - A `file` destination's `dir` must be an absolute path (#329), as a file source's already is, so where files go never depends on the server's working directory. Flows stored earlier with a relative `dir` keep running; set an absolute path before you next update them.
 - Codec coverage matrix (#327): `CoverageMatrix()` records how the server itself handles each format; the support matrix adds a "Server use" column (HL7 v2, XML, delimited, JSON, raw), checked by a test, and says that the codecs listed are libraries.
