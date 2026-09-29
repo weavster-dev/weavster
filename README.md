@@ -97,7 +97,9 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   tracing. Prometheus metrics are served at `GET /metrics` (see docs/metrics.md).
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.
 - **Build**: CI verifies static `CGO_ENABLED=0` builds for linux/amd64, linux/arm64,
-  darwin/arm64 and a distroless non-root image. No release artifacts are published.
+  darwin/arm64 and a distroless non-root image. A version tag publishes release archives for
+  those three targets with SHA-256 checksums (`scripts/release.sh`, docs/install.md); no release
+  has been tagged yet.
 
 ## Build
 

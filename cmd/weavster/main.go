@@ -10,15 +10,40 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 	"strings"
 
 	"github.com/weavster-dev/weavster/internal/state"
 )
 
+// version and buildDate are set by release builds
+// (-ldflags "-X main.version=... -X main.buildDate=...", scripts/release.sh).
 var (
 	version   = "0.1.0"
 	buildDate = "unknown"
 )
+
+// runVersion prints this binary's version, build date, and platform; it
+// needs no server (the shell's version command asks the server).
+func runVersion(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("version", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { _, _ = fmt.Fprintln(fs.Output(), "Usage: weavster version") }
+	if code, ok := parseFlags(fs, args, stderr); !ok {
+		if code == 0 {
+			fs.SetOutput(stdout)
+			fs.Usage()
+		}
+		return code
+	}
+	if fs.NArg() > 0 {
+		_, _ = fmt.Fprintf(stderr, "Error: unexpected arguments %q\n", fs.Args())
+		fs.Usage()
+		return 2
+	}
+	_, _ = fmt.Fprintf(stdout, "weavster %s (built %s, %s, %s/%s)\n", version, buildDate, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	return 0
+}
 
 // The store records which release applied each schema migration.
 func init() { state.AppVersion = version }
@@ -56,6 +81,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return runServer(args[1:], stderr)
 		case "config":
 			return runConfig(args[1:], stdout, stderr)
+		case "version":
+			return runVersion(args[1:], stdout, stderr)
 		}
 	}
 
@@ -140,6 +167,7 @@ func printUsage(w io.Writer) {
        weavster server [--config FILE] [address]
        weavster test [--filter NAME] [--format junit|json] [--output DIR] [PATH...]
        weavster config validate FILE...   check config-as-code files offline
+       weavster version                   print this binary's version
 
 Flags:
   -a address   Server address to connect to (default http://127.0.0.1:8080)

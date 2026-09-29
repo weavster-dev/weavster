@@ -10,6 +10,7 @@ edit_uri: edit/main/docs/
 
 nav:
   - Home: index.md
+  - Install, Upgrade, Roll Back: install.md
   - Support Matrix: support-matrix.md
   - Server Configuration: server-config.md
   - Production Setup: production.md

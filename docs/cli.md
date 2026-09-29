@@ -311,6 +311,7 @@ Update your scripts to the new names; the old ones may be removed in a later rel
 | `weavster` (interactive shell) | `quit`, `exit`, or end of input, even after failed commands (their errors are shown) | — | A line longer than 1 MiB, a read error, an unknown flag, or a missing connection file |
 | `weavster server` | `-h`, or a clean stop on SIGINT/SIGTERM | The configuration is invalid, the server could not start (store, TLS, bootstrap), or it runs as a privileged user without `WEAVSTER_ALLOW_ROOT=1` | An unknown flag or extra arguments |
 | `weavster test` | Every case passed, or `-h` | A case or fixture failed, a config-as-code document did not parse, or `--filter` matched nothing | An unknown flag, `--format` other than `junit` or `json`, a `PATH` that does not exist, or the results could not be written |
+| `weavster version` | Always (prints the binary's version, build date, Go version, and platform; no server needed) | — | Extra arguments |
 | `weavster config validate FILE...` | Every file is valid, or `-h` | A file is invalid | No file given, a file cannot be read or is larger than 50 MiB, or another `config` command (`diff`, `plan`, and `apply` need a server: run them in the shell or with `-s`) |
 
 `-h` (or `--help`) prints usage and exits `0` for every command. Usage errors are checked

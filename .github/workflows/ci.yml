@@ -69,6 +69,21 @@ jobs:
           name: weavster-test-junit
           path: artifacts/results.xml
 
+  release:
+    # The release build (scripts/release.sh, as the release workflow runs it
+    # on a tag): archives and checksums for every target, verified, and the
+    # stamped version reported by the binary. Nothing is published.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build the archives and checksums
+        run: scripts/release.sh 0.0.0-ci dist
+      - name: Verify the archives
+        run: scripts/verify-release.sh 0.0.0-ci dist
+
   docs:
     # The documentation site builds with --strict (warnings fail) on every PR.
     runs-on: ubuntu-latest

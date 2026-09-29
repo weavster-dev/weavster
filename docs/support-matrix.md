@@ -152,8 +152,10 @@ Expected output: the `/api/v1/system` JSON document, followed by one line per fl
 
 | Capability | Tier | Proof / notes |
 |---|---|---|
-| Static `CGO_ENABLED=0` builds for `linux/amd64`, `linux/arm64`, `darwin/arm64` | Implemented (wired) | CI `cross-build` job. No release binaries are published yet. |
+| Static `CGO_ENABLED=0` builds for `linux/amd64`, `linux/arm64`, `darwin/arm64` | Implemented (wired) | CI `cross-build` job. Release archives of these builds come from the release workflow below (no release has been tagged yet). |
 | Distroless non-root container image | Implemented (wired) | CI `docker` job. Build it yourself with `docker build -t weavster .`. No image is published. |
+| Release archives for `linux/amd64`, `linux/arm64`, `darwin/arm64` with SHA-256 checksums (`scripts/release.sh`, published by the `release` workflow on a `v*` tag); `weavster version` | Implemented (wired) | CI `release` job (builds, verifies the checksums and the stamped version, publishes nothing), `TestVersionCommand`. Not signed (D-55). See [Install](install.md). |
+| Container configuration and secrets: configuration mounted read-only, state in PostgreSQL, secrets from environment variables or `/run/secrets` | Implemented (wired) | `TestSecretsFromFiles` (secret files), CI `docker` job. See [Run in a container](install.md#run-in-a-container). |
 | Docker Compose for local development: the server with PostgreSQL 16 (`docker-compose.yml`, `docker/weavster.yaml`) | Implemented (wired) | `TestDockerCompose`, CI `compose` job (`scripts/compose-smoke.sh`: a flow survives a server restart). Development credentials only. See [Local development with Docker Compose](docker-compose.md). |
 | Signed releases, `curl \| bash` installer | Unsupported | |
 | Terraform / Pulumi samples (`iac/`) | Library-only | The binary does not read any value the samples emit. |
