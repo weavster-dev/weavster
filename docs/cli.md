@@ -243,8 +243,11 @@ FAIL tests/adt/admit: output differs at patient.lastName: it is {"patient":{"las
 - `--filter TEXT` runs only the cases whose name contains `TEXT` (others are not run at all). If
   none does, the command fails with `no case matches --filter "TEXT"`.
 - A fixture that cannot be run fails with the reason: a flow no document defines, a flow defined
-  in two documents, an unknown key (`field casez not found`), a case without a name, or a missing
-  `inputFile`. A config-as-code document that does not parse fails as well.
+  in two documents, an unknown key (`field casez not found`), more than one YAML document in the
+  file, a case without a name, or a missing `inputFile`. A config-as-code document that does not
+  parse fails the run as well, whatever `--filter` selects.
+- Numbers in `output` compare by exact value: `1` and `1.0` are equal, but two 20-digit ids that
+  differ in the last digit are not.
 
 ### Pitfalls
 

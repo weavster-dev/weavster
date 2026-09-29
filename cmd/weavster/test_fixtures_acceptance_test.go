@@ -243,3 +243,37 @@ func TestFixtureDiscovery(t *testing.T) {
 		t.Errorf("stderr = %s", errb.String())
 	}
 }
+
+// TestFixtureStrictness: a broken document fails the run whatever the
+// filter; a fixture holds one YAML document; numbers compare exactly.
+func TestFixtureStrictness(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"ok.yaml":         "version: \"1\"\nflows:\n  n: {id: n, transform: {steps: [{map: {from: a, to: b}}]}}\n",
+		"broken.yaml":     "version: \"1\"\nflowz: {}\n",
+		"n.test.yaml":     "flow: n\ncases:\n  - {name: big, input: '{\"a\":9007199254740993}', expect: {output: {b: 9007199254740993}}}\n  - {name: off by one, input: '{\"a\":9007199254740993}', expect: {output: {b: 9007199254740992}}}\n  - {name: one is one point oh, input: '{\"a\":1.0}', expect: {output: {b: 1, x: [1]}}}\n",
+		"two.test.yaml":   "flow: n\ncases: [{name: x, input: '{}'}]\n---\nflow: n\n",
+		"array.test.yaml": "flow: n\ncases:\n  - {name: arr, input: '{\"a\":[1,{\"c\":2}]}', expect: {output: {b: [1.0, {c: 2}]}}}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out, errb bytes.Buffer
+	if code := run([]string{"test", "--format", "json", "--filter", "array", dir}, strings.NewReader(""), &out, &errb); code != 1 || !strings.Contains(errb.String(), "broken") {
+		t.Errorf("broken document with a filter: exit %d %s", code, errb.String())
+	}
+	out.Reset()
+	errb.Reset()
+	run([]string{"test", "--format", "json", dir}, strings.NewReader(""), &out, &errb)
+	for _, want := range []string{"a fixture file holds exactly one YAML document", "off by one: output differs at b", "one is one point oh: output differs at x (missing)"} {
+		if !strings.Contains(errb.String(), want) {
+			t.Errorf("stderr lacks %q:\n%s", want, errb.String())
+		}
+	}
+	for _, passing := range []string{"n/big:", "array/arr:"} {
+		if strings.Contains(errb.String(), passing) {
+			t.Errorf("%s failed:\n%s", passing, errb.String())
+		}
+	}
+}

@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math/big"
 	"os"
 	"path/filepath"
-	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -176,14 +176,10 @@ func configDocument(data []byte) bool {
 }
 
 // runFixtures runs the cases of every fixture file whose name contains
-// filter (every case when it is empty).
+// filter (every case when it is empty). A config-as-code document that
+// could not be read fails the run whatever the filter.
 func (d discovered) runFixtures(filter string) []testResult {
-	var results []testResult
-	for _, r := range d.errs {
-		if strings.Contains(r.Name, filter) {
-			results = append(results, r)
-		}
-	}
+	results := append([]testResult(nil), d.errs...)
 	for _, path := range d.fixtures {
 		results = append(results, d.runFixture(path, filter)...)
 	}
@@ -216,6 +212,9 @@ func (d discovered) runFixture(path, filter string) []testResult {
 	dec.KnownFields(true)
 	if err := dec.Decode(&file); err != nil {
 		return fail("%s: %v", path, err)
+	}
+	if err := dec.Decode(new(any)); err != io.EOF {
+		return fail("%s: a fixture file holds exactly one YAML document", path)
 	}
 	switch defs := d.defined[file.Flow]; {
 	case file.Flow == "":
@@ -331,20 +330,74 @@ func checkResult(prefix, wantStatus, wantErr string, wantOutput jsonValue, wantT
 		return fmt.Errorf("%soutput is %q, want %q", prefix, output, *wantText)
 	}
 	if wantOutput.set {
-		var got, want any
-		if err := json.Unmarshal(output, &got); err != nil {
+		got, err := exactJSON(output)
+		if err != nil {
 			return fmt.Errorf("%soutput is not JSON (%q); compare it with outputText", prefix, output)
 		}
 		b, err := json.Marshal(wantOutput.v)
 		if err != nil {
 			return fmt.Errorf("%sexpected output: %w", prefix, err)
 		}
-		_ = json.Unmarshal(b, &want)
+		want, _ := exactJSON(b)
 		if where, ok := includes(got, want, ""); !ok {
 			return fmt.Errorf("%soutput differs at %s: it is %s, want the fields %s", prefix, where, output, b)
 		}
 	}
 	return nil
+}
+
+// exactJSON decodes JSON keeping numbers exact (json.Number), as the
+// pipeline does.
+func exactJSON(b []byte) (any, error) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	var v any
+	if err := dec.Decode(&v); err != nil {
+		return nil, err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return nil, errors.New("more than one JSON value")
+	}
+	return v, nil
+}
+
+// jsonEqual compares JSON values; numbers by exact value (1 and 1.0 are
+// equal, 9007199254740992 and 9007199254740993 are not).
+func jsonEqual(a, b any) bool {
+	switch av := a.(type) {
+	case json.Number:
+		bv, ok := b.(json.Number)
+		if !ok {
+			return false
+		}
+		x, okx := new(big.Rat).SetString(string(av))
+		y, oky := new(big.Rat).SetString(string(bv))
+		return okx && oky && x.Cmp(y) == 0
+	case []any:
+		bv, ok := b.([]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for i := range av {
+			if !jsonEqual(av[i], bv[i]) {
+				return false
+			}
+		}
+		return true
+	case map[string]any:
+		bv, ok := b.(map[string]any)
+		if !ok || len(av) != len(bv) {
+			return false
+		}
+		for k, v := range av {
+			w, present := bv[k]
+			if !present || !jsonEqual(v, w) {
+				return false
+			}
+		}
+		return true
+	}
+	return a == b // strings, booleans, null
 }
 
 // includes reports whether got has what want lists: an object the keys
@@ -353,7 +406,7 @@ func checkResult(prefix, wantStatus, wantErr string, wantOutput jsonValue, wantT
 func includes(got, want any, at string) (string, bool) {
 	wm, ok := want.(map[string]any)
 	if !ok {
-		if reflect.DeepEqual(got, want) {
+		if jsonEqual(got, want) {
 			return "", true
 		}
 		if at == "" {
