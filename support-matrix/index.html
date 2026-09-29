@@ -38,6 +38,9 @@
                                 <a href=".." class="nav-link">Home</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../install/" class="nav-link">Install, Upgrade, Roll Back</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="./" class="nav-link active" aria-current="page">Support Matrix</a>
                             </li>
                             <li class="nav-item">
@@ -130,7 +133,7 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href=".." class="nav-link">
+                                <a rel="prev" href="../install/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
@@ -808,12 +811,22 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'PASSWORD' -s smoke.txt
 <tr>
 <td>Static <code>CGO_ENABLED=0</code> builds for <code>linux/amd64</code>, <code>linux/arm64</code>, <code>darwin/arm64</code></td>
 <td>Implemented (wired)</td>
-<td>CI <code>cross-build</code> job. No release binaries are published yet.</td>
+<td>CI <code>cross-build</code> job. Release archives of these builds come from the release workflow below (no release has been tagged yet).</td>
 </tr>
 <tr>
 <td>Distroless non-root container image</td>
 <td>Implemented (wired)</td>
 <td>CI <code>docker</code> job. Build it yourself with <code>docker build -t weavster .</code>. No image is published.</td>
+</tr>
+<tr>
+<td>Release archives for <code>linux/amd64</code>, <code>linux/arm64</code>, <code>darwin/arm64</code> with SHA-256 checksums (<code>scripts/release.sh</code>, published by the <code>release</code> workflow on a <code>v*</code> tag); <code>weavster version</code></td>
+<td>Implemented (wired)</td>
+<td>CI <code>release</code> job (builds, verifies the checksums and the stamped version, publishes nothing), <code>TestVersionCommand</code>. Not signed (D-55). See <a href="../install/">Install</a>.</td>
+</tr>
+<tr>
+<td>Container configuration and secrets: configuration mounted read-only, state in PostgreSQL, secrets from environment variables or <code>/run/secrets</code></td>
+<td>Implemented (wired)</td>
+<td><code>TestSecretsFromFiles</code> (secret files), CI <code>docker</code> job. See <a href="../install/#run-in-a-container">Run in a container</a>.</td>
 </tr>
 <tr>
 <td>Docker Compose for local development: the server with PostgreSQL 16 (<code>docker-compose.yml</code>, <code>docker/weavster.yaml</code>)</td>

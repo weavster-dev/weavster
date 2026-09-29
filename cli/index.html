@@ -38,6 +38,9 @@
                                 <a href=".." class="nav-link">Home</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../install/" class="nav-link">Install, Upgrade, Roll Back</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../support-matrix/" class="nav-link">Support Matrix</a>
                             </li>
                             <li class="nav-item">
@@ -744,6 +747,12 @@ adt started ADT Inbound
 <td>Every case passed, or <code>-h</code></td>
 <td>A case or fixture failed, a config-as-code document did not parse, or <code>--filter</code> matched nothing</td>
 <td>An unknown flag, <code>--format</code> other than <code>junit</code> or <code>json</code>, a <code>PATH</code> that does not exist, or the results could not be written</td>
+</tr>
+<tr>
+<td><code>weavster version</code></td>
+<td>Always (prints the binary's version, build date, Go version, and platform; no server needed)</td>
+<td>—</td>
+<td>Extra arguments</td>
 </tr>
 <tr>
 <td><code>weavster config validate FILE...</code></td>

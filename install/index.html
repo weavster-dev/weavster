@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/api-formats/">
+        <link rel="canonical" href="https://docs.weavster.dev/install/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>JSON and XML - Weavster</title>
+        <title>Install, Upgrade, Roll Back - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -38,7 +38,7 @@
                                 <a href=".." class="nav-link">Home</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../install/" class="nav-link">Install, Upgrade, Roll Back</a>
+                                <a href="./" class="nav-link active" aria-current="page">Install, Upgrade, Roll Back</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../support-matrix/" class="nav-link">Support Matrix</a>
@@ -113,7 +113,7 @@
                                 <a href="../system-info/" class="nav-link">System Information</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">JSON and XML</a>
+                                <a href="../api-formats/" class="nav-link">JSON and XML</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
@@ -133,17 +133,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../system-info/" class="nav-link">
+                                <a rel="prev" href=".." class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../documentation/" class="nav-link">
+                                <a rel="next" href="../support-matrix/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/api-formats.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/install.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -164,17 +164,25 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#json-and-xml" class="nav-link">JSON and XML</a>
+            <li class="nav-item" data-bs-level="1"><a href="#install-upgrade-and-roll-back" class="nav-link">Install, upgrade, and roll back</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#ask-for-xml" class="nav-link">Ask for XML</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#how-json-becomes-xml" class="nav-link">How JSON becomes XML</a>
+            <li class="nav-item" data-bs-level="2"><a href="#install" class="nav-link">Install</a>
               <ul class="nav flex-column">
               </ul>
             </li>
-            <li class="nav-item" data-bs-level="2"><a href="#what-stays-as-it-is" class="nav-link">What stays as it is</a>
+            <li class="nav-item" data-bs-level="2"><a href="#run-in-a-container" class="nav-link">Run in a container</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#upgrade" class="nav-link">Upgrade</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#roll-back" class="nav-link">Roll back</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#common-pitfalls" class="nav-link">Common pitfalls</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -185,109 +193,144 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="json-and-xml">JSON and XML</h1>
-<p>The API speaks JSON. A client that explicitly asks for XML gets the API's responses as XML
-instead, errors included.</p>
-<h2 id="ask-for-xml">Ask for XML</h2>
-<p>Send <code>Accept: application/xml</code> (or <code>text/xml</code>):</p>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Accept: application/xml' \
-  http://127.0.0.1:8080/api/v1/flows/adt
-</code></pre>
-<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
-&lt;response&gt;&lt;id&gt;adt&lt;/id&gt;&lt;name&gt;ADT Inbound&lt;/name&gt;&lt;sourceType&gt;&lt;/sourceType&gt;&lt;status&gt;started&lt;/status&gt;&lt;enabled type=&quot;boolean&quot;&gt;true&lt;/enabled&gt;&lt;destinations type=&quot;array&quot;&gt;&lt;item&gt;&lt;name&gt;out&lt;/name&gt;&lt;type&gt;file&lt;/type&gt;&lt;dir&gt;/var/out&lt;/dir&gt;&lt;/item&gt;&lt;/destinations&gt;&lt;/response&gt;
-</code></pre>
-<p>XML is used only when the <code>Accept</code> header names <code>application/xml</code> or <code>text/xml</code> with the highest
-quality (<code>q</code>) of everything it lists, and higher than JSON's. JSON's quality comes from the most
-specific range that matches it: <code>application/json</code>, then <code>application/*</code>, then <code>*/*</code>.
-Otherwise — no <code>Accept</code> header, <code>*/*</code>, or a web browser's usual header — the reply is JSON.</p>
+<h1 id="install-upgrade-and-roll-back">Install, upgrade, and roll back</h1>
+<p>Weavster is one static binary: the server, the command-line client, and <code>weavster test</code> in a
+single file, with no runtime to install. Releases are published on
+<a href="https://github.com/weavster-dev/weavster/releases">GitHub releases</a> for three platforms:</p>
 <table>
 <thead>
 <tr>
-<th><code>Accept</code></th>
-<th>Reply</th>
+<th>Platform</th>
+<th>Archive</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>application/xml</code></td>
-<td>XML</td>
+<td>Linux, x86-64</td>
+<td><code>weavster_&lt;version&gt;_linux_amd64.tar.gz</code></td>
 </tr>
 <tr>
-<td><code>application/json;q=0.5, application/xml</code></td>
-<td>XML</td>
+<td>Linux, ARM64</td>
+<td><code>weavster_&lt;version&gt;_linux_arm64.tar.gz</code></td>
 </tr>
 <tr>
-<td><code>application/xml;q=0.9, */*;q=0.8</code></td>
-<td>XML</td>
-</tr>
-<tr>
-<td><code>application/json, application/xml</code></td>
-<td>JSON (same quality)</td>
-</tr>
-<tr>
-<td><code>application/xml, */*</code></td>
-<td>JSON (<code>*/*</code> gives JSON the same quality)</td>
-</tr>
-<tr>
-<td><code>text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8</code> (a browser)</td>
-<td>JSON</td>
+<td>macOS, Apple silicon</td>
+<td><code>weavster_&lt;version&gt;_darwin_arm64.tar.gz</code></td>
 </tr>
 </tbody>
 </table>
-<p>A range with a malformed <code>q</code> (not a number from 0 to 1) is ignored. Replies carry
-<code>Vary: Accept</code>.</p>
-<h2 id="how-json-becomes-xml">How JSON becomes XML</h2>
-<table>
-<thead>
-<tr>
-<th>JSON</th>
-<th>XML</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>The whole reply</td>
-<td><code>&lt;response&gt;</code></td>
-</tr>
-<tr>
-<td>An object</td>
-<td>Its keys as child elements, in the same order: <code>{"id":"adt"}</code> → <code>&lt;id&gt;adt&lt;/id&gt;</code>.</td>
-</tr>
-<tr>
-<td>A key that is not an XML name (<code>ICD/10</code>, <code>1st</code>, the empty key, one starting with <code>xml</code>)</td>
-<td><code>&lt;entry key="ICD/10"&gt;…&lt;/entry&gt;</code></td>
-</tr>
-<tr>
-<td>An array</td>
-<td><code>type="array"</code>, with one <code>&lt;item&gt;</code> per element.</td>
-</tr>
-<tr>
-<td>An empty object <code>{}</code></td>
-<td>An empty element with <code>type="object"</code> (an empty string is an empty element with no <code>type</code>).</td>
-</tr>
-<tr>
-<td>A string</td>
-<td>Text (<code>&lt;</code>, <code>&amp;</code>, and quotes escaped).</td>
-</tr>
-<tr>
-<td>A number, <code>true</code>/<code>false</code>, <code>null</code></td>
-<td>Text with <code>type="number"</code>, <code>type="boolean"</code>, or an empty element with <code>type="null"</code>. Numbers keep every digit.</td>
-</tr>
-</tbody>
-</table>
-<p>An error is the same envelope as in JSON:</p>
-<pre><code class="language-xml">&lt;?xml version=&quot;1.0&quot; encoding=&quot;UTF-8&quot;?&gt;
-&lt;response&gt;&lt;error&gt;&lt;code&gt;NOT_FOUND&lt;/code&gt;&lt;message&gt;flow not found&lt;/message&gt;&lt;/error&gt;&lt;/response&gt;
+<p>Each archive holds <code>weavster</code>, <code>LICENSE</code>, and <code>README.md</code> in a directory of the archive's name.
+<code>weavster_&lt;version&gt;_checksums.txt</code> lists the SHA-256 checksum of every archive. Releases are not
+signed yet; the checksum only proves the download is the file the release published.</p>
+<h2 id="install">Install</h2>
+<pre><code class="language-bash">version=1.2.0
+os=linux arch=amd64          # or linux arm64, darwin arm64
+base=https://github.com/weavster-dev/weavster/releases/download/v$version
+curl -fsSLO &quot;$base/weavster_${version}_${os}_${arch}.tar.gz&quot;
+curl -fsSLO &quot;$base/weavster_${version}_checksums.txt&quot;
+sha256sum -c --ignore-missing &quot;weavster_${version}_checksums.txt&quot;   # macOS: shasum -a 256 -c --ignore-missing …
+tar -xzf &quot;weavster_${version}_${os}_${arch}.tar.gz&quot;
+sudo install -m 0755 &quot;weavster_${version}_${os}_${arch}/weavster&quot; /usr/local/bin/weavster
+weavster version
 </code></pre>
-<h2 id="what-stays-as-it-is">What stays as it is</h2>
+<pre><code class="language-text">weavster_1.2.0_linux_amd64.tar.gz: OK
+weavster 1.2.0 (built 2026-10-01T12:00:00Z, go1.22.12, linux/amd64)
+</code></pre>
 <ul>
-<li><strong>Request bodies are JSON only</strong> (and YAML for <a href="../config-as-code/">config-as-code documents</a>).
-  Send <code>Content-Type: application/json</code>; an XML body is refused as invalid JSON.</li>
-<li>Message content from <code>GET /api/v1/messages/{id}/content</code> is sent exactly as stored, with its
-  own content type, even when it is JSON.</li>
-<li>Message archives (<code>application/gzip</code> or encrypted) and the OpenAPI document
-  (<code>GET /api/openapi.yaml</code>) are never converted.</li>
-<li><code>GET /api/v1/events/export</code> served as XML is named <code>events.xml</code> instead of <code>events.json</code>.</li>
+<li>Stop if <code>sha256sum</code> does not print <code>OK</code> for your archive: the download is damaged or not the
+  published file.</li>
+<li><code>weavster version</code> reports the binary itself and needs no server. (The shell's <code>version</code>
+  command, and <code>-v</code>, ask a server for its version.)</li>
+<li>On macOS, a downloaded binary may be quarantined; <code>xattr -d com.apple.quarantine
+  /usr/local/bin/weavster</code> clears it after you have checked the checksum.</li>
+<li>To build from source instead, check out the release tag and run
+  <code>scripts/release.sh 1.2.0 dist</code> (Go 1.22 or later, no C compiler needed): it builds the same
+  archives and checksums. A plain <code>go build ./cmd/weavster</code> works too but calls itself <code>0.1.0</code>,
+  which is also the release the database records for each schema upgrade it applies; stamp the
+  version with <code>go build -ldflags "-X main.version=1.2.0" -o weavster ./cmd/weavster</code>.</li>
+</ul>
+<p>Then set up the server: <a href="../production/">Production setup</a> for a real deployment, or
+<a href="../docker-compose/">Docker Compose</a> to try it locally.</p>
+<h2 id="run-in-a-container">Run in a container</h2>
+<p>The repository's <code>Dockerfile</code> builds a small image (<code>gcr.io/distroless/static-debian12</code>) that
+runs the binary as a non-root user. Build it from the release's tag, with its version:</p>
+<pre><code class="language-bash">git checkout v1.2.0
+docker build --build-arg VERSION=1.2.0 --build-arg BUILD_DATE=&quot;$(date -u +%FT%TZ)&quot; -t weavster:1.2.0 .
+docker run -d --name weavster -p 8443:8443 \
+  -v /etc/weavster:/etc/weavster:ro \
+  -e WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE=/run/secrets/weavster-admin-password \
+  -v /srv/weavster/secrets:/run/secrets:ro \
+  weavster:1.2.0 server --config /etc/weavster/weavster-server.yaml
+</code></pre>
+<ul>
+<li><strong>Configuration</strong>: mount the server configuration (and TLS certificate and key) read-only,
+  and give their paths in the file.</li>
+<li><strong>State</strong>: keep everything the server stores in PostgreSQL (<code>store.dialect: postgres</code>). The
+  container itself keeps nothing: it can be replaced at any time. With <code>store.dialect: memory</code>,
+  flows, users, messages, and statistics are lost when the container stops.</li>
+<li><strong>Secrets</strong>: a secret a flow or the store names (<code>dsnEnv</code>, <code>passwordEnv</code>, <code>store.dsnEnv</code>) is an
+  environment variable or a file of that name in <code>/run/secrets</code>, where Docker and Kubernetes
+  mount secrets (see <a href="../server-config/#secrets">secrets</a>). The first admin password comes from
+  <code>WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE</code>. Keep secrets out of the image and out of the
+  configuration file.</li>
+<li><strong>Secret files must be readable by the container's user</strong> (<code>nonroot</code>, uid 65532): owned by it
+  with mode <code>0400</code> (<code>chown 65532 FILE &amp;&amp; chmod 0400 FILE</code>), or group-readable by a group you add
+  with <code>--group-add</code>. A secret file only root can read fails with <code>secret NAME: … permission
+  denied</code>, and the server exits.</li>
+<li><strong>Files flows read and write</strong>: a file source or destination directory must be a volume the
+  container's user (<code>nonroot</code>, uid 65532) can read and write.</li>
+</ul>
+<p>With Docker Compose, the same setup uses <code>secrets:</code> (mounted in <code>/run/secrets</code>) and volumes:</p>
+<pre><code class="language-yaml">services:
+  weavster:
+    image: weavster:1.2.0
+    command: [&quot;server&quot;, &quot;--config&quot;, &quot;/etc/weavster/weavster-server.yaml&quot;]
+    environment:
+      WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE: /run/secrets/weavster-admin-password
+    secrets: [weavster-admin-password, WEAVSTER_STORE_DSN, WEAVSTER_DB_WAREHOUSE]
+    volumes:
+      - /etc/weavster:/etc/weavster:ro
+      - /srv/weavster/inbox:/var/lib/weavster/inbox
+    ports: [&quot;8443:8443&quot;]
+secrets:
+  weavster-admin-password: {file: /srv/weavster/secrets/admin-password}
+  WEAVSTER_STORE_DSN: {file: /srv/weavster/secrets/store-dsn}          # store.dsnEnv: WEAVSTER_STORE_DSN
+  WEAVSTER_DB_WAREHOUSE: {file: /srv/weavster/secrets/warehouse-dsn}   # a flow's dsnEnv
+</code></pre>
+<h2 id="upgrade">Upgrade</h2>
+<ol>
+<li>Read the release notes for changes that affect you.</li>
+<li>Back up the database, for example <code>pg_dump -Fc -f weavster-before-1.3.0.dump weavster</code>. The
+   backup is what makes a rollback possible.</li>
+<li>Stop the server (it drains in-flight messages, up to <code>listen.shutdownTimeoutMs</code>).</li>
+<li>Replace the binary (or the image tag) and start the server.</li>
+</ol>
+<p>At start, the server upgrades the database schema before it accepts any request. Each schema
+change runs in its own transaction, so a failed upgrade leaves the database at the last completed
+version, and servers starting together on one database take turns. Some upgrades lock a table
+while they rebuild its indexes. See <a href="../server-config/#upgrades">Upgrades</a> for the details.</p>
+<h2 id="roll-back">Roll back</h2>
+<p>Stop the new release and start the previous one:</p>
+<ul>
+<li>If the new release changed nothing in the database schema, the previous binary starts on the
+  same database, and you are done.</li>
+<li>If it did, the previous binary refuses the database and exits <code>1</code> before changing anything:</li>
+</ul>
+<p><code>text
+  Error: store: state: the database schema is at version 16 (written by weavster 1.3.0), newer than this release supports (15): run weavster 1.3.0 or later, or restore a backup taken before the upgrade</code></p>
+<p>Restore the backup taken before the upgrade (<code>pg_restore --clean -d weavster
+  weavster-before-1.3.0.dump</code>), then start the previous release. Messages received after the
+  upgrade are not in that backup: export them first if you need them (<code>exportmessages</code>).</p>
+<h2 id="common-pitfalls">Common pitfalls</h2>
+<ul>
+<li><strong><code>sha256sum: … no properly formatted checksum lines</code></strong>: download the checksums file of the
+  same version as the archive.</li>
+<li><strong><code>permission denied</code> on a file source or a secret in a container</strong>: the directory (or secret
+  file) must be readable, and for a file source writable, by uid 65532, the image's non-root user.</li>
+<li><strong><code>weavster version</code> says <code>0.1.0</code> in an image you built</strong>: pass <code>--build-arg VERSION=…</code> to
+  <code>docker build</code>.</li>
+<li><strong>The server refuses to start as root</strong>: it runs as root only with <code>WEAVSTER_ALLOW_ROOT=1</code>.
+  Run it as its own user instead.</li>
 </ul></div>
             </div>
         </div>
