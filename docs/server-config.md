@@ -85,6 +85,12 @@ leaves the database at the last completed version, and the next start carries on
 Servers that start together on one database take turns: only the first applies the upgrade.
 The database records which weavster release applied each schema version.
 
+Some upgrades rebuild a table's indexes, and PostgreSQL locks the table while they run: other
+servers using the same database wait for its messages until the upgrade ends (on a large store,
+minutes). Upgrading to this release does this for the message tables on PostgreSQL (message ids
+now compare byte by byte, the order searches use). Stop the other servers, or upgrade at a quiet
+time.
+
 A database that a **newer** release has already upgraded is refused, and nothing in it changes.
 The server exits `1` at once (this is not retried) with:
 

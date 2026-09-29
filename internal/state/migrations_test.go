@@ -408,3 +408,75 @@ func TestJobsClaimIndexByteOrder(t *testing.T) {
 		})
 	}
 }
+
+// TestMessageIdsByteOrder: on PostgreSQL the message id columns compare
+// in byte order, so a page in id order and a search sorted by receive time
+// are read from indexes rather than by sorting the table; SQLite (bytes
+// already) is unchanged.
+func TestMessageIdsByteOrder(t *testing.T) {
+	for name, open := range migrationBackends() {
+		t.Run(name, func(t *testing.T) {
+			db, postgres := open(t)
+			if err := Migrate(context.Background(), db, Migrations()); err != nil {
+				t.Fatal(err)
+			}
+			if !postgres {
+				var sqlDef string
+				if err := db.QueryRow(`SELECT sql FROM sqlite_master WHERE name = 'messages'`).Scan(&sqlDef); err != nil || strings.Contains(sqlDef, "COLLATE") {
+					t.Errorf("SQLite messages = %s (%v)", sqlDef, err)
+				}
+				return
+			}
+			for _, col := range []struct{ table, column string }{{"messages", "id"}, {"message_metadata", "message_id"}, {"message_attempts", "message_id"}} {
+				var collation sql.NullString
+				if err := db.QueryRow(`SELECT collation_name FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 AND column_name = $2`,
+					col.table, col.column).Scan(&collation); err != nil || collation.String != "C" {
+					t.Errorf("%s.%s collation = %v (%v), want C", col.table, col.column, collation, err)
+				}
+			}
+			// With enough rows that a sort would show, both orders come from
+			// indexes.
+			if _, err := db.Exec(`INSERT INTO messages (id, flow_id, status, received_at, updated_at) SELECT 'm' || g, 'f' || (g % 5), 'sent', g, g FROM generate_series(1, 5000) g`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`ANALYZE messages`); err != nil {
+				t.Fatal(err)
+			}
+			for _, q := range []struct {
+				name, query string
+				args        []any
+			}{
+				{"id page", `SELECT id FROM messages WHERE id COLLATE "C" > $1 ORDER BY id COLLATE "C" LIMIT 100`, []any{"m5"}},
+				{"flow by receive time", `SELECT id FROM messages WHERE flow_id = $1 ORDER BY received_at DESC, id COLLATE "C" DESC LIMIT 100`, []any{"f1"}},
+				{"by receive time", `SELECT id FROM messages ORDER BY received_at ASC, id COLLATE "C" ASC LIMIT 100`, nil},
+			} {
+				plan := explain(t, db, q.query, q.args...)
+				if !strings.Contains(plan, "Index") || strings.Contains(plan, "Sort") {
+					t.Errorf("%s plan:\n%s", q.name, plan)
+				}
+			}
+		})
+	}
+}
+
+// explain is the query's plan, one line per step.
+func explain(t *testing.T, db *sql.DB, query string, args ...any) string {
+	t.Helper()
+	rows, err := db.Query("EXPLAIN "+query, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = rows.Close() }()
+	var plan []string
+	for rows.Next() {
+		var line string
+		if err := rows.Scan(&line); err != nil {
+			t.Fatal(err)
+		}
+		plan = append(plan, line)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	return strings.Join(plan, "\n")
+}
