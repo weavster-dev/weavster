@@ -34,7 +34,8 @@ permission.
 | `PUT /api/v1/snippets/{name}` | Creates or replaces one snippet. `name` in the body is optional and must match the path. |
 | `DELETE /api/v1/snippets/{name}` | Deletes one snippet (`204`). |
 
-`/api/v1/snippet-libraries` has the same operations for libraries (without `?summary`).
+Libraries have the same operations (without `?summary`): `GET`, `POST`, and `PUT
+/api/v1/snippet-libraries`, and `GET`, `PUT`, and `DELETE /api/v1/snippet-libraries/{name}`.
 
 ```bash
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/snippet-libraries \

@@ -21,3 +21,7 @@ Source of truth for coding agents building the Weavster MVP.
 - [schemas/config.schema.json](schemas/config.schema.json) — config-as-code JSON Schema (generated)
 - [schemas/transform.schema.json](schemas/transform.schema.json) — transform DSL JSON Schema (source: internal/compiler/transform.schema.json, copied by go generate)
 - [schemas/flow.schema.json](schemas/flow.schema.json) — flow definition JSON Schema, enforced on flow create/update/import
+- [schemas/alert.schema.json](schemas/alert.schema.json) — alert definition JSON Schema (the `alerts` section and `/api/v1/alerts`)
+- [schemas/snippet.schema.json](schemas/snippet.schema.json) — code snippet JSON Schema
+- [schemas/snippet-library.schema.json](schemas/snippet-library.schema.json) — snippet library JSON Schema
+- [schemas/topology.schema.json](schemas/topology.schema.json) — topology graph JSON Schema (`/api/v1/topology`, `/api/v1/topology/flows/{flowId}`)
