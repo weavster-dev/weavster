@@ -284,6 +284,21 @@ statement of what it expects, for both runs.
   are text.
 - A flow without a `transform` passes messages through unchanged, so any input is `transformed`.
 
+## Run the server (`weavster server`)
+
+```bash
+weavster server --config /etc/weavster/weavster-server.yaml
+weavster server --config weavster-server.yaml 127.0.0.1:9090   # the address overrides listen.address
+weavster server                                                  # defaults: 127.0.0.1:8080, memory store
+```
+
+- `--config FILE` reads the [server configuration](server-config.md); without it the defaults
+  apply (a memory store: nothing is kept after the server stops).
+- An address after the flags replaces `listen.address` from the file.
+- The server runs until `SIGINT` or `SIGTERM`, then drains in-flight messages for up to
+  `listen.shutdownTimeoutMs` and exits `0`. It refuses to run as root unless
+  `WEAVSTER_ALLOW_ROOT=1` is set.
+
 ## Deprecated command names
 
 Scripts written for older tools can keep their command names. A deprecated name prints a warning

@@ -14,7 +14,6 @@ import (
 	"github.com/weavster-dev/weavster/internal/codecs"
 	"github.com/weavster-dev/weavster/internal/enterprise"
 	"github.com/weavster-dev/weavster/internal/secrets"
-	"gopkg.in/yaml.v3"
 )
 
 // TestEnterpriseStubsDocumented: every Enterprise stub fails with exactly
@@ -91,43 +90,21 @@ func TestEnterpriseAdaptersRefused(t *testing.T) {
 // the README) that names an Enterprise feature says on the same line, in
 // so many words, that this edition does not have it.
 func TestDocsMakeNoEnterpriseClaims(t *testing.T) {
-	root := filepath.Join("..", "..")
-	mk, err := os.ReadFile(filepath.Join(root, "mkdocs.yml"))
+	term := regexp.MustCompile(`(?i)\b(oidc|saml|sso|single sign-on|opa|cedar|abac|siem|kafka|rabbitmq|nats|redis|vault|kms|dicom|ldap|multi-tenan\w*|multi-factor|mfa|kubernetes operator|object storage)\b`)
+	marked := regexp.MustCompile(`(?i)enterprise|this edition|not available|unsupported|ignored|refused`)
+	readme, err := os.ReadFile(filepath.Join("..", "..", "README.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	excluded := map[string]bool{}
-	var cfg struct {
-		ExcludeDocs string `yaml:"exclude_docs"`
-	}
-	_ = yaml.Unmarshal(mk, &cfg) // mkdocs.yml also holds !!python tags; the key still decodes
-	for _, f := range strings.Fields(cfg.ExcludeDocs) {
-		excluded[f] = true
-	}
-	if !excluded["mvp-project-plan.md"] {
-		t.Fatalf("exclude_docs not read from mkdocs.yml: %v", excluded)
-	}
-	term := regexp.MustCompile(`(?i)\b(oidc|saml|sso|single sign-on|opa|cedar|abac|siem|kafka|rabbitmq|nats|redis|vault|kms|dicom|ldap|multi-tenan\w*|multi-factor|mfa|kubernetes operator|object storage)\b`)
-	marked := regexp.MustCompile(`(?i)enterprise|this edition|not available|unsupported|ignored|refused`)
-	pages := []string{filepath.Join(root, "README.md")}
-	_ = filepath.WalkDir(filepath.Join(root, "docs"), func(path string, d os.DirEntry, err error) error {
-		rel, _ := filepath.Rel(filepath.Join(root, "docs"), path)
-		if err == nil && !d.IsDir() && strings.HasSuffix(path, ".md") && !excluded[filepath.ToSlash(rel)] {
-			pages = append(pages, path)
-		}
-		return nil
-	})
+	pages := publishedPages(t)
+	pages["../README.md"] = string(readme)
 	checked := 0
-	for _, page := range pages {
-		b, err := os.ReadFile(page)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for i, line := range strings.Split(string(b), "\n") {
+	for page, text := range pages {
+		for i, line := range strings.Split(text, "\n") {
 			if term.MatchString(line) {
 				checked++
 				if !marked.MatchString(line) {
-					t.Errorf("%s:%d names an Enterprise feature without saying this edition lacks it: %s", filepath.Base(page), i+1, line)
+					t.Errorf("%s:%d names an Enterprise feature without saying this edition lacks it: %s", page, i+1, line)
 				}
 			}
 		}
