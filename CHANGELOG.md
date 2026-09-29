@@ -35,6 +35,7 @@ All notable changes to this project are documented here, following
 - `docs/documentation.md`: site build guide (MkDocs, theme, nav, deploy, versioning). AGENTS.md §Documentation now points here instead of removed files.
 - Coverage gate: octocov (`.octocov.yml`, `acceptable: 70%`; *superseded: now 90%, see Changed*) wired into a `.github/workflows/coverage-gate.yml` CI job that runs `go test -coverprofile` and fails below threshold.
 - Coverage uplift: added targeted unit tests across `adapters`, `alerts`, `compiler`, `executor`, `gitstore`, `notify`, `scheduler`, `state`, and `cmd/weavster` to raise overall statement coverage from 79.2% to 82.9%, satisfying the raised 80% gate.
+- HL7 v2 codec boundary tests for terminal MSH-2 encoding fields, serializer type rejection, and exact empty/repeated field output.
 - Gitstore coverage: test `Store.Commit` error propagation when the repository cannot persist the commit object.
 - GitHub issue templates: bug report + feature request forms and blank-issue config (`.github/ISSUE_TEMPLATE/`).
 - E2E tests (`test/e2e/`): real-HTTP tests of the gateway surface (OpenAPI spec, `/system`, security headers, TRACE/TRACK blocking, CSRF marker enforcement).
