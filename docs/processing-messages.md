@@ -1713,10 +1713,11 @@ again as a new message instead, use `reprocess`.
 - The events API shows the newest 10,000 events. Events and statistics are kept across restarts
   with PostgreSQL only.
 - The first delivery attempt runs while your request waits; retries run in the background.
-- Only `http`, `file`, `mllp`, and `flow` destinations are available.
-- Besides this API, messages enter only through [file sources](#read-files-from-a-directory) and
-  [http sources](#receive-messages-over-http), and [mllp sources](#receive-hl7-v2-over-mllp);
-  database sources are not available yet.
+- Only `http`, `file`, `mllp`, `flow`, and [`database`](#write-rows-to-a-database) destinations
+  are available.
+- Besides this API, messages enter only through [file sources](#read-files-from-a-directory),
+  [http sources](#receive-messages-over-http), [mllp sources](#receive-hl7-v2-over-mllp), and
+  [database sources](#read-rows-from-a-database).
 - A `file` destination writes wherever `dir` points, with the server's permissions, and an
   `http` destination can target any address the server can reach, including internal ones.
   Only give `flows:edit` to trusted users.

@@ -61,12 +61,12 @@ change are marked with their configuration key or flow field.
 
 | Data | Where | Kept |
 |---|---|---|
-| Messages, their content, metadata, and attempt records | The store (`store.dialect`) | Until you remove them (`DELETE /api/v1/messages/{id}`, or [many at once](processing-messages.md#remove-many-messages)). Nothing is pruned automatically: size your database for your traffic, and remove old messages on a schedule of your own, for example with a nightly `DELETE /api/v1/messages?to=…`. With `memory`, until the server stops. |
+| Messages, their content, metadata, and attempt records | The store (`store.dialect`) | Until you remove them (`DELETE /api/v1/messages/{id}`, or [many at once](processing-messages.md#remove-many-messages)). Nothing is pruned unless you configure [`prune`](server-config.md#prune) (`maxAgeHours`, `maxMessages`), which removes finished messages on a schedule; otherwise size your database for your traffic, or remove old messages yourself, for example with a nightly `DELETE /api/v1/messages?to=…`. With `memory`, until the server stops. |
 | Flow definitions, users, config items | The store | Until changed or removed. |
 | Events | Server memory and the store | The API shows the latest 10,000, reloaded after a restart with PostgreSQL; the store keeps every event until `prune.eventMaxAgeDays`. |
 | Statistics (current, lifetime) | Server memory and the store | Until reset or the flow is deleted; saved with every sample and at stop, so kept across restarts with PostgreSQL. With `memory`, until the server stops. |
 | Statistics over time | Server memory and the store | `stats.retentionHours` (default 24, up to 8760), at most 100,000 samples per flow; in memory at most 1,000,000 in all, the newest of which are loaded again at start. |
-| Audit log | Server stderr | As long as your log collection keeps it. |
+| Audit log | Server stderr and the store | On stderr, as long as your log collection keeps it. In the store, until `prune.auditMaxAgeDays` (default: kept); with `memory` or `disabled`, the newest 100,000 entries until the server stops. See [Audit log](audit-log.md#search-the-audit-log). |
 
 To estimate the store's size, count each message's body several times: the original, the stored
 received form, the transformed output, and a reply when a destination returns one.

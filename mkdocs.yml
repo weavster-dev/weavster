@@ -12,6 +12,7 @@ nav:
   - Home: index.md
   - Getting Started: getting-started.md
   - Install, Upgrade, Roll Back: install.md
+  - Operations: operations.md
   - Support Matrix: support-matrix.md
   - Server Configuration: server-config.md
   - Production Setup: production.md
