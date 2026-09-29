@@ -1873,12 +1873,13 @@ keep first.</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/system/prune/start
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/system/prune
 </code></pre>
-<pre><code class="language-json">{&quot;maxAgeHours&quot;:720,&quot;maxMessages&quot;:0,&quot;auditMaxAgeDays&quot;:365,&quot;intervalMinutes&quot;:60,&quot;running&quot;:false,
+<pre><code class="language-json">{&quot;maxAgeHours&quot;:720,&quot;maxMessages&quot;:0,&quot;auditMaxAgeDays&quot;:365,&quot;eventMaxAgeDays&quot;:90,&quot;intervalMinutes&quot;:60,&quot;running&quot;:false,
  &quot;nextRunAt&quot;:&quot;2026-09-28T13:00:00Z&quot;,
  &quot;lastRun&quot;:{&quot;startedAt&quot;:&quot;2026-09-28T12:00:00Z&quot;,&quot;finishedAt&quot;:&quot;2026-09-28T12:00:02Z&quot;,
-   &quot;removed&quot;:1250,&quot;busy&quot;:0,&quot;auditRemoved&quot;:310,&quot;stopped&quot;:false}}
+   &quot;removed&quot;:1250,&quot;busy&quot;:0,&quot;auditRemoved&quot;:310,&quot;eventsRemoved&quot;:1200,&quot;stopped&quot;:false}}
 </code></pre>
-<p><code>lastRun.auditRemoved</code> counts the audit entries removed by <code>prune.auditMaxAgeDays</code>.
+<p><code>lastRun.auditRemoved</code> and <code>lastRun.eventsRemoved</code> count the audit entries and stored events
+removed by <code>prune.auditMaxAgeDays</code> and <code>prune.eventMaxAgeDays</code>.
 <code>lastRun.error</code> says why a pass failed (for example a lost database connection), and
 <code>lastRun.stopped</code> is <code>true</code> for a pass that was stopped. Every pass also records a
 <code>messages.pruned</code> <a href="#5-statistics-and-events">event</a> with <code>removed</code> and <code>busy</code>, and <code>stopped</code> or
@@ -2014,8 +2015,16 @@ after it. With <code>afterId</code>, the reply holds the oldest events after tha
 skipped:</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/events?afterId=41'
 </code></pre>
-<p>The server keeps the newest 10,000 events in memory: older ones are dropped, and the log starts
-empty when the server restarts.</p>
+<p>The events API answers from the newest 10,000 events, kept in memory. Every event is also written
+to the store in the background (within a quarter of a second), and when the server starts with
+<code>store.dialect: postgres</code> it loads the newest 10,000 back: events and their ids survive a restart.
+New events get larger ids than any given before the restart, so polling with <code>afterId</code> keeps
+working; the ids jump at a restart (they start from the time), so do not expect them to be
+consecutive. Run one server per database: two servers storing events in the same database would
+give out the same ids. With <code>memory</code> the log starts empty on every start. If the store
+falls behind, events are kept in the event log but not stored, and the server logs
+<code>events not stored</code>. When the server stops it stores what is still queued (for at most 5 seconds). Stored events are kept until
+<a href="../server-config/#prune"><code>prune.eventMaxAgeDays</code></a> removes them.</p>
 <p>To save statistics or events to a file from the command-line client, use <code>dump stats "path"</code> or
 <code>dump events "path"</code> (the newest 10,000 events).</p>
 <p>The topology overview (<code>GET /api/v1/topology</code>) shows each flow's <code>received</code>, <code>sent</code>,
@@ -2138,8 +2147,8 @@ someone just requeued is never removed; <code>deadletter remove</code> uses it. 
 again as a new message instead, use <code>reprocess</code>.</p>
 <h2 id="limits-today">Limits today</h2>
 <ul>
-<li>Statistics and events are kept in memory: they restart from zero when the server restarts,
-  and only the newest 10,000 events are kept.</li>
+<li>Statistics are kept in memory and restart from zero when the server restarts. The events API
+  shows the newest 10,000 events (kept across restarts with PostgreSQL).</li>
 <li>The first delivery attempt runs while your request waits; retries run in the background.</li>
 <li>Only <code>http</code>, <code>file</code>, <code>mllp</code>, and <code>flow</code> destinations are available.</li>
 <li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a> and

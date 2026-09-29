@@ -388,7 +388,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Events: search by type, flow, time, and <code>afterId</code>; get one, count, max id, export (<code>/api/v1/events…</code>)</td>
 <td>Implemented (wired)</td>
-<td><code>TestEventsAPI</code>, <code>TestEventHandlers</code>. In memory: the newest 10,000 events, lost on restart. See <a href="../processing-messages/#5-statistics-and-events">Processing messages</a>.</td>
+<td><code>TestEventsAPI</code>, <code>TestEventHandlers</code>, <code>TestEventsSurviveRestart</code>, <code>TestEventWriter</code>, <code>TestEvents</code> (every store backend). The API answers from the newest 10,000; every event is stored in the background and the newest are reloaded at start, so they survive a restart with PostgreSQL. <code>prune.eventMaxAgeDays</code> removes old stored events. See <a href="../processing-messages/#5-statistics-and-events">Processing messages</a>.</td>
 </tr>
 <tr>
 <td>Exit codes (shell, <code>server</code>, <code>test</code>) and <code>Error:</code> format; deprecated <code>channel</code>/<code>codetemplate</code> command names</td>
@@ -625,7 +625,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Event log with processing events (<code>GET /api/v1/events</code>)</td>
 <td>Implemented (wired)</td>
-<td><code>TestStatsEventsTopology</code>. In memory, newest 10,000. Filters, get, count, max id, and export: see the Events row above.</td>
+<td><code>TestStatsEventsTopology</code>. The newest 10,000, kept across restarts with PostgreSQL. Filters, get, count, max id, and export: see the Events row above.</td>
 </tr>
 <tr>
 <td>Topology flow-node <code>activity</code> from real counters, zeros included</td>

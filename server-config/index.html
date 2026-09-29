@@ -536,6 +536,11 @@ Off by default.</p>
 <td><code>0</code> (keep)</td>
 <td>Remove stored <a href="../audit-log/#search-the-audit-log">audit entries</a> older than this many days (1–36500).</td>
 </tr>
+<tr>
+<td><code>eventMaxAgeDays</code></td>
+<td><code>0</code> (keep)</td>
+<td>Remove stored <a href="../processing-messages/#5-statistics-and-events">events</a> older than this many days (1–36500).</td>
+</tr>
 </tbody>
 </table>
 <p>Pruning needs a message store: with <code>store.dialect: disabled</code> a <code>prune</code> section stops the server at startup.</p>
