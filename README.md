@@ -76,8 +76,10 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   account; security-relevant API calls are written to an audit log on stderr and in the store,
   searchable with `GET /api/v1/audit` (see docs/audit-log.md). Users persist
   across restarts with `store.dialect: postgres`; otherwise they are kept in memory.
-  Connection strings and passwords that flows and the store use are read from environment
-  variables or from secret files in `secrets.dir` (default `/run/secrets`), never from the flows.
+  Connection strings and passwords that flows use are read from environment variables or from
+  secret files in `secrets.dir` (default `/run/secrets`), never from the flows; the store's
+  connection string is `store.dsn` in the configuration file or, with `store.dsnEnv`, such a
+  secret.
 - **Configuration management** (API and CLI): user administration; the config map, global
   scripts, and settings; code snippets and libraries; alert definitions (stored and validated;
   they do not send notifications yet); whole-configuration export and import; and checking a

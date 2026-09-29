@@ -119,3 +119,41 @@ func TestEnvFallbacks(t *testing.T) {
 		t.Errorf("unreadable = %v", err)
 	}
 }
+
+// TestEnvLinks: a link inside the secrets directory (as Kubernetes mounts
+// secrets) is followed; one to outside it is refused; a lone trailing
+// carriage return is kept.
+func TestEnvLinks(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "passwd")
+	dir := t.TempDir()
+	for name, content := range map[string]string{outside: "not a secret", filepath.Join(dir, "..data"): "", filepath.Join(dir, "CR"): "c\r"} {
+		if name == filepath.Join(dir, "..data") {
+			if err := os.Mkdir(name, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err := os.WriteFile(name, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "..data", "K8S"), []byte("projected\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for link, target := range map[string]string{"K8S": filepath.Join("..data", "K8S"), "ESCAPE": outside} {
+		if err := os.Symlink(target, filepath.Join(dir, link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := NewEnv(dir)
+	ctx := context.Background()
+	if got, err := e.Get(ctx, "K8S"); err != nil || string(got) != "projected" {
+		t.Errorf("K8S = %q, %v", got, err)
+	}
+	if got, err := e.Get(ctx, "ESCAPE"); !errors.Is(err, errOutside) {
+		t.Errorf("ESCAPE = %q, %v", got, err)
+	}
+	if got, err := e.Get(ctx, "CR"); err != nil || string(got) != "c\r" {
+		t.Errorf("CR = %q, %v", got, err)
+	}
+}

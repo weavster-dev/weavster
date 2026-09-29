@@ -39,13 +39,40 @@ func (e *Env) Get(_ context.Context, key string) ([]byte, error) {
 	if v := os.Getenv(key); v != "" {
 		return []byte(v), nil
 	}
-	b, err := os.ReadFile(filepath.Join(e.secretsDir, key))
+	path, err := e.inside(key)
+	var b []byte
+	if err == nil {
+		b, err = os.ReadFile(path)
+	}
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return nil, fmt.Errorf("%w: %q", ErrNotFound, key)
 	case err != nil:
 		return nil, fmt.Errorf("secrets: %w", err)
 	}
-	b = bytes.TrimSuffix(b, []byte("\n"))
-	return bytes.TrimSuffix(b, []byte("\r")), nil
+	if t, ok := bytes.CutSuffix(b, []byte("\r\n")); ok {
+		return t, nil
+	}
+	return bytes.TrimSuffix(b, []byte("\n")), nil
+}
+
+// errOutside refuses a secret file that is a link to outside the secrets
+// directory.
+var errOutside = errors.New("the file links to outside the secrets directory")
+
+// inside returns the file of key with its links resolved, which must stay
+// in the secrets directory (as Kubernetes' secret links do).
+func (e *Env) inside(key string) (string, error) {
+	dir, err := filepath.EvalSymlinks(e.secretsDir)
+	if err != nil {
+		return "", err
+	}
+	path, err := filepath.EvalSymlinks(filepath.Join(dir, key))
+	if err != nil {
+		return "", err
+	}
+	if rel, err := filepath.Rel(dir, path); err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("%q: %w", key, errOutside)
+	}
+	return path, nil
 }

@@ -315,6 +315,9 @@ echo 'postgres://weavster:the-password@db.internal:5432/weavster?sslmode=verify-
 - If `secrets.dir` is set to something other than `/run/secrets` and is not a directory, the
   server logs a warning at start and reads secrets from environment variables only.
 - Keep the directory readable by the server's account only (`chmod 0700`), and each file `0600`.
+- A secret file may be a link to another file in the directory (as Kubernetes mounts secrets); a
+  link to anywhere outside it is refused with `secret NAME: … links to outside the secrets directory`.
+- Only one trailing line ending (`\n` or `\r\n`) is removed.
 
 ### `auth`
 
