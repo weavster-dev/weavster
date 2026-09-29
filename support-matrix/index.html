@@ -576,7 +576,7 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <tr>
 <td>Golden transform tests: every supported input (JSON, HL7 v2, XML, delimited) and output (JSON, HL7 v2, XML, text) run through the real server to an HTTP destination; body and Content-Type compared</td>
 <td>Implemented (wired)</td>
-<td><code>TestTransformGolden</code> (<code>cmd/weavster/testdata/transforms/</code>).</td>
+<td><code>TestTransformGolden</code>, <code>TestGoldenFixtures</code> (<code>examples/golden/</code>: the same cases run through the server and offline by <code>weavster test</code>; CI job <code>golden</code> keeps the JUnit results).</td>
 </tr>
 <tr>
 <td>XML conversion without XSLT: XML view + steps + <code>build</code> xml</td>

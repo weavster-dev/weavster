@@ -616,13 +616,18 @@ then the own <code>transform</code> of each destination the message reaches. Not
 <td>not checked</td>
 </tr>
 <tr>
+<td><code>outputFile</code></td>
+<td>The flow's output, exactly as in this file (relative to the fixture file); instead of <code>outputText</code></td>
+<td>not checked</td>
+</tr>
+<tr>
 <td><code>excluded</code></td>
 <td>The destinations <code>destinationSet</code> steps left out (<code>[]</code>: none)</td>
 <td>not checked</td>
 </tr>
 <tr>
 <td><code>destinations.NAME</code></td>
-<td>That destination's own transform: <code>status</code>, <code>error</code>, <code>output</code>, <code>outputText</code> as above</td>
+<td>That destination's own transform: <code>status</code>, <code>error</code>, <code>output</code>, <code>outputText</code>, <code>outputFile</code> as above</td>
 <td>not checked</td>
 </tr>
 </tbody>
@@ -651,6 +656,25 @@ FAIL tests/adt/admit: output differs at patient.lastName: it is {&quot;patient&q
 <li>Numbers in <code>output</code> compare by exact value: <code>1</code> and <code>1.0</code> are equal, but two 20-digit ids that
   differ in the last digit are not.</li>
 </ul>
+<h3 id="a-complete-example">A complete example</h3>
+<p>The repository's <a href="https://github.com/weavster-dev/weavster/tree/main/examples/golden"><code>examples/golden</code></a>
+directory has one case per data format: HL7 v2 to JSON and to HL7 v2, XML to JSON and to XML (and
+one that is filtered), delimited text to JSON, and JSON to JSON and to text. Each case directory
+holds a one-flow <code>weavster.json</code>, the sample <code>input.*</code>, a fixture, and the <code>expected.*</code> output
+(except the filtered case, whose fixture expects <code>status: filtered</code> and has no output):</p>
+<pre><code class="language-yaml"># examples/golden/hl7v2-to-json/hl7v2-to-json.test.yaml
+flow: hl7v2-to-json
+cases:
+  - name: golden
+    inputFile: input.hl7
+    expect: {outputFile: expected.json}
+</code></pre>
+<pre><code class="language-bash">weavster test --format junit --output artifacts/ examples/golden
+</code></pre>
+<p>Weavster's own CI runs <code>weavster test --format junit --output artifacts/ examples/</code> (every example
+under <code>examples/</code>, these included), keeps <code>results.xml</code>, and sends the same cases through a
+running server to check that it produces the same outputs. Each case's fixture file is the one
+statement of what it expects, for both runs.</p>
 <h3 id="pitfalls">Pitfalls</h3>
 <ul>
 <li>A fixture only sees the documents under the paths you give. Pass the directory that holds both
