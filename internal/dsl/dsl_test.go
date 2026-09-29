@@ -233,6 +233,51 @@ func TestPathLookupEdges(t *testing.T) {
 	}
 }
 
+func TestCheckPath(t *testing.T) {
+	for _, tt := range []struct {
+		path string
+		want bool
+	}{
+		{"patient.name", true},
+		{"items.0.name", true},
+		{"", false},
+		{"patient..name", false},
+		{".patient", false},
+		{"patient.", false},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			err := CheckPath(tt.path)
+			if (err == nil) != tt.want {
+				t.Errorf("CheckPath(%q) error = %v, want valid=%v", tt.path, err, tt.want)
+			}
+		})
+	}
+}
+
+func TestLookup(t *testing.T) {
+	d := doc(t, `{"patient":{"name":"Ada"},"items":[{"name":"Grace"}],"scalar":"s"}`)
+	for _, tt := range []struct {
+		path string
+		want any
+		ok   bool
+	}{
+		{"patient.name", "Ada", true},
+		{"items.0.name", "Grace", true},
+		{"missing", nil, false},
+		{"items.1.name", nil, false},
+		{"items.name", nil, false},
+		{"scalar.child", nil, false},
+		{"patient..name", nil, false},
+	} {
+		t.Run(tt.path, func(t *testing.T) {
+			got, ok := Lookup(d, tt.path)
+			if ok != tt.ok || !reflect.DeepEqual(got, tt.want) {
+				t.Errorf("Lookup(%q) = (%#v, %v), want (%#v, %v)", tt.path, got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
 // TestDestinationSet: steps exclude destinations when their condition
 // holds (always without one), accumulate in order, and a filter that drops
 // the message returns no exclusions.
