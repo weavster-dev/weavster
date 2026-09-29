@@ -817,7 +817,7 @@ weavster server --config weavster.yaml
 <tbody>
 <tr>
 <td><code>driver</code></td>
-<td>Required. <code>postgres</code>, or <code>sqlite</code> (the connection string is then a database file path).</td>
+<td>Required. <code>postgres</code>, or <code>sqlite</code> (the connection string is then a database file path). A SQLite connection waits up to 5 seconds for a lock another program or flow holds on the file before failing with <code>database is locked</code>; a connection string that sets its own <code>_pragma=busy_timeout(…)</code> keeps it.</td>
 </tr>
 <tr>
 <td><code>dsnEnv</code></td>
@@ -1278,7 +1278,7 @@ each new order becomes a message such as:</p>
 <tbody>
 <tr>
 <td><code>driver</code></td>
-<td>Required. <code>postgres</code>, or <code>sqlite</code> (the connection string is then a database file path).</td>
+<td>Required. <code>postgres</code>, or <code>sqlite</code> (the connection string is then a database file path). A SQLite connection waits up to 5 seconds for a lock another program or flow holds on the file before failing with <code>database is locked</code>; a connection string that sets its own <code>_pragma=busy_timeout(…)</code> keeps it.</td>
 </tr>
 <tr>
 <td><code>dsnEnv</code></td>
