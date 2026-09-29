@@ -270,8 +270,10 @@ cases:
 weavster test --format junit --output artifacts/ examples/golden
 ```
 
-Weavster's own CI runs exactly this, keeps `results.xml`, and sends the same inputs through a
-running server to check that it produces the same outputs.
+Weavster's own CI runs `weavster test --format junit --output artifacts/ examples/` (every example
+under `examples/`, these included), keeps `results.xml`, and sends the same cases through a
+running server to check that it produces the same outputs. Each case's fixture file is the one
+statement of what it expects, for both runs.
 
 ### Pitfalls
 

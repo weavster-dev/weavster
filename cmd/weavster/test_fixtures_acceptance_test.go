@@ -277,3 +277,30 @@ func TestFixtureStrictness(t *testing.T) {
 		}
 	}
 }
+
+// TestFixtureOutputFile: outputFile compares exactly, is read only once the
+// status is as expected, and cannot be combined with outputText; the same
+// holds for a destination's.
+func TestFixtureOutputFile(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{
+		"f.yaml":      "version: \"1\"\nflows:\n  f:\n    id: f\n    transform: {steps: [{map: {from: a, to: b}}]}\n    destinations: [{name: d, type: file, dir: /x, transform: {steps: [{map: {from: b, to: c}}]}}]\n",
+		"out.json":    `{"a":1,"b":1}`,
+		"dest.json":   `{"a":1,"b":1,"c":1}`,
+		"f.test.yaml": "flow: f\ncases:\n  - {name: file, input: '{\"a\":1}', expect: {outputFile: out.json, destinations: {d: {outputFile: dest.json}}}}\n  - {name: both, input: '{\"a\":1}', expect: {outputFile: out.json, outputText: x}}\n  - {name: missing file, input: '{\"a\":1}', expect: {outputFile: nope.json}}\n  - {name: status first, input: 'bad', expect: {outputFile: nope.json}}\n  - {name: dest missing, input: '{\"a\":1}', expect: {destinations: {d: {outputFile: nope.json}}}}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out, errb bytes.Buffer
+	run([]string{"test", "--format", "json", dir}, strings.NewReader(""), &out, &errb)
+	for _, want := range []string{"f/both: give outputText or outputFile, not both", "f/missing file: outputFile: open", "f/status first: status is errored (", "f/dest missing: destination d: outputFile: open"} {
+		if !strings.Contains(errb.String(), want) {
+			t.Errorf("stderr lacks %q:\n%s", want, errb.String())
+		}
+	}
+	if strings.Contains(errb.String(), "f/file:") {
+		t.Errorf("the outputFile case failed:\n%s", errb.String())
+	}
+}

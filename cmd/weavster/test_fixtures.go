@@ -272,11 +272,7 @@ func runCase(f pipeline.Flow, dir string, c fixtureCase) error {
 	}
 	got := pipeline.Run(f, input)
 	e := c.Expect
-	text, err := outputText(dir, e.OutputText, e.OutputFile)
-	if err != nil {
-		return err
-	}
-	if err := checkResult("", e.Status, e.Error, e.Output, text, got.Status, got.Error, got.Output); err != nil {
+	if err := checkResult(dir, "", e.Status, e.Error, e.Output, e.OutputText, e.OutputFile, got.Status, got.Error, got.Output); err != nil {
 		return err
 	}
 	if e.Excluded != nil && !slices.Equal(sorted(e.Excluded), got.Excluded) {
@@ -293,11 +289,7 @@ func runCase(f pipeline.Flow, dir string, c fixtureCase) error {
 		if !ok {
 			return fmt.Errorf("destination %s: no transform result (it has no transform of its own, is excluded, or does not exist)", n)
 		}
-		text, err := outputText(dir, de.OutputText, de.OutputFile)
-		if err != nil {
-			return fmt.Errorf("destination %s: %w", n, err)
-		}
-		if err := checkResult("destination "+n+": ", de.Status, de.Error, de.Output, text, dr.Status, dr.Error, dr.Output); err != nil {
+		if err := checkResult(dir, "destination "+n+": ", de.Status, de.Error, de.Output, de.OutputText, de.OutputFile, dr.Status, dr.Error, dr.Output); err != nil {
 			return err
 		}
 	}
@@ -346,8 +338,9 @@ func sorted(s []string) []string {
 	return out
 }
 
-// checkResult compares a status, error, and output with the expected ones.
-func checkResult(prefix, wantStatus, wantErr string, wantOutput jsonValue, wantText *string, status, errText string, output []byte) error {
+// checkResult compares a status, error, and output with the expected ones;
+// an outputFile (in dir) is read only once the status is as expected.
+func checkResult(dir, prefix, wantStatus, wantErr string, wantOutput jsonValue, wantText *string, wantFile string, status, errText string, output []byte) error {
 	if wantStatus == "" {
 		wantStatus = "transformed"
 	}
@@ -359,6 +352,10 @@ func checkResult(prefix, wantStatus, wantErr string, wantOutput jsonValue, wantT
 	}
 	if wantErr != "" && !strings.Contains(errText, wantErr) {
 		return fmt.Errorf("%serror is %q, want it to contain %q", prefix, errText, wantErr)
+	}
+	wantText, err := outputText(dir, wantText, wantFile)
+	if err != nil {
+		return fmt.Errorf("%s%w", prefix, err)
 	}
 	if wantText != nil && string(output) != *wantText {
 		return fmt.Errorf("%soutput is %q, want %q", prefix, output, *wantText)
