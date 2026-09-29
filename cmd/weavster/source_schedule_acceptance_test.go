@@ -14,7 +14,7 @@ import (
 // instead of an interval; a schedule that is not cron, one set together
 // with pollIntervalMs, and one on an http source are refused.
 func TestSourceSchedules(t *testing.T) {
-	dbFile := filepath.Join(t.TempDir(), "his.db")
+	dbFile := filepath.Join(t.TempDir(), "his.db") + sqliteShared
 	db, err := sql.Open("sqlite", dbFile)
 	if err != nil {
 		t.Fatal(err)

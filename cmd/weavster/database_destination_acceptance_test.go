@@ -17,7 +17,7 @@ import (
 // success inserts nothing; an unset dsnEnv or a missing table fails the
 // delivery; invalid definitions are refused.
 func TestDatabaseDestination(t *testing.T) {
-	dbFile := filepath.Join(t.TempDir(), "lab.db")
+	dbFile := filepath.Join(t.TempDir(), "lab.db") + sqliteShared
 	db, err := sql.Open("sqlite", dbFile)
 	if err != nil {
 		t.Fatal(err)
@@ -84,7 +84,7 @@ func TestDatabaseDestination(t *testing.T) {
 		if status != "queued" {
 			t.Errorf("%s: status %s, want queued", fid, status)
 		}
-		deadline := time.Now().Add(5 * time.Second)
+		deadline := time.Now().Add(15 * time.Second) // beyond a lock wait (5 s)
 		for {
 			_, body, _ := c.do(http.MethodGet, "/api/v1/messages/"+mid, "", admin)
 			if strings.Contains(body, want) {
