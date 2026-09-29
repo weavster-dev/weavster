@@ -7,6 +7,7 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- `GET /metrics` in the Prometheus text format (#381): `weavster_flow_messages_total` and `weavster_connector_messages_total` by outcome, `weavster_flows` by status, `weavster_processing_in_flight`, `_slots` and `_refused_total`, plus Go runtime and process metrics. The values are read from the server's statistics at scrape time. It needs credentials with `flows:view` but not the CSRF marker, so Prometheus `basic_auth` works.
 - Message pruning (#375): `prune.maxAgeHours` and `prune.maxMessages` remove finished messages (`sent`, `filtered`, `errored`, `dead-lettered`) that are too old or past a count, every `prune.intervalMinutes`. `GET /api/v1/system/prune` shows the status, and `POST /api/v1/system/prune/start` and `/stop` run or stop a pass. Busy messages are skipped, and each pass records a `messages.pruned` event.
 - `phi.access` audit entries record what a read disclosed (#373): a search or an export gives the number of messages and every id (`messages`, `messages.ids` as a JSON array), and a content read gives the part (`raw` when none was asked for).
 - Message search by id range (`idFrom`, `idTo`), format (`contentType`), attempts (`minAttempts`, `maxAttempts`), and metadata (`metadata.KEY=VALUE`, up to 10) as well as flow, status, and time, with the total number of matches in `X-Total-Count` (#371). Export and bulk removal take the same filters.

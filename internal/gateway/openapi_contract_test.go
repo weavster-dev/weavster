@@ -56,7 +56,8 @@ func TestOpenAPIMatchesRoutes(t *testing.T) {
 		}
 	}
 	routed := map[string]bool{}
-	mux, ok := New(Config{}).Router().(*chi.Mux)
+	// Optional routes mounted as the server mounts them.
+	mux, ok := New(Config{Metrics: http.NotFoundHandler()}).Router().(*chi.Mux)
 	if !ok {
 		t.Fatal("router is not a chi mux")
 	}
@@ -85,12 +86,12 @@ func TestOpenAPIMatchesRoutes(t *testing.T) {
 	}
 }
 
-// TestOpenAPIVersionHeader: every response of a versioned operation declares
-// the Weavster-API-Version header the server sends.
+// TestOpenAPIVersionHeader: every response of a versioned operation
+// (under /api/v1) declares the Weavster-API-Version header the server sends.
 func TestOpenAPIVersionHeader(t *testing.T) {
 	for path, item := range loadSpec(t).Paths.Map() {
-		if path == "/api/openapi.yaml" {
-			continue
+		if !strings.HasPrefix(path, "/api/"+APIVersion+"/") {
+			continue // /api/openapi.yaml, /metrics
 		}
 		for method, op := range item.Operations() {
 			for status, resp := range op.Responses.Map() {

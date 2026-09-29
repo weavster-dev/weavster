@@ -89,7 +89,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
 - **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
   scheduler, the other adapters (SMTP, web service, and the earlier `DBSink`/`DBSource` library types), outbox, codecs other than
   HL7 v2, XML, and delimited, WASM compiler/executor/registry, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
-  metrics/tracing.
+  tracing. Prometheus metrics are served at `GET /metrics` (see docs/metrics.md).
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.
 - **Build**: CI verifies static `CGO_ENABLED=0` builds for linux/amd64, linux/arm64,
   darwin/arm64 and a distroless non-root image. No release artifacts are published.

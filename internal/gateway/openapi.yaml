@@ -106,6 +106,14 @@ paths:
       responses:
         default: {$ref: "#/components/responses/Error"}
         "200": {description: "{guid}", content: {application/json: {schema: {type: object, properties: {guid: {type: string, format: uuid}}}, example: {"guid": "2f1c6b0e-5c2a-4b7e-9a41-7d3b1f0e8c55"}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /metrics:
+    get:
+      summary: "Prometheus metrics: messages by flow, connector, and outcome; flows by status; processing slots (requires flows:view; no CSRF marker needed)"
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: Prometheus text exposition format, content: {text/plain: {schema: {type: string}, example: "weavster_flow_messages_total{flow=\"adt\",outcome=\"sent\"} 120\n"}}}
+        "401": {description: Missing or wrong credentials}
+        "403": {description: The user lacks flows:view}
   /api/v1/system/prune:
     get:
       summary: "Message pruning: the configured limits, whether a pass is running, the last pass, and the next (requires messages:view)"

@@ -24,7 +24,8 @@ type processLimit struct {
 
 	mu       sync.Mutex
 	loggedAt time.Time
-	refused  int // refusals since the last log line
+	refused  int   // refusals since the last log line
+	total    int64 // every refusal (weavster_processing_refused_total)
 }
 
 func newProcessLimit(cfg serverconfig.Processing, stopped <-chan struct{}, logger *slog.Logger) *processLimit {
@@ -62,10 +63,19 @@ func (l *processLimit) noteRefusal() {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.refused++
+	l.total++
 	if l.logger == nil || time.Since(l.loggedAt) < busyLogInterval {
 		return
 	}
 	l.logger.Warn("processing limit reached: messages refused as busy (see processing.maxConcurrent)",
 		"refused", l.refused, "maxConcurrent", cap(l.slots))
 	l.loggedAt, l.refused = time.Now(), 0
+}
+
+// usage is how many slots are taken, how many there are, and how many
+// messages were refused for lack of one.
+func (l *processLimit) usage() (inFlight, slots int, refused int64) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return len(l.slots), cap(l.slots), l.total
 }

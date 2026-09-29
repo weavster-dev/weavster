@@ -16,6 +16,7 @@ nav:
   - Local Development with Docker Compose: docker-compose.md
   - Capacity and Limits: limits.md
   - Authentication: authentication.md
+  - Metrics: metrics.md
   - Command-line client: cli.md
   - REST API: api.md
   - API errors: api-errors.md
