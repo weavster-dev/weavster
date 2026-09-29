@@ -43,7 +43,7 @@ func TestHarness(t *testing.T) {
 	})
 	t.Run("killed", func(t *testing.T) {
 		o := opts
-		o.Password, o.Env = "Given-Password-1", []string{"WEAVSTER_E2E=1"}
+		o.Password, o.Env = "Given-Password-1", []string{"WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD=Other-Password-1"}
 		s, err := Start(bin, t.TempDir(), o)
 		if err != nil || s.Password != o.Password {
 			t.Fatalf("start with a given password: %v", err)

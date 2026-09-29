@@ -81,7 +81,9 @@ func Start(bin, dir string, o Options) (*Server, error) {
 		s.Password = "E2e-" + hex.EncodeToString(b) + "-Pw1"
 	}
 	s.cmd = exec.Command(bin, "server", "--config", path)
-	s.cmd.Env = append(append(os.Environ(), "WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD="+s.Password), o.Env...)
+	// The password comes last, so it wins over any value in o.Env: Start
+	// relies on it to tell this server apart.
+	s.cmd.Env = append(append(os.Environ(), o.Env...), "WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD="+s.Password)
 	s.cmd.Stdout, s.cmd.Stderr = s.log, s.log
 	if err := s.cmd.Start(); err != nil {
 		return nil, err
