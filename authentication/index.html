@@ -177,6 +177,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#preferences-sign-in-status-and-password-checks" class="nav-link">Preferences, sign-in status, and password checks</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#cli" class="nav-link">CLI</a>
               <ul class="nav flex-column">
               </ul>
@@ -310,7 +314,7 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 </thead>
 <tbody>
 <tr>
-<td><code>GET /api/v1/system</code> and <code>/api/v1/system/about</code>, <code>/password-requirements</code>, <code>/resources</code>, <code>/guid</code>, <code>/api/v1/auth/me</code>, <code>POST /api/v1/auth/password</code>, <code>POST /api/v1/auth/logout</code></td>
+<td><code>GET /api/v1/system</code> and <code>/api/v1/system/about</code>, <code>/password-requirements</code>, <code>/resources</code>, <code>/guid</code>, <code>/api/v1/auth/me</code>, <code>POST /api/v1/auth/password</code>, <code>/api/v1/auth/password/check</code>, <code>POST /api/v1/auth/logout</code></td>
 <td>any signed-in user</td>
 </tr>
 <tr>
@@ -368,6 +372,10 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <tr>
 <td><code>GET/POST /api/v1/users</code>, <code>GET/PUT/DELETE /api/v1/users/{name}</code>, <code>POST /api/v1/users/{name}/password</code></td>
 <td><code>users:admin</code></td>
+</tr>
+<tr>
+<td><code>GET/PUT /api/v1/users/{name}/preferences</code>, <code>GET /api/v1/users/{name}/loggedin</code></td>
+<td>the user named, or <code>users:admin</code></td>
 </tr>
 <tr>
 <td><code>/api/v1/configmap</code>, <code>/api/v1/configmap/{name}</code> (all methods)</td>
@@ -474,6 +482,45 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <li>Invalid input returns <code>400</code> with the reason, an existing username <code>409</code>, and an unknown user
   <code>404</code>.</li>
 </ul>
+<h2 id="preferences-sign-in-status-and-password-checks">Preferences, sign-in status, and password checks</h2>
+<p>Each user can keep their own preferences: a JSON object of names to text values, such as a UI
+theme or a default flow. <code>PUT</code> replaces the whole set; <code>GET</code> returns it (<code>{}</code> when none).</p>
+<pre><code class="language-bash">curl -s -u 'ops:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT \
+  http://127.0.0.1:8080/api/v1/users/ops/preferences -d '{&quot;theme&quot;:&quot;dark&quot;,&quot;dashboard.flow&quot;:&quot;adt&quot;}'
+curl -s -u 'ops:PASSWORD' http://127.0.0.1:8080/api/v1/users/ops/preferences
+</code></pre>
+<pre><code class="language-json">{&quot;dashboard.flow&quot;:&quot;adt&quot;,&quot;theme&quot;:&quot;dark&quot;}
+</code></pre>
+<ul>
+<li>Preferences are stored with the account, so they are kept across restarts on a PostgreSQL
+  store, and deleted with the account.</li>
+<li>Up to 100 preferences; each name is 1–100 characters and each value text of at most 4096 bytes.
+  Anything else, or a value that is not a string, returns <code>400</code>.</li>
+<li>A user reads and changes only their own; <code>users:admin</code> can reach anyone's, except that only an
+  account with <code>admin</code> can change the preferences of an account that has <code>admin</code>. Another user's
+  gets <code>403</code>, and an unknown user <code>404</code>.</li>
+<li>The request body is at most 1 MiB; a larger one returns <code>400</code> with <code>request body too large</code>.</li>
+</ul>
+<p><code>GET /api/v1/users/{name}/loggedin</code> tells whether the user has an open login session (a bearer
+token from <code>/api/v1/auth/login</code> that has not expired or been ended). Basic credentials are not
+sessions. The same rule applies: the user themselves, or <code>users:admin</code>.</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' http://127.0.0.1:8080/api/v1/users/ops/loggedin
+</code></pre>
+<pre><code class="language-json">{&quot;loggedIn&quot;:true,&quot;sessions&quot;:1}
+</code></pre>
+<p>An unknown user returns <code>404</code>. Sessions are held in memory, so
+after a restart every user shows <code>false</code> until they sign in again.</p>
+<p><code>POST /api/v1/auth/password/check</code> tells any signed-in user whether a candidate password meets
+<a href="../server-config/#auth"><code>auth.passwordPolicy</code></a>, without setting it:</p>
+<pre><code class="language-bash">curl -s -u 'ops:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
+  http://127.0.0.1:8080/api/v1/auth/password/check -d '{&quot;password&quot;:&quot;short&quot;}'
+</code></pre>
+<pre><code class="language-json">{&quot;valid&quot;:false,&quot;reason&quot;:&quot;password shorter than 8 characters&quot;}
+</code></pre>
+<p>A password that passes returns <code>{"valid":true}</code>. The check also works while the user must still
+change their password, so a sign-in screen can check the new one first. It does not look at the
+user's current password; a change to the same password is still refused by
+<code>POST /api/v1/auth/password</code>.</p>
 <h2 id="cli">CLI</h2>
 <p>Batch mode sends <code>-u</code>/<code>-p</code> as Basic credentials:</p>
 <pre><code class="language-bash">weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt

@@ -316,6 +316,11 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestUserAdministration</code>, <code>TestPermissionMatrix</code>. Permission <code>users:admin</code>. See <a href="../authentication/#manage-users">Authentication</a>.</td>
 </tr>
 <tr>
+<td>User preferences (<code>GET/PUT /api/v1/users/{name}/preferences</code>), sign-in status (<code>GET /api/v1/users/{name}/loggedin</code>), password check (<code>POST /api/v1/auth/password/check</code>)</td>
+<td>Implemented (wired)</td>
+<td><code>TestUserExtras</code>. Preferences are stored with the user. See <a href="../authentication/#preferences-sign-in-status-and-password-checks">Authentication</a>.</td>
+</tr>
+<tr>
 <td>Config map, global scripts, settings (<code>/api/v1/configmap</code>, <code>/scripts</code>, <code>/settings</code>; CLI <code>importmap</code>, <code>exportmap</code>, <code>importscripts</code>, <code>exportscripts</code>)</td>
 <td>Implemented (wired)</td>
 <td><code>TestConfigItems</code>. Stored and managed only: flows do not use the config map and scripts are not run yet. See <a href="../config-items/">Config map, scripts, and settings</a>.</td>
