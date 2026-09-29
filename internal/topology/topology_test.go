@@ -8,7 +8,7 @@ import (
 
 func TestOverview(t *testing.T) {
 	g := Overview([]FlowSummary{
-		{ID: "a", Name: "Patient Admit", Status: "started", Routes: []string{"b"}},
+		{ID: "a", Name: "Patient Admit", Status: "started", Routes: []Link{{Flow: "b", Status: "idle"}}},
 		{ID: "b", Name: "Billing", Status: "stopped"},
 	})
 	if g.SchemaVersion != "1" {
@@ -63,7 +63,7 @@ func TestFlowInternal(t *testing.T) {
 			{ID: "his", Label: "his", Status: "started", Activity: act, EdgeStatus: "errored"},
 			{ID: "billing", Label: "billing", Status: "stopped", EdgeStatus: "idle"},
 		},
-		Routes: []Route{{Destination: "billing", Flow: "b"}},
+		Routes: []Route{{Destination: "billing", Flow: "b", Status: "idle"}},
 	})
 	if g.FlowID != "flow:a" || g.FlowName != "Patient Admit" || g.FlowStatus != "started" {
 		t.Errorf("flow = %q %q %q", g.FlowID, g.FlowName, g.FlowStatus)
@@ -72,14 +72,14 @@ func TestFlowInternal(t *testing.T) {
 	for _, n := range g.Nodes {
 		ids = append(ids, n.ID)
 	}
-	if strings.Join(ids, " ") != "source:file transform:dsl:normalize destination:his destination:billing" {
+	if strings.Join(ids, " ") != "source:file transform:dsl:normalize destination:his destination:billing flow:b" {
 		t.Errorf("nodes = %v", ids)
 	}
 	want := []Edge{
 		{ID: "edge:source:file:path:transform:dsl:normalize", From: "source:file", To: "transform:dsl:normalize", Kind: EdgeMessagePath, Status: "active"},
 		{ID: "edge:transform:dsl:normalize:path:destination:his", From: "transform:dsl:normalize", To: "destination:his", Kind: EdgeMessagePath, Status: "errored", Activity: act},
 		{ID: "edge:transform:dsl:normalize:path:destination:billing", From: "transform:dsl:normalize", To: "destination:billing", Kind: EdgeMessagePath, Status: "idle"},
-		{ID: "edge:destination:billing:route:flow:b", From: "destination:billing", To: "flow:b", Kind: EdgeRoute, Label: "routeMessage('b')"},
+		{ID: "edge:destination:billing:route:flow:b", From: "destination:billing", To: "flow:b", Kind: EdgeRoute, Label: "routeMessage('b')", Status: "idle"},
 	}
 	if !reflect.DeepEqual(g.Edges, want) {
 		t.Errorf("edges = %+v", g.Edges)

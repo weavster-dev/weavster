@@ -63,7 +63,7 @@ func TestSupportMatrixWired(t *testing.T) {
 		{name: "flows-list", method: http.MethodGet, path: "/api/v1/flows", marker: true, want: http.StatusOK, contains: `"lab"`},
 		{name: "flows-get", method: http.MethodGet, path: "/api/v1/flows/lab", marker: true, want: http.StatusOK, contains: "Lab Results"},
 		{name: "topology-overview", method: http.MethodGet, path: "/api/v1/topology", marker: true, want: http.StatusOK, contains: "flow:lab"},
-		{name: "topology-flow", method: http.MethodGet, path: "/api/v1/topology/flows/lab", marker: true, want: http.StatusOK, contains: "source:"},
+		{name: "topology-flow", method: http.MethodGet, path: "/api/v1/topology/flows/lab", marker: true, want: http.StatusOK, contains: `"flowId":"flow:lab"`},
 		{name: "flows-delete", method: http.MethodDelete, path: "/api/v1/flows/lab", marker: true, want: http.StatusNoContent},
 		{name: "flows-delete-missing", method: http.MethodDelete, path: "/api/v1/flows/lab", marker: true, want: http.StatusNotFound},
 		{name: "flows-get-missing", method: http.MethodGet, path: "/api/v1/flows/lab", marker: true, want: http.StatusNotFound},

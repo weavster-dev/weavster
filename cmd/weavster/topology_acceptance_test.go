@@ -50,6 +50,15 @@ func TestTopologyGraphs(t *testing.T) {
 		if strings.Contains(body, `"activity":{`) && !strings.Contains(body, `"queued":`) {
 			t.Errorf("%s: activity without zero counters: %s", path, body)
 		}
+		ids := map[string]bool{}
+		for _, n := range g.Nodes {
+			ids[n.ID] = true
+		}
+		for _, e := range g.Edges {
+			if !ids[e.From] || !ids[e.To] {
+				t.Errorf("%s: edge %s ends at a node the graph does not have", path, e.ID)
+			}
+		}
 		return g
 	}
 	node := func(g topology.Graph, id string) topology.Node {
@@ -107,8 +116,11 @@ func TestTopologyGraphs(t *testing.T) {
 	if e := edge(g, "source:http", "transform:dsl:normalize"); e.Status != "active" || e.Activity.Received != 2 {
 		t.Errorf("source edge = %+v", e)
 	}
-	if e := edge(g, "destination:tobilling", "flow:billing"); e.Kind != topology.EdgeRoute {
+	if e := edge(g, "destination:tobilling", "flow:billing"); e.Kind != topology.EdgeRoute || e.Status != "idle" {
 		t.Errorf("route = %+v", e)
+	}
+	if n := node(g, "flow:billing"); n.Kind != topology.KindFlow || n.Label != "billing" {
+		t.Errorf("route target = %+v", n)
 	}
 	if g2 := graph("/api/v1/topology/flows/adt"); len(g2.Nodes) != len(g.Nodes) {
 		t.Errorf("the bare id gives %d nodes", len(g2.Nodes))
@@ -121,7 +133,9 @@ func TestTopologyGraphs(t *testing.T) {
 	if n := node(over, "flow:adt"); n.Activity.Received != 2 {
 		t.Errorf("adt = %+v %+v", n, n.Activity)
 	}
-	edge(over, "flow:adt", "flow:billing")
+	if e := edge(over, "flow:adt", "flow:billing"); e.Status != "idle" { // only through the stopped destination
+		t.Errorf("overview route = %+v", e)
+	}
 
 	stop()
 	if !restartable(t) {

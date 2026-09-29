@@ -4,6 +4,7 @@ import (
 	"bytes"
 	_ "embed"
 	"encoding/json"
+	"sync"
 
 	"github.com/santhosh-tekuri/jsonschema/v5"
 )
@@ -17,20 +18,25 @@ var Schema []byte
 
 const schemaID = "https://raw.githubusercontent.com/weavster-dev/weavster/main/agent-docs/schemas/topology.schema.json"
 
-var graphSchema = func() *jsonschema.Schema {
+// graphSchema compiles the schema the first time Validate needs it.
+var graphSchema = sync.OnceValues(func() (*jsonschema.Schema, error) {
 	c := jsonschema.NewCompiler()
 	c.AssertFormat = true
 	if err := c.AddResource(schemaID, bytes.NewReader(Schema)); err != nil {
-		panic(err)
+		return nil, err
 	}
-	return c.MustCompile(schemaID)
-}()
+	return c.Compile(schemaID)
+})
 
 // Validate checks a graph payload (JSON) against the schema.
 func Validate(payload []byte) error {
+	schema, err := graphSchema()
+	if err != nil {
+		return err
+	}
 	var v any
 	if err := json.Unmarshal(payload, &v); err != nil {
 		return err
 	}
-	return graphSchema.Validate(v)
+	return schema.Validate(v)
 }

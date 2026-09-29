@@ -333,14 +333,18 @@ func (ts *TimeSeries) Forget(flow string) {
 
 // Series returns the newest limit (0 = all) snapshots whose flow satisfies
 // keep, taken at or after from and at or before to (zero = open), in
-// recording order.
+// recording order. Snapshots are recorded in time order, so the search
+// stops at the first one before from.
 func (ts *TimeSeries) Series(keep func(flow string) bool, from, to time.Time, limit int) []TimeSeriesPoint {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	out := make([]TimeSeriesPoint, 0)
 	for i := len(ts.points) - 1; i >= 0 && (limit == 0 || len(out) < limit); i-- {
 		p := ts.points[i]
-		if keep(p.Flow) && (from.IsZero() || !p.At.Before(from)) && (to.IsZero() || !p.At.After(to)) {
+		if !from.IsZero() && p.At.Before(from) {
+			break
+		}
+		if keep(p.Flow) && (to.IsZero() || !p.At.After(to)) {
 			out = append(out, p)
 		}
 	}

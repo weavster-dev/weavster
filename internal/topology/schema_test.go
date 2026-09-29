@@ -23,7 +23,7 @@ func TestSchemaValidates(t *testing.T) {
 	act := &Activity{Received: 1, LastMessageAt: "2026-09-29T10:00:00Z"}
 	for name, g := range map[string]Graph{
 		"empty":    NewGraph(),
-		"overview": Overview([]FlowSummary{{ID: "a", Name: "A", Status: "started", Activity: act, Routes: []string{"b"}, Deps: []string{"b"}}, {ID: "b", Status: "errored"}}),
+		"overview": Overview([]FlowSummary{{ID: "a", Name: "A", Status: "started", Activity: act, Routes: []Link{{Flow: "b", Status: "active"}}, Deps: []string{"b"}}, {ID: "b", Status: "errored"}}),
 		"flow": FlowInternal(FlowDetail{ID: "a", Status: "started", Source: &Part{ID: "http", Label: "http", Status: "started", Activity: act, EdgeStatus: "active"},
 			Transform: &Part{ID: "dsl:t", Label: "t", Meta: map[string]string{"steps": "2"}}, Destinations: []Part{{ID: "d", Label: "d", Status: "stopped", EdgeStatus: "idle"}},
 			Routes: []Route{{Destination: "d", Flow: "b"}}}),

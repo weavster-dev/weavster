@@ -8,6 +8,7 @@ import (
 	"github.com/weavster-dev/weavster/internal/flowdef"
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/observability"
+	"github.com/weavster-dev/weavster/internal/topology"
 )
 
 // TestSourceLabel: a source is named by where its messages come from,
@@ -23,7 +24,6 @@ func TestSourceLabel(t *testing.T) {
 		{gateway.Flow{Source: &flowdef.Source{Type: "mllp", Address: ":2575"}}, "mllp://:2575"},
 		{gateway.Flow{Source: &flowdef.Source{Type: "database", Driver: "postgres", DSNEnv: "WEAVSTER_DB_HIS"}}, "database:postgres"},
 		{gateway.Flow{Source: &flowdef.Source{Type: "other"}}, "other"},
-		{gateway.Flow{SourceType: "http"}, "http"},
 	} {
 		if got := sourceLabel(tt.f); got != tt.want {
 			t.Errorf("%+v = %q, want %q", tt.f.Source, got, tt.want)
@@ -52,21 +52,38 @@ func TestTransformSummary(t *testing.T) {
 	}
 }
 
-// TestTopologyRecent: counters below the window's first sample (a lifetime
-// reset) count from zero, per flow and per destination.
+// TestTopologyRecent: what was counted in the window adds up the increases
+// between samples, so a lifetime reset in between counts from zero, per
+// flow and per destination; the window starts at the newest sample before
+// it.
 func TestTopologyRecent(t *testing.T) {
-	got := since(observability.FlowStats{Sent: 2, Errored: 5, Connectors: map[string]observability.ConnectorStats{"d": {Sent: 1, Errored: 9}}},
-		observability.FlowStats{Sent: 10, Errored: 1, Connectors: map[string]observability.ConnectorStats{"d": {Sent: 4, Errored: 3}}})
-	if got.Sent != 2 || got.Errored != 4 || got.Connectors["d"] != (observability.ConnectorStats{Sent: 1, Errored: 6}) {
-		t.Errorf("since = %+v", got)
+	c := func(sent, errored int64) observability.FlowStats {
+		return observability.FlowStats{Sent: sent, Errored: errored, Connectors: map[string]observability.ConnectorStats{"d": {Sent: sent, Errored: errored}}}
+	}
+	// 10 errors before the window; a reset; then 12 errors.
+	got := increase([]observability.FlowStats{c(5, 10), c(0, 0), c(0, 12)})
+	if got.Sent != 0 || got.Errored != 12 || got.Connectors["d"] != (observability.ConnectorStats{Errored: 12}) {
+		t.Errorf("increase = %+v", got)
 	}
 
+	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
 	stats := observability.NewStatsRegistry()
 	series := observability.NewTimeSeries(time.Hour, 10)
-	now := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
-	series.RecordAll(now.Add(-10*time.Minute), map[string]observability.FlowStats{"a": {}}) // before the window
 	ta := topologyAdapter{stats: stats, series: series, now: func() time.Time { return now }}
-	if st := ta.state(gateway.Flow{ID: "a", Status: "started"}); st.ok || st.edge(1, 0) != "idle" {
-		t.Errorf("no recent sample: %+v", st)
+	flow := gateway.Flow{ID: "a", Status: "started"}
+	if st := ta.state(flow, ta.snapshot()); st.ok || st.edge(1, 0) != "idle" {
+		t.Errorf("no sample: %+v", st)
+	}
+	// A sample long before the window (a slow sampleIntervalMs) is the base.
+	series.RecordAll(now.Add(-10*time.Minute), map[string]observability.FlowStats{"a": {}})
+	stats.IncConnector("a", "d", observability.Errored)
+	if st := ta.state(flow, ta.snapshot()); !st.ok || st.status(0, st.recent.Connectors["d"].Errored) != "errored" {
+		t.Errorf("with an older sample: %+v", st)
+	}
+	if mergeEdge("idle", "active") != "active" || mergeEdge("", "errored") != "errored" || mergeEdge("", "") != "" {
+		t.Error("mergeEdge")
+	}
+	if a := add(&topology.Activity{Sent: 1}, &topology.Activity{Sent: 2}); a.Sent != 3 || add(nil, nil) != nil {
+		t.Errorf("add = %+v", a)
 	}
 }

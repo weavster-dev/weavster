@@ -6,8 +6,15 @@ type FlowSummary struct {
 	Name     string
 	Status   string
 	Activity *Activity
-	Routes   []string // destination flow ids (inter-flow routes)
+	Routes   []Link   // inter-flow routes, by target flow
 	Deps     []string // deployment dependency flow ids
+}
+
+// Link is a route to another flow with the traffic across it.
+type Link struct {
+	Flow     string
+	Status   string
+	Activity *Activity
 }
 
 // Overview builds the overview graph: flow nodes with route/dependency edges
@@ -17,14 +24,15 @@ func Overview(flows []FlowSummary) Graph {
 	for _, f := range flows {
 		node := Node{ID: "flow:" + f.ID, Kind: KindFlow, Label: f.Name, Status: f.Status, Activity: f.Activity}
 		g.Nodes = append(g.Nodes, node)
-		for _, to := range f.Routes {
+		for _, r := range f.Routes {
 			g.Edges = append(g.Edges, Edge{
-				ID:     "edge:flow:" + f.ID + ":route:flow:" + to,
-				From:   "flow:" + f.ID,
-				To:     "flow:" + to,
-				Kind:   EdgeRoute,
-				Label:  "routeMessage('" + to + "')",
-				Status: "active",
+				ID:       "edge:flow:" + f.ID + ":route:flow:" + r.Flow,
+				From:     "flow:" + f.ID,
+				To:       "flow:" + r.Flow,
+				Kind:     EdgeRoute,
+				Label:    "routeMessage('" + r.Flow + "')",
+				Status:   r.Status,
+				Activity: r.Activity,
 			})
 		}
 		for _, dep := range f.Deps {

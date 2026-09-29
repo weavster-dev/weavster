@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/weavster-dev/weavster/internal/compiler"
 	"github.com/weavster-dev/weavster/internal/flowlife"
 	"github.com/weavster-dev/weavster/internal/gateway"
 	"github.com/weavster-dev/weavster/internal/observability"
@@ -32,15 +33,32 @@ func (t topologyAdapter) Overview(ctx context.Context) (topology.Graph, error) {
 	if err != nil {
 		return topology.Graph{}, err
 	}
+	snap := t.snapshot()
 	summaries := make([]topology.FlowSummary, 0, len(flows))
 	for _, f := range flows {
-		var routes []string
+		st := t.state(f, snap)
+		var routes []topology.Link
 		for _, d := range f.Destinations {
-			if d.Type == "flow" && d.Flow != "" && !slices.Contains(routes, d.Flow) {
-				routes = append(routes, d.Flow)
+			if d.Type != "flow" || d.Flow == "" {
+				continue
+			}
+			i := slices.IndexFunc(routes, func(l topology.Link) bool { return l.Flow == d.Flow })
+			if i < 0 {
+				routes = append(routes, topology.Link{Flow: d.Flow})
+				i = len(routes) - 1
+			}
+			if slices.Contains(f.StoppedDestinations, d.Name) {
+				continue // nothing crosses a stopped destination
+			}
+			cur, rec := st.connector(d.Name)
+			routes[i].Activity = add(routes[i].Activity, st.connectorActivity(cur))
+			routes[i].Status = mergeEdge(routes[i].Status, st.edge(rec.Sent, rec.Errored))
+		}
+		for i := range routes {
+			if routes[i].Status == "" {
+				routes[i].Status = "idle"
 			}
 		}
-		st := t.state(f)
 		summaries = append(summaries, topology.FlowSummary{ID: f.ID, Name: f.Name, Status: st.status(st.recent.Sent, st.recent.Errored),
 			Activity: st.activity(), Routes: routes, Deps: f.DependsOn})
 	}
@@ -54,20 +72,20 @@ func (t topologyAdapter) FlowInternal(ctx context.Context, id string) (topology.
 	if err != nil {
 		return topology.Graph{}, err
 	}
-	st := t.state(f)
+	st := t.state(f, t.snapshot())
 	status := st.status(st.recent.Sent, st.recent.Errored)
 	detail := topology.FlowDetail{ID: f.ID, Name: f.Name, Status: status}
-	if typ := f.SourceKind(); typ != "" {
+	if src := f.Source; src != nil {
 		format := f.InputFormat
 		if format == "" {
 			format = "json"
 		}
-		src := &topology.Part{ID: typ, Label: sourceLabel(f), Status: st.lifecycle, Meta: map[string]string{"connectorType": typ, "dataType": format},
+		part := &topology.Part{ID: src.Type, Label: sourceLabel(f), Status: st.lifecycle, Meta: map[string]string{"connectorType": src.Type, "dataType": format},
 			EdgeStatus: st.edge(st.recent.Received, 0)}
-		if st.current != nil {
-			src.Activity = &topology.Activity{Received: st.current.Received, LastMessageAt: st.lastMessage()}
+		if st.current != nil { // every message the flow received: from the source and through the API
+			part.Activity = &topology.Activity{Received: st.current.Received, LastMessageAt: st.lastMessage()}
 		}
-		detail.Source = src
+		detail.Source = part
 	}
 	if name, steps, ok := transformSummary(f.Transform); ok {
 		detail.Transform = &topology.Part{ID: "dsl:" + name, Label: name, Status: status, Activity: st.activity(),
@@ -75,27 +93,40 @@ func (t topologyAdapter) FlowInternal(ctx context.Context, id string) (topology.
 	}
 	for _, d := range f.Destinations {
 		cur, rec := st.connector(d.Name)
-		part := topology.Part{ID: d.Name, Label: d.Name, Meta: map[string]string{"connectorType": d.Type}}
+		part := topology.Part{ID: d.Name, Label: d.Name, Meta: map[string]string{"connectorType": d.Type},
+			Status: st.status(rec.Sent, rec.Errored), EdgeStatus: st.edge(rec.Sent, rec.Errored), Activity: st.connectorActivity(cur)}
+		if slices.Contains(f.StoppedDestinations, d.Name) {
+			part.EdgeStatus = "idle" // nothing crosses a stopped destination
+			if st.started {
+				part.Status = "stopped"
+			}
+		}
 		if d.Type == "flow" {
 			part.Meta["flow"] = d.Flow
-			detail.Routes = append(detail.Routes, topology.Route{Destination: d.Name, Flow: d.Flow})
-		}
-		part.Status = st.status(rec.Sent, rec.Errored)
-		if st.started && slices.Contains(f.StoppedDestinations, d.Name) {
-			part.Status = "stopped"
-		}
-		part.EdgeStatus = st.edge(rec.Sent, rec.Errored)
-		if st.current != nil {
-			part.Activity = &topology.Activity{Received: cur.Received, Sent: cur.Sent, Errored: cur.Errored, Queued: cur.Queued}
+			detail.Routes = append(detail.Routes, topology.Route{Destination: d.Name, Flow: d.Flow, Status: part.EdgeStatus, Activity: part.Activity})
 		}
 		detail.Destinations = append(detail.Destinations, part)
 	}
 	return topology.FlowInternal(detail), nil
 }
 
+// statsSnapshot is every flow's current and lifetime statistics, taken at
+// one instant for a whole graph.
+type statsSnapshot struct {
+	current, lifetime map[string]observability.FlowStats
+}
+
+func (t topologyAdapter) snapshot() statsSnapshot {
+	if t.stats == nil {
+		return statsSnapshot{}
+	}
+	cur, life := t.stats.Snapshots()
+	return statsSnapshot{current: cur, lifetime: life}
+}
+
 // flowState is what the topology shows of one flow's traffic: its current
-// counters, and the deliveries of the last topologyWindow (ok false when
-// no sample is that recent).
+// counters, and what was counted in the last topologyWindow (ok false when
+// no sample covers it).
 type flowState struct {
 	lifecycle string // flowlife state
 	started   bool
@@ -104,13 +135,13 @@ type flowState struct {
 	ok        bool
 }
 
-func (t topologyAdapter) state(f gateway.Flow) flowState {
+func (t topologyAdapter) state(f gateway.Flow, snap statsSnapshot) flowState {
 	lifecycle := flowlife.Normalize(f.Status)
 	st := flowState{lifecycle: lifecycle, started: lifecycle == flowlife.Started}
-	if t.stats == nil {
+	if snap.current == nil {
 		return st
 	}
-	cur := t.stats.Snapshot(f.ID, false)
+	cur := snap.current[f.ID]
 	st.current = &cur
 	if t.series == nil {
 		return st
@@ -119,29 +150,44 @@ func (t topologyAdapter) state(f gateway.Flow) flowState {
 	if t.now != nil {
 		now = t.now()
 	}
-	samples := t.series.Series(func(id string) bool { return id == f.ID }, now.Add(-topologyWindow), time.Time{}, 0)
-	if len(samples) == 0 {
+	cutoff := now.Add(-topologyWindow)
+	keep := func(id string) bool { return id == f.ID }
+	// The newest sample at or before the window's start, then those in it.
+	points := t.series.Series(keep, time.Time{}, cutoff.Add(-time.Nanosecond), 1)
+	points = append(points, t.series.Series(keep, cutoff, time.Time{}, 0)...)
+	if len(points) == 0 {
 		return st
 	}
-	st.recent, st.ok = since(t.stats.Snapshot(f.ID, true), samples[0].Stats), true
+	counts := make([]observability.FlowStats, 0, len(points)+1)
+	for _, p := range points {
+		counts = append(counts, p.Stats)
+	}
+	st.recent, st.ok = increase(append(counts, snap.lifetime[f.ID])), true
 	return st
 }
 
-// since is what was counted after base, per flow and per connector; a
-// counter below base (a lifetime reset) counts from zero.
-func since(now, base observability.FlowStats) observability.FlowStats {
+// increase adds up what was counted from one lifetime snapshot to the
+// next, per flow and per connector; a counter that went down (a lifetime
+// reset) counts from zero.
+func increase(counts []observability.FlowStats) observability.FlowStats {
 	d := func(a, b int64) int64 {
-		if a < b {
-			return a
+		if b < a {
+			return b
 		}
-		return a - b
+		return b - a
 	}
-	out := observability.FlowStats{Received: d(now.Received, base.Received), Sent: d(now.Sent, base.Sent),
-		Errored: d(now.Errored, base.Errored), Queued: d(now.Queued, base.Queued), Connectors: map[string]observability.ConnectorStats{}}
-	for name, c := range now.Connectors {
-		b := base.Connectors[name]
-		out.Connectors[name] = observability.ConnectorStats{Received: d(c.Received, b.Received), Sent: d(c.Sent, b.Sent),
-			Errored: d(c.Errored, b.Errored), Queued: d(c.Queued, b.Queued)}
+	out := observability.FlowStats{Connectors: map[string]observability.ConnectorStats{}}
+	for i := 1; i < len(counts); i++ {
+		a, b := counts[i-1], counts[i]
+		out.Received += d(a.Received, b.Received)
+		out.Sent += d(a.Sent, b.Sent)
+		out.Errored += d(a.Errored, b.Errored)
+		out.Queued += d(a.Queued, b.Queued)
+		for name, cb := range b.Connectors {
+			ca, c := a.Connectors[name], out.Connectors[name]
+			out.Connectors[name] = observability.ConnectorStats{Received: c.Received + d(ca.Received, cb.Received), Sent: c.Sent + d(ca.Sent, cb.Sent),
+				Errored: c.Errored + d(ca.Errored, cb.Errored), Queued: c.Queued + d(ca.Queued, cb.Queued)}
+		}
 	}
 	return out
 }
@@ -166,12 +212,40 @@ func (st flowState) edge(passed, errored int64) string {
 	return "active"
 }
 
+// mergeEdge combines the statuses of two edges drawn as one.
+func mergeEdge(a, b string) string {
+	for _, s := range []string{"errored", "active", "idle"} {
+		if a == s || b == s {
+			return s
+		}
+	}
+	return ""
+}
+
 func (st flowState) activity() *topology.Activity {
 	if st.current == nil {
 		return nil
 	}
 	c := st.current
 	return &topology.Activity{Received: c.Received, Sent: c.Sent, Errored: c.Errored, Queued: c.Queued, LastMessageAt: st.lastMessage()}
+}
+
+func (st flowState) connectorActivity(c observability.ConnectorStats) *topology.Activity {
+	if st.current == nil {
+		return nil
+	}
+	return &topology.Activity{Received: c.Received, Sent: c.Sent, Errored: c.Errored, Queued: c.Queued}
+}
+
+// add sums two activities (nil when both are).
+func add(a, b *topology.Activity) *topology.Activity {
+	if a == nil {
+		return b
+	}
+	if b == nil {
+		return a
+	}
+	return &topology.Activity{Received: a.Received + b.Received, Sent: a.Sent + b.Sent, Errored: a.Errored + b.Errored, Queued: a.Queued + b.Queued}
 }
 
 func (st flowState) lastMessage() string {
@@ -193,9 +267,6 @@ func (st flowState) connector(name string) (current, recent observability.Connec
 // with a secret.
 func sourceLabel(f gateway.Flow) string {
 	s := f.Source
-	if s == nil {
-		return f.SourceKind()
-	}
 	switch s.Type {
 	case "file":
 		if s.Pattern != "" {
@@ -219,10 +290,7 @@ func sourceLabel(f gateway.Flow) string {
 // transformSummary is a flow's transform: its name (transform when it has
 // none) and number of steps; ok false when the flow has none.
 func transformSummary(raw json.RawMessage) (name string, steps int, ok bool) {
-	var t struct {
-		Name  string            `json:"name"`
-		Steps []json.RawMessage `json:"steps"`
-	}
+	var t compiler.Transform
 	if len(raw) == 0 || string(raw) == "null" || json.Unmarshal(raw, &t) != nil {
 		return "", 0, false
 	}

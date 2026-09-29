@@ -27,8 +27,9 @@ curl -s -u 'admin:PASSWORD' http://127.0.0.1:8080/api/v1/topology
 ```
 
 - One `flow` node per flow, with id `flow:<id>`.
-- A `route` edge for each flow a flow sends to (a destination of type `flow`), and a `dependency`
-  edge for each flow in its `dependsOn`.
+- A `route` edge for each flow a flow sends to (a destination of type `flow`), with the traffic
+  of those destinations as its `activity` and `status`, and a `dependency` edge for each flow in
+  its `dependsOn`.
 - With no flows, `nodes` and `edges` are `[]`.
 
 ## One flow: source, transform, destinations
@@ -77,8 +78,9 @@ curl -s -u 'admin:PASSWORD' http://127.0.0.1:8080/api/v1/topology/flows/flow:adt
 
 - A flow without a `source` (messages only arrive through `POST /api/v1/flows/{id}/messages`) has
   no source node, and one without a `transform` has no transform node. The `message-path` edges
-  start at the first node there is.
-- A destination of type `flow` also has a `route` edge to `flow:<target>`.
+  start at the first node there is. The free-text `sourceType` field does not make a source.
+- A destination of type `flow` also has a `route` edge to `flow:<target>`, and the target flow is
+  in `nodes` too (with only `id`, `kind`, and `label`), so every edge ends at a node.
 - An unknown flow returns `404`.
 
 ## Status
@@ -92,10 +94,13 @@ Every node's `status` is the flow's lifecycle state (`undeployed`, `deployed`, `
   its messages counted `errored` against those `sent`.
 
 An edge's `status` is `active` when messages crossed it in the last 5 minutes, `errored` when at
-least half of them failed, and `idle` otherwise (also for a flow that is not started).
+least half of them failed, and `idle` otherwise: also for a flow that is not started, and for the
+edge into a stopped destination.
 
 The last 5 minutes are judged from the [statistics samples](processing-messages.md#statistics-over-time),
-so with the default `stats.sampleIntervalMs` (one minute) a change shows within about a minute.
+counted from the newest sample taken before them, so with the default `stats.sampleIntervalMs`
+(one minute) a change shows at once and ends after about 5 minutes. A lifetime reset in the
+window is counted correctly.
 
 ## Activity
 
@@ -104,7 +109,8 @@ so with the default `stats.sampleIntervalMs` (one minute) a change shows within 
 and `lastMessageAt` (left out until the first message). Zero counts are always present.
 
 - A flow node and the transform node count the flow's messages.
-- A source node counts messages received, and a destination node its own deliveries.
+- A source node counts every message the flow received: from the source, and also any sent with
+  `POST /api/v1/flows/{id}/messages`. A destination node counts its own deliveries.
 - A `message-path` edge carries the counts of the node it reaches (for the edge from the source,
   the source's).
 

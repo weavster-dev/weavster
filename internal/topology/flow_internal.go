@@ -13,10 +13,13 @@ type Part struct {
 	EdgeStatus string
 }
 
-// Route is an outbound route from a destination to another flow.
+// Route is an outbound route from a destination to another flow, with the
+// traffic across it.
 type Route struct {
 	Destination string // the destination's Part.ID
 	Flow        string // the target flow id
+	Status      string
+	Activity    *Activity
 }
 
 // FlowDetail is the input for the flow-internal graph.
@@ -32,7 +35,8 @@ type FlowDetail struct {
 
 // FlowInternal builds the flow-internal graph (contract §3.2, #107 D-13):
 // source -> transform -> each destination along message-path edges, and a
-// route edge from each flow destination to its target flow.
+// route edge from each flow destination to its target flow, which is
+// included as a flow node so every edge ends at a node.
 func FlowInternal(f FlowDetail) Graph {
 	g := NewGraph()
 	if f.ID != "" {
@@ -62,9 +66,15 @@ func FlowInternal(f FlowDetail) Graph {
 			g.Edges = append(g.Edges, pathEdge(prev.From, id, d.EdgeStatus, d.Activity))
 		}
 	}
+	targets := map[string]bool{}
 	for _, r := range f.Routes {
 		from, to := "destination:"+r.Destination, "flow:"+r.Flow
-		g.Edges = append(g.Edges, Edge{ID: "edge:" + from + ":route:" + to, From: from, To: to, Kind: EdgeRoute, Label: "routeMessage('" + r.Flow + "')"})
+		g.Edges = append(g.Edges, Edge{ID: "edge:" + from + ":route:" + to, From: from, To: to, Kind: EdgeRoute,
+			Label: "routeMessage('" + r.Flow + "')", Status: r.Status, Activity: r.Activity})
+		if !targets[r.Flow] {
+			targets[r.Flow] = true
+			g.Nodes = append(g.Nodes, Node{ID: to, Kind: KindFlow, Label: r.Flow})
+		}
 	}
 	return g
 }
