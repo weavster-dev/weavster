@@ -118,12 +118,6 @@
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
-                            <li class="nav-item">
-                                <a href="../mvp-project-plan/" class="nav-link">MVP Project Plan</a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="../agent-onboarding/" class="nav-link">Agent Onboarding</a>
-                            </li>
                         </ul>
 
                     <ul class="nav navbar-nav ms-md-auto">
@@ -260,7 +254,7 @@
 <tr>
 <td><code>501</code></td>
 <td><code>NOT_IMPLEMENTED</code></td>
-<td>The feature exists only in the Enterprise edition. <code>message</code> names it, for example <code>not implemented in this edition: SSO</code>.</td>
+<td>Reserved for a feature that exists only in the Enterprise edition; <code>message</code> would name it. No endpoint of this edition answers <code>501</code> today: Enterprise-only settings are refused with <code>400</code> instead (see <a href="../support-matrix/#enterprise-deferred-stubs">Enterprise-deferred stubs</a>).</td>
 </tr>
 <tr>
 <td><code>503</code></td>
@@ -273,7 +267,6 @@
 <p>The <a href="../cli/">command-line client</a> prints the status and <code>message</code>, and the command fails with exit
 code <code>2</code>:</p>
 <pre><code class="language-text">Error: server returned 404 Not Found: flow not found
-Error: server returned 501 Not Implemented: not implemented in this edition: SSO
 </code></pre></div>
             </div>
         </div>

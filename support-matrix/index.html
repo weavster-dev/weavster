@@ -118,12 +118,6 @@
                             <li class="nav-item">
                                 <a href="../documentation/" class="nav-link">Docs Site Guide</a>
                             </li>
-                            <li class="nav-item">
-                                <a href="../mvp-project-plan/" class="nav-link">MVP Project Plan</a>
-                            </li>
-                            <li class="nav-item">
-                                <a href="../agent-onboarding/" class="nav-link">Agent Onboarding</a>
-                            </li>
                         </ul>
 
                     <ul class="nav navbar-nav ms-md-auto">
@@ -846,35 +840,52 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'PASSWORD' -s smoke.txt
 </tbody>
 </table>
 <h2 id="enterprise-deferred-stubs">Enterprise-deferred stubs</h2>
-<p>Only these stubs exist in the source tree. None of them can be selected from configuration yet.</p>
+<p>Only these stubs exist in the source tree, and none of them can be selected from configuration.
+Each always fails with the same error:</p>
 <table>
 <thead>
 <tr>
 <th>Stub</th>
-<th>Behavior</th>
+<th>Error</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Broker queue/topic source and sink</td>
-<td>Returns <code>adapters: enterprise adapter not implemented in MVP</code></td>
+<td><code>not implemented in this edition</code></td>
 </tr>
 <tr>
 <td>DICOM source and sink</td>
-<td>Returns <code>adapters: enterprise adapter not implemented in MVP</code></td>
+<td><code>not implemented in this edition</code></td>
 </tr>
 <tr>
 <td>DICOM codec</td>
-<td>Returns <code>codec: enterprise feature requires a licensed library</code></td>
+<td><code>not implemented in this edition: DICOM codec (requires a licensed library)</code></td>
 </tr>
 <tr>
 <td>KMS/Vault key rotation</td>
-<td>Returns <code>secrets: enterprise feature not available</code></td>
+<td><code>not implemented in this edition: KMS/Vault key rotation</code></td>
 </tr>
 </tbody>
 </table>
-<p>There are <strong>no</strong> OIDC/SAML, OPA/Cedar, SIEM, Kubernetes, Redis/NATS, or object-storage stubs.
-Those are Enterprise items with no code in the source tree.</p>
+<p>What you see when you try to use one:</p>
+<ul>
+<li>A flow with a <code>broker</code> or <code>dicom</code> source or destination, or <code>inputFormat: dicom</code>, is refused
+  with <code>400</code>. The message names the field and the values this edition allows, for example
+  <code>flow does not match flow.schema.json: /destinations/0/type: value must be one of "http", "file", "mllp", "flow", "database"</code>;
+  for a source, it lists the first few source types and how many more there are.
+  <code>weavster config validate</code> refuses the same flow offline when it is in a config-as-code
+  document (under <code>flows:</code>).</li>
+<li>Nothing in this edition rotates keys: secrets are read from environment variables or files
+  (see <a href="../server-config/#secrets">secrets</a>).</li>
+</ul>
+<p>These Enterprise features are not in this edition, not even as a stub:</p>
+<ul>
+<li>Single sign-on (OIDC/SAML) and multi-factor authentication are not available: sign-in uses the server's own accounts.</li>
+<li>External authorization policies (OPA/Cedar) are not available: permissions are the <a href="../authentication/#permissions">built-in set</a>.</li>
+<li>SIEM or immutable audit forwarding is not available: the <a href="../audit-log/">audit log</a> is written to the store and stderr.</li>
+<li>A Kubernetes operator, Redis/NATS queues, and object storage are not available.</li>
+</ul>
 <h2 id="codecs">Codecs</h2>
 <p>The codecs below are libraries (tier, versions, and notes describe them); you can exercise them
 with <code>weavster test</code>, which round-trips HL7 v2, JSON, XML, delimited text, and raw bytes. The server handles HL7 v2, XML,
