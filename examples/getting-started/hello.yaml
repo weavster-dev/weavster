@@ -1,0 +1,15 @@
+# A config-as-code document with one flow: it reads a JSON message, copies
+# two fields into a greeting, and writes the result to a file.
+version: "1"
+flows:
+  hello:
+    name: Hello
+    transform:
+      name: greet
+      steps:
+        - map: {from: patient.name, to: greeting.to}
+        - map: {from: patient.mrn, to: greeting.mrn}
+    destinations:
+      - name: out
+        type: file
+        dir: /tmp/hello

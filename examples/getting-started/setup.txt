@@ -1,0 +1,4 @@
+config apply "examples/getting-started/hello.yaml" first flow
+flow deploy hello
+flow start hello
+flow list
