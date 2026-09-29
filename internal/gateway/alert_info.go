@@ -1,11 +1,10 @@
 package gateway
 
 import (
-	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"slices"
-	"sort"
 
 	"github.com/weavster-dev/weavster/internal/artifact"
 )
@@ -18,19 +17,14 @@ type alertStatus struct {
 }
 
 func (s *Server) handleAlertStatuses(w http.ResponseWriter, r *http.Request) {
-	if !s.alertsAvailable(w) {
-		return
-	}
-	list, err := s.cfg.Alerts.ListAlerts(r.Context())
-	if err != nil {
-		writeAlertError(w, err)
+	list, ok := s.sortedAlerts(w, r)
+	if !ok {
 		return
 	}
 	out := make([]alertStatus, 0, len(list))
 	for _, a := range list {
 		out = append(out, alertStatus{ID: a.ID, Name: a.Name, Enabled: a.Enabled})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	writeJSON(w, http.StatusOK, out)
 }
 
@@ -119,14 +113,9 @@ func (s *Server) alertFor(w http.ResponseWriter, r *http.Request) (Alert, bool) 
 
 // decodeOptional is decodeStrict for a body that may be left out.
 func decodeOptional(w http.ResponseWriter, r *http.Request, v any) bool {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<16))
-	if err != nil {
+	if err := decodeJSON(w, r, v); err != nil && !errors.Is(err, io.EOF) {
 		writeStatusError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return false
 	}
-	if len(bytes.TrimSpace(body)) == 0 {
-		return true
-	}
-	r.Body = io.NopCloser(bytes.NewReader(body))
-	return decodeStrict(w, r, v)
+	return true
 }

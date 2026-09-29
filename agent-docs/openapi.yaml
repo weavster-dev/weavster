@@ -1132,7 +1132,7 @@ paths:
                 required: [matches, enabled, event, actions, delivered]
                 properties:
                   matches: {type: boolean, description: The event and flow match the trigger}
-                  enabled: {type: boolean, description: "Whether the alert is enabled (a disabled alert can still be tested)"}
+                  enabled: {type: boolean, description: "Whether the alert is enabled; when false, matches and actions show what it would do once enabled"}
                   event: {type: string}
                   flowId: {type: string}
                   actions: {type: array, items: {$ref: "#/components/schemas/AlertAction"}, description: The actions that would run (none when it does not match)}

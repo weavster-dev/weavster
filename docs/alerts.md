@@ -26,7 +26,7 @@ the command-line client. Every request needs the `alerts:edit` permission.
 
 | Field | Rules |
 |---|---|
-| `id` | Required. 1–128 characters from `A-Z a-z 0-9 . _ -`; not `import`, `options`, or `statuses`. |
+| `id` | Required. 1–128 characters from `A-Z a-z 0-9 . _ -`; not `import`, `options`, or `statuses`. An alert saved as `statuses` by an earlier release is still listed, exported and deleted, but `GET /api/v1/alerts/statuses` now returns the statuses: export it with `exportalert statuses "file"`, change its id in the file, import it, and delete the old one. |
 | `name` | Required, 1–200 characters. |
 | `enabled` | `true` or `false` (default `false`). |
 | `trigger.events` | At least one of `message.errored` (the transform failed), `message.queued` (a delivery failed and will be retried), `message.dead-lettered` (retries ran out). |
@@ -61,8 +61,11 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:808
 ## Test an alert
 
 `POST /api/v1/alerts/{id}/test` checks an alert against an event without waiting for one. The body
-is optional: `event` defaults to the alert's first trigger event and `flowId` to its first flow.
-A disabled alert can be tested too; `enabled` shows its state.
+is optional: `event` defaults to the alert's first trigger event and `flowId` to the first of its
+`trigger.flows`. An alert without `trigger.flows` matches every flow, so `flowId` may be left out.
+
+A disabled alert can be tested too: `matches` and `actions` then show what it would do once
+enabled, and `enabled: false` says that today it does nothing.
 
 ```bash
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
