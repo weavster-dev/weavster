@@ -165,6 +165,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#search-the-audit-log" class="nav-link">Search the audit log</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#retention" class="nav-link">Retention</a>
               <ul class="nav flex-column">
               </ul>
@@ -286,10 +290,57 @@ never reach the log. A query parameter is logged as <code>[redacted]</code> when
 </ul>
 <pre><code class="language-text">actor=admin action=phi.access resource=/api/v1/messages detail=&quot;map[messages:0 messages.ids:[] query.apiToken:[redacted] query.status:sent status:200]&quot;
 </code></pre>
+<h2 id="search-the-audit-log">Search the audit log</h2>
+<p>Every entry is also stored in the server's <a href="../server-config/#store">store</a>, redacted exactly as it
+is logged, and the <code>id</code> on the stderr line is the stored entry's <code>id</code>. With <code>store.dialect: postgres</code> it survives restarts; with <code>memory</code> or <code>disabled</code> the
+newest 100,000 entries are kept until the server stops. Search them with <code>GET /api/v1/audit</code>
+(permission <code>audit:view</code>, which <code>admin</code> includes):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/audit?action=phi.access&amp;from=2026-09-28T00:00:00Z&amp;limit=100'
+</code></pre>
+<pre><code class="language-json">[{&quot;id&quot;:412,&quot;at&quot;:&quot;2026-09-28T12:03:11.204Z&quot;,&quot;actor&quot;:&quot;alice&quot;,&quot;action&quot;:&quot;phi.access&quot;,
+  &quot;resource&quot;:&quot;/api/v1/messages&quot;,&quot;detail&quot;:{&quot;messages&quot;:&quot;2&quot;,&quot;messages.ids&quot;:&quot;[\&quot;6f1c9e\&quot;,\&quot;9a0d41\&quot;]&quot;,&quot;query.flowId&quot;:&quot;adt&quot;,&quot;status&quot;:&quot;200&quot;}}]
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Parameter</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>actor</code>, <code>action</code>, <code>resource</code></td>
+<td>Only entries with exactly this actor, action (for example <code>phi.access</code>, <code>auth.failure</code>, <code>POST /api/v1/flows</code>), or resource (the request path).</td>
+</tr>
+<tr>
+<td><code>from</code>, <code>to</code></td>
+<td>At or after / at or before this time (RFC 3339).</td>
+</tr>
+<tr>
+<td><code>afterId</code></td>
+<td>Only entries with a larger <code>id</code>: page with the last <code>id</code> you saw.</td>
+</tr>
+<tr>
+<td><code>limit</code></td>
+<td>Entries per page, 1–1000 (default 100). Entries come oldest first.</td>
+</tr>
+</tbody>
+</table>
+<p>An entry shows up in the search about 3 seconds after it was written. By then every earlier entry
+is stored too, so a collector that polls with <code>afterId</code> never skips one. Without an <code>action</code>
+filter, entries of reads of the audit log itself (<code>audit.read</code>) are left out, so a collector does
+not keep finding its own polls; ask for them with <code>action=audit.read</code>.</p>
+<p>Reading the audit log is itself recorded, as <code>audit.read</code>, with the number of entries returned in
+<code>entries</code>; a search that returns nothing discloses nothing and is not recorded. If the store cannot take an entry (for example the database is down), the entry still
+goes to stderr, the server logs <code>audit entry not stored</code>, and the request itself is not affected. A
+store write waits at most 2 seconds.</p>
 <h2 id="retention">Retention</h2>
-<p>Audit entries exist only in the log output and in process memory, which keeps exactly the
-newest 10,000 entries. They are not stored and cannot be searched through the API yet. To keep them, collect stderr with your log shipper
-(for example journald or a container log driver).</p></div>
+<p>Stored entries are kept until they are pruned: set
+<a href="../server-config/#prune"><code>prune.auditMaxAgeDays</code></a> to remove entries older than that many days
+(each prune pass reports how many in <code>lastRun.auditRemoved</code>). Without it they are kept forever,
+and every failed login adds one. To also keep them outside the server, collect stderr with your
+log shipper (for example journald or a container log driver).</p></div>
             </div>
         </div>
 

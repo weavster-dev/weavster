@@ -396,9 +396,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestExitCodesAndDeprecatedCommands</code>, <code>TestServerConfigErrors</code>. See <a href="../cli/#exit-codes-and-errors">Exit codes and errors</a>.</td>
 </tr>
 <tr>
-<td>Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction; PHI reads record what they disclosed (message count and ids, content part)</td>
+<td>Audit of API calls (mutations, message reads, logins, failed credentials) with case-insensitive redaction; PHI reads record what they disclosed (message count and ids, content part); entries stored and searchable (<code>GET /api/v1/audit</code>, <code>audit:view</code>)</td>
 <td>Implemented (wired)</td>
-<td><code>TestAuditLog</code>, <code>TestAuditDisclosed</code>. Written to stderr only; not stored or searchable. See <a href="../audit-log/">Audit log</a>.</td>
+<td><code>TestAuditLog</code>, <code>TestAuditDisclosed</code>, <code>TestAuditLogStored</code> (stored, filtered, paged, audited when read, kept across a restart on PostgreSQL), <code>TestAudit</code> (every store backend). Written to stderr and the store; kept until <code>prune.auditMaxAgeDays</code> (default 0: kept forever) removes them. See <a href="../audit-log/">Audit log</a>.</td>
 </tr>
 <tr>
 <td>HTTPS listener (<code>listen.tlsAddress</code>, <code>tls.certFile/keyFile/minVersion</code>), separate from the cleartext one; <code>listen.contextPath</code></td>

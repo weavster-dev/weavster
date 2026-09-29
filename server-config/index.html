@@ -531,8 +531,14 @@ Off by default.</p>
 <td><code>60</code></td>
 <td>How often a pass runs (1–10080, one week). The first pass runs one interval after the server starts.</td>
 </tr>
+<tr>
+<td><code>auditMaxAgeDays</code></td>
+<td><code>0</code> (keep)</td>
+<td>Remove stored <a href="../audit-log/#search-the-audit-log">audit entries</a> older than this many days (1–36500).</td>
+</tr>
 </tbody>
 </table>
+<p>Pruning needs a message store: with <code>store.dialect: disabled</code> a <code>prune</code> section stops the server at startup.</p>
 <pre><code class="language-yaml">prune: {maxAgeHours: 720, intervalMinutes: 60}   # keep 30 days
 </code></pre>
 <p>Only messages that are done are removed: <code>sent</code>, <code>filtered</code>, <code>errored</code>, and <code>dead-lettered</code>.

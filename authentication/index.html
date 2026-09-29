@@ -362,6 +362,10 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>events:view</code></td>
 </tr>
 <tr>
+<td><code>GET /api/v1/audit</code></td>
+<td><code>audit:view</code></td>
+</tr>
+<tr>
 <td><code>GET/POST /api/v1/users</code>, <code>GET/PUT/DELETE /api/v1/users/{name}</code>, <code>POST /api/v1/users/{name}/password</code></td>
 <td><code>users:admin</code></td>
 </tr>
@@ -417,7 +421,7 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <p>The other permissions are <code>users:admin</code>, <code>flows:view</code>, <code>flows:edit</code>, <code>flows:deploy</code>,
 <code>messages:view</code>, <code>messages:send</code>, <code>messages:content</code>, <code>messages:delete</code>, <code>messages:import</code>,
 <code>events:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, <code>configmap:edit</code>,
-<code>settings:edit</code>, <code>lookups:view</code>, and <code>lookups:edit</code>.</p>
+<code>settings:edit</code>, <code>lookups:view</code>, <code>lookups:edit</code>, and <code>audit:view</code>.</p>
 <h2 id="manage-users">Manage users</h2>
 <p>An account with <code>users:admin</code> (or <code>admin</code>) manages the other accounts.</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/users -d '{

@@ -1873,16 +1873,17 @@ keep first.</p>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/system/prune/start
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/system/prune
 </code></pre>
-<pre><code class="language-json">{&quot;maxAgeHours&quot;:720,&quot;maxMessages&quot;:0,&quot;intervalMinutes&quot;:60,&quot;running&quot;:false,
+<pre><code class="language-json">{&quot;maxAgeHours&quot;:720,&quot;maxMessages&quot;:0,&quot;auditMaxAgeDays&quot;:365,&quot;intervalMinutes&quot;:60,&quot;running&quot;:false,
  &quot;nextRunAt&quot;:&quot;2026-09-28T13:00:00Z&quot;,
  &quot;lastRun&quot;:{&quot;startedAt&quot;:&quot;2026-09-28T12:00:00Z&quot;,&quot;finishedAt&quot;:&quot;2026-09-28T12:00:02Z&quot;,
-   &quot;removed&quot;:1250,&quot;busy&quot;:0,&quot;stopped&quot;:false}}
+   &quot;removed&quot;:1250,&quot;busy&quot;:0,&quot;auditRemoved&quot;:310,&quot;stopped&quot;:false}}
 </code></pre>
-<p><code>lastRun.error</code> says why a pass failed (for example a lost database connection), and
+<p><code>lastRun.auditRemoved</code> counts the audit entries removed by <code>prune.auditMaxAgeDays</code>.
+<code>lastRun.error</code> says why a pass failed (for example a lost database connection), and
 <code>lastRun.stopped</code> is <code>true</code> for a pass that was stopped. Every pass also records a
 <code>messages.pruned</code> <a href="#5-statistics-and-events">event</a> with <code>removed</code> and <code>busy</code>, and <code>stopped</code> or
 <code>error</code> when they apply. Without a message store (<code>store.dialect: disabled</code>) these requests
-return <code>503</code>.</p>
+return <code>503</code>, and a <code>prune</code> section is refused at startup.</p>
 <h3 id="export-and-import-messages">Export and import messages</h3>
 <p>Export writes the messages that match the search parameters into one gzipped archive (permission
 <code>messages:content</code>, audited). An archive holds complete messages: the content as received and after
