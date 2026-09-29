@@ -14,12 +14,17 @@ type statsStore interface {
 	AppendStatsSamples(ctx context.Context, samples []StatsSampleRecord) error
 	StatsSamples(ctx context.Context, since time.Time, n int) ([]StatsSampleRecord, error)
 	DeleteStatsSamplesBefore(ctx context.Context, t time.Time) error
-	DeleteStatsOf(ctx context.Context, flow string) error
+}
+
+// flowDeleter is a backend that creates and deletes flows.
+type flowDeleter interface {
+	CreateFlow(context.Context, FlowDefinition) error
+	DeleteFlow(context.Context, string) error
 }
 
 // TestStats: flow statistics are stored per flow, samples are read
-// back newest-n oldest first from a time on, and old samples or a flow's
-// statistics can be deleted, on every backend.
+// back newest-n oldest first from a time on, old samples can be deleted,
+// and deleting a flow deletes its statistics too, on every backend.
 func TestStats(t *testing.T) {
 	ctx := context.Background()
 	base := time.Date(2026, 9, 29, 12, 0, 0, 0, time.UTC)
@@ -61,11 +66,13 @@ func TestStats(t *testing.T) {
 		if kept, _ := ss.StatsSamples(ctx, time.Time{}, 100); len(kept) != 4 || !kept[0].At.Equal(base.Add(2*time.Minute)) {
 			t.Errorf("%s: after the retention cut = %+v", name, kept)
 		}
-		if err := ss.DeleteStatsOf(ctx, "lab"); err != nil {
-			t.Fatalf("%s: %v", name, err)
-		}
-		if err := ss.DeleteStatsOf(ctx, "adt"); err != nil {
-			t.Fatalf("%s: %v", name, err)
+		for _, f := range []string{"lab", "adt"} {
+			if err := s.(flowDeleter).CreateFlow(ctx, FlowDefinition{ID: f, Document: []byte(`{}`)}); err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			if err := s.(flowDeleter).DeleteFlow(ctx, f); err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
 		}
 		left, _ := ss.StatsSamples(ctx, time.Time{}, 100)
 		stats, _ := ss.FlowStats(ctx)

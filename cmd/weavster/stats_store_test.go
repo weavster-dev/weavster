@@ -58,22 +58,15 @@ func (f failingStats) StatsSamples(ctx context.Context, since time.Time, n int) 
 	return f.MemStore.StatsSamples(ctx, since, n)
 }
 
-func (f failingStats) DeleteStatsOf(ctx context.Context, flow string) error {
-	if err := f.fail("delete"); err != nil {
-		return err
-	}
-	return f.MemStore.DeleteStatsOf(ctx, flow)
-}
-
 // TestStatsStore: a sample stores the statistics and the sample, a reset
-// is stored at once, a deleted flow's are removed first, and stored
-// statistics load back; store failures are reported.
+// is stored at once, deleting a flow removes its stored statistics, and
+// stored statistics load back; store failures are reported.
 func TestStatsStore(t *testing.T) {
 	ctx := context.Background()
 	mem := state.NewMemStore()
 	stats := observability.NewStatsRegistry()
 	var logs bytes.Buffer
-	flows := flowAdapter{store: mem, stats: stats, statsRepo: mem, statsSaves: &sync.Mutex{}, defs: &sync.Mutex{}}
+	flows := flowAdapter{store: mem, stats: stats, statsSaves: &sync.Mutex{}, defs: &sync.Mutex{}}
 	a := statsAdapter{flows: flows, stats: stats, series: observability.NewTimeSeries(time.Hour, 100), repo: mem, retention: time.Hour,
 		logger: slog.New(slog.NewTextHandler(&logs, nil))}
 	if _, err := flows.Create(ctx, gateway.Flow{ID: "adt"}); err != nil {
@@ -120,15 +113,6 @@ func TestStatsStore(t *testing.T) {
 		t.Errorf("log = %q", logs.String())
 	}
 
-	// A flow whose statistics cannot be removed stays as it was.
-	a.flows.statsRepo = failingStats{mem, "delete"}
-	if err := a.flows.Delete(ctx, "adt"); !errors.Is(err, errStatsStore) {
-		t.Errorf("delete with a failing store = %v", err)
-	}
-	if _, err := a.flows.Get(ctx, "adt"); err != nil {
-		t.Errorf("the flow is gone: %v", err)
-	}
-
 	for _, op := range []string{"save", "append"} {
 		a.repo = failingStats{mem, op}
 		if err := a.sample(ctx, time.Now()); !errors.Is(err, errStatsStore) {
@@ -148,6 +132,16 @@ func TestStatsStore(t *testing.T) {
 	a.repo = nil
 	if err := a.saveNow(ctx, ""); err != nil {
 		t.Errorf("saving without a store = %v", err)
+	}
+
+	// Deleting the flow removes its stored statistics with it.
+	if err := a.flows.Delete(ctx, "adt"); err != nil {
+		t.Fatal(err)
+	}
+	recs, _ := mem.FlowStats(ctx)
+	samples, _ := mem.StatsSamples(ctx, time.Time{}, 10)
+	if len(recs) != 0 || len(samples) != 0 {
+		t.Errorf("after the delete: %+v %+v", recs, samples)
 	}
 }
 

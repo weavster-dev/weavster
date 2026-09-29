@@ -8,8 +8,9 @@ import (
 )
 
 // TestStatsSurviveRestart: current and lifetime statistics, a reset, and
-// the time series are still there after the server restarts; a deleted
-// flow's are not, even when a flow of the same id is created again.
+// the time series are still there after the server restarts; the
+// statistics of a deleted flow are not, even when a flow of the same id is
+// created again.
 func TestStatsSurviveRestart(t *testing.T) {
 	addr := freeAddr(t)
 	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstats: {sampleIntervalMs: 100, retentionHours: 1}\n"+storeConfig(t))

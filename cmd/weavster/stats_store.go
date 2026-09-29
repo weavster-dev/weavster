@@ -17,7 +17,6 @@ type statsRepository interface {
 	AppendStatsSamples(ctx context.Context, samples []state.StatsSampleRecord) error
 	StatsSamples(ctx context.Context, since time.Time, n int) ([]state.StatsSampleRecord, error)
 	DeleteStatsSamplesBefore(ctx context.Context, t time.Time) error
-	DeleteStatsOf(ctx context.Context, flow string) error
 }
 
 // statsSaveLimit bounds the last save at shutdown.

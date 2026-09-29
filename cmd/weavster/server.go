@@ -140,7 +140,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		serverPorts[l.Port] = l.UsedBy
 	}
 	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events, serverPorts: serverPorts,
-		statsRepo: statsRepo, statsSaves: &sync.Mutex{}}
+		statsSaves: &sync.Mutex{}}
 	if cfg.Flows.DeployOnStartup && store != nil {
 		flows.DeployEnabled(ctx, logger)
 	}
@@ -749,11 +749,10 @@ type flowAdapter struct {
 	// serverPorts are the server's own ports (port -> listener name), which
 	// no flow source may use.
 	serverPorts map[int]string
-	// statsRepo, when set, loses a deleted flow's stored statistics.
-	// statsSaves orders those writes: a statistics save takes it before it
-	// releases defs, so a delete removes the stored statistics after any
-	// save of the flow, never before.
-	statsRepo  statsRepository
+	// statsSaves orders statistics writes and flow deletes (which remove a
+	// flow's stored statistics): a save takes it before it releases defs,
+	// so a delete removes the stored statistics after any save of the
+	// flow, never before.
 	statsSaves *sync.Mutex
 }
 
@@ -2168,14 +2167,6 @@ func (a flowAdapter) Delete(ctx context.Context, id string) error {
 		sort.Strings(dependents)
 		return fmt.Errorf("%w: %s depended on by %s", gateway.ErrFlowInUse, id, strings.Join(dependents, ", "))
 	}
-	if a.statsRepo != nil { // before any change, so a failure leaves the flow as it was
-		unlock := a.statsWrites()
-		err := a.statsRepo.DeleteStatsOf(ctx, id)
-		unlock()
-		if err != nil {
-			return err
-		}
-	}
 	// A running flow is undeployed (persisted, flow.undeployed event) before
 	// removal (spec §6.1).
 	if target != nil && flowlife.Normalize(target.Status) != flowlife.Undeployed {
@@ -2183,7 +2174,12 @@ func (a flowAdapter) Delete(ctx context.Context, id string) error {
 			return err
 		}
 	}
-	if err := a.store.DeleteFlow(ctx, id); err != nil {
+	// The store removes the stored statistics with the flow, after any
+	// save of them (see statsSaves).
+	unlock := a.statsWrites()
+	err = a.store.DeleteFlow(ctx, id)
+	unlock()
+	if err != nil {
 		return flowErr(err)
 	}
 	if a.events != nil {

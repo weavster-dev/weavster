@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"slices"
 	"sort"
 )
 
@@ -105,9 +106,16 @@ func (s *sqlStore) ListFlows(ctx context.Context) ([]FlowDefinition, error) {
 	return out, rows.Err()
 }
 
+// DeleteFlow removes a flow and, in the same transaction, its stored
+// statistics and samples.
 func (s *sqlStore) DeleteFlow(ctx context.Context, id string) error {
 	ctx = s.bind(ctx)
-	res, err := s.db.ExecContext(ctx, `DELETE FROM flows WHERE id = ?`, id)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	res, err := tx.ExecContext(ctx, `DELETE FROM flows WHERE id = ?`, id)
 	if err != nil {
 		return err
 	}
@@ -118,7 +126,12 @@ func (s *sqlStore) DeleteFlow(ctx context.Context, id string) error {
 	if n == 0 {
 		return ErrFlowNotFound
 	}
-	return nil
+	for _, q := range []string{`DELETE FROM flow_stats WHERE flow = ?`, `DELETE FROM stats_samples WHERE flow = ?`} {
+		if _, err := tx.ExecContext(ctx, q, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 // CreateFlow inserts f, returning ErrFlowExists if f.ID is taken.
@@ -169,6 +182,7 @@ func (s *MemStore) ListFlows(_ context.Context) ([]FlowDefinition, error) {
 	return out, nil
 }
 
+// DeleteFlow removes a flow with its statistics and samples.
 func (s *MemStore) DeleteFlow(_ context.Context, id string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -176,5 +190,7 @@ func (s *MemStore) DeleteFlow(_ context.Context, id string) error {
 		return ErrFlowNotFound
 	}
 	delete(s.flows, id)
+	s.flowStats = slices.DeleteFunc(s.flowStats, func(r FlowStatsRecord) bool { return r.Flow == id })
+	s.samples = slices.DeleteFunc(s.samples, func(r StatsSampleRecord) bool { return r.Flow == id })
 	return nil
 }

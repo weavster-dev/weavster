@@ -129,22 +129,6 @@ func (s *sqlStore) DeleteStatsSamplesBefore(ctx context.Context, t time.Time) er
 	return err
 }
 
-// DeleteStatsOf removes a flow's stored statistics and samples.
-func (s *sqlStore) DeleteStatsOf(ctx context.Context, flow string) error {
-	ctx = s.bind(ctx)
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-	for _, q := range []string{`DELETE FROM flow_stats WHERE flow = ?`, `DELETE FROM stats_samples WHERE flow = ?`} {
-		if _, err := tx.ExecContext(ctx, q, flow); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
-}
-
 // statsBatch bounds the rows of one INSERT (3 parameters each).
 const statsBatch = 500
 
@@ -204,27 +188,6 @@ func (s *MemStore) DeleteStatsSamplesBefore(_ context.Context, t time.Time) erro
 	kept := s.samples[:0]
 	for _, r := range s.samples {
 		if !r.At.Before(t) {
-			kept = append(kept, r)
-		}
-	}
-	s.samples = kept
-	return nil
-}
-
-// DeleteStatsOf removes a flow's statistics and samples.
-func (s *MemStore) DeleteStatsOf(_ context.Context, flow string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	keptStats := s.flowStats[:0]
-	for _, r := range s.flowStats {
-		if r.Flow != flow {
-			keptStats = append(keptStats, r)
-		}
-	}
-	s.flowStats = keptStats
-	kept := s.samples[:0]
-	for _, r := range s.samples {
-		if r.Flow != flow {
 			kept = append(kept, r)
 		}
 	}
