@@ -141,6 +141,9 @@ func TestValidate(t *testing.T) {
 	if err := Validate([]byte(validYAML)); err != nil {
 		t.Fatalf("valid config rejected: %v", err)
 	}
+	if err := Validate([]byte("settings:\n  s: {key: x}\n")); err != nil {
+		t.Errorf("setting with a string key rejected: %v", err)
+	}
 	tests := []struct{ name, doc, want string }{
 		{"flows not an object", `{"flows": 5}`, "config: parse"},
 		{"id differs from key", "flows:\n  a: {id: b}\n", `id "b" must match the key`},
@@ -160,13 +163,13 @@ func TestValidate(t *testing.T) {
 		{"bad library name", "snippetLibraries:\n  \"a b\": {}\n", "snippetLibraries.a b: name"},
 		{"bad snippet name", "snippets:\n  \"a b\": {}\n", "snippets.a b: name"},
 		{"null setting", "settings:\n  s: null\n", "settings.s: value must not be null"},
-		{"setting with a number key", "settings:\n  s: {1: x}\n", "settings.s: not JSON-compatible"},
+		{"setting with a boolean key", "settings:\n  s: {true: x}\n", "settings.s: not JSON-compatible"},
 		{"config map needs text", "configmap:\n  a: [1]\n", "config: parse"},
 		{"empty document", "  \n", "the document is empty"},
 		{"two YAML documents", "flows: {}\n---\nbogus: 1\n", "more than one YAML document"},
 		{"unsupported version", "version: \"2\"\n", `version "2" is not supported`},
 		{"bad alert key", "alerts:\n  \"a b\": {name: X, trigger: {events: [message.errored]}, actions: [{type: email, to: [a@b.co]}]}\n", `alerts.a b: name "a b" must be`},
-		{"flow that is not JSON-compatible", "flows:\n  a: {name: {1: x}}\n", "not JSON-compatible"},
+		{"flow with a non-string name", "flows:\n  a: {name: {key: x}}\n", "cannot unmarshal object into Go struct field Flow.name of type string"},
 	}
 	for _, tt := range tests {
 		if err := Validate([]byte(tt.doc)); err == nil || !strings.Contains(err.Error(), tt.want) {
