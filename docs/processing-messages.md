@@ -1395,10 +1395,10 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1
 ```
 
 ```json
-{"maxAgeHours":720,"maxMessages":0,"intervalMinutes":60,"running":false,
+{"maxAgeHours":720,"maxMessages":0,"auditMaxAgeDays":365,"intervalMinutes":60,"running":false,
  "nextRunAt":"2026-09-28T13:00:00Z",
  "lastRun":{"startedAt":"2026-09-28T12:00:00Z","finishedAt":"2026-09-28T12:00:02Z",
-   "removed":1250,"busy":0,"stopped":false}}
+   "removed":1250,"busy":0,"auditRemoved":310,"stopped":false}}
 ```
 
 `lastRun.auditRemoved` counts the audit entries removed by `prune.auditMaxAgeDays`.
@@ -1406,7 +1406,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1
 `lastRun.stopped` is `true` for a pass that was stopped. Every pass also records a
 `messages.pruned` [event](#5-statistics-and-events) with `removed` and `busy`, and `stopped` or
 `error` when they apply. Without a message store (`store.dialect: disabled`) these requests
-return `503`.
+return `503`, and a `prune` section is refused at startup.
 
 ### Export and import messages
 

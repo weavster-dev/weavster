@@ -249,6 +249,9 @@ func (c Config) Validate() error {
 	if d := c.Prune.AuditMaxAgeDays; d < 0 || d > 36500 {
 		return errors.New("config: prune.auditMaxAgeDays must be 0-36500 (0 = keep the audit log)")
 	}
+	if c.Prune.Enabled() && c.Store.Dialect == DialectDisabled {
+		return errors.New("config: prune needs a message store: with store.dialect disabled there is nothing to prune")
+	}
 	p := c.Auth.PasswordPolicy
 	for _, v := range []int{p.MinLength, c.Auth.Lockout.RetryLimit, c.Auth.Lockout.LockoutPeriodSeconds} {
 		if v < 0 {
