@@ -2061,7 +2061,7 @@ components:
       additionalProperties: false
       required: [id, name, trigger, actions]
       properties:
-        id: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$", description: "Not import or options"}
+        id: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$", description: "Not import, options, or statuses"}
         name: {type: string, minLength: 1, maxLength: 200}
         enabled: {type: boolean}
         trigger: {$ref: "#/components/schemas/AlertTrigger"}
@@ -2073,7 +2073,7 @@ components:
       description: "An alert for PUT on /api/v1/alerts/{name}: id is optional and must match the path"
       required: [name, trigger, actions]
       properties:
-        id: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$", description: "Not import or options"}
+        id: {type: string, pattern: "^[A-Za-z0-9._-]{1,128}$", description: "Not import, options, or statuses"}
         name: {type: string, minLength: 1, maxLength: 200}
         enabled: {type: boolean}
         trigger: {$ref: "#/components/schemas/AlertTrigger"}
