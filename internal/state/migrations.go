@@ -134,7 +134,8 @@ func Migrations() []Migration {
 			Version: 11,
 			Name:    "jobs-claim-index",
 			Apply: func(ctx context.Context, tx *sql.Tx) error {
-				_, err := tx.ExecContext(ctx, `CREATE INDEX IF NOT EXISTS jobs_claim ON jobs (status, next_run_at, id)`)
+				// id in byte order, as claims sort it, so PostgreSQL can use it.
+				_, err := tx.ExecContext(ctx, forDialect(ctx, `CREATE INDEX IF NOT EXISTS jobs_claim ON jobs (status, next_run_at, id /*C*/)`))
 				return err
 			},
 		},
@@ -219,6 +220,7 @@ func Migrate(ctx context.Context, db *sql.DB, migrations []Migration) error {
 	if err != nil {
 		return err
 	}
+	ctx = context.WithValue(ctx, postgresKey{}, postgres) // forDialect, in migrations
 	for _, m := range migrations[current:] {
 		tx, err := conn.BeginTx(ctx, nil)
 		if err != nil {
@@ -238,6 +240,17 @@ func Migrate(ctx context.Context, db *sql.DB, migrations []Migration) error {
 		}
 	}
 	return nil
+}
+
+// postgresKey marks a migration's context as running on PostgreSQL.
+type postgresKey struct{}
+
+// forDialect is a migration statement written for SQLite, rewritten for
+// PostgreSQL when the migration runs there (rebind: byte-order marks and
+// placeholders).
+func forDialect(ctx context.Context, stmt string) string {
+	postgres, _ := ctx.Value(postgresKey{}).(bool)
+	return rebind(postgres, stmt)
 }
 
 // currentVersion is the database's schema version and, when recorded, the

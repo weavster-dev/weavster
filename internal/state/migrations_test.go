@@ -384,3 +384,27 @@ func TestMigrateFollowsSearchPath(t *testing.T) {
 		t.Errorf("%d tables (%v) created in %s: the store was migrated again", n, err, first)
 	}
 }
+
+// TestJobsClaimIndexByteOrder: on PostgreSQL the claim index keeps ids in
+// byte order (COLLATE "C"), as claims sort them; SQLite needs no collation.
+func TestJobsClaimIndexByteOrder(t *testing.T) {
+	for name, open := range migrationBackends() {
+		t.Run(name, func(t *testing.T) {
+			db, postgres := open(t)
+			if err := Migrate(context.Background(), db, Migrations()); err != nil {
+				t.Fatal(err)
+			}
+			q := `SELECT sql FROM sqlite_master WHERE name = 'jobs_claim'`
+			if postgres {
+				q = `SELECT indexdef FROM pg_indexes WHERE indexname = 'jobs_claim' AND schemaname = current_schema()`
+			}
+			var def string
+			if err := db.QueryRow(q).Scan(&def); err != nil {
+				t.Fatal(err)
+			}
+			if postgres != strings.Contains(def, `COLLATE "C"`) {
+				t.Errorf("jobs_claim = %s", def)
+			}
+		})
+	}
+}
