@@ -1971,16 +1971,20 @@ func (p *dbPool) get(driver, env, dsn string) (*sql.DB, error) {
 // failing with "database is locked" (#389).
 const sqliteBusyTimeout = "_pragma=busy_timeout(5000)"
 
-// sqliteWaits is dsn with sqliteBusyTimeout, unless it sets a busy timeout
-// itself; it joins an existing query with &.
+// sqliteWaits is dsn with sqliteBusyTimeout, unless its query sets a busy
+// timeout itself (a _pragma=busy_timeout parameter, not a path that happens
+// to contain the words); it joins an existing query with &.
 func sqliteWaits(dsn string) string {
-	if strings.Contains(dsn, "busy_timeout") {
-		return dsn
+	_, query, hasQuery := strings.Cut(dsn, "?")
+	if !hasQuery {
+		return dsn + "?" + sqliteBusyTimeout
 	}
-	if strings.Contains(dsn, "?") {
-		return dsn + "&" + sqliteBusyTimeout
+	for _, param := range strings.Split(query, "&") {
+		if strings.HasPrefix(strings.ToLower(param), "_pragma=busy_timeout") {
+			return dsn
+		}
 	}
-	return dsn + "?" + sqliteBusyTimeout
+	return dsn + "&" + sqliteBusyTimeout
 }
 
 // close closes every pool; later gets fail.
