@@ -27,7 +27,8 @@ func (externalIdP) Authenticate(_ context.Context, user, token, mfa string) (Ide
 	if mfa != "123456" {
 		return Identity{}, errors.New("mfa: code required")
 	}
-	return Identity{Username: "carol", Permissions: []string{"group:integration"}}, nil
+	// The provider also asserts admin: only the policy decides what it means.
+	return Identity{Username: "carol", Permissions: []string{"group:integration", "admin"}}, nil
 }
 
 // policyEngine decides by attributes, not by the built-in permissions:
