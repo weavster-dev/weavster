@@ -57,8 +57,9 @@ schedule that matches how many messages you can afford to lose.
 5. Import the messages you exported, replacing the older copies the backup holds:
    `POST /api/v1/messages/import?overwrite=true`. Until then, a message that was `queued` in the
    backup may be delivered again (delivery is at least once).
-6. Once the restored server works, drop the old database (`dropdb weavster`) if you no longer
-   need it.
+6. Once the restored server works, drop the old database if you no longer need it, with the same
+   connection options (host, role, TLS) as the commands above, for example
+   `dropdb -h db.internal -U weavster weavster`.
 
 Sign-in tokens are not kept across restarts: users log in again after a restore.
 
@@ -190,8 +191,9 @@ counted since the last sample are lost; messages are not.
 ### A bad change was deployed
 
 Apply the previous config-as-code document (see [Config-as-code documents](config-as-code.md)).
-It changes what it lists back and removes what its sections no longer list, including flows the
-bad change added.
+It changes what it lists back, and in each section it includes, removes what that section no
+longer lists. So if it has a `flows` section, it removes flows the bad change added; if it has
+none, flows are not managed by it, and you undeploy and delete added flows yourself.
 
 Or import the previous configuration export:
 
