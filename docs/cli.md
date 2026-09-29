@@ -255,7 +255,8 @@ FAIL tests/adt/admit: output differs at patient.lastName: it is {"patient":{"las
 The repository's [`examples/golden`](https://github.com/weavster-dev/weavster/tree/main/examples/golden)
 directory has one case per data format: HL7 v2 to JSON and to HL7 v2, XML to JSON and to XML (and
 one that is filtered), delimited text to JSON, and JSON to JSON and to text. Each case directory
-holds a one-flow `weavster.json`, the sample `input.*`, the `expected.*` output, and a fixture:
+holds a one-flow `weavster.json`, the sample `input.*`, a fixture, and the `expected.*` output
+(except the filtered case, whose fixture expects `status: filtered` and has no output):
 
 ```yaml
 # examples/golden/hl7v2-to-json/hl7v2-to-json.test.yaml
