@@ -76,32 +76,53 @@ func freshSchema(t *testing.T) string {
 }
 
 // destination is an HTTP receiver that fails (503) until healthy is set,
-// and records the Idempotency-Key of every request.
+// and records the Idempotency-Key of every request and how many it
+// accepted.
 type destination struct {
 	*httptest.Server
-	healthy atomic.Bool
-	mu      sync.Mutex
-	keys    []string
+	healthy  atomic.Bool
+	mu       sync.Mutex
+	keys     []string
+	accepted int
 }
 
 func newDestination(t *testing.T) *destination {
 	d := &destination{}
 	d.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		d.mu.Lock()
+		defer d.mu.Unlock()
 		d.keys = append(d.keys, r.Header.Get("Idempotency-Key"))
-		d.mu.Unlock()
 		if !d.healthy.Load() {
 			w.WriteHeader(http.StatusServiceUnavailable)
+			return
 		}
+		d.accepted++
 	}))
 	t.Cleanup(d.Close)
 	return d
 }
 
-func (d *destination) requests() []string {
+func (d *destination) requests() (keys []string, accepted int) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	return append([]string(nil), d.keys...)
+	return append([]string(nil), d.keys...), d.accepted
+}
+
+// deliveredOnce fails the test unless the destination accepted exactly one
+// request, and every attempt carried the same Idempotency-Key.
+func (d *destination) deliveredOnce(t *testing.T) {
+	t.Helper()
+	time.Sleep(300 * time.Millisecond) // several retry intervals: a second delivery would show
+	keys, accepted := d.requests()
+	if accepted != 1 {
+		t.Errorf("the destination accepted %d deliveries, want 1", accepted)
+	}
+	for _, k := range keys {
+		if k == "" || k != keys[0] {
+			t.Errorf("Idempotency-Keys %v: want the same key on every attempt", keys)
+			break
+		}
+	}
 }
 
 // server is one test's server: its configuration survives restarts.
@@ -214,16 +235,10 @@ func TestCrashKeepsQueuedMessages(t *testing.T) {
 	s.start()
 	s.await(id, "sent")
 
-	keys := dest.requests()
-	if len(keys) < 2 {
+	if keys, _ := dest.requests(); len(keys) < 2 {
 		t.Fatalf("the destination got %d requests, want a failure and a delivery", len(keys))
 	}
-	for _, k := range keys {
-		if k == "" || k != keys[0] {
-			t.Errorf("Idempotency-Keys %v: want the same key on every attempt", keys)
-			break
-		}
-	}
+	dest.deliveredOnce(t)
 	s.stop()
 }
 
@@ -249,5 +264,6 @@ func TestDeadLetterSurvivesRestart(t *testing.T) {
 		t.Fatalf("requeue: %d %s", code, body)
 	}
 	s.await(id, "sent")
+	dest.deliveredOnce(t)
 	s.stop()
 }

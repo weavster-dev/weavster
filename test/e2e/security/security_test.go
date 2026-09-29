@@ -209,9 +209,11 @@ func TestTLS(t *testing.T) {
 		})
 	}
 	t.Run("plain HTTP to the TLS port", func(t *testing.T) {
-		code, _, _, err := harness.Request(http.DefaultClient, http.MethodGet, "http://"+addr+"/api/openapi.yaml", "", "", "", true)
-		if err == nil && code == http.StatusOK {
-			t.Error("the TLS port served the API over plain HTTP")
+		// Go's TLS listener answers a plain HTTP request with 400 (or the
+		// connection fails); never with the API.
+		code, body, _, err := harness.Request(http.DefaultClient, http.MethodGet, "http://"+addr+"/api/openapi.yaml", "", "", "", true)
+		if err == nil && (code != http.StatusBadRequest || strings.Contains(body, "openapi")) {
+			t.Errorf("plain HTTP to the TLS port: %d %s, want 400 without the API", code, body)
 		}
 	})
 }
