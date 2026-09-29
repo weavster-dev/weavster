@@ -141,7 +141,9 @@ func (p *pruner) pass(ctx context.Context, run *gateway.PruneRun, done chan stru
 	outcome := *run
 	p.cancel, p.done = nil, nil
 	p.mu.Unlock()
-	close(done)
+	// done closes last: once Stop returns, the pass's event and log line
+	// are there.
+	defer close(done)
 	data := map[string]string{"removed": strconv.Itoa(outcome.Removed), "busy": strconv.Itoa(outcome.Busy)}
 	if outcome.Stopped {
 		data["stopped"] = "true"
