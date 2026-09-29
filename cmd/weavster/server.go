@@ -121,6 +121,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	var ingest gateway.MessageIngester
 	var sourcePorts gateway.SourcePorts
 	var prune gateway.Pruner
+	var limit *processLimit
 	retry := func(context.Context) {}
 	if store != nil {
 		sinks := &sinkFactory{logger: logger, tlsOpts: tlsOptions(cfg), dbs: newDBPool(), delivered: func(ctx context.Context, flowID, key string) (string, error) {
@@ -135,7 +136,8 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
 			Gate:        flows.locks,
 		})
-		ia := ingestAdapter{flows: flows, pipe: pipe, limit: newProcessLimit(cfg.Processing, ctx.Done(), logger)}
+		limit = newProcessLimit(cfg.Processing, ctx.Done(), logger)
+		ia := ingestAdapter{flows: flows, pipe: pipe, limit: limit}
 		// Flow destinations hand messages to other flows (#107 D-70) inside
 		// the sender's slot: a second slot could deadlock a full server.
 		inProcess := ia
@@ -201,6 +203,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Stats:           statsPort,
 		DeadLetters:     deadLetters,
 		Pruner:          prune,
+		Metrics:         metricsHandler(serverMetrics{stats: stats, flows: flows, limit: limit, logger: logger}),
 		StatsHistory:    statsPort,
 		Events:          eventsAdapter{events},
 		Topology:        topologyAdapter{flows: flows, stats: stats},

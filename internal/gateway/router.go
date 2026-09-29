@@ -106,6 +106,12 @@ func (s *Server) Router() http.Handler {
 		_, _ = w.Write([]byte(OpenAPISpec()))
 	})
 
+	// Prometheus scrapes with credentials (basic_auth) but no CSRF marker:
+	// outside /api/v1, audited and authenticated as it is.
+	if s.cfg.Metrics != nil {
+		r.With(s.audited, s.authenticate, s.require("flows", "view")).Get("/metrics", s.cfg.Metrics.ServeHTTP)
+	}
+
 	r.Route("/api/"+APIVersion, func(r chi.Router) {
 		r.Use(versionHeader(APIVersion))
 		// audited runs first so requests rejected by any later middleware

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"sync"
 	"time"
 
@@ -330,6 +331,9 @@ type Config struct {
 	DeadLetters DeadLetterRequeuer
 	// Pruner removes old messages; nil without a message store.
 	Pruner Pruner
+	// Metrics serves GET /metrics (Prometheus text format); nil leaves it
+	// unmounted.
+	Metrics http.Handler
 	// StatsHistory reads the sampled statistics time series.
 	StatsHistory StatsHistory
 	Events       EventSearcher
