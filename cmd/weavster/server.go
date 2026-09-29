@@ -122,16 +122,28 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		}
 		ew.start()
 	}
-	series := observability.NewTimeSeries(time.Duration(cfg.Stats.RetentionHours)*time.Hour, maxStatsPoints)
+	retention := time.Duration(cfg.Stats.RetentionHours) * time.Hour
+	series := observability.NewTimeSeries(retention, maxStatsPoints)
+	// Statistics kept across restarts (#107 D-97): loaded before a flow
+	// deployed at start counts anything.
+	var statsRepo statsRepository
+	if store != nil {
+		statsRepo = store.(statsRepository)
+		if err := restoreStats(ctx, statsRepo, stats, series, retention, time.Now()); err != nil {
+			ew.stop()
+			_ = store.Close()
+			return nil, nil, nil, fmt.Errorf("store: statistics: %w", err)
+		}
+	}
 	serverPorts := map[int]string{}
 	for _, l := range listeners(cfg.Listen) {
 		serverPorts[l.Port] = l.UsedBy
 	}
-	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events, serverPorts: serverPorts}
+	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events, serverPorts: serverPorts, statsRepo: statsRepo}
 	if cfg.Flows.DeployOnStartup && store != nil {
 		flows.DeployEnabled(ctx, logger)
 	}
-	statsPort := statsAdapter{flows: flows, stats: stats, series: series}
+	statsPort := statsAdapter{flows: flows, stats: stats, series: series, repo: statsRepo, retention: retention}
 	var ingest gateway.MessageIngester
 	var sourcePorts gateway.SourcePorts
 	var prune gateway.Pruner
@@ -180,6 +192,11 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 			<-pruned
 		}
 		closeStore = func() error { // after the API drained: nothing delivers any more
+			saveCtx, cancel := context.WithTimeout(context.Background(), statsSaveLimit)
+			if err := statsPort.saveNow(saveCtx); err != nil {
+				logger.Warn("statistics not stored at shutdown", "error", err)
+			}
+			cancel()
 			ew.stop() // the last events, then no more
 			sinks.dbs.close()
 			return store.Close()
@@ -731,6 +748,8 @@ type flowAdapter struct {
 	// serverPorts are the server's own ports (port -> listener name), which
 	// no flow source may use.
 	serverPorts map[int]string
+	// statsRepo, when set, loses a deleted flow's stored statistics.
+	statsRepo statsRepository
 }
 
 // definitions locks definition changes; it returns the unlock func.
@@ -2127,6 +2146,11 @@ func (a flowAdapter) Delete(ctx context.Context, id string) error {
 			return err
 		}
 	}
+	if a.statsRepo != nil { // first, so a failure leaves the flow as it was
+		if err := a.statsRepo.DeleteStatsOf(ctx, id); err != nil {
+			return err
+		}
+	}
 	if err := a.store.DeleteFlow(ctx, id); err != nil {
 		return flowErr(err)
 	}
@@ -2215,6 +2239,10 @@ type statsAdapter struct {
 	flows  flowAdapter
 	stats  *observability.StatsRegistry
 	series *observability.TimeSeries
+	// repo, when set, keeps the statistics and samples across restarts;
+	// samples older than retention are dropped from it.
+	repo      statsRepository
+	retention time.Duration
 }
 
 func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime bool) (gateway.FlowStats, error) {
@@ -2247,7 +2275,7 @@ func (a statsAdapter) ResetStats(ctx context.Context, flowID string, lifetime bo
 		}
 	}
 	a.stats.Clear(flowID, lifetime)
-	return nil
+	return a.saveNow(ctx) // a restart does not bring the counts back
 }
 
 // eventLogRecorder records file-source events in the event log.
@@ -2289,11 +2317,16 @@ func (a statsAdapter) sample(ctx context.Context, now time.Time) error {
 	}
 	all := a.stats.SnapshotAll(true)
 	snap := make(map[string]observability.FlowStats, len(flows))
-	for _, f := range flows {
+	ids := make([]string, len(flows))
+	for i, f := range flows {
 		snap[f.ID] = all[f.ID]
+		ids[i] = f.ID
 	}
 	a.series.RecordAll(now, snap)
-	return nil
+	if a.repo == nil {
+		return nil
+	}
+	return a.save(ctx, ids, now.Round(0), snap)
 }
 
 // StatsSeries returns the sampled statistics of one flow, or of every

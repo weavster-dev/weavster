@@ -147,6 +147,21 @@ func (s *StatsRegistry) Clear(flow string, lifetime bool) {
 	}
 }
 
+// Load replaces every flow's current and lifetime stats (stored ones, at
+// startup).
+func (s *StatsRegistry) Load(current, lifetime map[string]FlowStats) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for dst, src := range map[*map[string]*FlowStats]map[string]FlowStats{&s.current: current, &s.lifetime: lifetime} {
+		m := make(map[string]*FlowStats, len(src))
+		for flow, fs := range src {
+			c := cloneStats(&fs)
+			m[flow] = &c
+		}
+		*dst = m
+	}
+}
+
 // SnapshotAll returns a copy of every flow's current (or lifetime) stats,
 // taken at one instant.
 func (s *StatsRegistry) SnapshotAll(lifetime bool) map[string]FlowStats {
@@ -161,6 +176,21 @@ func (s *StatsRegistry) SnapshotAll(lifetime bool) map[string]FlowStats {
 		out[flow] = cloneStats(fs)
 	}
 	return out
+}
+
+// Snapshots returns a copy of every flow's current and lifetime stats,
+// both taken at one instant.
+func (s *StatsRegistry) Snapshots() (current, lifetime map[string]FlowStats) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	copyAll := func(m map[string]*FlowStats) map[string]FlowStats {
+		out := make(map[string]FlowStats, len(m))
+		for flow, fs := range m {
+			out[flow] = cloneStats(fs)
+		}
+		return out
+	}
+	return copyAll(s.current), copyAll(s.lifetime)
 }
 
 // Dump writes all flows' statistics to path as JSON (spec §2.11.36).
@@ -284,6 +314,14 @@ func (ts *TimeSeries) RecordAll(at time.Time, stats map[string]FlowStats) {
 		cut++
 	}
 	ts.points = slices.Clone(ts.points[cut:]) // release the dropped points
+}
+
+// Load replaces the snapshots with points (stored ones, at startup), which
+// are in recording order.
+func (ts *TimeSeries) Load(points []TimeSeriesPoint) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.points = slices.Clone(points[max(0, len(points)-ts.maxPoints):])
 }
 
 // Forget drops every snapshot of flow.

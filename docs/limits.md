@@ -64,8 +64,8 @@ change are marked with their configuration key or flow field.
 | Messages, their content, metadata, and attempt records | The store (`store.dialect`) | Until you remove them (`DELETE /api/v1/messages/{id}`, or [many at once](processing-messages.md#remove-many-messages)). Nothing is pruned automatically: size your database for your traffic, and remove old messages on a schedule of your own, for example with a nightly `DELETE /api/v1/messages?to=…`. With `memory`, until the server stops. |
 | Flow definitions, users, config items | The store | Until changed or removed. |
 | Events | Server memory and the store | The API shows the latest 10,000, reloaded after a restart with PostgreSQL; the store keeps every event until `prune.eventMaxAgeDays`. |
-| Statistics (current, lifetime) | Server memory | Until reset or restart. |
-| Statistics over time | Server memory | `stats.retentionHours` (default 24, up to 8760), at most 100,000 samples per flow and 1,000,000 in all. |
+| Statistics (current, lifetime) | Server memory and the store | Until reset or the flow is deleted; saved with every sample and at stop, so kept across restarts with PostgreSQL. With `memory`, until the server stops. |
+| Statistics over time | Server memory and the store | `stats.retentionHours` (default 24, up to 8760), at most 100,000 samples per flow; in memory at most 1,000,000 in all, the newest of which are loaded again at start. |
 | Audit log | Server stderr | As long as your log collection keeps it. |
 
 To estimate the store's size, count each message's body several times: the original, the stored
