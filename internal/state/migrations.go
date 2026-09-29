@@ -139,6 +139,30 @@ func Migrations() []Migration {
 				return err
 			},
 		},
+		{
+			// PostgreSQL: message ids in byte order at the column, as searches
+			// page and sort them (id /*C*/) and SQLite compares them, so the
+			// primary key and every message index (rebuilt by the ALTER)
+			// serve those queries. The message_id columns follow, so joins
+			// compare within one collation. SQLite: nothing to do.
+			Version: 12,
+			Name:    "messages-byte-order-ids",
+			Apply: func(ctx context.Context, tx *sql.Tx) error {
+				if !migratingPostgres(ctx) {
+					return nil
+				}
+				for _, stmt := range []string{
+					`ALTER TABLE messages ALTER COLUMN id TYPE TEXT COLLATE "C"`,
+					`ALTER TABLE message_metadata ALTER COLUMN message_id TYPE TEXT COLLATE "C"`,
+					`ALTER TABLE message_attempts ALTER COLUMN message_id TYPE TEXT COLLATE "C"`,
+				} {
+					if _, err := tx.ExecContext(ctx, stmt); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
 	}
 }
 
@@ -249,8 +273,13 @@ type postgresKey struct{}
 // PostgreSQL when the migration runs there (rebind: byte-order marks and
 // placeholders).
 func forDialect(ctx context.Context, stmt string) string {
+	return rebind(migratingPostgres(ctx), stmt)
+}
+
+// migratingPostgres reports whether a migration runs on PostgreSQL.
+func migratingPostgres(ctx context.Context) bool {
 	postgres, _ := ctx.Value(postgresKey{}).(bool)
-	return rebind(postgres, stmt)
+	return postgres
 }
 
 // currentVersion is the database's schema version and, when recorded, the
