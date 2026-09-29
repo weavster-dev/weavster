@@ -74,6 +74,9 @@
                                 <a href="./" class="nav-link active" aria-current="page">Processing Messages</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../topology/" class="nav-link">Topology</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
                             </li>
                             <li class="nav-item">
@@ -129,7 +132,7 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../flow-lifecycle/" class="nav-link">
+                                <a rel="next" href="../topology/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
@@ -2034,8 +2037,9 @@ falls behind, events are kept in the event log but not stored, and the server lo
 <a href="../server-config/#prune"><code>prune.eventMaxAgeDays</code></a> removes them.</p>
 <p>To save statistics or events to a file from the command-line client, use <code>dump stats "path"</code> or
 <code>dump events "path"</code> (the newest 10,000 events).</p>
-<p>The topology overview (<code>GET /api/v1/topology</code>) shows each flow's <code>received</code>, <code>sent</code>,
-<code>errored</code>, and <code>queued</code> counts under <code>activity</code>. Zero counts are included.</p>
+<p>The <a href="../topology/">topology</a> (<code>GET /api/v1/topology</code>, and one flow with
+<code>GET /api/v1/topology/flows/{flowId}</code>) shows each flow's, source's, and destination's <code>received</code>,
+<code>sent</code>, <code>errored</code>, and <code>queued</code> counts under <code>activity</code>. Zero counts are included.</p>
 <h3 id="statistics-over-time">Statistics over time</h3>
 <p>The server samples every flow's lifetime totals when it starts and then once a minute, and keeps
 the samples for 24 hours
