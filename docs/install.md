@@ -115,7 +115,11 @@ while they rebuild its indexes. See [Upgrades](server-config.md#upgrades) for th
 
 ## Roll back
 
-Stop the new release and start the previous one:
+First, while the new release still runs: if you need the messages it received, stop every flow and
+export them (`exportmessages`; see [Restore the database](operations.md#restore-the-database)).
+The previous release cannot export them if it refuses the database.
+
+Then stop the new release and start the previous one:
 
 - If the new release changed nothing in the database schema, the previous binary starts on the
   same database, and you are done.
@@ -125,9 +129,10 @@ Stop the new release and start the previous one:
   Error: store: state: the database schema is at version 16 (written by weavster 1.3.0), newer than this release supports (15): run weavster 1.3.0 or later, or restore a backup taken before the upgrade
   ```
 
-  Restore the backup taken before the upgrade (`pg_restore --clean -d weavster
-  weavster-before-1.3.0.dump`), then start the previous release. Messages received after the
-  upgrade are not in that backup: export them first if you need them (`exportmessages`).
+  Restore the backup taken before the upgrade into a new, empty database (restoring over the
+  upgraded one would keep the tables the upgrade added, and the next upgrade would fail on them),
+  start the previous release on it, and import the messages you exported; see
+  [Restore the database](operations.md#restore-the-database).
 
 ## Common pitfalls
 
