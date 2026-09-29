@@ -165,6 +165,10 @@
               <ul class="nav flex-column">
               </ul>
             </li>
+            <li class="nav-item" data-bs-level="2"><a href="#test-an-alert" class="nav-link">Test an alert</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
             <li class="nav-item" data-bs-level="2"><a href="#command-line-client" class="nav-link">Command-line client</a>
               <ul class="nav flex-column">
               </ul>
@@ -182,7 +186,8 @@ are stored with the flows (durable with <code>store.dialect: postgres</code>) an
 the command-line client. Every request needs the <code>alerts:edit</code> permission.</p>
 <p>!!! note "Stored, not sent yet"
     Alerts do not fire yet: no email or webhook is sent. Today these endpoints store, validate,
-    and return the definitions, so you can set them up and move them between servers.</p>
+    and return the definitions, so you can set them up and move them between servers. Testing
+    an alert is a dry run that shows what would be sent.</p>
 <h2 id="an-alert">An alert</h2>
 <pre><code class="language-json">{
   &quot;id&quot;: &quot;adt-errors&quot;,
@@ -205,7 +210,7 @@ the command-line client. Every request needs the <code>alerts:edit</code> permis
 <tbody>
 <tr>
 <td><code>id</code></td>
-<td>Required. 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>; not <code>import</code> or <code>options</code>.</td>
+<td>Required. 1–128 characters from <code>A-Z a-z 0-9 . _ -</code>; not <code>import</code>, <code>options</code>, or <code>statuses</code>. An alert saved as <code>statuses</code> by an earlier release is still listed, exported and deleted, but <code>GET /api/v1/alerts/statuses</code> now returns the statuses: export it with <code>exportalert statuses "file"</code>, change its id in the file, import it, and delete the old one.</td>
 </tr>
 <tr>
 <td><code>name</code></td>
@@ -272,12 +277,42 @@ the command-line client. Every request needs the <code>alerts:edit</code> permis
 <td><code>GET /api/v1/alerts/options</code></td>
 <td><code>{"events": [...], "actionTypes": [...]}</code>.</td>
 </tr>
+<tr>
+<td><code>GET /api/v1/alerts/statuses</code></td>
+<td>Every alert's <code>id</code>, <code>name</code>, and <code>enabled</code>, sorted by id.</td>
+</tr>
+<tr>
+<td><code>GET /api/v1/alerts/{id}/info</code></td>
+<td><code>{"alert": {...}, "events": [...], "actionTypes": [...]}</code>: the alert with the values it may use (<code>404</code> if unknown).</td>
+</tr>
+<tr>
+<td><code>POST /api/v1/alerts/{id}/test</code></td>
+<td>A dry run: whether an event of a flow would trigger the alert, and which actions would run. See below.</td>
+</tr>
 </tbody>
 </table>
 <pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/alerts \
   -d '{&quot;id&quot;:&quot;adt-errors&quot;,&quot;name&quot;:&quot;ADT errors&quot;,&quot;enabled&quot;:true,&quot;trigger&quot;:{&quot;events&quot;:[&quot;message.errored&quot;],&quot;flows&quot;:[&quot;adt&quot;]},&quot;actions&quot;:[{&quot;type&quot;:&quot;email&quot;,&quot;to&quot;:[&quot;ops@example.com&quot;]}]}'
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/alerts/adt-errors/disable
 </code></pre>
+<h2 id="test-an-alert">Test an alert</h2>
+<p><code>POST /api/v1/alerts/{id}/test</code> checks an alert against an event without waiting for one. The body
+is optional: <code>event</code> defaults to the alert's first trigger event and <code>flowId</code> to the first of its
+<code>trigger.flows</code>. An alert without <code>trigger.flows</code> matches every flow, so <code>flowId</code> may be left out.</p>
+<p>A disabled alert can be tested too: <code>matches</code> and <code>actions</code> then show what it would do once
+enabled, and <code>enabled: false</code> says that today it does nothing.</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
+  http://127.0.0.1:8080/api/v1/alerts/adt-errors/test -d '{&quot;event&quot;:&quot;message.errored&quot;,&quot;flowId&quot;:&quot;adt&quot;}'
+</code></pre>
+<pre><code class="language-json">{&quot;matches&quot;:true,&quot;enabled&quot;:true,&quot;event&quot;:&quot;message.errored&quot;,&quot;flowId&quot;:&quot;adt&quot;,&quot;actions&quot;:[{&quot;type&quot;:&quot;email&quot;,&quot;to&quot;:[&quot;ops@example.com&quot;]}],&quot;delivered&quot;:false}
+</code></pre>
+<ul>
+<li><code>matches</code> is false, with no <code>actions</code>, when the event is not in <code>trigger.events</code> or the flow
+  is not in <code>trigger.flows</code>.</li>
+<li><code>delivered</code> is always <code>false</code>: nothing is sent, not even a test message.</li>
+<li>An event that is not one of the trigger events in <code>GET /api/v1/alerts/options</code>, or an
+  invalid flow id, returns <code>400</code>.</li>
+</ul>
 <h2 id="command-line-client">Command-line client</h2>
 <table>
 <thead>

@@ -361,9 +361,9 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestCISamples</code> runs each sample's <code>weavster</code> commands against a server and checks the page shows the files. Install is <code>go install</code> until release binaries exist. See <a href="../ci-cd/">CI/CD</a>.</td>
 </tr>
 <tr>
-<td>Alert definitions (<code>/api/v1/alerts</code>: create, get, update, delete, enable/disable, import with <code>force</code>, options); CLI <code>importalert</code>, <code>exportalert</code></td>
+<td>Alert definitions (<code>/api/v1/alerts</code>: create, get, update, delete, enable/disable, import with <code>force</code>, options, statuses, info, test as a dry run); CLI <code>importalert</code>, <code>exportalert</code></td>
 <td>Implemented (wired)</td>
-<td><code>TestAlerts</code>. Definitions are stored and validated only: alerts do not fire yet. See <a href="../alerts/">Alerts</a>.</td>
+<td><code>TestAlerts</code>, <code>TestAlertInfo</code>. Definitions are stored and validated only: alerts do not fire yet, and a test sends nothing. See <a href="../alerts/">Alerts</a>.</td>
 </tr>
 <tr>
 <td>Dynamic lookups (<code>/api/v1/lookups</code>: groups, prefix matching, get, exists, batch, put, delete, import with <code>replace</code>)</td>
