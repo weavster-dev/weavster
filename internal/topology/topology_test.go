@@ -80,6 +80,34 @@ func TestFlowInternal(t *testing.T) {
 	}
 }
 
+func TestFlowInternalPreservesMultiTransformPath(t *testing.T) {
+	g := FlowInternal(FlowDetail{
+		ID:      "orders",
+		Sources: []Connector{{ID: "input"}},
+		Transforms: []Stage{
+			{ID: "decode"},
+			{ID: "normalize"},
+			{ID: "enrich"},
+		},
+		Destinations: []Connector{{ID: "output"}},
+	})
+
+	want := []Edge{
+		{ID: "edge:source:input:path:transform:decode", From: "source:input", To: "transform:decode", Kind: EdgeMessagePath, Status: "active"},
+		{ID: "edge:transform:decode:path:transform:normalize", From: "transform:decode", To: "transform:normalize", Kind: EdgeMessagePath, Status: "active"},
+		{ID: "edge:transform:normalize:path:transform:enrich", From: "transform:normalize", To: "transform:enrich", Kind: EdgeMessagePath, Status: "active"},
+		{ID: "edge:transform:enrich:path:destination:output", From: "transform:enrich", To: "destination:output", Kind: EdgeMessagePath, Status: "active"},
+	}
+	if len(g.Edges) != len(want) {
+		t.Fatalf("edge count = %d, want %d: %+v", len(g.Edges), len(want), g.Edges)
+	}
+	for i := range want {
+		if got := g.Edges[i]; got.ID != want[i].ID || got.From != want[i].From || got.To != want[i].To || got.Kind != want[i].Kind || got.Status != want[i].Status {
+			t.Errorf("edge[%d] = %+v, want %+v", i, got, want[i])
+		}
+	}
+}
+
 func TestStableIDs(t *testing.T) {
 	g1 := FlowInternal(FlowDetail{ID: "a", Name: "X", Sources: []Connector{{ID: "s1", Type: "file"}}, Destinations: []Connector{{ID: "d1", Type: "tcp"}}})
 	g2 := FlowInternal(FlowDetail{ID: "a", Name: "X", Sources: []Connector{{ID: "s1", Type: "file"}}, Destinations: []Connector{{ID: "d1", Type: "tcp"}}})
