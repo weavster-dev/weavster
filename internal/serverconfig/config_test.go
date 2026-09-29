@@ -53,6 +53,7 @@ auth:
 		{name: "prune negative age", yaml: "prune: {maxAgeHours: -1}\n", wantErr: "prune.maxAgeHours must be 0-876000"},
 		{name: "prune negative count", yaml: "prune: {maxMessages: -1}\n", wantErr: "prune.maxMessages >= 0"},
 		{name: "prune audit age negative", yaml: "prune: {auditMaxAgeDays: -1}\n", wantErr: "prune.auditMaxAgeDays must be 0-36500"},
+		{name: "prune event age negative", yaml: "prune: {eventMaxAgeDays: -1}\n", wantErr: "prune.eventMaxAgeDays must be 0-36500"},
 		{name: "prune without a store", yaml: "store: {dialect: disabled}\nprune: {auditMaxAgeDays: 30}\n", wantErr: "prune needs a message store"},
 		{name: "prune interval zero", yaml: "prune: {intervalMinutes: 0}\n", wantErr: "prune.intervalMinutes 1-10080"},
 		{name: "prune interval too long", yaml: "prune: {intervalMinutes: 10081}\n", wantErr: "prune.intervalMinutes 1-10080"},

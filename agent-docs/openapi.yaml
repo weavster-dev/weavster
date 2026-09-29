@@ -1941,25 +1941,27 @@ components:
         resource: {type: string}
         detail: {type: object, additionalProperties: {type: string}}
     PruneStatus:
-      example: {"maxAgeHours": 720, "maxMessages": 0, "auditMaxAgeDays": 365, "intervalMinutes": 60, "running": false, "nextRunAt": "2026-09-28T13:00:00Z", "lastRun": {"startedAt": "2026-09-28T12:00:00Z", "finishedAt": "2026-09-28T12:00:02Z", "removed": 1250, "busy": 0, "auditRemoved": 310, "stopped": false}}
+      example: {"maxAgeHours": 720, "maxMessages": 0, "auditMaxAgeDays": 365, "eventMaxAgeDays": 90, "intervalMinutes": 60, "running": false, "nextRunAt": "2026-09-28T13:00:00Z", "lastRun": {"startedAt": "2026-09-28T12:00:00Z", "finishedAt": "2026-09-28T12:00:02Z", "removed": 1250, "busy": 0, "auditRemoved": 310, "eventsRemoved": 1200, "stopped": false}}
       type: object
-      required: [maxAgeHours, maxMessages, auditMaxAgeDays, intervalMinutes, running]
+      required: [maxAgeHours, maxMessages, auditMaxAgeDays, eventMaxAgeDays, intervalMinutes, running]
       properties:
         maxAgeHours: {type: integer, description: "prune.maxAgeHours (0 = off)"}
         maxMessages: {type: integer, description: "prune.maxMessages (0 = off)"}
         auditMaxAgeDays: {type: integer, description: "prune.auditMaxAgeDays (0 = keep the audit log)"}
+        eventMaxAgeDays: {type: integer, description: "prune.eventMaxAgeDays (0 = keep stored events)"}
         intervalMinutes: {type: integer}
         running: {type: boolean}
         nextRunAt: {type: string, format: date-time, description: The next scheduled pass (absent when pruning is off)}
         lastRun:
           type: object
-          required: [startedAt, removed, busy, auditRemoved, stopped]
+          required: [startedAt, removed, busy, auditRemoved, eventsRemoved, stopped]
           properties:
             startedAt: {type: string, format: date-time}
             finishedAt: {type: string, format: date-time, description: Absent while the pass runs}
             removed: {type: integer}
             busy: {type: integer, description: Messages skipped because they were being processed}
             auditRemoved: {type: integer, description: Audit entries removed (prune.auditMaxAgeDays)}
+            eventsRemoved: {type: integer, description: Stored events removed (prune.eventMaxAgeDays)}
             stopped: {type: boolean}
             error: {type: string}
     MessagesDeleted:

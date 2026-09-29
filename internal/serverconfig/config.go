@@ -46,10 +46,14 @@ type Prune struct {
 	IntervalMinutes int `yaml:"intervalMinutes"`
 	// AuditMaxAgeDays removes stored audit entries older than this.
 	AuditMaxAgeDays int `yaml:"auditMaxAgeDays"`
+	// EventMaxAgeDays removes stored events older than this.
+	EventMaxAgeDays int `yaml:"eventMaxAgeDays"`
 }
 
 // Enabled reports whether any prune limit is set.
-func (p Prune) Enabled() bool { return p.MaxAgeHours > 0 || p.MaxMessages > 0 || p.AuditMaxAgeDays > 0 }
+func (p Prune) Enabled() bool {
+	return p.MaxAgeHours > 0 || p.MaxMessages > 0 || p.AuditMaxAgeDays > 0 || p.EventMaxAgeDays > 0
+}
 
 // Stats configures time-series statistics (spec §2.11.37): every flow's
 // lifetime counters are sampled every SampleIntervalMs and kept for
@@ -248,6 +252,9 @@ func (c Config) Validate() error {
 	}
 	if d := c.Prune.AuditMaxAgeDays; d < 0 || d > 36500 {
 		return errors.New("config: prune.auditMaxAgeDays must be 0-36500 (0 = keep the audit log)")
+	}
+	if d := c.Prune.EventMaxAgeDays; d < 0 || d > 36500 {
+		return errors.New("config: prune.eventMaxAgeDays must be 0-36500 (0 = keep stored events)")
 	}
 	if c.Prune.Enabled() && c.Store.Dialect == DialectDisabled {
 		return errors.New("config: prune needs a message store: with store.dialect disabled there is nothing to prune")

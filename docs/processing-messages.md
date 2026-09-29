@@ -1395,13 +1395,14 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1
 ```
 
 ```json
-{"maxAgeHours":720,"maxMessages":0,"auditMaxAgeDays":365,"intervalMinutes":60,"running":false,
+{"maxAgeHours":720,"maxMessages":0,"auditMaxAgeDays":365,"eventMaxAgeDays":90,"intervalMinutes":60,"running":false,
  "nextRunAt":"2026-09-28T13:00:00Z",
  "lastRun":{"startedAt":"2026-09-28T12:00:00Z","finishedAt":"2026-09-28T12:00:02Z",
-   "removed":1250,"busy":0,"auditRemoved":310,"stopped":false}}
+   "removed":1250,"busy":0,"auditRemoved":310,"eventsRemoved":1200,"stopped":false}}
 ```
 
-`lastRun.auditRemoved` counts the audit entries removed by `prune.auditMaxAgeDays`.
+`lastRun.auditRemoved` and `lastRun.eventsRemoved` count the audit entries and stored events
+removed by `prune.auditMaxAgeDays` and `prune.eventMaxAgeDays`.
 `lastRun.error` says why a pass failed (for example a lost database connection), and
 `lastRun.stopped` is `true` for a pass that was stopped. Every pass also records a
 `messages.pruned` [event](#5-statistics-and-events) with `removed` and `busy`, and `stopped` or
@@ -1531,8 +1532,16 @@ skipped:
 curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/events?afterId=41'
 ```
 
-The server keeps the newest 10,000 events in memory: older ones are dropped, and the log starts
-empty when the server restarts.
+The events API answers from the newest 10,000 events, kept in memory. Every event is also written
+to the store in the background (within a quarter of a second), and when the server starts with
+`store.dialect: postgres` it loads the newest 10,000 back: events and their ids survive a restart.
+New events get larger ids than any given before the restart, so polling with `afterId` keeps
+working; the ids jump at a restart (they start from the time), so do not expect them to be
+consecutive. Run one server per database: two servers storing events in the same database would
+give out the same ids. With `memory` the log starts empty on every start. If the store
+falls behind, events are kept in the event log but not stored, and the server logs
+`events not stored`. When the server stops it stores what is still queued (for at most 5 seconds). Stored events are kept until
+[`prune.eventMaxAgeDays`](server-config.md#prune) removes them.
 
 To save statistics or events to a file from the command-line client, use `dump stats "path"` or
 `dump events "path"` (the newest 10,000 events).
@@ -1685,8 +1694,8 @@ again as a new message instead, use `reprocess`.
 
 ## Limits today
 
-- Statistics and events are kept in memory: they restart from zero when the server restarts,
-  and only the newest 10,000 events are kept.
+- Statistics are kept in memory and restart from zero when the server restarts. The events API
+  shows the newest 10,000 events (kept across restarts with PostgreSQL).
 - The first delivery attempt runs while your request waits; retries run in the background.
 - Only `http`, `file`, `mllp`, and `flow` destinations are available.
 - Besides this API, messages enter only through [file sources](#read-files-from-a-directory) and

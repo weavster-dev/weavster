@@ -33,6 +33,7 @@ type pruner struct {
 	cfg      serverconfig.Prune
 	msgs     messageAdapter
 	audits   auditRepository
+	stored   eventRepository
 	events   eventLogRecorder
 	logger   *slog.Logger
 	now      func() time.Time
@@ -46,8 +47,8 @@ type pruner struct {
 	nextRun time.Time
 }
 
-func newPruner(cfg serverconfig.Prune, msgs messageAdapter, audits auditRepository, events eventLogRecorder, logger *slog.Logger) *pruner {
-	return &pruner{cfg: cfg, msgs: msgs, audits: audits, events: events, logger: logger, now: time.Now,
+func newPruner(cfg serverconfig.Prune, msgs messageAdapter, audits auditRepository, stored eventRepository, events eventLogRecorder, logger *slog.Logger) *pruner {
+	return &pruner{cfg: cfg, msgs: msgs, audits: audits, stored: stored, events: events, logger: logger, now: time.Now,
 		interval: time.Duration(cfg.IntervalMinutes) * time.Minute}
 }
 
@@ -114,7 +115,8 @@ func (p *pruner) Status() gateway.PruneStatus {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	st := gateway.PruneStatus{
-		MaxAgeHours: p.cfg.MaxAgeHours, MaxMessages: p.cfg.MaxMessages, AuditMaxAgeDays: p.cfg.AuditMaxAgeDays, IntervalMinutes: p.cfg.IntervalMinutes,
+		MaxAgeHours: p.cfg.MaxAgeHours, MaxMessages: p.cfg.MaxMessages, AuditMaxAgeDays: p.cfg.AuditMaxAgeDays,
+		EventMaxAgeDays: p.cfg.EventMaxAgeDays, IntervalMinutes: p.cfg.IntervalMinutes,
 		Running: p.cancel != nil,
 	}
 	if p.cfg.Enabled() && p.base != nil {
@@ -130,13 +132,16 @@ func (p *pruner) Status() gateway.PruneStatus {
 
 func (p *pruner) pass(ctx context.Context, run *gateway.PruneRun, done chan struct{}) {
 	removed, busy, err := p.prune(ctx)
-	audits := 0
+	audits, eventsRemoved := 0, 0
 	if err == nil && p.cfg.AuditMaxAgeDays > 0 {
 		audits, err = p.audits.DeleteAuditBefore(ctx, p.now().AddDate(0, 0, -p.cfg.AuditMaxAgeDays))
 	}
+	if err == nil && p.cfg.EventMaxAgeDays > 0 {
+		eventsRemoved, err = p.stored.DeleteEventsBefore(ctx, p.now().AddDate(0, 0, -p.cfg.EventMaxAgeDays))
+	}
 	p.mu.Lock()
 	finished := p.now().UTC()
-	run.FinishedAt, run.Removed, run.Busy, run.AuditRemoved = &finished, removed, busy, audits
+	run.FinishedAt, run.Removed, run.Busy, run.AuditRemoved, run.EventsRemoved = &finished, removed, busy, audits, eventsRemoved
 	switch {
 	case errors.Is(err, context.Canceled):
 		run.Stopped = true
@@ -149,7 +154,7 @@ func (p *pruner) pass(ctx context.Context, run *gateway.PruneRun, done chan stru
 	// done closes last: once Stop returns, the pass's event and log line
 	// are there.
 	defer close(done)
-	data := map[string]string{"removed": strconv.Itoa(outcome.Removed), "busy": strconv.Itoa(outcome.Busy), "auditRemoved": strconv.Itoa(outcome.AuditRemoved)}
+	data := map[string]string{"removed": strconv.Itoa(outcome.Removed), "busy": strconv.Itoa(outcome.Busy), "auditRemoved": strconv.Itoa(outcome.AuditRemoved), "eventsRemoved": strconv.Itoa(outcome.EventsRemoved)}
 	if outcome.Stopped {
 		data["stopped"] = "true"
 	}
