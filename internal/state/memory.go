@@ -20,6 +20,9 @@ type MemStore struct {
 	auditSeq int64
 	events   []EventRecord // by id
 	eventIDs map[int64]bool
+	// Statistics: by flow, and samples oldest first.
+	flowStats []FlowStatsRecord
+	samples   []StatsSampleRecord
 }
 
 // NewMemStore returns an empty in-memory store.

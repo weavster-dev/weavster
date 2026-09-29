@@ -216,6 +216,33 @@ func Migrations() []Migration {
 				return nil
 			},
 		},
+		{
+			// Flow statistics (current and lifetime) and their time series,
+			// kept across restarts.
+			Version: 15,
+			Name:    "statistics",
+			Apply: func(ctx context.Context, tx *sql.Tx) error {
+				for _, stmt := range []string{
+					`CREATE TABLE flow_stats (
+						flow TEXT PRIMARY KEY,
+						current_stats TEXT NOT NULL,
+						lifetime_stats TEXT NOT NULL
+					)`,
+					`CREATE TABLE stats_samples (
+						at BIGINT NOT NULL,
+						flow TEXT NOT NULL,
+						stats TEXT NOT NULL
+					)`,
+					`CREATE INDEX stats_samples_at ON stats_samples (at)`,
+					`CREATE INDEX stats_samples_flow ON stats_samples (flow)`,
+				} {
+					if _, err := tx.ExecContext(ctx, stmt); err != nil {
+						return err
+					}
+				}
+				return nil
+			},
+		},
 	}
 }
 

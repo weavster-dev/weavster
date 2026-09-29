@@ -724,7 +724,9 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT http://127.0.0.1:8080
   restart.
 - `queued` messages are retried against the current definition. A changed destination URL is
   used for them, and a removed destination is no longer retried for them.
-- Statistics of a removed or renamed destination remain listed until the server restarts.
+- Statistics of a removed or renamed destination remain listed, also after a restart, until you
+  [reset](#5-statistics-and-events) the flow's statistics (`?lifetime=true` for the lifetime
+  totals).
 - The same checks as create apply (`400` with the reason).
 - `id` comes from the URL: a different `id` in the body, or any `status` field, returns `400`.
 - Unknown flows return `404`.
@@ -1492,6 +1494,12 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST 'http://127.0.0.1:80
 Both return `204`. Without `lifetime=true` only the current counters are cleared; the lifetime
 totals keep counting. An unknown flow returns `404`.
 
+With `store.dialect: postgres`, current counters and lifetime totals are kept across restarts.
+They are saved with every [sample](#statistics-over-time) (`stats.sampleIntervalMs`, every minute
+by default), after every reset, and when the server stops. After a crash, the counts of the last
+interval before it are lost; the messages themselves are not. With `memory`, statistics start
+from zero at every start.
+
 Events (permission `events:view`). Each processed message adds one event of type
 `message.sent`, `message.queued`, `message.filtered`, or `message.errored`:
 
@@ -1572,9 +1580,12 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
   flow's samples are returned, interleaved by time.
 - At most `limit` samples are returned (default 1000, up to 10000): the newest ones that match,
   still oldest first. Narrow with `flowId` or `from` to reach older samples.
-- Samples are kept in memory: they start again after a restart, and a lifetime reset shows as a
-  drop to zero. Deleting a flow drops its samples, so a new flow with the same `id` starts a new
-  series. The server keeps at most 1,000,000 samples in total and drops the oldest past that.
+- With `store.dialect: postgres`, samples are stored and loaded again at start, so the series
+  continues across a restart (with a gap while the server was down). With `memory` they start
+  again after a restart. A lifetime reset shows as a drop to zero.
+- Deleting a flow drops its samples, also from the store, so a new flow with the same `id` starts
+  a new series. The server holds at most 1,000,000 samples in memory and drops the oldest past
+  that; the store keeps samples for `stats.retentionHours`.
 - An unknown `flowId` returns `404`; a bad time, `from` after `to`, or a `limit` outside 1–10000
   returns `400`.
 - For message counts by status over hours or days from the stored messages, use
@@ -1694,8 +1705,8 @@ again as a new message instead, use `reprocess`.
 
 ## Limits today
 
-- Statistics are kept in memory and restart from zero when the server restarts. The events API
-  shows the newest 10,000 events (kept across restarts with PostgreSQL).
+- The events API shows the newest 10,000 events. Events and statistics are kept across restarts
+  with PostgreSQL only.
 - The first delivery attempt runs while your request waits; retries run in the background.
 - Only `http`, `file`, `mllp`, and `flow` destinations are available.
 - Besides this API, messages enter only through [file sources](#read-files-from-a-directory) and

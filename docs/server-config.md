@@ -268,7 +268,9 @@ Messages that are `received`, `transformed`, or `queued` are never pruned.
 `sampleIntervalMs` must be 100–3,600,000 ms (one hour) and `retentionHours` 1–8760 (one year),
 and together they may keep at most 100,000 samples per flow (for example, a 1-second interval
 allows up to 27 hours). Samples are held in memory, at most 1,000,000 for all flows together; past
-that the oldest are dropped.
+that the oldest are dropped. With `store.dialect: postgres` they are also stored, together with
+each flow's current and lifetime statistics, and loaded again at start; stored samples older than
+`retentionHours` are removed at every sample.
 
 ```yaml
 stats:

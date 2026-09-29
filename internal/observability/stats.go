@@ -147,20 +147,50 @@ func (s *StatsRegistry) Clear(flow string, lifetime bool) {
 	}
 }
 
-// SnapshotAll returns a copy of every flow's current (or lifetime) stats,
-// taken at one instant.
-func (s *StatsRegistry) SnapshotAll(lifetime bool) map[string]FlowStats {
+// Load replaces every flow's current and lifetime stats (stored ones, at
+// startup).
+func (s *StatsRegistry) Load(current, lifetime map[string]FlowStats) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	m := s.current
-	if lifetime {
-		m = s.lifetime
+	s.current, s.lifetime = loadAll(current), loadAll(lifetime)
+}
+
+// loadAll copies stats into a registry map.
+func loadAll(stats map[string]FlowStats) map[string]*FlowStats {
+	m := make(map[string]*FlowStats, len(stats))
+	for flow, fs := range stats {
+		c := cloneStats(&fs)
+		m[flow] = &c
 	}
+	return m
+}
+
+// copyAll copies a registry map.
+func copyAll(m map[string]*FlowStats) map[string]FlowStats {
 	out := make(map[string]FlowStats, len(m))
 	for flow, fs := range m {
 		out[flow] = cloneStats(fs)
 	}
 	return out
+}
+
+// SnapshotAll returns a copy of every flow's current (or lifetime) stats,
+// taken at one instant.
+func (s *StatsRegistry) SnapshotAll(lifetime bool) map[string]FlowStats {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if lifetime {
+		return copyAll(s.lifetime)
+	}
+	return copyAll(s.current)
+}
+
+// Snapshots returns a copy of every flow's current and lifetime stats,
+// both taken at one instant.
+func (s *StatsRegistry) Snapshots() (current, lifetime map[string]FlowStats) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return copyAll(s.current), copyAll(s.lifetime)
 }
 
 // Dump writes all flows' statistics to path as JSON (spec §2.11.36).
@@ -284,6 +314,14 @@ func (ts *TimeSeries) RecordAll(at time.Time, stats map[string]FlowStats) {
 		cut++
 	}
 	ts.points = slices.Clone(ts.points[cut:]) // release the dropped points
+}
+
+// Load replaces the snapshots with points (stored ones, at startup), which
+// are in recording order.
+func (ts *TimeSeries) Load(points []TimeSeriesPoint) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.points = slices.Clone(points[max(0, len(points)-ts.maxPoints):])
 }
 
 // Forget drops every snapshot of flow.
