@@ -81,12 +81,8 @@ jobs:
           go-version: '1.22'
       - name: Build the archives and checksums
         run: scripts/release.sh 0.0.0-ci dist
-      - name: Verify the checksums and the version
-        working-directory: dist
-        run: |
-          sha256sum -c weavster_0.0.0-ci_checksums.txt
-          tar -xzf weavster_0.0.0-ci_linux_amd64.tar.gz
-          ./weavster_0.0.0-ci_linux_amd64/weavster version | grep -q '^weavster 0.0.0-ci '
+      - name: Verify the archives
+        run: scripts/verify-release.sh 0.0.0-ci dist
 
   docs:
     # The documentation site builds with --strict (warnings fail) on every PR.

@@ -34,7 +34,8 @@ for target in "${targets[@]}"; do
     -ldflags "-s -w -X main.version=$version -X main.buildDate=$date" \
     -o "$work/$name/weavster" ./cmd/weavster
   cp LICENSE README.md "$work/$name/"
-  tar -C "$work" -czf "$out/$name.tar.gz" "$name"
+  # No macOS metadata (._* files, extended attributes) in the archive.
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$work" -czf "$out/$name.tar.gz" "$name"
 done
 
 cd "$out"

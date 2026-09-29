@@ -39,8 +39,11 @@ weavster 1.2.0 (built 2026-10-01T12:00:00Z, go1.22.12, linux/amd64)
   command, and `-v`, ask a server for its version.)
 - On macOS, a downloaded binary may be quarantined; `xattr -d com.apple.quarantine
   /usr/local/bin/weavster` clears it after you have checked the checksum.
-- To build from source instead: `go build -o weavster ./cmd/weavster` (Go 1.22 or later, no C
-  compiler needed).
+- To build from source instead, check out the release tag and run
+  `scripts/release.sh 1.2.0 dist` (Go 1.22 or later, no C compiler needed): it builds the same
+  archives and checksums. A plain `go build ./cmd/weavster` works too but calls itself `0.1.0`,
+  which is also the release the database records for each schema upgrade it applies; stamp the
+  version with `go build -ldflags "-X main.version=1.2.0" -o weavster ./cmd/weavster`.
 
 Then set up the server: [Production setup](production.md) for a real deployment, or
 [Docker Compose](docker-compose.md) to try it locally.
@@ -48,10 +51,11 @@ Then set up the server: [Production setup](production.md) for a real deployment,
 ## Run in a container
 
 The repository's `Dockerfile` builds a small image (`gcr.io/distroless/static-debian12`) that
-runs the binary as a non-root user:
+runs the binary as a non-root user. Build it from the release's tag, with its version:
 
 ```bash
-docker build -t weavster:1.2.0 .
+git checkout v1.2.0
+docker build --build-arg VERSION=1.2.0 --build-arg BUILD_DATE="$(date -u +%FT%TZ)" -t weavster:1.2.0 .
 docker run -d --name weavster -p 8443:8443 \
   -v /etc/weavster:/etc/weavster:ro \
   -e WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE=/run/secrets/weavster-admin-password \
@@ -69,6 +73,10 @@ docker run -d --name weavster -p 8443:8443 \
   mount secrets (see [secrets](server-config.md#secrets)). The first admin password comes from
   `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE`. Keep secrets out of the image and out of the
   configuration file.
+- **Secret files must be readable by the container's user** (`nonroot`, uid 65532): owned by it
+  with mode `0400` (`chown 65532 FILE && chmod 0400 FILE`), or group-readable by a group you add
+  with `--group-add`. A secret file only root can read fails with `secret NAME: … permission
+  denied`, and the server exits.
 - **Files flows read and write**: a file source or destination directory must be a volume the
   container's user (`nonroot`, uid 65532) can read and write.
 
@@ -125,7 +133,9 @@ Stop the new release and start the previous one:
 
 - **`sha256sum: … no properly formatted checksum lines`**: download the checksums file of the
   same version as the archive.
-- **`permission denied` on a file source in a container**: the directory must be writable by uid
-  65532, the image's non-root user.
+- **`permission denied` on a file source or a secret in a container**: the directory (or secret
+  file) must be readable, and for a file source writable, by uid 65532, the image's non-root user.
+- **`weavster version` says `0.1.0` in an image you built**: pass `--build-arg VERSION=…` to
+  `docker build`.
 - **The server refuses to start as root**: it runs as root only with `WEAVSTER_ALLOW_ROOT=1`.
   Run it as its own user instead.

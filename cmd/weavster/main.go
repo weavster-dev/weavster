@@ -26,12 +26,19 @@ var (
 // runVersion prints this binary's version, build date, and platform; it
 // needs no server (the shell's version command asks the server).
 func runVersion(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 {
-		if args[0] == "-h" || args[0] == "--help" {
-			_, _ = fmt.Fprintln(stdout, "Usage: weavster version")
-			return 0
+	fs := flag.NewFlagSet("version", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { _, _ = fmt.Fprintln(fs.Output(), "Usage: weavster version") }
+	if code, ok := parseFlags(fs, args, stderr); !ok {
+		if code == 0 {
+			fs.SetOutput(stdout)
+			fs.Usage()
 		}
-		_, _ = fmt.Fprintf(stderr, "Error: unexpected arguments %q\n", args)
+		return code
+	}
+	if fs.NArg() > 0 {
+		_, _ = fmt.Fprintf(stderr, "Error: unexpected arguments %q\n", fs.Args())
+		fs.Usage()
 		return 2
 	}
 	_, _ = fmt.Fprintf(stdout, "weavster %s (built %s, %s, %s/%s)\n", version, buildDate, runtime.Version(), runtime.GOOS, runtime.GOARCH)
