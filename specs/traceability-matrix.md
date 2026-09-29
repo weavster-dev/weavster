@@ -159,17 +159,17 @@ Line 33 ("The system MUST / SHALL …") states the convention and is not a requi
 | M18.2 | Topology Graph | Stable entity-derived node/edge ids; no server-side layout; rolling activity snapshot (received/sent/errored/queued/lastMessageAt) (contract §2, §4). | tested | `TestTopologyGraphs`, `TestSchemaValidates`, `TestOverviewDependencyEdgeAndActivity` |
 | M18.3 | Topology Graph | Read-only: no mutation endpoints; requires flows:view permission (contract §5). | tested | `TestPermissionMatrix`, `TestReadOnly` |
 | M18.4 | Topology Graph | Passes `go test -race ./internal/topology/...`. | tested | `TestOverview`, `TestFlowInternal`, `TestSchemaPublished` |
-| M19.0 | CLI / Server Entry | Composition root wiring all ports/adapters into the single static binary (architecture §3). | tested | `TestEndToEnd`, `TestPipelineEndToEnd`, `TestMigratesBeforeTraffic` |
+| M19.0 | CLI / Server Entry | Composition root wiring all ports/adapters into the single static binary (architecture §3). | partial | `TestEndToEnd`, `TestPipelineEndToEnd`, `TestMigratesBeforeTraffic`, `TestSupportMatrixWired` (the MVP's ports and adapters, wired into one static binary). The WASM executor, module registry, alert notifiers, and Enterprise ports are not wired: 🔒 (D-55; library-only rows in docs/support-matrix.md). |
 | M19.1 | CLI / Server Entry | Scriptable CLI shell (interactive + batch -s) over the network API with the §3.2 command surface and §3.3 exit-code semantics (spec §3). | tested | `TestShell`, `TestCLIGolden`, `TestExitCodesAndDeprecatedCommands` |
 | M19.2 | CLI / Server Entry | Startup flags -a/-u/-p/-s/-v/-c/-h/-d (spec §3.1). | tested | `TestShell`, `TestSupportMatrixCLI`, `TestRunHelpAndVersion` |
 | M19.3 | CLI / Server Entry | weavster test [--filter NAME] [--format junit\|json] [--output DIR] runs flow transforms against fixtures with no Postgres required (architecture §7). | tested | `TestFixtures`, `TestFixtureErrors`, `TestFixtureDiscovery` |
 | M19.4 | CLI / Server Entry | Refuses to run under a privileged OS account unless allowed; terminates non-zero (spec §11). | tested | `TestSupportMatrixPrivilegedGuard`, `TestPrivilegedGuard` |
 | M19.5 | CLI / Server Entry | Cross-compiles to linux/amd64, linux/arm64, darwin/arm64 with zero CGo (architecture §8). | tested | CI `cross-build` job (`CGO_ENABLED=0`, three targets, checked with `go version -m`); no Go test can cross-compile. |
-| M19.6 | CLI / Server Entry | Passes `go test -race ./cmd/weavster/...` and `go build -o bin/weavster ./cmd/weavster`. | tested | `TestBuildServerServesSystem`, `TestRunHelpAndVersion`, `TestVersionCommand`; `go build` in CI `build`. |
+| M19.6 | CLI / Server Entry | Passes `go test -race ./cmd/weavster/...` and `go build -o bin/weavster ./cmd/weavster`. | tested | `TestBuildServerServesSystem`, `TestRunHelpAndVersion`, `TestVersionCommand`; `go build` in the CI `build` job. |
 
 ## Totals
 
-145 requirements: 86 tested, 37 partial, 22 deferred.
+145 requirements: 85 tested, 38 partial, 22 deferred.
 
 ## Sign-off (D-24)
 

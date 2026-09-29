@@ -16,7 +16,7 @@ import (
 // is, and for every acceptance criterion of agentic-manifest.json. Each row
 // is tested (naming tests, or a CI job, and nothing deferred), partial, or
 // deferred (naming the deferment: 🔒 or a D-NN decision), and every test
-// the matrix names exists in the module's code.
+// and CI job the matrix names exists.
 func TestTraceabilityMatrix(t *testing.T) {
 	root := filepath.Join("..", "..")
 	read := func(path string) string {
@@ -109,6 +109,25 @@ func TestTraceabilityMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// Every CI job the matrix cites is a job of a workflow.
+	workflows, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
+	if err != nil || len(workflows) == 0 {
+		t.Fatalf("no workflows: %v", err)
+	}
+	var jobs strings.Builder
+	for _, w := range workflows {
+		b, err := os.ReadFile(w)
+		if err != nil {
+			t.Fatal(err)
+		}
+		jobs.Write(b)
+	}
+	for _, j := range regexp.MustCompile("CI `([a-z-]+)` job").FindAllStringSubmatch(matrix, -1) {
+		if !regexp.MustCompile(`(?m)^  ` + regexp.QuoteMeta(j[1]) + `:`).MatchString(jobs.String()) {
+			t.Errorf("the matrix cites CI job %s, which no workflow defines", j[1])
+		}
+	}
+
 	named := testName.FindAllStringSubmatch(matrix, -1)
 	if len(named) < 100 {
 		t.Fatalf("test names not read from the matrix: %d", len(named))
