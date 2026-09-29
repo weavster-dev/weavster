@@ -1401,6 +1401,7 @@ curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1
    "removed":1250,"busy":0,"stopped":false}}
 ```
 
+`lastRun.auditRemoved` counts the audit entries removed by `prune.auditMaxAgeDays`.
 `lastRun.error` says why a pass failed (for example a lost database connection), and
 `lastRun.stopped` is `true` for a pass that was stopped. Every pass also records a
 `messages.pruned` [event](#5-statistics-and-events) with `removed` and `busy`, and `stopped` or

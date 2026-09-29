@@ -337,6 +337,8 @@ type Config struct {
 	// ContextPath serves everything under this prefix (listen.contextPath);
 	// "" serves at the root.
 	ContextPath string
+	// AuditLog searches the stored audit entries; nil answers 503.
+	AuditLog AuditLog
 	// StatsHistory reads the sampled statistics time series.
 	StatsHistory StatsHistory
 	Events       EventSearcher

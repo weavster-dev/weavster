@@ -130,6 +130,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 | `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all`, `POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all`, `POST /api/v1/flows/{id}/destinations/{name}/{start,stop}`, `POST /api/v1/flows/stats/reset`, `POST /api/v1/flows/{id}/stats/reset` | `flows:deploy` |
 | `GET /api/v1/flows/{id}/stats`, `GET /api/v1/flows/stats`, `GET /api/v1/stats/series`, `GET /metrics` | `flows:view` |
 | `GET /api/v1/events`, `/api/v1/events/{id}`, `/count`, `/max-id`, `/export` | `events:view` |
+| `GET /api/v1/audit` | `audit:view` |
 | `GET/POST /api/v1/users`, `GET/PUT/DELETE /api/v1/users/{name}`, `POST /api/v1/users/{name}/password` | `users:admin` |
 | `/api/v1/configmap`, `/api/v1/configmap/{name}` (all methods) | `configmap:edit` |
 | `/api/v1/scripts`, `/api/v1/scripts/{name}` (all methods) | `scripts:edit` |
@@ -152,7 +153,7 @@ The `admin` permission grants everything. A signed-in user without the permissio
 The other permissions are `users:admin`, `flows:view`, `flows:edit`, `flows:deploy`,
 `messages:view`, `messages:send`, `messages:content`, `messages:delete`, `messages:import`,
 `events:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `configmap:edit`,
-`settings:edit`, `lookups:view`, and `lookups:edit`.
+`settings:edit`, `lookups:view`, `lookups:edit`, and `audit:view`.
 
 ## Manage users
 

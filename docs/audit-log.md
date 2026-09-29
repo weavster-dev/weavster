@@ -58,8 +58,44 @@ never reach the log. A query parameter is logged as `[redacted]` when, ignoring 
 actor=admin action=phi.access resource=/api/v1/messages detail="map[messages:0 messages.ids:[] query.apiToken:[redacted] query.status:sent status:200]"
 ```
 
+## Search the audit log
+
+Every entry is also stored in the server's [store](server-config.md#store), redacted exactly as it
+is logged, and the `id` on the stderr line is the stored entry's `id`. With `store.dialect: postgres` it survives restarts; with `memory` or `disabled` the
+newest 100,000 entries are kept until the server stops. Search them with `GET /api/v1/audit`
+(permission `audit:view`, which `admin` includes):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
+  'http://127.0.0.1:8080/api/v1/audit?action=phi.access&from=2026-09-28T00:00:00Z&limit=100'
+```
+
+```json
+[{"id":412,"at":"2026-09-28T12:03:11.204Z","actor":"alice","action":"phi.access",
+  "resource":"/api/v1/messages","detail":{"messages":"2","messages.ids":"[\"6f1c9e\",\"9a0d41\"]","query.flowId":"adt","status":"200"}}]
+```
+
+| Parameter | Meaning |
+|---|---|
+| `actor`, `action`, `resource` | Only entries with exactly this actor, action (for example `phi.access`, `auth.failure`, `POST /api/v1/flows`), or resource (the request path). |
+| `from`, `to` | At or after / at or before this time (RFC 3339). |
+| `afterId` | Only entries with a larger `id`: page with the last `id` you saw. |
+| `limit` | Entries per page, 1–1000 (default 100). Entries come oldest first. |
+
+An entry shows up in the search about 3 seconds after it was written. By then every earlier entry
+is stored too, so a collector that polls with `afterId` never skips one. Without an `action`
+filter, entries of reads of the audit log itself (`audit.read`) are left out, so a collector does
+not keep finding its own polls; ask for them with `action=audit.read`.
+
+Reading the audit log is itself recorded, as `audit.read`, with the number of entries returned in
+`entries`; a search that returns nothing discloses nothing and is not recorded. If the store cannot take an entry (for example the database is down), the entry still
+goes to stderr, the server logs `audit entry not stored`, and the request itself is not affected. A
+store write waits at most 2 seconds.
+
 ## Retention
 
-Audit entries exist only in the log output and in process memory, which keeps exactly the
-newest 10,000 entries. They are not stored and cannot be searched through the API yet. To keep them, collect stderr with your log shipper
-(for example journald or a container log driver).
+Stored entries are kept until they are pruned: set
+[`prune.auditMaxAgeDays`](server-config.md#prune) to remove entries older than that many days
+(each prune pass reports how many in `lastRun.auditRemoved`). Without it they are kept forever,
+and every failed login adds one. To also keep them outside the server, collect stderr with your
+log shipper (for example journald or a container log driver).

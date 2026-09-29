@@ -73,7 +73,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   paging), reading one message and its content (audited), reprocessing, and removing messages;
   read-only topology JSON built from the flows.
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
-  account; security-relevant API calls are written to an audit log on stderr. Users persist
+  account; security-relevant API calls are written to an audit log on stderr and in the store,
+  searchable with `GET /api/v1/audit` (see docs/audit-log.md). Users persist
   across restarts with `store.dialect: postgres`; otherwise they are kept in memory.
 - **Configuration management** (API and CLI): user administration; the config map, global
   scripts, and settings; code snippets and libraries; alert definitions (stored and validated;
@@ -86,8 +87,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   shell, and `-s` runs batch scripts, with `help`, `status`, `version`, `flow` commands for every
   flow API operation, user administration, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
   a connection file, and `-v` prints the server's version.
-- **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
-  scheduler, the other adapters (SMTP, web service, and the earlier `DBSink`/`DBSource` library types), outbox, codecs other than
+- **Library-only** (source and unit tests exist, not used by the server): the scheduler, the other adapters (SMTP, web service, and the earlier `DBSink`/`DBSource` library types), outbox, codecs other than
   HL7 v2, XML, and delimited, WASM compiler/executor/registry, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
   tracing. Prometheus metrics are served at `GET /metrics` (see docs/metrics.md).
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.

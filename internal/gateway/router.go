@@ -288,6 +288,7 @@ func (s *Server) routes() http.Handler {
 			// message content: viewing messages is needed too, as a PHI access.
 			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "view"), s.require("messages", "send")).Post("/messages/{id}/requeue", s.handleMessageRequeue)
 			r.With(s.require("messages", "send")).Post("/messages/requeue", s.handleMessagesRequeue)
+			r.With(s.auditAs(AuditRead), s.require("audit", "view")).Get("/audit", s.handleAuditSearch)
 			r.With(s.require("messages", "view")).Get("/system/prune", s.handlePruneStatus)
 			r.With(s.require("messages", "delete")).Post("/system/prune/start", s.handlePrune(true))
 			r.With(s.require("messages", "delete")).Post("/system/prune/stop", s.handlePrune(false))

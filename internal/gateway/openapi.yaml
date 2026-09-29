@@ -526,6 +526,22 @@ paths:
         "200": {description: "received, filtered, transformed, sent, errored, queued, destinations, lastMessageAt", headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}, content: {application/json: {schema: {$ref: "#/components/schemas/FlowStats"}}}}
         "400": {description: lifetime is not a boolean, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
         "404": {description: Unknown flow, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+  /api/v1/audit:
+    get:
+      summary: "Stored audit entries at least 3 seconds old, oldest first; audit.read entries only with action=audit.read (requires audit:view; a read that returns entries is audited as audit.read)"
+      parameters:
+        - {name: actor, in: query, schema: {type: string}}
+        - {name: action, in: query, schema: {type: string}, description: "For example phi.access, auth.failure, POST /api/v1/flows"}
+        - {name: resource, in: query, schema: {type: string}, description: The request path}
+        - {name: from, in: query, schema: {type: string, format: date-time}, description: At or after (RFC 3339)}
+        - {name: to, in: query, schema: {type: string, format: date-time}, description: At or before (RFC 3339)}
+        - {name: afterId, in: query, schema: {type: integer, minimum: 0}, description: Only entries with a larger id}
+        - {name: limit, in: query, schema: {type: integer, minimum: 1, maximum: 1000, default: 100}}
+      responses:
+        default: {$ref: "#/components/responses/Error"}
+        "200": {description: The entries, content: {application/json: {schema: {type: array, items: {$ref: "#/components/schemas/AuditEntry"}}}}, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "400": {description: A bad parameter, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
+        "503": {description: The audit log is unavailable, headers: {Weavster-API-Version: {$ref: "#/components/headers/WeavsterAPIVersion"}}}
   /api/v1/events:
     get:
       summary: Search the event log (requires events:view)
@@ -1913,24 +1929,37 @@ components:
         enabled: {type: boolean}
         trigger: {$ref: "#/components/schemas/AlertTrigger"}
         actions: {type: array, minItems: 1, items: {$ref: "#/components/schemas/AlertAction"}}
-    PruneStatus:
-      example: {"maxAgeHours": 720, "maxMessages": 0, "intervalMinutes": 60, "running": false, "nextRunAt": "2026-09-28T13:00:00Z", "lastRun": {"startedAt": "2026-09-28T12:00:00Z", "finishedAt": "2026-09-28T12:00:02Z", "removed": 1250, "busy": 0, "stopped": false}}
+    AuditEntry:
+      example: {"id": 412, "at": "2026-09-28T12:03:11.204Z", "actor": "alice", "action": "phi.access", "resource": "/api/v1/messages", "detail": {"messages": "1", "messages.ids": "[\"6f1c9e\"]", "status": "200"}}
       type: object
-      required: [maxAgeHours, maxMessages, intervalMinutes, running]
+      required: [id, at, actor, action, resource, detail]
+      properties:
+        id: {type: integer}
+        at: {type: string, format: date-time}
+        actor: {type: string}
+        action: {type: string}
+        resource: {type: string}
+        detail: {type: object, additionalProperties: {type: string}}
+    PruneStatus:
+      example: {"maxAgeHours": 720, "maxMessages": 0, "auditMaxAgeDays": 365, "intervalMinutes": 60, "running": false, "nextRunAt": "2026-09-28T13:00:00Z", "lastRun": {"startedAt": "2026-09-28T12:00:00Z", "finishedAt": "2026-09-28T12:00:02Z", "removed": 1250, "busy": 0, "auditRemoved": 310, "stopped": false}}
+      type: object
+      required: [maxAgeHours, maxMessages, auditMaxAgeDays, intervalMinutes, running]
       properties:
         maxAgeHours: {type: integer, description: "prune.maxAgeHours (0 = off)"}
         maxMessages: {type: integer, description: "prune.maxMessages (0 = off)"}
+        auditMaxAgeDays: {type: integer, description: "prune.auditMaxAgeDays (0 = keep the audit log)"}
         intervalMinutes: {type: integer}
         running: {type: boolean}
         nextRunAt: {type: string, format: date-time, description: The next scheduled pass (absent when pruning is off)}
         lastRun:
           type: object
-          required: [startedAt, removed, busy, stopped]
+          required: [startedAt, removed, busy, auditRemoved, stopped]
           properties:
             startedAt: {type: string, format: date-time}
             finishedAt: {type: string, format: date-time, description: Absent while the pass runs}
             removed: {type: integer}
             busy: {type: integer, description: Messages skipped because they were being processed}
+            auditRemoved: {type: integer, description: Audit entries removed (prune.auditMaxAgeDays)}
             stopped: {type: boolean}
             error: {type: string}
     MessagesDeleted:

@@ -96,16 +96,18 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	sink := audit.NewLocalSink(logger)
 	// Flow definitions live in the configured store; with the store
 	// disabled they are kept in memory.
-	// Every state backend implements flowRepository, itemRepository, and lookupRepository
+	// Every state backend implements flowRepository, itemRepository, lookupRepository, and auditRepository
 	// (TestStoresImplementFlowRepository).
 	mem := state.NewMemStore()
 	var repo flowRepository = mem
 	var items itemRepository = mem
 	var lookups lookupRepository = mem
+	var audits auditRepository = mem
 	if store != nil {
 		repo = store.(flowRepository)
 		items = store.(itemRepository)
 		lookups = store.(lookupRepository)
+		audits = store.(auditRepository)
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
 	series := observability.NewTimeSeries(time.Duration(cfg.Stats.RetentionHours)*time.Hour, maxStatsPoints)
@@ -151,7 +153,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		tables := newDatabaseSources(flows, ia, eventLogRecorder{events}, sinks.dbs, logger)
 		listening := newPortSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, logger)
 		sourcePorts = listening
-		pr := newPruner(cfg.Prune, ma, eventLogRecorder{events}, logger)
+		pr := newPruner(cfg.Prune, ma, audits, eventLogRecorder{events}, logger)
 		prune = pr
 		retry = func(ctx context.Context) {
 			polled, served, queried, pruned := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
@@ -192,7 +194,8 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Lookups:         lookupsAdapter{lookups},
 		ConfigPlanner:   configPlanner{},
 		Authorizer:      authorizerAdapter{},
-		Audit:           auditAdapter{sink},
+		Audit:           auditAdapter{s: sink, repo: audits, logger: logger},
+		AuditLog:        auditAdapter{s: sink, repo: audits, logger: logger, settle: auditSettle},
 		Flows:           flows,
 		Messages:        messages,
 		Trends:          trends,
@@ -554,10 +557,74 @@ func (authorizerAdapter) Authorize(ctx context.Context, id gateway.Identity, res
 	return auth.NewLocalAuthorizer().Authorize(ctx, u, resource, action)
 }
 
-type auditAdapter struct{ s *audit.LocalSink }
+// auditRepository keeps audit entries (the store: PostgreSQL, SQLite, or
+// memory).
+type auditRepository interface {
+	AppendAudit(ctx context.Context, r state.AuditRecord) (int64, error)
+	SearchAudit(ctx context.Context, q state.AuditQuery) ([]state.AuditRecord, error)
+	DeleteAuditBefore(ctx context.Context, t time.Time) (int, error)
+}
+
+// Stored audit entries (#107 D-93).
+const (
+	// auditWriteTimeout bounds the store write of one entry, so a slow
+	// store cannot hold up the response it records.
+	auditWriteTimeout = 2 * time.Second
+	// auditSettle: a search returns entries at least this old. Ids are
+	// taken when an entry is written but seen when it commits, which can
+	// be out of order; by then every earlier entry has committed or
+	// failed, so an afterId cursor never skips one.
+	auditSettle = auditWriteTimeout + time.Second
+)
+
+// auditAdapter writes each audit entry to the store and to the log
+// (stderr), redacted the same way and with the stored id, so both match. A
+// store failure is logged and never changes the response (#107 D-93).
+type auditAdapter struct {
+	s      *audit.LocalSink
+	repo   auditRepository
+	logger *slog.Logger
+	settle time.Duration // auditSettle; 0 in tests
+	now    func() time.Time
+}
 
 func (a auditAdapter) Record(ctx context.Context, e gateway.AuditEvent) error {
-	return a.s.Record(ctx, audit.Entry{Actor: e.Actor, Action: e.Action, Resource: e.Resource, Detail: e.Detail})
+	at := time.Now()
+	detail := audit.RedactSensitive(e.Detail)
+	sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), auditWriteTimeout)
+	defer cancel()
+	id, serr := a.repo.AppendAudit(sctx, state.AuditRecord{At: at, Actor: e.Actor, Action: e.Action, Resource: e.Resource, Detail: detail})
+	if serr != nil {
+		a.logger.Warn("audit entry not stored", "action", e.Action, "resource", e.Resource, "error", serr)
+		id = 0 // the log line numbers it
+	}
+	return a.s.Record(ctx, audit.Entry{ID: id, At: at, Actor: e.Actor, Action: e.Action, Resource: e.Resource, Detail: detail})
+}
+
+// SearchAudit reads the stored audit entries.
+func (a auditAdapter) SearchAudit(ctx context.Context, q gateway.AuditQuery) ([]gateway.AuditEntry, error) {
+	sq := state.AuditQuery{Actor: q.Actor, Action: q.Action, Resource: q.Resource, From: q.From, To: q.To, AfterID: q.AfterID, Limit: q.Limit}
+	if q.OmitReads {
+		sq.ExcludeAction = gateway.AuditRead
+	}
+	if a.settle > 0 {
+		now := time.Now
+		if a.now != nil {
+			now = a.now
+		}
+		if settled := now().Add(-a.settle); sq.To.IsZero() || sq.To.After(settled) {
+			sq.To = settled
+		}
+	}
+	records, err := a.repo.SearchAudit(ctx, sq)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gateway.AuditEntry, len(records))
+	for i, r := range records {
+		out[i] = gateway.AuditEntry{ID: r.ID, At: r.At, Actor: r.Actor, Action: r.Action, Resource: r.Resource, Detail: r.Detail}
+	}
+	return out, nil
 }
 
 // flowRepository is the durable flow-definition store (D-12), implemented by
