@@ -36,7 +36,7 @@ func (t topologyAdapter) Overview(ctx context.Context) (topology.Graph, error) {
 	snap := t.snapshot()
 	summaries := make([]topology.FlowSummary, 0, len(flows))
 	for _, f := range flows {
-		st := t.state(f, snap)
+		st := snap.state(f)
 		var routes []topology.Link
 		for _, d := range f.Destinations {
 			if d.Type != "flow" || d.Flow == "" {
@@ -72,7 +72,7 @@ func (t topologyAdapter) FlowInternal(ctx context.Context, id string) (topology.
 	if err != nil {
 		return topology.Graph{}, err
 	}
-	st := t.state(f, t.snapshot())
+	st := t.snapshot().state(f)
 	status := st.status(st.recent.Sent, st.recent.Errored)
 	detail := topology.FlowDetail{ID: f.ID, Name: f.Name, Status: status}
 	if src := f.Source; src != nil {
@@ -111,9 +111,11 @@ func (t topologyAdapter) FlowInternal(ctx context.Context, id string) (topology.
 }
 
 // statsSnapshot is every flow's current and lifetime statistics, taken at
-// one instant for a whole graph.
+// one instant for a whole graph, and each flow's samples from the newest
+// one before the window onwards (one pass over the series).
 type statsSnapshot struct {
 	current, lifetime map[string]observability.FlowStats
+	samples           map[string][]observability.TimeSeriesPoint // nil: no series
 }
 
 func (t topologyAdapter) snapshot() statsSnapshot {
@@ -121,7 +123,15 @@ func (t topologyAdapter) snapshot() statsSnapshot {
 		return statsSnapshot{}
 	}
 	cur, life := t.stats.Snapshots()
-	return statsSnapshot{current: cur, lifetime: life}
+	snap := statsSnapshot{current: cur, lifetime: life}
+	if t.series != nil {
+		now := time.Now()
+		if t.now != nil {
+			now = t.now()
+		}
+		snap.samples = t.series.Recent(now.Add(-topologyWindow))
+	}
+	return snap
 }
 
 // flowState is what the topology shows of one flow's traffic: its current
@@ -135,7 +145,7 @@ type flowState struct {
 	ok        bool
 }
 
-func (t topologyAdapter) state(f gateway.Flow, snap statsSnapshot) flowState {
+func (snap statsSnapshot) state(f gateway.Flow) flowState {
 	lifecycle := flowlife.Normalize(f.Status)
 	st := flowState{lifecycle: lifecycle, started: lifecycle == flowlife.Started}
 	if snap.current == nil {
@@ -143,18 +153,7 @@ func (t topologyAdapter) state(f gateway.Flow, snap statsSnapshot) flowState {
 	}
 	cur := snap.current[f.ID]
 	st.current = &cur
-	if t.series == nil {
-		return st
-	}
-	now := time.Now()
-	if t.now != nil {
-		now = t.now()
-	}
-	cutoff := now.Add(-topologyWindow)
-	keep := func(id string) bool { return id == f.ID }
-	// The newest sample at or before the window's start, then those in it.
-	points := t.series.Series(keep, time.Time{}, cutoff.Add(-time.Nanosecond), 1)
-	points = append(points, t.series.Series(keep, cutoff, time.Time{}, 0)...)
+	points := snap.samples[f.ID]
 	if len(points) == 0 {
 		return st
 	}

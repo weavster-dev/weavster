@@ -324,6 +324,33 @@ func (ts *TimeSeries) Load(points []TimeSeriesPoint) {
 	ts.points = slices.Clone(points[max(0, len(points)-ts.maxPoints):])
 }
 
+// Recent returns each flow's snapshots from the newest one taken before
+// from onwards, in recording order, in one pass. RecordAll samples every
+// flow at one time, so the pass stops after the first sampling time before
+// from.
+func (ts *TimeSeries) Recent(from time.Time) map[string][]TimeSeriesPoint {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	out := map[string][]TimeSeriesPoint{}
+	var before time.Time // the first sampling time before from
+	for i := len(ts.points) - 1; i >= 0; i-- {
+		p := ts.points[i]
+		if p.At.Before(from) {
+			if before.IsZero() {
+				before = p.At
+			}
+			if !p.At.Equal(before) {
+				break
+			}
+		}
+		out[p.Flow] = append(out[p.Flow], p)
+	}
+	for _, pts := range out {
+		slices.Reverse(pts)
+	}
+	return out
+}
+
 // Forget drops every snapshot of flow.
 func (ts *TimeSeries) Forget(flow string) {
 	ts.mu.Lock()

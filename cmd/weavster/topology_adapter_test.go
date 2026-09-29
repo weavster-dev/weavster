@@ -71,13 +71,13 @@ func TestTopologyRecent(t *testing.T) {
 	series := observability.NewTimeSeries(time.Hour, 10)
 	ta := topologyAdapter{stats: stats, series: series, now: func() time.Time { return now }}
 	flow := gateway.Flow{ID: "a", Status: "started"}
-	if st := ta.state(flow, ta.snapshot()); st.ok || st.edge(1, 0) != "idle" {
+	if st := ta.snapshot().state(flow); st.ok || st.edge(1, 0) != "idle" {
 		t.Errorf("no sample: %+v", st)
 	}
 	// A sample long before the window (a slow sampleIntervalMs) is the base.
 	series.RecordAll(now.Add(-10*time.Minute), map[string]observability.FlowStats{"a": {}})
 	stats.IncConnector("a", "d", observability.Errored)
-	if st := ta.state(flow, ta.snapshot()); !st.ok || st.status(0, st.recent.Connectors["d"].Errored) != "errored" {
+	if st := ta.snapshot().state(flow); !st.ok || st.status(0, st.recent.Connectors["d"].Errored) != "errored" {
 		t.Errorf("with an older sample: %+v", st)
 	}
 	if mergeEdge("idle", "active") != "active" || mergeEdge("", "errored") != "errored" || mergeEdge("", "") != "" {
