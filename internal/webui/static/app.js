@@ -45,7 +45,9 @@
   // the graph's order starts, and edges back into placed nodes are ignored.
   function layout(graph) {
     var nodes = graph.nodes || [], edges = graph.edges || [];
-    var rank = {}, indeg = {}, out = {}, done = {}, queue = [], placed = 0, i, j;
+    // Prototype-free maps: ids come from the server and may be any text.
+    var rank = Object.create(null), indeg = Object.create(null), out = Object.create(null), done = Object.create(null);
+    var queue = [], placed = 0, i, j;
     for (i = 0; i < nodes.length; i++) {
       rank[nodes[i].id] = 0;
       indeg[nodes[i].id] = 0;
@@ -85,7 +87,7 @@
         }
       }
     }
-    var cols = [], pos = {}, maxRank = 0, maxRows = 0, r;
+    var cols = [], pos = Object.create(null), maxRank = 0, maxRows = 0, r;
     for (i = 0; i < nodes.length; i++) {
       r = rank[nodes[i].id];
       (cols[r] = cols[r] || []).push(nodes[i].id);
@@ -330,11 +332,21 @@
     }
     var box = main.querySelector('.graph');
     var left = box ? box.scrollLeft : 0, top = box ? box.scrollTop : 0;
+    var focused = document.activeElement && main.contains(document.activeElement) ? document.activeElement.getAttribute('href') : null;
     main.innerHTML = html;
     box = main.querySelector('.graph');
     if (box && shown && shown.key === key) {
       box.scrollLeft = left;
       box.scrollTop = top;
+      if (focused) { // the same link keeps the keyboard focus
+        var links = main.querySelectorAll('a[href]');
+        for (var i = 0; i < links.length; i++) {
+          if (links[i].getAttribute('href') === focused) {
+            links[i].focus();
+            break;
+          }
+        }
+      }
     }
     shown = { key: key, html: same };
   }

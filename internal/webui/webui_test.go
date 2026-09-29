@@ -290,3 +290,19 @@ func TestRoutesAndEdgeCases(t *testing.T) {
 		t.Errorf("unnamed flow title in %s", view)
 	}
 }
+
+// TestPrototypeIDs: ids that name object properties are laid out like any
+// other.
+func TestPrototypeIDs(t *testing.T) {
+	vm, o := ui(t)
+	g := graph(t, vm, `{"nodes":[{"id":"__proto__","kind":"flow","label":"p"},{"id":"constructor","kind":"flow","label":"c"},{"id":"toString","kind":"flow","label":"s"}],
+		"edges":[{"id":"e1","from":"__proto__","to":"constructor","kind":"route"},{"id":"e2","from":"constructor","to":"toString","kind":"route"}]}`)
+	pos := call(t, vm, o, "layout", g).ToObject(vm).Get("pos").ToObject(vm)
+	x := func(id string) int64 { return pos.Get(id).ToObject(vm).Get("x").ToInteger() }
+	if x("__proto__") >= x("constructor") || x("constructor") >= x("toString") {
+		t.Errorf("columns = %d %d %d", x("__proto__"), x("constructor"), x("toString"))
+	}
+	if svg := call(t, vm, o, "renderGraph", g).String(); strings.Count(svg, `class="node`) != 3 || strings.Count(svg, `class="edge`) != 2 {
+		t.Errorf("svg = %s", svg)
+	}
+}
