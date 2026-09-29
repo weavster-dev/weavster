@@ -44,6 +44,9 @@
                                 <a href="../install/" class="nav-link">Install, Upgrade, Roll Back</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../operations/" class="nav-link">Operations</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../support-matrix/" class="nav-link">Support Matrix</a>
                             </li>
                             <li class="nav-item">
@@ -2171,10 +2174,11 @@ again as a new message instead, use <code>reprocess</code>.</p>
 <li>The events API shows the newest 10,000 events. Events and statistics are kept across restarts
   with PostgreSQL only.</li>
 <li>The first delivery attempt runs while your request waits; retries run in the background.</li>
-<li>Only <code>http</code>, <code>file</code>, <code>mllp</code>, and <code>flow</code> destinations are available.</li>
-<li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a> and
-  <a href="#receive-messages-over-http">http sources</a>, and <a href="#receive-hl7-v2-over-mllp">mllp sources</a>;
-  database sources are not available yet.</li>
+<li>Only <code>http</code>, <code>file</code>, <code>mllp</code>, <code>flow</code>, and <a href="#write-rows-to-a-database"><code>database</code></a> destinations
+  are available.</li>
+<li>Besides this API, messages enter only through <a href="#read-files-from-a-directory">file sources</a>,
+  <a href="#receive-messages-over-http">http sources</a>, <a href="#receive-hl7-v2-over-mllp">mllp sources</a>, and
+  <a href="#read-rows-from-a-database">database sources</a>.</li>
 <li>A <code>file</code> destination writes wherever <code>dir</code> points, with the server's permissions, and an
   <code>http</code> destination can target any address the server can reach, including internal ones.
   Only give <code>flows:edit</code> to trusted users.</li>

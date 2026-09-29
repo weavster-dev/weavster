@@ -44,6 +44,9 @@
                                 <a href="../install/" class="nav-link">Install, Upgrade, Roll Back</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../operations/" class="nav-link">Operations</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../support-matrix/" class="nav-link">Support Matrix</a>
                             </li>
                             <li class="nav-item">
@@ -424,7 +427,7 @@ change are marked with their configuration key or flow field.</p>
 <tr>
 <td>Messages, their content, metadata, and attempt records</td>
 <td>The store (<code>store.dialect</code>)</td>
-<td>Until you remove them (<code>DELETE /api/v1/messages/{id}</code>, or <a href="../processing-messages/#remove-many-messages">many at once</a>). Nothing is pruned automatically: size your database for your traffic, and remove old messages on a schedule of your own, for example with a nightly <code>DELETE /api/v1/messages?to=…</code>. With <code>memory</code>, until the server stops.</td>
+<td>Until you remove them (<code>DELETE /api/v1/messages/{id}</code>, or <a href="../processing-messages/#remove-many-messages">many at once</a>). Nothing is pruned unless you configure <a href="../server-config/#prune"><code>prune</code></a> (<code>maxAgeHours</code>, <code>maxMessages</code>), which removes finished messages on a schedule; otherwise size your database for your traffic, or remove old messages yourself, for example with a nightly <code>DELETE /api/v1/messages?to=…</code>. With <code>memory</code>, until the server stops.</td>
 </tr>
 <tr>
 <td>Flow definitions, users, config items</td>
@@ -448,8 +451,8 @@ change are marked with their configuration key or flow field.</p>
 </tr>
 <tr>
 <td>Audit log</td>
-<td>Server stderr</td>
-<td>As long as your log collection keeps it.</td>
+<td>Server stderr and the store</td>
+<td>On stderr, as long as your log collection keeps it. In the store, until <code>prune.auditMaxAgeDays</code> (default: kept); with <code>memory</code> or <code>disabled</code>, the newest 100,000 entries until the server stops. See <a href="../audit-log/#search-the-audit-log">Audit log</a>.</td>
 </tr>
 </tbody>
 </table>

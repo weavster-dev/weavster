@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+    <head>
+        <meta charset="utf-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        
+        
+        <link rel="canonical" href="https://docs.weavster.dev/operations/">
+        <link rel="shortcut icon" href="../img/favicon.ico">
+        <title>Operations - Weavster</title>
+        <link href="../css/bootstrap.min.css" rel="stylesheet">
+        <link href="../css/fontawesome.min.css" rel="stylesheet">
+        <link href="../css/brands.min.css" rel="stylesheet">
+        <link href="../css/solid.min.css" rel="stylesheet">
+        <link href="../css/v4-font-face.min.css" rel="stylesheet">
+        <link href="../css/base.css" rel="stylesheet">
+        <link id="hljs-light" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" >
+        <link id="hljs-dark" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" disabled>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+        <script>hljs.highlightAll();</script> 
+    </head>
+
+    <body>
+        <div class="navbar fixed-top navbar-expand-lg navbar-dark bg-primary">
+            <div class="container">
+                <a class="navbar-brand" href="..">Weavster</a>
+                <!-- Expander button -->
+                <button type="button" class="navbar-toggler" data-bs-toggle="collapse" data-bs-target="#navbar-collapse" aria-controls="navbar-collapse" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+
+                <!-- Expanded navigation -->
+                <div id="navbar-collapse" class="navbar-collapse collapse">
+                        <!-- Main navigation -->
+                        <ul class="nav navbar-nav">
+                            <li class="nav-item">
+                                <a href=".." class="nav-link">Home</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../getting-started/" class="nav-link">Getting Started</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../install/" class="nav-link">Install, Upgrade, Roll Back</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="./" class="nav-link active" aria-current="page">Operations</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../support-matrix/" class="nav-link">Support Matrix</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../server-config/" class="nav-link">Server Configuration</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../production/" class="nav-link">Production Setup</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../docker-compose/" class="nav-link">Local Development with Docker Compose</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../limits/" class="nav-link">Capacity and Limits</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../authentication/" class="nav-link">Authentication</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../metrics/" class="nav-link">Metrics</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../cli/" class="nav-link">Command-line client</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../api/" class="nav-link">REST API</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../api-errors/" class="nav-link">API errors</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../audit-log/" class="nav-link">Audit Log</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../processing-messages/" class="nav-link">Processing Messages</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../topology/" class="nav-link">Topology</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../web-ui/" class="nav-link">Web UI</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../flow-lifecycle/" class="nav-link">Flow Lifecycle</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../flow-export-import/" class="nav-link">Flow Dependencies, Export, Import</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../config-items/" class="nav-link">Config Map, Scripts, Settings</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../snippets/" class="nav-link">Code Snippets</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../alerts/" class="nav-link">Alerts</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../lookups/" class="nav-link">Dynamic Lookups</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../config-transfer/" class="nav-link">Configuration Export and Import</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../ci-cd/" class="nav-link">CI/CD</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../system-info/" class="nav-link">System Information</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../api-formats/" class="nav-link">JSON and XML</a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="../documentation/" class="nav-link">Docs Site Guide</a>
+                            </li>
+                        </ul>
+
+                    <ul class="nav navbar-nav ms-md-auto">
+                        <li class="nav-item">
+                            <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#mkdocs_search_modal">
+                                <i class="fa fa-search"></i> Search
+                            </a>
+                        </li>
+                            <li class="nav-item">
+                                <a rel="prev" href="../install/" class="nav-link">
+                                    <i class="fa fa-arrow-left"></i> Previous
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a rel="next" href="../support-matrix/" class="nav-link">
+                                    Next <i class="fa fa-arrow-right"></i>
+                                </a>
+                            </li>
+                            <li class="nav-item">
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/operations.md" class="nav-link">Edit on weavster-dev/weavster
+                                    </a>
+                            </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="row">
+                    <div class="col-md-3"><div class="navbar-expand-md bs-sidebar hidden-print affix" role="complementary">
+    <div class="navbar-header">
+        <button type="button" class="navbar-toggler collapsed" data-bs-toggle="collapse" data-bs-target="#toc-collapse" title="Table of Contents">
+            <span class="fa fa-angle-down"></span>
+        </button>
+    </div>
+
+    
+    <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
+        <ul class="nav flex-column">
+            
+            <li class="nav-item" data-bs-level="1"><a href="#operations" class="nav-link">Operations</a>
+              <ul class="nav flex-column">
+            <li class="nav-item" data-bs-level="2"><a href="#what-to-back-up" class="nav-link">What to back up</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#monitor" class="nav-link">Monitor</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#troubleshoot" class="nav-link">Troubleshoot</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+            <li class="nav-item" data-bs-level="2"><a href="#recover-from-an-incident" class="nav-link">Recover from an incident</a>
+              <ul class="nav flex-column">
+              </ul>
+            </li>
+              </ul>
+            </li>
+        </ul>
+    </div>
+</div></div>
+                    <div class="col-md-9" role="main">
+
+<h1 id="operations">Operations</h1>
+<p>How to back up and restore a server, watch it, find out why it fails, and recover from an
+incident. Upgrading and rolling back are in <a href="../install/">Install, upgrade, and roll back</a>.</p>
+<h2 id="what-to-back-up">What to back up</h2>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Where</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Messages, flows, users, alerts, snippets, config map, scripts, settings, lookups, the audit log, events, statistics</td>
+<td>The store's PostgreSQL database (<code>store.dialect: postgres</code>)</td>
+<td><code>pg_dump</code> (below)</td>
+</tr>
+<tr>
+<td>The server configuration</td>
+<td>The file you pass to <code>--config</code></td>
+<td>Copy the file</td>
+</tr>
+<tr>
+<td>TLS certificates, keys, and CAs</td>
+<td><code>tls.certFile</code>, <code>tls.keyFile</code>, and every <code>certFile</code>, <code>keyFile</code>, and <code>caFile</code> a flow's source or destination names</td>
+<td>Copy the files (keep the keys private)</td>
+</tr>
+<tr>
+<td>Secrets</td>
+<td><code>secrets.dir</code> (default <code>/run/secrets</code>), <code>~/.pgpass</code> of the server's account, environment variables</td>
+<td>However you manage secrets</td>
+</tr>
+<tr>
+<td>Files a flow reads or writes</td>
+<td>A file source's <code>dir</code> and <code>moveTo</code>, a file destination's <code>dir</code></td>
+<td>Copy the directories</td>
+</tr>
+</tbody>
+</table>
+<p><code>ops.yaml</code> in the examples is a <a href="../cli/">connection file</a> with the address and an operator's
+credentials.</p>
+<p>With <code>store.dialect: memory</code> (the default) or <code>disabled</code>, nothing survives a restart: there is
+nothing to back up but the files. Use <code>postgres</code> for any server whose data you need to keep.</p>
+<p>Weavster has no backup command of its own: back up the database with PostgreSQL's tools.</p>
+<h3 id="back-up-the-database">Back up the database</h3>
+<pre><code class="language-bash">pg_dump -Fc -f weavster-2026-09-29.dump 'postgres://weavster@db.internal:5432/weavster?sslmode=verify-full'
+</code></pre>
+<p><code>pg_dump</code> takes a consistent snapshot while the server runs; you do not need to stop it. Take one
+before every upgrade (it is what makes a <a href="../install/#roll-back">rollback</a> possible) and on a
+schedule that matches how many messages you can afford to lose.</p>
+<h3 id="restore-the-database">Restore the database</h3>
+<ol>
+<li>If you can still reach the server, save the messages received since the backup, since they
+   are not in it:</li>
+<li>Stop every flow (<code>POST /api/v1/flows/stop-all</code>, see
+      <a href="../flow-lifecycle/">Flow lifecycle</a>), so that no message arrives after the export.</li>
+<li>Export the messages. The client's <code>exportmessages "path" *</code> writes the newest 10,000;
+      page through more with <code>GET /api/v1/messages/export</code> (see
+      <a href="../processing-messages/#export-and-import-messages">Export and import messages</a>), and check
+      that the archives hold every message since the backup.</li>
+<li>Stop the server.</li>
+<li>Restore the dump into a new, empty database next to the current one (add the connection
+   options you use with <code>pg_dump</code>). Do not restore over the current database: that would keep
+   tables a later release added and the backup lacks, and the next upgrade would fail on them.
+   The current database also stays your way back if the restore fails.</li>
+</ol>
+<p><code>bash
+   createdb -O weavster weavster_restore
+   pg_restore --no-owner --role=weavster -d weavster_restore weavster-2026-09-29.dump</code></p>
+<ol>
+<li>Point <code>store.dsn</code> (or the <code>store.dsnEnv</code> secret) at <code>weavster_restore</code>, and start the same
+   release that took the backup, or a newer one (it upgrades the schema at start).</li>
+<li>Import the messages you exported, replacing the older copies the backup holds:
+   <code>POST /api/v1/messages/import?overwrite=true</code>. Until then, a message that was <code>queued</code> in the
+   backup may be delivered again (delivery is at least once).</li>
+<li>Once the restored server works, drop the old database if you no longer need it, with the same
+   connection options (host, role, TLS) as the commands above, for example
+   <code>dropdb -h db.internal -U weavster weavster</code>.</li>
+</ol>
+<p>Sign-in tokens are not kept across restarts: users log in again after a restore.</p>
+<h3 id="keep-a-copy-of-the-configuration-too">Keep a copy of the configuration too</h3>
+<p>A configuration export is a portable file of flows, alerts, snippets, scripts, and settings that
+you can import into another server or keep in version control. It does not hold users,
+passwords, lookups, or messages, so it does not replace the database backup.</p>
+<pre><code class="language-text">$ weavster -c ops.yaml
+weavster&gt; exportcfg &quot;weavster-config.json&quot;
+</code></pre>
+<p>See <a href="../config-transfer/">Configuration export and import</a>, or manage the configuration from files
+with <a href="../config-as-code/">Config-as-code documents</a>.</p>
+<h2 id="monitor">Monitor</h2>
+<h3 id="is-it-up">Is it up?</h3>
+<p>Weavster has no separate health endpoint. For a liveness probe, request the API description; it
+needs no login:</p>
+<pre><code class="language-bash">curl -fsS -o /dev/null http://127.0.0.1:8080/api/openapi.yaml &amp;&amp; echo up
+</code></pre>
+<p>With <code>listen.contextPath: /weavster</code>, the path is <code>/weavster/api/openapi.yaml</code>. The server opens
+its ports only after it has connected to the store and upgraded the schema, so an answer means it
+has started. The probe does not use the store, so it keeps answering if the database goes away
+later. To check the store too, request something the server reads from it, such as
+<code>GET /api/v1/flows</code> with an account that has <code>flows:view</code>: it returns an error while the store
+cannot be reached.</p>
+<p>For more detail, <code>GET /api/v1/system</code> (any signed-in user) returns the version and uptime:</p>
+<pre><code class="language-bash">curl -s -u 'ops:PASSWORD' -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/api/v1/system
+</code></pre>
+<p>See <a href="../system-info/">System information</a>.</p>
+<h3 id="metrics">Metrics</h3>
+<p>Scrape <code>GET /metrics</code> with an account that has <code>flows:view</code>; see <a href="../metrics/">Metrics</a> for the
+Prometheus configuration and every metric. Alert on:</p>
+<table>
+<thead>
+<tr>
+<th>Signal</th>
+<th>Metric</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Deliveries failing</td>
+<td><code>weavster_connector_messages_total{outcome="errored"}</code> rising</td>
+<td>A destination rejects messages or cannot be reached; they are retried, then dead-lettered</td>
+</tr>
+<tr>
+<td>Server at capacity</td>
+<td><code>weavster_processing_refused_total</code> rising, or <code>weavster_processing_in_flight</code> equal to <code>weavster_processing_slots</code></td>
+<td>Messages are refused as busy; raise <code>processing.maxConcurrent</code> or add capacity</td>
+</tr>
+<tr>
+<td>Flows not running</td>
+<td><code>weavster_flows{status="started"}</code> lower than expected</td>
+<td>A flow was stopped, or failed to deploy at start. A status no flow has is not published at all, so write the rule as <code>(weavster_flows{status="started"} or vector(0)) &lt; 3</code> to fire when none are started</td>
+</tr>
+</tbody>
+</table>
+<p>Alerts you define in Weavster are stored but do not fire in this edition; alert from your
+monitoring system instead.</p>
+<h3 id="logs">Logs</h3>
+<p>The server writes its log to stderr as text lines (<code>time=… level=INFO msg=…</code>). The log level and
+format cannot be changed. Collect stderr: it holds the audit log (<code>msg=audit</code>), the first-run
+admin password, and warnings such as:</p>
+<table>
+<thead>
+<tr>
+<th>Log line</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>store connection failed</code></td>
+<td>At start, the store cannot be reached; the server tries again, up to <code>store.maxRetry</code> times</td>
+</tr>
+<tr>
+<td><code>processing limit reached: messages refused as busy (see processing.maxConcurrent)</code></td>
+<td>Every processing slot is in use</td>
+</tr>
+<tr>
+<td><code>delivery retry pass failed</code></td>
+<td>A pass over queued deliveries failed (often because the store cannot be reached); it runs again on the next interval</td>
+</tr>
+<tr>
+<td><code>auto-deploy failed</code></td>
+<td>A flow in the store could not be deployed at start</td>
+</tr>
+<tr>
+<td><code>audit entry not stored</code></td>
+<td>An audit entry was logged to stderr but not stored, so <code>GET /api/v1/audit</code> lacks it</td>
+</tr>
+<tr>
+<td><code>shutdown deadline reached; unfinished messages are stored and resume on the next start</code></td>
+<td>The server stopped before every message was done</td>
+</tr>
+</tbody>
+</table>
+<p>API errors carry no request ID; match an error to the log by time and by the user and resource
+in the audit line.</p>
+<h2 id="troubleshoot">Troubleshoot</h2>
+<p>The server prints why it failed to start on stderr, as one <code>Error:</code> line, and exits <code>1</code> (<code>2</code> for
+a usage error).</p>
+<table>
+<thead>
+<tr>
+<th>Error</th>
+<th>Fix</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Error: listen tcp 127.0.0.1:8080: bind: address already in use</code></td>
+<td>Another process (often another Weavster) has the port: stop it, or change <code>listen.address</code></td>
+</tr>
+<tr>
+<td><code>Error: config: …: yaml: unmarshal errors:</code></td>
+<td>The next line names a misspelled or unknown key in the configuration file, for example <code>line 2: field dialekt not found in type serverconfig.Store</code>; see <a href="../server-config/">Server configuration</a></td>
+</tr>
+<tr>
+<td><code>Error: config: the postgres dialect needs store.dsn or store.dsnEnv (one of them)</code></td>
+<td>Set exactly one of them</td>
+</tr>
+<tr>
+<td><code>Error: store: postgres: giving up after N attempts: store.dsnEnv: environment variable NAME is not set, and there is no file /run/secrets/NAME</code></td>
+<td>Provide the secret as a variable or a file in <code>secrets.dir</code> (default <code>/run/secrets</code>)</td>
+</tr>
+<tr>
+<td><code>Error: store: postgres: giving up after N attempts: …</code></td>
+<td>The database cannot be reached: check the host, port, credentials, and <code>sslmode</code> in the connection string</td>
+</tr>
+<tr>
+<td><code>Error: store: state: the database schema is at version N (written by weavster X), newer than this release supports (M): …</code></td>
+<td>A newer release upgraded the database (<code>written by an unknown weavster release</code> when it did not record its version): run that release, or <a href="#restore-the-database">restore</a> a backup taken before the upgrade</td>
+</tr>
+<tr>
+<td><code>Error: tls: open …: no such file or directory</code></td>
+<td>A path in <code>tls.certFile</code> or <code>tls.keyFile</code> is wrong (<code>permission denied</code> instead of <code>no such file or directory</code>: the server's account cannot read it)</td>
+</tr>
+<tr>
+<td><code>Error: refusing to run under a privileged OS account; use a dedicated service account or set WEAVSTER_ALLOW_ROOT=1</code></td>
+<td>Run the server as an unprivileged account</td>
+</tr>
+</tbody>
+</table>
+<p>When the server runs but messages do not arrive:</p>
+<ol>
+<li>The client's <code>status</code> command (or <code>GET /api/v1/flows</code>) shows whether the flow is started. A flow must be
+   deployed and started to process messages; see <a href="../flow-lifecycle/">Flow lifecycle</a>.</li>
+<li><code>GET /api/v1/messages?flowId=FLOW&amp;status=errored</code> lists messages that failed, with the error of
+   each; <code>deadletter list FLOW</code> lists those that ran out of delivery attempts.</li>
+<li><code>GET /api/v1/events</code> shows what happened, such as <code>message.errored</code> for a failed transform or
+   <code>source.http.failed</code> for a source that could not listen; see
+   <a href="../processing-messages/#5-statistics-and-events">Statistics and events</a>.</li>
+</ol>
+<h2 id="recover-from-an-incident">Recover from an incident</h2>
+<h3 id="a-destination-was-down">A destination was down</h3>
+<p>Deliveries to an unreachable destination are retried with backoff (<code>delivery.backoffBaseMs</code>,
+doubling up to one minute) and, after <code>delivery.maxAttempts</code> attempts, the message is
+dead-lettered. Once the destination is back, send the dead letters again:</p>
+<pre><code class="language-text">$ weavster -c ops.yaml
+weavster&gt; deadletter requeue all adt
+</code></pre>
+<p>A requeued message goes only to the destinations that did not receive it. See
+<a href="../processing-messages/#dead-lettered-messages">Dead-lettered messages</a>.</p>
+<p>To hold messages while you fix a destination, stop that destination (<code>POST
+/api/v1/flows/{id}/destinations/{name}/stop</code>); the flow keeps receiving and queues them.</p>
+<h3 id="the-server-stopped-or-crashed">The server stopped or crashed</h3>
+<p>Start it again. With a PostgreSQL store, every message the server acknowledged is stored, and
+the server resumes queued and unfinished messages of started flows. Delivery is at least once: a
+message being delivered when the server stopped may be delivered again, so receivers should
+detect duplicates (HTTP destinations send the same <code>Idempotency-Key</code> on every attempt). Statistics
+counted since the last sample are lost; messages are not.</p>
+<h3 id="a-bad-change-was-deployed">A bad change was deployed</h3>
+<p>Apply the previous config-as-code document (see <a href="../config-as-code/">Config-as-code documents</a>).
+It changes what it lists back, and in each section it includes, removes what that section no
+longer lists. So if it has a <code>flows</code> section, it removes flows the bad change added; if it has
+none, flows are not managed by it, and you undeploy and delete added flows yourself.</p>
+<p>Or import the previous configuration export:</p>
+<pre><code class="language-text">$ weavster -c ops.yaml
+weavster&gt; importcfg &quot;weavster-config.json&quot; force
+</code></pre>
+<p>An import only adds and replaces. Undeploy and delete any flow the bad change added
+(see <a href="../flow-lifecycle/">Flow lifecycle</a>), or it keeps running.</p>
+<p>Then reprocess the messages the bad change handled: <code>POST /api/v1/messages/{id}/reprocess</code> runs a
+stored message through the flow again as a new message. See
+<a href="../processing-messages/#work-with-one-message">Work with one message</a>.</p>
+<h3 id="the-database-is-lost">The database is lost</h3>
+<p>Restore the last <a href="#restore-the-database">backup</a> into a new database, point <code>store.dsn</code> (or
+<code>store.dsnEnv</code>) at it, and start the server. Messages received since that backup are gone,
+unless their senders can send them again.</p></div>
+            </div>
+        </div>
+
+        <footer class="col-md-12">
+            <hr>
+            <p>Documentation built with <a href="https://www.mkdocs.org/">MkDocs</a>.</p>
+        </footer>
+        <script src="../js/bootstrap.bundle.min.js"></script>
+        <script>
+            var base_url = "..",
+                shortcuts = {"help": 191, "next": 78, "previous": 80, "search": 83};
+        </script>
+        <script src="../js/base.js"></script>
+        <script src="../search/main.js"></script>
+
+        <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>From here you can search these documents. Enter your search terms below.</p>
+                <form>
+                    <div class="form-group">
+                        <input type="search" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results" data-no-results-text="No results found"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+
+    </body>
+</html>
