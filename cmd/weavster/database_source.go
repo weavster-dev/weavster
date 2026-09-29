@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"sync"
 	"time"
 
@@ -138,11 +137,7 @@ func (s *databaseSources) pass(ctx context.Context) {
 // stopped at a limit after rows were marked, so more may be waiting.
 func (s *databaseSources) poll(ctx context.Context, f gateway.Flow) (more bool, err error) {
 	src := f.Source
-	dsn := os.Getenv(src.DSNEnv)
-	if dsn == "" {
-		return false, fmt.Errorf("database: environment variable %s is not set", src.DSNEnv)
-	}
-	db, err := s.dbs.get(src.Driver, src.DSNEnv, dsn)
+	db, err := s.dbs.open(ctx, src.Driver, src.DSNEnv)
 	if err != nil {
 		return false, err
 	}

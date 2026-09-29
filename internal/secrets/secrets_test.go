@@ -2,6 +2,7 @@ package secrets
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -70,5 +71,31 @@ func TestEnterpriseKeyManagerStub(t *testing.T) {
 	var km KeyManager = EnterpriseKeyManager{}
 	if err := km.Rotate(context.Background(), "k"); err != ErrEnterprise {
 		t.Errorf("expected ErrEnterprise, got %v", err)
+	}
+}
+
+// TestEnvSecretNames: a trailing newline of a secret file is trimmed, and
+// a name that is a path is never looked up.
+func TestEnvSecretNames(t *testing.T) {
+	dir := t.TempDir()
+	for name, content := range map[string]string{"LF": "a\n", "CRLF": "b\r\n", "TWO": "c\n\n"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	e := NewEnv(filepath.Join(dir, "sub"))
+	if err := os.Mkdir(e.Dir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct{ key, want string }{{"../LF", ""}, {`..\LF`, ""}, {"..", ""}, {".", ""}, {"", ""}} {
+		if got, err := e.Get(context.Background(), tt.key); !errors.Is(err, ErrNotFound) {
+			t.Errorf("Get(%q) = %q, %v", tt.key, got, err)
+		}
+	}
+	e = NewEnv(dir)
+	for key, want := range map[string]string{"LF": "a", "CRLF": "b", "TWO": "c\n"} {
+		if got, err := e.Get(context.Background(), key); err != nil || string(got) != want {
+			t.Errorf("Get(%s) = %q, %v; want %q", key, got, err, want)
+		}
 	}
 }

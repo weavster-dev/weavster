@@ -76,6 +76,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   account; security-relevant API calls are written to an audit log on stderr and in the store,
   searchable with `GET /api/v1/audit` (see docs/audit-log.md). Users persist
   across restarts with `store.dialect: postgres`; otherwise they are kept in memory.
+  Connection strings and passwords that flows and the store use are read from environment
+  variables or from secret files in `secrets.dir` (default `/run/secrets`), never from the flows.
 - **Configuration management** (API and CLI): user administration; the config map, global
   scripts, and settings; code snippets and libraries; alert definitions (stored and validated;
   they do not send notifications yet); whole-configuration export and import; and checking a
@@ -88,7 +90,7 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   flow API operation, user administration, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
   a connection file, and `-v` prints the server's version.
 - **Library-only** (source and unit tests exist, not used by the server): the scheduler, the other adapters (SMTP, web service, and the earlier `DBSink`/`DBSource` library types), outbox, codecs other than
-  HL7 v2, XML, and delimited, WASM compiler/executor/registry, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
+  HL7 v2, XML, and delimited, WASM compiler/executor/registry, config-as-code drift, Git store, alert evaluation, notifiers,
   tracing. Prometheus metrics are served at `GET /metrics` (see docs/metrics.md).
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.
 - **Build**: CI verifies static `CGO_ENABLED=0` builds for linux/amd64, linux/arm64,

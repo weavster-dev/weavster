@@ -446,7 +446,7 @@ func TestMLLPClientTLS(t *testing.T) {
 // closed) when the variable's connection string changes, all closed on
 // shutdown; a database destination needs the pool and its variable.
 func TestDBPool(t *testing.T) {
-	p := newDBPool()
+	p := newDBPool(noSecrets)
 	a, err := p.get("sqlite", "WEAVSTER_DB_A", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -475,11 +475,11 @@ func TestDBPool(t *testing.T) {
 	if _, err := newSink(d); err == nil {
 		t.Error("newSink without a pool: want error")
 	}
-	if _, err := buildSink(d, gateway.DefaultTLSOptions(), newDBPool()); err == nil || !strings.Contains(err.Error(), "WEAVSTER_DB_POOL_TEST is not set") {
+	if _, err := buildSink(d, gateway.DefaultTLSOptions(), newDBPool(noSecrets)); err == nil || !strings.Contains(err.Error(), "WEAVSTER_DB_POOL_TEST is not set") {
 		t.Errorf("unset variable: %v", err)
 	}
 	t.Setenv("WEAVSTER_DB_POOL_TEST", ":memory:")
-	if _, err := buildSink(d, gateway.DefaultTLSOptions(), newDBPool()); err != nil {
+	if _, err := buildSink(d, gateway.DefaultTLSOptions(), newDBPool(noSecrets)); err != nil {
 		t.Errorf("buildSink: %v", err)
 	}
 }

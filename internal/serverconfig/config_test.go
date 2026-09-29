@@ -36,6 +36,11 @@ auth:
 				t.Errorf("unexpected config: %+v", c)
 			}
 		}},
+		{name: "dsn from a secret", yaml: "store: {dialect: postgres, dsnEnv: WEAVSTER_STORE_DSN}\nsecrets: {dir: /etc/weavster/secrets}\n", check: func(t *testing.T, c Config) {
+			if c.Store.DSNEnv != "WEAVSTER_STORE_DSN" || c.Secrets.Dir != "/etc/weavster/secrets" {
+				t.Errorf("unexpected config: %+v", c)
+			}
+		}},
 		{name: "unknown key", yaml: "store: {dialekt: postgres}\n", wantErr: "field dialekt not found"},
 		{name: "second document", yaml: "store: {dialect: memory}\n---\nstore: {dialect: sqlite}\n", wantErr: "exactly one YAML document"},
 		{name: "bad listen address", yaml: "listen: {address: \"8080\"}\n", wantErr: "listen.address must be host:port"},
@@ -48,7 +53,10 @@ auth:
 		{name: "tls without cert", yaml: "listen: {tlsAddress: \":8443\"}\n", wantErr: "requires tls.certFile and tls.keyFile"},
 		{name: "bad tls version", yaml: "tls: {minVersion: \"1.0\"}\n", wantErr: "tls.minVersion must be 1.2 or 1.3"},
 		{name: "bad dialect", yaml: "store: {dialect: mysql}\n", wantErr: "store.dialect must be"},
-		{name: "postgres without dsn", yaml: "store: {dialect: postgres}\n", wantErr: "store.dsn is required"},
+		{name: "postgres without dsn", yaml: "store: {dialect: postgres}\n", wantErr: "needs store.dsn or store.dsnEnv"},
+		{name: "postgres with both", yaml: "store: {dialect: postgres, dsn: \"postgres://h/db\", dsnEnv: WEAVSTER_STORE_DSN}\n", wantErr: "needs store.dsn or store.dsnEnv"},
+		{name: "bad dsnEnv", yaml: "store: {dialect: postgres, dsnEnv: ../dsn}\n", wantErr: "store.dsnEnv must be a secret name"},
+		{name: "relative secrets dir", yaml: "secrets: {dir: secrets}\n", wantErr: "secrets.dir must be an absolute path"},
 		{name: "sqlite removed", yaml: "store: {dialect: sqlite, dsn: /var/lib/weavster/weavster.db}\n", wantErr: "sqlite is no longer supported: use postgres"},
 		{name: "prune negative age", yaml: "prune: {maxAgeHours: -1}\n", wantErr: "prune.maxAgeHours must be 0-876000"},
 		{name: "prune negative count", yaml: "prune: {maxMessages: -1}\n", wantErr: "prune.maxMessages >= 0"},

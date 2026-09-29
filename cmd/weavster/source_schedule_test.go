@@ -165,7 +165,7 @@ func TestScheduledSourcesCatchUp(t *testing.T) {
 	t.Setenv("WEAVSTER_DB_CATCHUP", file)
 	src := &gateway.FlowSource{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_CATCHUP", Query: "SELECT id FROM t WHERE done = 0 ORDER BY id",
 		IDColumn: "id", MaxRows: 1, Schedule: "0 6 * * *", Update: &flowdef.SourceUpdate{Table: "t", Key: "id", Set: map[string]string{"done": "1"}}}
-	pool := newDBPool()
+	pool := newDBPool(noSecrets)
 	defer pool.close()
 	ds := newDatabaseSources(&fakeFlowList{flows: []gateway.Flow{{ID: "d", Status: "started", Source: src}}}, &fakeIngest{id: "m"}, &fakeEvents{}, pool, quiet)
 	now = six.Add(-time.Minute)

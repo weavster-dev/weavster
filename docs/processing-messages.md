@@ -530,7 +530,7 @@ CREATE TABLE lab.results (mrn text, test text, value text, delivery_key text UNI
 | Field | Meaning |
 |---|---|
 | `driver` | Required. `postgres`, or `sqlite` (the connection string is then a database file path). A SQLite connection waits up to 5 seconds for a lock another program or flow holds on the file before failing with `database is locked`; a connection string that sets its own `_pragma=busy_timeout(…)` keeps it. |
-| `dsnEnv` | Required. The server environment variable holding the connection string; its name must start with `WEAVSTER_DB_`. The connection string never appears in the flow. |
+| `dsnEnv` | Required. The server environment variable holding the connection string, or else the file of that name in [`secrets.dir`](server-config.md#secrets); its name must start with `WEAVSTER_DB_`. The connection string never appears in the flow. |
 | `table` | Required. `table` or `schema.table`: letters, digits, and `_`. |
 | `columns` | Required. Column name → path of its value in the message, such as `patient.mrn` (numbers index lists: `ids.0`). |
 | `keyColumn` | Optional. A column with a unique constraint that receives the delivery's idempotency key (see below). |
@@ -559,7 +559,7 @@ CREATE TABLE lab.results (mrn text, test text, value text, delivery_key text UNI
 - The connection string is read for every message, so a changed variable (a rotated password)
   applies without a restart: the old connections are closed and new ones opened. Connections
   are pooled per variable; a SQLite database gets one connection, so its inserts take turns. An unset variable fails the delivery:
-  `database: environment variable WEAVSTER_DB_WAREHOUSE is not set`.
+  `database: environment variable WEAVSTER_DB_WAREHOUSE is not set, and there is no file /run/secrets/WEAVSTER_DB_WAREHOUSE`.
 - Errors never quote values: PostgreSQL errors are reported by kind and SQLSTATE (for example
   `database: the table does not exist (SQLSTATE 42P01)`), and a failed connection as
   `database: could not connect (check the host, credentials, and TLS settings in the connection string)`.
@@ -870,7 +870,7 @@ the configured method and path is a message:
 | `address` | Required. `host:port` to listen on, for example `127.0.0.1:9001`, or `:9001` for every interface. The port must be a number from 1 to 65535. |
 | `path` | Request path accepted; default `/`. Must start with `/`. |
 | `method` | `POST` (default) or `PUT`. |
-| `username`, `passwordEnv` | Optional, together: senders must use HTTP Basic authentication with this user name (no `:`, which separates user and password in Basic authentication) and the password in the server's environment variable `passwordEnv`. The variable name must start with `WEAVSTER_SOURCE_` followed by capital letters, digits, or `_`, so a flow cannot use the server's other secrets. The password never goes into the flow definition. |
+| `username`, `passwordEnv` | Optional, together: senders must use HTTP Basic authentication with this user name (no `:`, which separates user and password in Basic authentication) and the password in the server's environment variable `passwordEnv` (or else the file of that name in [`secrets.dir`](server-config.md#secrets)). The name must start with `WEAVSTER_SOURCE_` followed by capital letters, digits, or `_`, so a flow cannot use the server's other secrets. The password never goes into the flow definition. |
 | `readTimeoutMs` | Time allowed to read one request, headers and body, 1000–600000 ms; default 60000. The headers must also arrive within 10 seconds (or `readTimeoutMs`, if shorter). A sender slower than that gets its connection closed. |
 | `certFile`, `keyFile` | Optional, together: absolute paths of a PEM certificate chain and private key on the server. The port then serves HTTPS only (HTTP/1.1 and HTTP/2), with the server's TLS settings (`tls.minVersion`). The server's own `tls.keyFile` is refused: give each flow its own certificate. |
 
@@ -972,7 +972,7 @@ each new order becomes a message such as:
 | Field | Meaning |
 |---|---|
 | `driver` | Required. `postgres`, or `sqlite` (the connection string is then a database file path). A SQLite connection waits up to 5 seconds for a lock another program or flow holds on the file before failing with `database is locked`; a connection string that sets its own `_pragma=busy_timeout(…)` keeps it. |
-| `dsnEnv` | Required. The server environment variable holding the connection string, `WEAVSTER_DB_…`. |
+| `dsnEnv` | Required. The server environment variable holding the connection string, `WEAVSTER_DB_…`, or else the file of that name in [`secrets.dir`](server-config.md#secrets). |
 | `query` | Required. One `SELECT` (or `WITH … SELECT`) statement, without `;` inside it and without `INSERT`, `UPDATE`, `DELETE`, `MERGE`, or schema statements anywhere in it. It runs read-only: a PostgreSQL `READ ONLY` transaction, SQLite `query_only`. |
 | `idColumn` | Required. The column of the result that identifies a row: the value `update` matches `key` against, kept with the message as the metadata `source.database.id`. |
 | `update` | Required. `table` (or `schema.table`), `key` (the table's column holding the row id), and `set` (column → value) mark each row once its message is stored: `UPDATE table SET … WHERE key = <id>`. |
@@ -999,7 +999,7 @@ each new order becomes a message such as:
   once as a `source.database.refused` event with its id, and is skipped until the flow restarts.
 - A failed poll (an unset variable, a query or update error) is logged and recorded once as a
   `source.database.failed` event with the reason, for example
-  `database: environment variable WEAVSTER_DB_HIS is not set`; it is retried at every interval
+  `database: environment variable WEAVSTER_DB_HIS is not set, and there is no file /run/secrets/WEAVSTER_DB_HIS`; it is retried at every interval
   (with a `schedule`, every 5 seconds until a poll succeeds).
 - Give the database user only what the source needs: `SELECT` on the query's tables, and
   `UPDATE` on the marked columns.

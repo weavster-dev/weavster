@@ -74,7 +74,7 @@ func TestDatabaseSourcePoll(t *testing.T) {
 			}
 			f.Source = &src
 			events := &fakeEvents{}
-			pool := newDBPool()
+			pool := newDBPool(noSecrets)
 			defer pool.close()
 			s := newDatabaseSources(&fakeFlowList{flows: []gateway.Flow{f}}, tt.ingest, events, pool, quiet)
 			now := time.Now()
@@ -99,7 +99,7 @@ func TestDatabaseSourcePoll(t *testing.T) {
 	// A poll in progress is not started again; a flow that stops or goes
 	// away is forgotten.
 	list := &fakeFlowList{flows: []gateway.Flow{flow}}
-	s := newDatabaseSources(list, &fakeIngest{id: "m"}, &fakeEvents{}, newDBPool(), quiet)
+	s := newDatabaseSources(list, &fakeIngest{id: "m"}, &fakeEvents{}, newDBPool(noSecrets), quiet)
 	s.running["f"] = true
 	s.pass(context.Background())
 	if !s.clock.last["f"].IsZero() {

@@ -9,6 +9,8 @@ import (
 	"io"
 	"net"
 	"os"
+	"path/filepath"
+	"regexp"
 	"strings"
 	"unicode"
 
@@ -35,6 +37,13 @@ type Config struct {
 	Flows      Flows      `yaml:"flows"`
 	Stats      Stats      `yaml:"stats"`
 	Prune      Prune      `yaml:"prune"`
+	Secrets    Secrets    `yaml:"secrets"`
+}
+
+// Secrets says where secrets are read from: a secret named NAME is the
+// environment variable NAME or, when that is not set, the file Dir/NAME.
+type Secrets struct {
+	Dir string `yaml:"dir"`
 }
 
 // Prune removes old messages (spec §2.6.23): those received more than
@@ -110,8 +119,10 @@ type TLS struct {
 
 // Store selects and connects the message store.
 type Store struct {
-	Dialect        string `yaml:"dialect"`
-	DSN            string `yaml:"dsn"`
+	Dialect string `yaml:"dialect"`
+	DSN     string `yaml:"dsn"`
+	// DSNEnv names the secret holding the connection string instead.
+	DSNEnv         string `yaml:"dsnEnv"`
 	MaxConnections int    `yaml:"maxConnections"`
 	MaxRetry       int    `yaml:"maxRetry"`
 	RetryWaitMs    int    `yaml:"retryWaitMs"`
@@ -138,6 +149,9 @@ type Lockout struct {
 	LockoutPeriodSeconds int `yaml:"lockoutPeriodSeconds"`
 }
 
+// secretName is a secret an environment variable or a file can hold.
+var secretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
 // Default returns the configuration used when no file is given.
 func Default() Config {
 	return Config{
@@ -153,6 +167,7 @@ func Default() Config {
 		Flows:      Flows{DeployOnStartup: true},
 		Stats:      Stats{SampleIntervalMs: 60000, RetentionHours: 24},
 		Prune:      Prune{IntervalMinutes: 60},
+		Secrets:    Secrets{Dir: "/run/secrets"},
 	}
 }
 
@@ -205,11 +220,17 @@ func (c Config) Validate() error {
 	case "sqlite":
 		return errors.New("config: store.dialect sqlite is no longer supported: use postgres for a durable store, or memory")
 	case DialectPostgres:
-		if c.Store.DSN == "" {
-			return errors.New("config: store.dsn is required for the postgres dialect")
+		if (c.Store.DSN == "") == (c.Store.DSNEnv == "") {
+			return errors.New("config: the postgres dialect needs store.dsn or store.dsnEnv (one of them)")
+		}
+		if c.Store.DSNEnv != "" && !secretName.MatchString(c.Store.DSNEnv) {
+			return fmt.Errorf("config: store.dsnEnv must be a secret name (letters, digits, _), got %q", c.Store.DSNEnv)
 		}
 	default:
 		return fmt.Errorf("config: store.dialect must be memory, postgres, or disabled, got %q", c.Store.Dialect)
+	}
+	if !filepath.IsAbs(c.Secrets.Dir) {
+		return fmt.Errorf("config: secrets.dir must be an absolute path, got %q", c.Secrets.Dir)
 	}
 	if c.Store.MaxConnections < 1 {
 		return errors.New("config: store.maxConnections must be >= 1")
