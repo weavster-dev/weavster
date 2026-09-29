@@ -80,8 +80,12 @@ func TestTraceabilityMatrix(t *testing.T) {
 		t.Errorf("the matrix has %d rows, the spec and manifest %d requirements", len(rows), len(want))
 	}
 
+	counts := map[string]int{}
 	for _, id := range want {
 		m := status.FindStringSubmatch(rows[id])
+		if m != nil {
+			counts[m[1]]++
+		}
 		switch {
 		case m == nil:
 			t.Errorf("row %s has no status (tested, partial, deferred)", id)
@@ -109,6 +113,12 @@ func TestTraceabilityMatrix(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// The totals the reviewer signs are the rows' (so a requirement added
+	// or removed changes what is signed).
+	if totals := fmt.Sprintf("%d requirements: %d tested, %d partial, %d deferred.", len(want), counts["tested"], counts["partial"], counts["deferred"]); !strings.Contains(matrix, "\n"+totals+"\n") {
+		t.Errorf("the matrix's totals are not the rows': want %q", totals)
+	}
+
 	// Every CI job the matrix cites is a job of a workflow.
 	workflows, err := filepath.Glob(filepath.Join(root, ".github", "workflows", "*.yml"))
 	if err != nil || len(workflows) == 0 {
