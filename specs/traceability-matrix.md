@@ -20,7 +20,7 @@ deferment. `TestTraceabilityMatrix` (cmd/weavster) keeps this file complete and 
 | L41 | 4. The system MUST allow per-flow and per-destination filter and transform logic to be authored as script-based rules/steps and as declarative steps (field mapping, building/assembling output, XSLT-style conversion), executed in a defined order. | partial | `TestProcessingOrder`, `TestTransformGolden`, `TestBuildOutput`. Script-based rules: 🔒 custom WASM modules (D-55); global scripts and snippets are stored, not run. |
 | L42 | 5. The system MUST support a "destination set" filter that excludes specific destinations from processing a given message. | tested | `TestDestinationSet` |
 | L43 | 6. The system MUST expose a set of reusable utility functions (message construction, response generation, serialization, date handling, hashing) available within flow logic. | deferred | 🔒 crypto/hash/UUID/date/message-construction/response utility capabilities (D-55). |
-| L44 | 7. The system SHALL support response-transformer and response-selector logic distinct from the initial filter/transform. | tested | `TestResponseSelector`, `TestProcessingOrder` (declarative stages, D-34; stages driven by user logic are 🔒). |
+| L44 | 7. The system SHALL support response-transformer and response-selector logic distinct from the initial filter/transform. | partial | `TestResponseSelector`, `TestProcessingOrder` (declarative stages, D-34). Stages driven by user logic: 🔒 (D-55). |
 | L47 | 8. The system MUST route each accepted message to every enabled destination that is not excluded by the destination-set filter. | tested | `TestPipelineEndToEnd`, `TestDestinationSet`, `TestDestinationStartStop` |
 | L48 | 9. The system SHALL support routing a message into another flow in-process (inter-flow routing) by name or identifier, including from within user logic. | partial | `TestFlowDestination` (by flow id, D-70). From user logic: 🔒 inter-flow routing from user logic (D-55). |
 | L49 | 10. The system SHALL allow per-destination transmission modes and protocol-specific options (e.g., length-framed transmission). | tested | `TestMLLPModes`, `TestHTTPDestinationOptions` |
@@ -51,12 +51,12 @@ deferment. `TestTraceabilityMatrix` (cmd/weavster) keeps this file complete and 
 | L90 | 35. The system MUST record an event log of administrative and operational actions, with search, count, and export. | tested | `TestEventsAPI`, `TestAuditLogStored`, `TestEventsSurviveRestart` |
 | L91 | 36. The system MUST collect per-flow statistics (received, filtered, transformed, sent, errored, queued, connector-level counters) with reset (current and/or lifetime) and dump-to-file. | tested | `TestStatsEventsTopology`, `TestAllFlowsLifecycleAndStats`, `TestBulkMessageRemoval` |
 | L92 | 37. The system SHALL provide time-series statistics for trending and a server log viewer. | partial | `TestStatsSeries`, `TestMessageTrends`. Log viewer: 🔒 (D-55). |
-| L93 | 38. The system MUST expose system status (identifier, version, build date, timezone, time, runtime info, charsets, protocols/cipher suites, license info). | tested | `TestSystemInfo`, `TestSupportMatrixWired` (time, uptime, TLS protocols and ciphers, about; charsets and license are documented but not asserted). |
+| L93 | 38. The system MUST expose system status (identifier, version, build date, timezone, time, runtime info, charsets, protocols/cipher suites, license info). | tested | `TestSystemInfo`, `TestSupportMatrixWired` (id, version, build date, timezone, time, uptime, runtime, charsets, TLS protocols and ciphers, license). |
 | L96 | 39. The system MUST keep historical revisions of versioned configuration artifacts and SHALL allow viewing file history, content-at-revision, and repository log. | deferred | 🔒 Git history, content-at-revision, log (D-55). |
 | L97 | 40. The system MUST support committing/pushing selected artifacts, pulling remote changes (remote-wins conflicts), and restoring from backup. | deferred | 🔒 Git commit/push/pull and restore from backup (D-55); backup and restore of the database are documented (docs/operations.md). |
 | L100 | 41. The system MUST enforce a configurable password policy (min length, character-class requirements, expiration, grace period, reuse constraints) on creation/change. | partial | `TestBootstrapGeneratedPassword`, `TestBootstrapPasswordSources`, `TestSystemInfo` (length and character classes). Expiry, grace, reuse: 🔒 (D-55). |
 | L101 | 42. The system MUST enforce account lockout after a configurable number of failed attempts for a configurable period. | tested | `TestAuthentication`, `TestBootstrapPasswordSources` (lockout). |
-| L102 | 43. The system MUST be able to return a generic login-failure message that does not reveal username existence or lockout state (anti-enumeration). | tested | `TestLoginLogout`, `TestAuthentication`, `TestLockoutAndDecay` (unknown user, wrong password and locked account all 401; bodies compared at package level only). |
+| L102 | 43. The system MUST be able to return a generic login-failure message that does not reveal username existence or lockout state (anti-enumeration). | tested | `TestLoginLogout`, `TestAuthentication`, `TestLockoutAndDecay` (unknown user, wrong password and locked account get the same 401 body). |
 | L103 | 44. The system MUST support HTTPS with configurable TLS protocols/ciphers and a managed credential store. | partial | `TestTLS`, `TestServerConfigTLS`, `TestCLIOverHTTPS` (HTTPS, `tls.minVersion`). Cipher tuning, credential store: 🔒 (D-55). |
 | L104 | 45. The system MUST emit transport-hardening headers (clickjacking, CSP, HSTS, content-type sniffing) and reject cross-site requests lacking the required marker header. | tested | `TestSupportMatrixWired`, `TestAuthentication`, `TestSecurityHeaders` |
 
@@ -169,7 +169,7 @@ Line 33 ("The system MUST / SHALL …") states the convention and is not a requi
 
 ## Totals
 
-145 requirements: 87 tested, 36 partial, 22 deferred.
+145 requirements: 86 tested, 37 partial, 22 deferred.
 
 ## Sign-off (D-24)
 
