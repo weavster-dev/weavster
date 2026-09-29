@@ -299,11 +299,11 @@ func TestDocsCLI(t *testing.T) {
 	}
 }
 
-// TestDocsDSL: every transform step and each of its fields is in
-// processing-messages.md.
+// TestDocsDSL: every field of a transform, every step, and each of its
+// fields is in processing-messages.md.
 func TestDocsDSL(t *testing.T) {
 	page := docsPage(t, "processing-messages.md")
-	fields(reflect.TypeOf(compiler.Step{}), "json", "", func(path string, _ bool) {
+	fields(reflect.TypeOf(compiler.Transform{}), "json", "", func(path string, _ bool) {
 		name := path[strings.LastIndex(path, ".")+1:]
 		if !strings.Contains(page, "`"+name+"`") {
 			t.Errorf("processing-messages.md does not document %s", path)
