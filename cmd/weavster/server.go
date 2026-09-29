@@ -50,7 +50,11 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 // buildServerWithWorkers is buildServer that also returns the background
 // workers (delivery retries) for runServer to run for the server's lifetime.
 func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Writer, cfg serverconfig.Config) (http.Handler, func() error, func(context.Context), error) {
-	store, err := openStore(ctx, logger, cfg)
+	secretsReader := newSecretReader(cfg.Secrets.Dir)
+	if info, err := os.Stat(cfg.Secrets.Dir); (err != nil || !info.IsDir()) && cfg.Secrets.Dir != serverconfig.Default().Secrets.Dir {
+		logger.Warn("secrets.dir is not a directory: secrets are read from environment variables only", "dir", cfg.Secrets.Dir)
+	}
+	store, err := openStore(ctx, logger, cfg, secretsReader)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -151,7 +155,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	var limit *processLimit
 	retry := func(context.Context) {}
 	if store != nil {
-		sinks := &sinkFactory{logger: logger, tlsOpts: tlsOptions(cfg), dbs: newDBPool(), delivered: func(ctx context.Context, flowID, key string) (string, error) {
+		sinks := &sinkFactory{logger: logger, tlsOpts: tlsOptions(cfg), dbs: newDBPool(secretsReader), delivered: func(ctx context.Context, flowID, key string) (string, error) {
 			found, err := store.Search(ctx, state.Query{FlowID: flowID, Metadata: map[string]string{flowKeyMetadata: key}, Limit: 1})
 			if err != nil || len(found) == 0 {
 				return "", err
@@ -176,7 +180,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		trends = messageAdapter{store: store}
 		sources := newFileSources(flows, ia, eventLogRecorder{events}, logger)
 		tables := newDatabaseSources(flows, ia, eventLogRecorder{events}, sinks.dbs, logger)
-		listening := newPortSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, logger)
+		listening := newPortSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, secretsReader, logger)
 		sourcePorts = listening
 		pr := newPruner(cfg.Prune, ma, audits, store.(eventRepository), eventLogRecorder{events}, logger)
 		prune = pr
@@ -255,7 +259,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 
 // openStore connects the configured message store, retrying PostgreSQL
 // connections (spec §11). The disabled dialect returns a nil Store.
-func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config) (state.Store, error) {
+func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config, secrets secretValues) (state.Store, error) {
 	sc := cfg.Store
 	switch sc.Dialect {
 	case serverconfig.DialectDisabled:
@@ -275,7 +279,7 @@ func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config
 			}
 		}
 		var s state.Store
-		if s, err = state.OpenPostgres(ctx, sc.DSN, sc.MaxConnections); err == nil {
+		if s, err = openPostgres(ctx, sc, secrets); err == nil {
 			return s, nil
 		}
 		if newer := (*state.NewerSchemaError)(nil); errors.As(err, &newer) {
@@ -284,6 +288,20 @@ func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config
 		logger.Warn("store connection failed", "dialect", sc.Dialect, "attempt", attempt, "error", err)
 	}
 	return nil, fmt.Errorf("store: %s: giving up after %d attempts: %w", sc.Dialect, sc.MaxRetry+1, err)
+}
+
+// openPostgres connects to the store's PostgreSQL database, reading the
+// connection string from the secret store.dsnEnv when that is set (at
+// every attempt: the secret may appear meanwhile).
+func openPostgres(ctx context.Context, sc serverconfig.Store, secrets secretValues) (state.Store, error) {
+	dsn := sc.DSN
+	if sc.DSNEnv != "" {
+		var err error
+		if dsn, err = secrets.value(ctx, sc.DSNEnv); err != nil {
+			return nil, fmt.Errorf("store.dsnEnv: %w", err)
+		}
+	}
+	return state.OpenPostgres(ctx, dsn, sc.MaxConnections)
 }
 
 // runServer enforces the privileged-run guard (spec §11), loads the
@@ -1936,17 +1954,13 @@ func buildSink(d pipeline.Destination, tlsOpts gateway.TLSOptions, dbs *dbPool) 
 }
 
 // databaseSink builds a database destination's sink (#107 D-75): the
-// connection string is read from the server environment variable DSNEnv
-// for each message, so a changed value applies without a restart.
+// connection string is read from the secret DSNEnv for each message, so a
+// changed value applies without a restart.
 func databaseSink(d pipeline.Destination, dbs *dbPool) (pipeline.Sink, error) {
 	if dbs == nil {
 		return nil, errors.New("database destinations need the server's connection pool")
 	}
-	dsn := os.Getenv(d.DSNEnv)
-	if dsn == "" {
-		return nil, fmt.Errorf("database: environment variable %s is not set", d.DSNEnv)
-	}
-	db, err := dbs.get(d.Driver, d.DSNEnv, dsn)
+	db, err := dbs.open(context.Background(), d.Driver, d.DSNEnv)
 	if err != nil {
 		return nil, err
 	}
@@ -1973,6 +1987,8 @@ type dbPool struct {
 	mu     sync.Mutex
 	dbs    map[string]pooledDB
 	closed bool
+	// secrets holds the connection strings (dsnEnv).
+	secrets secretValues
 }
 
 // pooledDB is a pool and the connection string it was opened with.
@@ -1981,7 +1997,19 @@ type pooledDB struct {
 	db  *sql.DB
 }
 
-func newDBPool() *dbPool { return &dbPool{dbs: map[string]pooledDB{}} }
+func newDBPool(secrets secretValues) *dbPool {
+	return &dbPool{dbs: map[string]pooledDB{}, secrets: secrets}
+}
+
+// open returns the pool for driver and the connection string in the secret
+// dsnEnv.
+func (p *dbPool) open(ctx context.Context, driver, dsnEnv string) (*sql.DB, error) {
+	dsn, err := p.secrets.value(ctx, dsnEnv)
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	return p.get(driver, dsnEnv, dsn)
+}
 
 // sqlDrivers are the database/sql drivers of the database destinations'
 // drivers.

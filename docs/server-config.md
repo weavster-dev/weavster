@@ -135,17 +135,20 @@ and serves nothing.
 |---|---|---|
 | `dialect` | `memory` | `memory`, `postgres`, or `disabled`. |
 | `dsn` | `""` | For `postgres`, a URL such as `postgres://weavster@db:5432/weavster?sslmode=verify-full`. |
+| `dsnEnv` | `""` | For `postgres`, instead of `dsn`: the name of a [secret](#secrets) holding the URL, so its password stays out of this file. Letters, digits, and `_`, not starting with `WEAVSTER_DB_` or `WEAVSTER_SOURCE_` (flows may read those), for example `WEAVSTER_STORE_DSN`. |
 | `maxConnections` | `10` | Maximum open PostgreSQL connections. |
 | `maxRetry` | `3` | PostgreSQL only: extra connection attempts after the first failure. |
 | `retryWaitMs` | `1000` | PostgreSQL only: wait between attempts, in milliseconds. |
 
 - **`memory`**: messages, flow definitions, and users live in process memory and are lost on restart.
-- **`postgres`**: `dsn` is required, for example
+- **`postgres`**: `dsn` or `dsnEnv` is required (not both), for example
   `postgres://weavster@db.internal:5432/weavster?sslmode=verify-full` (tested with PostgreSQL
   16). The server creates and migrates its tables on the first start; the account needs to create
   tables in the database (or in the schema named by `search_path` in the URL, for example
-  `…&search_path=weavster`). Keep the password out of the file: put it in `~/.pgpass` of the
-  server's account, on a line for the database's host only.
+  `…&search_path=weavster`). Keep the password out of the file: put the whole URL in a secret
+  and name it with `dsnEnv`, or put the password in `~/.pgpass` of the server's account, on a
+  line for the database's host only. A missing secret counts as a failed connection attempt
+  (`maxRetry`), and the server exits `1` naming it when the attempts run out.
 - **`disabled`**: runs with no message store. `GET /api/v1/messages` returns `503 messages unavailable`.
   Flow definitions and users are kept in memory.
 - **`sqlite`** is no longer a server store. The server exits `1` with
@@ -277,6 +280,44 @@ stats:
   sampleIntervalMs: 10000   # every 10 seconds
   retentionHours: 48
 ```
+
+### `secrets`
+
+| Key | Default | Description |
+|---|---|---|
+| `dir` | `/run/secrets` | Where secret files are read from. An absolute path. |
+
+A secret named `NAME` (a flow's `dsnEnv` or `passwordEnv`, or `store.dsnEnv`) is the server's
+environment variable `NAME` or, when that is not set, the file `NAME` in `secrets.dir`. One
+trailing newline in the file is ignored. `/run/secrets` is where Docker and Kubernetes mount
+secrets, so a secret mounted there with the name a flow uses needs no other setup:
+
+```yaml
+store:
+  dialect: postgres
+  dsnEnv: WEAVSTER_STORE_DSN     # the file /etc/weavster/secrets/WEAVSTER_STORE_DSN
+secrets:
+  dir: /etc/weavster/secrets
+```
+
+```bash
+install -m 0600 /dev/null /etc/weavster/secrets/WEAVSTER_STORE_DSN
+echo 'postgres://weavster:the-password@db.internal:5432/weavster?sslmode=verify-full' > /etc/weavster/secrets/WEAVSTER_STORE_DSN
+```
+
+- An empty variable or file counts as not set; an empty variable does not hide the file. A missing
+  secret is reported as
+  `environment variable NAME is not set, and there is no file /etc/weavster/secrets/NAME`, and a
+  file the server's account cannot read as `secret NAME: … permission denied`.
+- Database connection strings are read for every message and poll, so a changed secret applies
+  at once. An http source reads its password when its port opens: after changing it, stop and
+  start the flow.
+- If `secrets.dir` is set to something other than `/run/secrets` and is not a directory, the
+  server logs a warning at start and reads secrets from environment variables only.
+- Keep the directory readable by the server's account only (`chmod 0700`), and each file `0600`.
+- A secret file may be a link to another file in the directory (as Kubernetes mounts secrets); a
+  link to anywhere outside it is refused with `secret NAME: … links to outside the secrets directory`.
+- Only one trailing line ending (`\n` or `\r\n`) is removed.
 
 ### `auth`
 
