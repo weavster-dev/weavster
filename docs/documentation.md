@@ -2,15 +2,15 @@
 
 This page describes **how** the documentation site is built, served, and deployed.
 For **what** goes into it (user-facing examples, CLI docs, API refs), see
-[AGENTS.md §Documentation](../AGENTS.md#documentation).
+[AGENTS.md §Documentation](https://github.com/weavster-dev/weavster/blob/main/AGENTS.md#documentation).
 
 ## Stack
 
 | Layer | Choice |
 |---|---|
 | Generator | [MkDocs](https://www.mkdocs.org/) `1.6.1` |
-| Theme | mkdocs default (readthedocs) |
-| Hosting | GitHub Pages (`gh-pages` branch) |
+| Theme | MkDocs' built-in `mkdocs` theme (no `theme:` key) |
+| Hosting | GitHub Pages (`gh-pages` branch), at <https://docs.weavster.dev/> (`docs/CNAME`) |
 | Deploy trigger | Push to `main` (GitHub Actions) |
 | Python | `3.12` (CI), any `>=3.10` locally |
 
@@ -27,23 +27,30 @@ mkdocs serve
 ```
 
 Changes to `docs/` files appear immediately in the browser. The MkDocs
-config is at [`mkdocs.yml`](../mkdocs.yml) (repo root).
+config is at [`mkdocs.yml`](https://github.com/weavster-dev/weavster/blob/main/mkdocs.yml) (repo root).
+
+Build it the way CI does before you push:
+
+```bash
+mkdocs build --strict
+```
+
+Every build is strict (`strict: true` in `mkdocs.yml`): a broken link, a link to a heading that
+does not exist, or a page left out of the nav fails it. Link to files outside `docs/` with their
+full GitHub URL; MkDocs does not check those, so check them yourself when you move a file.
 
 ## Navigation
 
 The site nav is defined in `mkdocs.yml` under the `nav:` key. Each entry
-maps a display title to a file under `docs/`. Current pages:
-
-- **Home** — `docs/index.md`
-- **User Guide** — `docs/guide/` (CLI, config, API, adapters, etc.)
-- *(expand as features ship)*
-
-To add a page, create the `.md` file and add a `nav:` entry.
+maps a display title to a file directly under `docs/` (there are no sub-folders of pages). To
+add a page, create the `.md` file and add a `nav:` entry; a page missing from the nav fails the
+build.
 
 ## Deploy
 
-The docs deploy automatically on every push to `main` via
-[`.github/workflows/docs.yml`](../.github/workflows/docs.yml):
+Every pull request builds the site (the `docs` job in
+[`ci.yml`](https://github.com/weavster-dev/weavster/blob/main/.github/workflows/ci.yml)). The docs deploy automatically on every push to
+`main` via [`docs.yml`](https://github.com/weavster-dev/weavster/blob/main/.github/workflows/docs.yml):
 
 ```bash
 # Manual trigger (equivalent to what CI does):
@@ -51,7 +58,7 @@ mkdocs gh-deploy --force
 ```
 
 This builds the site into `site/` and pushes it to the `gh-pages` branch.
-GitHub Pages serves it at `https://weavster-dev.github.io/weavster/`.
+GitHub Pages serves it at <https://docs.weavster.dev/>.
 
 ## Versioning
 

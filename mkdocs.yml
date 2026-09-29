@@ -10,6 +10,7 @@ edit_uri: edit/main/docs/
 
 nav:
   - Home: index.md
+  - Getting Started: getting-started.md
   - Install, Upgrade, Roll Back: install.md
   - Support Matrix: support-matrix.md
   - Server Configuration: server-config.md
@@ -44,9 +45,14 @@ exclude_docs: |
   mvp-project-plan.md
   agent-onboarding.md
 
-# Specs/manifest/AGENTS links live outside docs/; don't fail the build on them.
+# Every build is strict: a warning (a broken link between pages, a missing
+# anchor, a page outside the nav) fails it. Links to files outside docs/
+# are full GitHub URLs, which MkDocs does not check.
+strict: true
 validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
   links:
-    not_found: ignore
-    absolute_links: ignore
-    unrecognized_links: ignore
+    not_found: warn
