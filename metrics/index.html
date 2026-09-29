@@ -6,9 +6,9 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         
         
-        <link rel="canonical" href="https://docs.weavster.dev/config-transfer/">
+        <link rel="canonical" href="https://docs.weavster.dev/metrics/">
         <link rel="shortcut icon" href="../img/favicon.ico">
-        <title>Configuration Export and Import - Weavster</title>
+        <title>Metrics - Weavster</title>
         <link href="../css/bootstrap.min.css" rel="stylesheet">
         <link href="../css/fontawesome.min.css" rel="stylesheet">
         <link href="../css/brands.min.css" rel="stylesheet">
@@ -56,7 +56,7 @@
                                 <a href="../authentication/" class="nav-link">Authentication</a>
                             </li>
                             <li class="nav-item">
-                                <a href="../metrics/" class="nav-link">Metrics</a>
+                                <a href="./" class="nav-link active" aria-current="page">Metrics</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../cli/" class="nav-link">Command-line client</a>
@@ -92,7 +92,7 @@
                                 <a href="../lookups/" class="nav-link">Dynamic Lookups</a>
                             </li>
                             <li class="nav-item">
-                                <a href="./" class="nav-link active" aria-current="page">Configuration Export and Import</a>
+                                <a href="../config-transfer/" class="nav-link">Configuration Export and Import</a>
                             </li>
                             <li class="nav-item">
                                 <a href="../config-as-code/" class="nav-link">Config-as-Code Documents</a>
@@ -124,17 +124,17 @@
                             </a>
                         </li>
                             <li class="nav-item">
-                                <a rel="prev" href="../lookups/" class="nav-link">
+                                <a rel="prev" href="../authentication/" class="nav-link">
                                     <i class="fa fa-arrow-left"></i> Previous
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../config-as-code/" class="nav-link">
+                                <a rel="next" href="../cli/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/config-transfer.md" class="nav-link">Edit on weavster-dev/weavster
+                                <a href="https://github.com/weavster-dev/weavster/edit/main/docs/metrics.md" class="nav-link">Edit on weavster-dev/weavster
                                     </a>
                             </li>
                     </ul>
@@ -155,21 +155,9 @@
     <div id="toc-collapse" class="navbar-collapse collapse card bg-body-tertiary">
         <ul class="nav flex-column">
             
-            <li class="nav-item" data-bs-level="1"><a href="#export-and-import-the-whole-configuration" class="nav-link">Export and import the whole configuration</a>
+            <li class="nav-item" data-bs-level="1"><a href="#metrics" class="nav-link">Metrics</a>
               <ul class="nav flex-column">
-            <li class="nav-item" data-bs-level="2"><a href="#export" class="nav-link">Export</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#import" class="nav-link">Import</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#permissions" class="nav-link">Permissions</a>
-              <ul class="nav flex-column">
-              </ul>
-            </li>
-            <li class="nav-item" data-bs-level="2"><a href="#command-line-client" class="nav-link">Command-line client</a>
+            <li class="nav-item" data-bs-level="2"><a href="#what-is-published" class="nav-link">What is published</a>
               <ul class="nav flex-column">
               </ul>
             </li>
@@ -180,104 +168,107 @@
 </div></div>
                     <div class="col-md-9" role="main">
 
-<h1 id="export-and-import-the-whole-configuration">Export and import the whole configuration</h1>
-<p>One document holds a server's whole configuration: flows, <a href="../alerts/">alerts</a>,
-<a href="../snippets/">code snippets and libraries</a>, <a href="../config-items/">global scripts and settings</a>, and,
-when you ask for it, the config map. Use it to back up a server or to copy its setup to another
-one. Users and passwords are never included; create them again on the other server.</p>
-<h2 id="export">Export</h2>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' \
-  'http://127.0.0.1:8080/api/v1/config/export?includeConfigMap=true' &gt; config.json
+<h1 id="metrics">Metrics</h1>
+<p>The server publishes Prometheus metrics at <code>GET /metrics</code> on its API listener (<code>listen.address</code>
+and/or <code>listen.tlsAddress</code>). The numbers are the server's own statistics, read when Prometheus
+scrapes, so they always match <code>GET /api/v1/flows/{id}/stats?lifetime=true</code>.</p>
+<p><code>/metrics</code> needs credentials of a user with <code>flows:view</code>. It does not need the
+<code>X-Weavster-CSRF</code> header, so a plain Prometheus scrape works:</p>
+<pre><code class="language-yaml"># prometheus.yml
+scrape_configs:
+  - job_name: weavster
+    scheme: https
+    static_configs:
+      - targets: [&quot;weavster.internal:8443&quot;]
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/weavster-password
 </code></pre>
-<pre><code class="language-json">{&quot;format&quot;:&quot;weavster-config-v1&quot;,
- &quot;flows&quot;:[{&quot;id&quot;:&quot;adt&quot;,&quot;enabled&quot;:true,&quot;destinations&quot;:[{&quot;name&quot;:&quot;ehr&quot;,&quot;type&quot;:&quot;http&quot;,&quot;url&quot;:&quot;https://ehr.example.com/in&quot;}]}],
- &quot;alerts&quot;:[],&quot;snippets&quot;:[],&quot;snippetLibraries&quot;:[],
- &quot;scripts&quot;:{&quot;deploy&quot;:&quot;log('deployed')&quot;},&quot;settings&quot;:{&quot;retention&quot;:{&quot;days&quot;:30}},
- &quot;configmap&quot;:{&quot;region&quot;:&quot;eu&quot;}}
+<p>Create a user with only <code>flows:view</code> for Prometheus, and send <code>"mustChangePassword": false</code> so
+it can sign in with the password you gave it (otherwise every scrape gets
+<code>403 PASSWORD_CHANGE_REQUIRED</code> until the password is changed; see
+<a href="../authentication/#manage-users">Authentication</a>):</p>
+<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/users \
+  -d '{&quot;username&quot;:&quot;prometheus&quot;,&quot;password&quot;:&quot;A-Long-Scrape-Pass1&quot;,&quot;permissions&quot;:[&quot;flows:view&quot;],&quot;mustChangePassword&quot;:false}'
 </code></pre>
-<p>Flows are exported without their runtime state. The config map is left out unless you add
-<code>includeConfigMap=true</code>, because it usually holds values for one environment (hostnames, for
-example). An empty config map is exported as <code>{}</code>, so importing it with <code>overwriteConfigMap</code>
-empties the target's.</p>
-<h2 id="import">Import</h2>
-<pre><code class="language-bash">curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
-  'http://127.0.0.1:8080/api/v1/config/import' --data-binary @config.json
+<p>A scrape without credentials gets <code>401</code> and is recorded in the <a href="../audit-log/">audit log</a> as
+<code>auth.failure</code>.</p>
+<pre><code class="language-bash">curl -s -u 'prometheus:PASSWORD' https://weavster.internal:8443/metrics | grep '^weavster_'
 </code></pre>
-<pre><code class="language-json">{&quot;flows&quot;:{&quot;created&quot;:[&quot;adt&quot;],&quot;updated&quot;:[]},&quot;alerts&quot;:0,&quot;snippets&quot;:0,&quot;snippetLibraries&quot;:0,
- &quot;scripts&quot;:1,&quot;settings&quot;:1,&quot;configMapReplaced&quot;:false,&quot;deployed&quot;:[&quot;adt&quot;]}
+<pre><code class="language-text">weavster_connector_messages_total{connector=&quot;ehr&quot;,flow=&quot;adt&quot;,outcome=&quot;errored&quot;} 1
+weavster_connector_messages_total{connector=&quot;ehr&quot;,flow=&quot;adt&quot;,outcome=&quot;sent&quot;} 120
+weavster_flow_messages_total{flow=&quot;adt&quot;,outcome=&quot;received&quot;} 121
+weavster_flow_messages_total{flow=&quot;adt&quot;,outcome=&quot;sent&quot;} 120
+weavster_flows{status=&quot;started&quot;} 3
+weavster_processing_in_flight 0
+weavster_processing_refused_total 0
+weavster_processing_slots 32
 </code></pre>
+<h2 id="what-is-published">What is published</h2>
 <table>
 <thead>
 <tr>
-<th>Parameter</th>
-<th>What it does</th>
+<th>Metric</th>
+<th>Type</th>
+<th>Labels</th>
+<th>Meaning</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>force=true</code></td>
-<td>Replaces flows, alerts, snippets, and libraries that already exist. Without it, any that exist stop the import with <code>409</code> naming them, and nothing is written.</td>
+<td><code>weavster_flow_messages_total</code></td>
+<td>counter</td>
+<td><code>flow</code>, <code>outcome</code></td>
+<td>A flow's messages by outcome: <code>received</code>, <code>filtered</code>, <code>transformed</code>, <code>sent</code>, <code>queued</code>, <code>errored</code>.</td>
 </tr>
 <tr>
-<td><code>nodeploy=true</code></td>
-<td>Leaves the imported flows undeployed. Without it, every imported flow that is enabled and undeployed is deployed afterwards. Deploying a flow also deploys the flows it depends on (even disabled ones, as <code>POST /api/v1/flows/{id}/deploy</code> does); <code>deployed</code> lists every imported flow that was deployed.</td>
+<td><code>weavster_connector_messages_total</code></td>
+<td>counter</td>
+<td><code>flow</code>, <code>connector</code>, <code>outcome</code></td>
+<td>Deliveries to a flow's destination (<code>connector</code>, the destination's name): <code>sent</code>, or <code>errored</code> for every failed attempt (retries included).</td>
 </tr>
 <tr>
-<td><code>overwriteConfigMap=true</code></td>
-<td>Replaces the config map with the document's, which must be there (export with <code>includeConfigMap=true</code>; <code>{}</code> empties the config map). A document without one returns <code>400</code>. Without this parameter, the server keeps its own config map and the document's is ignored (not even checked).</td>
+<td><code>weavster_flows</code></td>
+<td>gauge</td>
+<td><code>status</code></td>
+<td>Flows in each lifecycle status (<code>started</code>, <code>stopped</code>, <code>undeployed</code>, …).</td>
+</tr>
+<tr>
+<td><code>weavster_processing_in_flight</code></td>
+<td>gauge</td>
+<td></td>
+<td>Messages from the API and flow sources being received and processed right now. Retries of queued messages and hand-offs from one flow to another take no slot and are not counted.</td>
+</tr>
+<tr>
+<td><code>weavster_processing_slots</code></td>
+<td>gauge</td>
+<td></td>
+<td>How many can be at once (<code>processing.maxConcurrent</code>).</td>
+</tr>
+<tr>
+<td><code>weavster_processing_refused_total</code></td>
+<td>counter</td>
+<td></td>
+<td>Messages refused as busy because every slot was taken.</td>
+</tr>
+<tr>
+<td><code>go_*</code>, <code>process_*</code></td>
+<td></td>
+<td></td>
+<td>The Go runtime and the process (memory, goroutines, open files; which <code>process_*</code> metrics exist depends on the operating system).</td>
 </tr>
 </tbody>
 </table>
-<ul>
-<li>Everything is checked before anything is written: the format, every flow, alert, snippet, and
-  value, and that each snippet's library is in the document or already on the server. Problems
-  return <code>400</code> naming the item.</li>
-<li>Global scripts and settings in the document are created or replaced; others on the server are
-  kept.</li>
-<li>If someone creates a flow, alert, snippet, or library with an id from the document while the
-  import runs (without <code>force</code>), the import stops with <code>409</code> rather than replacing it.</li>
-<li>If writing fails part-way (for example, the database is unavailable), the reply is <code>500</code>. Fix
-  the cause and import again with <code>force=true</code>.</li>
-<li>If a flow does not deploy, the reply is <code>500</code> and names it; the configuration is imported.
-  Deploy the flow yourself with <code>POST /api/v1/flows/{id}/deploy</code>.</li>
-</ul>
-<h2 id="permissions">Permissions</h2>
-<p>Export needs <code>flows:view</code>, <code>alerts:edit</code>, <code>snippets:edit</code>, <code>scripts:edit</code>, and
-<code>settings:edit</code>, plus <code>configmap:edit</code> with <code>includeConfigMap=true</code>. Import needs <code>flows:edit</code>
-and the same <code>…:edit</code> permissions, plus <code>flows:deploy</code> unless <code>nodeploy=true</code>, and
-<code>configmap:edit</code> with <code>overwriteConfigMap=true</code>. The <code>admin</code> permission includes them all.</p>
-<h2 id="command-line-client">Command-line client</h2>
-<table>
-<thead>
-<tr>
-<th>Command</th>
-<th>What it does</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>exportcfg "path"</code></td>
-<td>Writes the configuration without the config map to a file.</td>
-</tr>
-<tr>
-<td><code>exportcfg "path" overwriteconfigmap</code></td>
-<td>Also includes the config map, so importing with <code>overwriteconfigmap</code> replaces the target's config map.</td>
-</tr>
-<tr>
-<td><code>importcfg "path" [nodeploy] [overwriteconfigmap] [force]</code></td>
-<td>Imports a file written by <code>exportcfg</code>. The options match the parameters above and can come in any order.</td>
-</tr>
-</tbody>
-</table>
-<pre><code class="language-text">weavster&gt; exportcfg &quot;config.json&quot; overwriteconfigmap
-exported 2 flows, 1 alerts, 1 snippets, 1 snippet libraries, 1 scripts, 1 settings, 1 config map entries to config.json
-weavster&gt; importcfg &quot;config.json&quot; overwriteconfigmap
-imported 2 flows (2 new, 0 replaced), 1 alerts, 1 snippets, 1 snippet libraries, 1 scripts, 1 settings from config.json
-replaced the config map
-deployed adt
-</code></pre>
-<p>A file that does not exist is reported (<code>Error: open config.json: no such file or directory</code>)
-and nothing is sent to the server.</p></div>
+<p>The counters are the lifetime statistics. Every flow is published, with zeros before its first
+message; a deleted flow's series go away. The counters start at zero when the server starts and go
+back to zero when you reset them (<code>POST /api/v1/flows/stats/reset?lifetime=true</code>); Prometheus
+treats that as a counter reset, so <code>rate()</code> and <code>increase()</code> stay correct.</p>
+<p>A message counts <code>queued</code> once, when its first delivery fails, and <code>sent</code> once it is delivered;
+each failed attempt in between counts in <code>weavster_connector_messages_total{outcome="errored"}</code>.
+Watch that, not <code>queued</code>, for a destination that keeps failing. Without a message store
+(<code>store.dialect: disabled</code>) the <code>weavster_processing_*</code> metrics are not published. Each scrape
+reads the flow list from the store; if that fails, the flow metrics are left out of that scrape
+and the server logs <code>metrics: flows could not be listed</code>.</p></div>
             </div>
         </div>
 

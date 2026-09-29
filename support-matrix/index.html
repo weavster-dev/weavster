@@ -56,6 +56,9 @@
                                 <a href="../authentication/" class="nav-link">Authentication</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../metrics/" class="nav-link">Metrics</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../cli/" class="nav-link">Command-line client</a>
                             </li>
                             <li class="nav-item">
@@ -443,9 +446,14 @@ header <code>X-Weavster-CSRF: 1</code>. <code>listen.requireMarkerHeader: false<
 <td><code>TestSupportMatrixPrivilegedGuard</code></td>
 </tr>
 <tr>
-<td><code>/metrics</code> (Prometheus), OpenTelemetry</td>
+<td><code>GET /metrics</code> (Prometheus): per-flow and per-connector message counters, flows by status, processing slots in use and refusals, Go runtime and process metrics</td>
+<td>Implemented (wired)</td>
+<td><code>TestOperationalMetrics</code> (the real binary: metrics, stats, and events agree after real traffic), <code>TestMetricsRoute</code>, <code>TestServerMetrics</code>. Needs <code>flows:view</code>, no CSRF marker. See <a href="../metrics/">Metrics</a>.</td>
+</tr>
+<tr>
+<td>OpenTelemetry tracing</td>
 <td>Library-only</td>
-<td>Not mounted or initialized by the server.</td>
+<td>Not initialized by the server (deferred, D-55).</td>
 </tr>
 <tr>
 <td>Web UI</td>

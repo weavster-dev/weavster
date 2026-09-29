@@ -56,6 +56,9 @@
                                 <a href="./" class="nav-link active" aria-current="page">Authentication</a>
                             </li>
                             <li class="nav-item">
+                                <a href="../metrics/" class="nav-link">Metrics</a>
+                            </li>
+                            <li class="nav-item">
                                 <a href="../cli/" class="nav-link">Command-line client</a>
                             </li>
                             <li class="nav-item">
@@ -126,7 +129,7 @@
                                 </a>
                             </li>
                             <li class="nav-item">
-                                <a rel="next" href="../cli/" class="nav-link">
+                                <a rel="next" href="../metrics/" class="nav-link">
                                     Next <i class="fa fa-arrow-right"></i>
                                 </a>
                             </li>
@@ -351,7 +354,7 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
 <td><code>flows:deploy</code></td>
 </tr>
 <tr>
-<td><code>GET /api/v1/flows/{id}/stats</code>, <code>GET /api/v1/flows/stats</code>, <code>GET /api/v1/stats/series</code></td>
+<td><code>GET /api/v1/flows/{id}/stats</code>, <code>GET /api/v1/flows/stats</code>, <code>GET /api/v1/stats/series</code>, <code>GET /metrics</code></td>
 <td><code>flows:view</code></td>
 </tr>
 <tr>
