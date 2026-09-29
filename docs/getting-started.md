@@ -114,14 +114,17 @@ curl -s -u admin:Weavster-dev-1 -H 'X-Weavster-CSRF: 1' http://127.0.0.1:8080/ap
 ```
 
 ```json
-{"id":"6f1c2a90-…","status":"sent"}
+{"id":"1ef8fb26d76f9643c3d95db0a90bb97f","status":"sent"}
 ```
 
-`sent` means the message was stored, transformed, and written to the file destination. Read
-what the transform made of it with the id from the reply:
+`sent` means the message was stored, transformed, and written to the file destination: a file in
+`/tmp/hello` **inside the server's container** (not on your machine). To look at it, copy the
+directory out with `docker compose cp weavster:/tmp/hello ./hello-out` (the image has no shell,
+so `docker compose exec` does not work). Or read what the transform made of the message with
+the id from the reply:
 
 ```bash
-curl -s -u admin:Weavster-dev-1 -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/messages/6f1c2a90-…/content?part=transformed'
+curl -s -u admin:Weavster-dev-1 -H 'X-Weavster-CSRF: 1' 'http://127.0.0.1:8080/api/v1/messages/1ef8fb26d76f9643c3d95db0a90bb97f/content?part=transformed'
 ```
 
 ```json

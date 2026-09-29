@@ -37,7 +37,7 @@ mkdocs build --strict
 
 Every build is strict (`strict: true` in `mkdocs.yml`): a broken link, a link to a heading that
 does not exist, or a page left out of the nav fails it. Link to files outside `docs/` with their
-full GitHub URL.
+full GitHub URL; MkDocs does not check those, so check them yourself when you move a file.
 
 ## Navigation
 

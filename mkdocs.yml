@@ -45,9 +45,9 @@ exclude_docs: |
   mvp-project-plan.md
   agent-onboarding.md
 
-# Every build is strict: a warning (a broken link, a missing anchor, a page
-# outside the nav) fails it. Links to files outside docs/ are written as
-# full GitHub URLs, so they are checked like any external link would be.
+# Every build is strict: a warning (a broken link between pages, a missing
+# anchor, a page outside the nav) fails it. Links to files outside docs/
+# are full GitHub URLs, which MkDocs does not check.
 strict: true
 validation:
   omitted_files: warn
