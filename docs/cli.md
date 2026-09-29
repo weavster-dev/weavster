@@ -18,9 +18,10 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
 
 | Flag | Meaning |
 |---|---|
-| `-a address` | Server address (default `http://127.0.0.1:8080`). Include the scheme. |
+| `-a address` | Server address (default `http://127.0.0.1:8080`). Include the scheme, and the server's [context path](server-config.md#listen) if it has one: `https://weavster.internal:8443/weavster`. With `-u`/`-p` and a plain `http://` address on another machine, the client warns that the password is sent unencrypted. |
 | `-u user`, `-p password` | Log in as this user. The credentials are checked at startup. If they are wrong, or the account must change its password first, the client prints `Could not log in to server.` and the server's reason, then continues (commands then fail with `401` or `403`). A password without a user exits `2`. |
-| `-c file` | Connection file with the address and credentials (see below). `-a`, `-u`, and `-p` override its values. A missing or invalid file exits `2`. |
+| `-c file` | Connection file with the address and credentials (see below). `-a`, `-u`, `-p`, and `-ca` override its values. A missing or invalid file exits `2`. |
+| `-ca file` | For an `https` address: a PEM file of CA certificates to trust besides the system's, for a server whose certificate comes from a private CA or is self-signed. A missing file, or one without a certificate, exits `2`. |
 | `-s file` | Script file: one command per line. Empty lines and lines starting with `#` are skipped. |
 | `-v` | Print the server's version and exit. It needs `-u`/`-p` (or `-c`), because the server only answers signed-in users; it exits `2` if the server cannot be reached or refuses the credentials. |
 | `-h` | Print usage and exit. |
@@ -29,12 +30,34 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
 Connection file (`-c`), YAML with only these keys:
 
 ```yaml
-address: http://127.0.0.1:8080
+address: https://weavster.internal:8443/weavster
 user: admin
 password: A-Strong-Passw0rd
+ca: /etc/weavster/ca.pem          # optional: a private CA for https (a relative path is next to this file)
 ```
 
 Keep it readable only by you (`chmod 600`), because it holds a password.
+
+### Connect over HTTPS
+
+The client speaks TLS 1.2 or later and checks the server's certificate. If the certificate comes
+from a private CA (or is self-signed), pass that CA:
+
+```bash
+weavster -a https://weavster.internal:8443 -ca /etc/weavster/ca.pem -u admin -p 'A-Strong-Passw0rd'
+```
+
+Without it, a command fails with the reason and a hint:
+
+```text
+Error: Get "https://weavster.internal:8443/api/v1/system": tls: failed to verify certificate: x509: certificate signed by unknown authority
+  The server's certificate is not signed by a CA this machine trusts: pass that CA with -ca FILE (or ca: in the connection file).
+```
+
+Other certificate problems get their own hint: a certificate issued for another name (connect
+with a name it lists), an expired one (renew it, or check the clock), or one refused for another
+reason, such as a missing server-auth key usage (reissue it). `-ca` applies to `https` addresses
+only; with an `http` address the client warns that it is not used.
 
 ## Interactive shell
 

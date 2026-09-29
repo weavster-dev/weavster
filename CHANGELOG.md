@@ -7,6 +7,7 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- The CLI over HTTPS with a private CA (#383): `-ca FILE` or `ca:` in the connection file trusts a private or self-signed CA (TLS 1.2 or later). Untrusted or invalid certificates get a hint, and credentials sent over plain HTTP to another host get a warning. The server's `listen.contextPath` serves the API, OpenAPI and `/metrics` under a path such as `/weavster`.
 - `GET /metrics` in the Prometheus text format (#381): `weavster_flow_messages_total` and `weavster_connector_messages_total` by outcome, `weavster_flows` by status, `weavster_processing_in_flight`, `_slots` and `_refused_total`, plus Go runtime and process metrics. The values are read from the server's statistics at scrape time. It needs credentials with `flows:view` but not the CSRF marker, so Prometheus `basic_auth` works.
 - Message pruning (#375): `prune.maxAgeHours` and `prune.maxMessages` remove finished messages (`sent`, `filtered`, `errored`, `dead-lettered`) that are too old or past a count, every `prune.intervalMinutes`. `GET /api/v1/system/prune` shows the status, and `POST /api/v1/system/prune/start` and `/stop` run or stop a pass. Busy messages are skipped, and each pass records a `messages.pruned` event.
 - `phi.access` audit entries record what a read disclosed (#373): a search or an export gives the number of messages and every id (`messages`, `messages.ids` as a JSON array), and a content read gives the part (`raw` when none was asked for).
@@ -154,6 +155,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- `POST /api/v1/system/prune/stop` answers only after the stopped pass has recorded its `messages.pruned` event (#383). Before, the event could appear a moment after the reply.
 - On PostgreSQL, message searches and paging in id order use indexes (#379). Message ids now compare in byte order (`COLLATE "C"` on `messages.id` and the `message_id` columns), as searches sort them, so the primary key and the message indexes serve those queries. Before, a database with a non-`C` locale sorted the whole table. The upgrade rebuilds the message tables' indexes and locks them while it runs. SQLite is unchanged.
 - The scheduler library's SQL job queue works on PostgreSQL (#377): enqueue, heartbeat, complete, requeue, and reconcile used `?` placeholders that PostgreSQL rejects. Every queue, including the in-memory one, claims in due order and then by id in byte order. A failed commit no longer reports a claim, the queue detects its dialect from the database driver, and a new index covers claims. `FOR UPDATE SKIP LOCKED` is verified on PostgreSQL 16. The server does not use this queue.
 - The server binds its API ports before starting sources and retries, so a port that is already in use stops it before a file source has moved a file or an http/mllp source has accepted a message (#361).

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -77,6 +78,53 @@ const RouteNotFoundMessage = "no such endpoint"
 
 // Router builds the chi router with middleware and routes.
 func (s *Server) Router() http.Handler {
+	return underContextPath(s.cfg.ContextPath, s.routes())
+}
+
+// underContextPath serves h under prefix (listen.contextPath, spec §4.1):
+// /weavster/api/v1/flows reaches h as /api/v1/flows. Every other path
+// reaches h as one no route matches, so it gets the router's own 404 with
+// its security headers. An empty prefix serves h at the root.
+func underContextPath(prefix string, h http.Handler) http.Handler {
+	if prefix == "" {
+		return h
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rest, ok := strings.CutPrefix(r.URL.Path, prefix)
+		if !ok || (rest != "" && rest[0] != '/') {
+			rest = "/outside-the-context-path" // matches no route
+		}
+		if rest == "" {
+			rest = "/"
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path, r2.URL.RawPath = rest, rawAfter(r.URL.EscapedPath(), prefix, ok && rest != "/outside-the-context-path")
+		h.ServeHTTP(w, r2)
+	})
+}
+
+// rawAfter is the escaped path after the context prefix (which may itself
+// be escaped), so escaped parameters such as a lookup key A%2FB keep their
+// form; "" when the path is outside the prefix.
+func rawAfter(escaped, prefix string, inside bool) string {
+	if !inside {
+		return ""
+	}
+	for i := len(prefix); i <= len(escaped); i++ {
+		if (i == len(escaped) || escaped[i] == '/') && unescapes(escaped[:i], prefix) {
+			return escaped[i:]
+		}
+	}
+	return ""
+}
+
+func unescapes(escaped, want string) bool {
+	got, err := url.PathUnescape(escaped)
+	return err == nil && got == want
+}
+
+// routes is the API's router.
+func (s *Server) routes() http.Handler {
 	r := chi.NewRouter()
 	r.Use(apiVersion)
 	r.Use(SecurityHeaders)

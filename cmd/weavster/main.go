@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/weavster-dev/weavster/internal/state"
 )
@@ -66,7 +67,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		password = fs.String("p", "", "login password")
 		script   = fs.String("s", "", "script file (batch mode)")
 		ver      = fs.Bool("v", false, "print the server's version")
-		config   = fs.String("c", "", "connection file (YAML: address, user, password)")
+		config   = fs.String("c", "", "connection file (YAML: address, user, password, ca)")
+		ca       = fs.String("ca", "", "PEM file of CA certificates trusted for an https address")
 		help     = fs.Bool("h", false, "print usage and exit")
 		debug    = fs.Bool("d", false, "debug mode (print the cause chain of errors)")
 	)
@@ -80,7 +82,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		printUsage(stdout)
 		return 0
 	}
-	conn := connection{Address: *addr, User: *user, Password: *password}
+	conn := connection{Address: *addr, User: *user, Password: *password, CA: *ca}
 	if *config != "" {
 		file, err := loadConnection(*config)
 		if err != nil {
@@ -94,6 +96,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	client := newHTTPClient(conn.Address, conn.User, conn.Password)
+	if conn.CA != "" {
+		if err := client.withCA(conn.CA); err != nil {
+			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 2
+		}
+		if !strings.HasPrefix(client.base, "https://") {
+			_, _ = fmt.Fprintf(stderr, "Warning: -ca is used only for https addresses; %s is not one\n", client.base)
+		}
+	}
+	if conn.User != "" && plainCredentials(client.base) {
+		_, _ = fmt.Fprintf(stderr, "Warning: %s is plain HTTP: the password is sent unencrypted; use https\n", client.base)
+	}
 	ctx := context.Background()
 	if conn.User != "" {
 		if err := client.login(ctx); err != nil {
@@ -133,7 +147,8 @@ Flags:
   -p password  Login password
   -s script    Script file (batch mode)
   -v           Print the server's version
-  -c file      Connection file (YAML: address, user, password); flags override it
+  -c file      Connection file (YAML: address, user, password, ca); flags override it
+  -ca file     PEM file of CA certificates to trust for an https address (a private CA)
   -h           Print usage and exit
   -d           Debug mode (print the cause chain of errors)
 `)

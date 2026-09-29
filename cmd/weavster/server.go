@@ -204,6 +204,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		DeadLetters:     deadLetters,
 		Pruner:          prune,
 		Metrics:         metricsHandler(serverMetrics{stats: stats, flows: flows, limit: limit, logger: logger}),
+		ContextPath:     cfg.Listen.ContextPath,
 		StatsHistory:    statsPort,
 		Events:          eventsAdapter{events},
 		Topology:        topologyAdapter{flows: flows, stats: stats},
