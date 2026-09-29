@@ -45,7 +45,7 @@ Unknown fields and invalid values are rejected with `400` and a message naming t
 | `GET /api/v1/alerts/{id}` | One alert (`404` if unknown). |
 | `PUT /api/v1/alerts/{id}` | Creates or replaces one alert. `id` in the body is optional and must match the path. |
 | `DELETE /api/v1/alerts/{id}` | Deletes one alert (`204`). |
-| `POST /api/v1/alerts/{id}/enable`, `/disable` | Turns an alert on or off and returns it. |
+| `POST /api/v1/alerts/{id}/enable`, `POST /api/v1/alerts/{id}/disable` | Turns an alert on or off and returns it. |
 | `POST /api/v1/alerts/import` | Saves a JSON array of alerts, all or nothing. An id that already exists is `409` and nothing is saved; add `?force=true` to replace existing alerts. |
 | `GET /api/v1/alerts/options` | `{"events": [...], "actionTypes": [...]}`. |
 | `GET /api/v1/alerts/statuses` | Every alert's `id`, `name`, and `enabled`, sorted by id. |

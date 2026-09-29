@@ -324,7 +324,7 @@ echo 'postgres://weavster:the-password@db.internal:5432/weavster?sslmode=verify-
 | Key | Default | Description |
 |---|---|---|
 | `passwordPolicy.minLength` | `8` | Minimum password length in characters (`0` = none). |
-| `passwordPolicy.minUpper` / `minLower` / `minNumeric` / `minSpecial` | `1` / `1` / `1` / `0` | Required characters of each class. `-1` forbids the class. A special character is anything that is not a letter (of any script) or digit, spaces included. `GET /api/v1/system/password-requirements` shows the rules in words. |
+| `passwordPolicy.minUpper` / `passwordPolicy.minLower` / `passwordPolicy.minNumeric` / `passwordPolicy.minSpecial` | `1` / `1` / `1` / `0` | Required characters of each class. `-1` forbids the class. A special character is anything that is not a letter (of any script) or digit, spaces included. `GET /api/v1/system/password-requirements` shows the rules in words. |
 | `lockout.retryLimit` | `5` | Failed logins before lockout (`0` = never lock). |
 | `lockout.lockoutPeriodSeconds` | `300` | Lockout duration in seconds. |
 

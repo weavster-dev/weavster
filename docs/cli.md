@@ -132,7 +132,8 @@ Commands that change a flow print the server's reply (the flow, or the import/up
 | `importmessages "path" <flow>` | Imports an archive file into the flow (existing message ids are skipped). |
 | `exportmap "path"`, `importmap "path"` | Writes the config map to a JSON file, or replaces it with one. See [Config map, scripts, and settings](config-items.md). |
 | `exportscripts "path"`, `importscripts "path"` | The same for the global scripts. |
-| `snippet list`, `snippet import "path"`, `snippet export "path"`, `snippet remove <name>` | Manages code snippets; `snippet library …` does the same for libraries. See [Code snippets and libraries](snippets.md). |
+| `snippet list`, `snippet import "path"`, `snippet export "path"`, `snippet remove <name>` | Manages code snippets. |
+| `snippet library list`, `snippet library import "path"`, `snippet library export "path"`, `snippet library remove <name>` | The same for snippet libraries. See [Code snippets and libraries](snippets.md). |
 | `config validate "path"` | Checks a config-as-code document (YAML or JSON) on this machine; it needs no server or login. See [Config-as-code documents](config-as-code.md). |
 | `config diff "path"`, `config plan "path"` | Shows what applying the document would change: `diff` as text (`+`, `~` with changed values, `-`), `plan` as JSON. Nothing changes. |
 | `config apply "path" [--dry-run] [reason…]` | Plans the document, prints the plan, and applies it; refused if the server changed meanwhile, undone completely if a change fails. See [Apply](config-as-code.md#apply). |
@@ -283,6 +284,21 @@ statement of what it expects, for both runs.
 - `output` compares JSON values: `"12345"` (text) and `12345` (a number) differ. HL7 v2 fields
   are text.
 - A flow without a `transform` passes messages through unchanged, so any input is `transformed`.
+
+## Run the server (`weavster server`)
+
+```bash
+weavster server --config /etc/weavster/weavster-server.yaml
+weavster server --config weavster-server.yaml 127.0.0.1:9090   # the address overrides listen.address
+weavster server                                                  # defaults: 127.0.0.1:8080, memory store
+```
+
+- `--config FILE` reads the [server configuration](server-config.md); without it the defaults
+  apply (a memory store: nothing is kept after the server stops).
+- An address after the flags replaces `listen.address` from the file.
+- The server runs until `SIGINT` or `SIGTERM`, then drains in-flight messages for up to
+  `listen.shutdownTimeoutMs` and exits `0`. It refuses to run as root unless
+  `WEAVSTER_ALLOW_ROOT=1` is set.
 
 ## Deprecated command names
 
