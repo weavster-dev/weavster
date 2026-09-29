@@ -127,7 +127,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	// Statistics kept across restarts (#107 D-97): loaded before a flow
 	// deployed at start counts anything.
 	var statsRepo statsRepository
-	if store != nil {
+	if cfg.Store.Dialect == serverconfig.DialectPostgres {
 		statsRepo = store.(statsRepository)
 		if err := restoreStats(ctx, statsRepo, stats, series, retention, time.Now()); err != nil {
 			ew.stop()
@@ -139,11 +139,12 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	for _, l := range listeners(cfg.Listen) {
 		serverPorts[l.Port] = l.UsedBy
 	}
-	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events, serverPorts: serverPorts, statsRepo: statsRepo}
+	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events, serverPorts: serverPorts,
+		statsRepo: statsRepo, statsSaves: &sync.Mutex{}}
 	if cfg.Flows.DeployOnStartup && store != nil {
 		flows.DeployEnabled(ctx, logger)
 	}
-	statsPort := statsAdapter{flows: flows, stats: stats, series: series, repo: statsRepo, retention: retention}
+	statsPort := statsAdapter{flows: flows, stats: stats, series: series, repo: statsRepo, retention: retention, logger: logger}
 	var ingest gateway.MessageIngester
 	var sourcePorts gateway.SourcePorts
 	var prune gateway.Pruner
@@ -193,7 +194,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		}
 		closeStore = func() error { // after the API drained: nothing delivers any more
 			saveCtx, cancel := context.WithTimeout(context.Background(), statsSaveLimit)
-			if err := statsPort.saveNow(saveCtx); err != nil {
+			if err := statsPort.saveNow(saveCtx, ""); err != nil {
 				logger.Warn("statistics not stored at shutdown", "error", err)
 			}
 			cancel()
@@ -749,7 +750,11 @@ type flowAdapter struct {
 	// no flow source may use.
 	serverPorts map[int]string
 	// statsRepo, when set, loses a deleted flow's stored statistics.
-	statsRepo statsRepository
+	// statsSaves orders those writes: a statistics save takes it before it
+	// releases defs, so a delete removes the stored statistics after any
+	// save of the flow, never before.
+	statsRepo  statsRepository
+	statsSaves *sync.Mutex
 }
 
 // definitions locks definition changes; it returns the unlock func.
@@ -759,6 +764,30 @@ func (a flowAdapter) definitions() func() {
 	}
 	a.defs.Lock()
 	return a.defs.Unlock
+}
+
+// statsWrites takes the statistics-writes lock (flowAdapter.statsSaves).
+func (a flowAdapter) statsWrites() func() {
+	if a.statsSaves == nil {
+		return func() {}
+	}
+	a.statsSaves.Lock()
+	return a.statsSaves.Unlock
+}
+
+// definitionsWithin is definitions, giving up when ctx ends first.
+func (a flowAdapter) definitionsWithin(ctx context.Context) (func(), error) {
+	if a.defs == nil {
+		return func() {}, nil
+	}
+	for !a.defs.TryLock() {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	return a.defs.Unlock, nil
 }
 
 func (a flowAdapter) lock(id string, skipDrain bool) func() {
@@ -2139,15 +2168,18 @@ func (a flowAdapter) Delete(ctx context.Context, id string) error {
 		sort.Strings(dependents)
 		return fmt.Errorf("%w: %s depended on by %s", gateway.ErrFlowInUse, id, strings.Join(dependents, ", "))
 	}
+	if a.statsRepo != nil { // before any change, so a failure leaves the flow as it was
+		unlock := a.statsWrites()
+		err := a.statsRepo.DeleteStatsOf(ctx, id)
+		unlock()
+		if err != nil {
+			return err
+		}
+	}
 	// A running flow is undeployed (persisted, flow.undeployed event) before
 	// removal (spec §6.1).
 	if target != nil && flowlife.Normalize(target.Status) != flowlife.Undeployed {
 		if _, err := a.setStatus(ctx, *target, flowlife.Undeployed); err != nil {
-			return err
-		}
-	}
-	if a.statsRepo != nil { // first, so a failure leaves the flow as it was
-		if err := a.statsRepo.DeleteStatsOf(ctx, id); err != nil {
 			return err
 		}
 	}
@@ -2243,6 +2275,7 @@ type statsAdapter struct {
 	// samples older than retention are dropped from it.
 	repo      statsRepository
 	retention time.Duration
+	logger    *slog.Logger
 }
 
 func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime bool) (gateway.FlowStats, error) {
@@ -2275,7 +2308,12 @@ func (a statsAdapter) ResetStats(ctx context.Context, flowID string, lifetime bo
 		}
 	}
 	a.stats.Clear(flowID, lifetime)
-	return a.saveNow(ctx) // a restart does not bring the counts back
+	// Stored now, so a restart does not bring the counts back. The reset
+	// itself is done; a failed save is caught up by the next sample.
+	if err := a.saveNow(ctx, flowID); err != nil {
+		a.logger.Warn("statistics reset not stored yet", "flow", flowID, "error", err)
+	}
+	return nil
 }
 
 // eventLogRecorder records file-source events in the event log.
@@ -2310,23 +2348,27 @@ func (a statsAdapter) sampleLoop(ctx context.Context, interval time.Duration, lo
 // It holds the definitions lock, so a flow deleted meanwhile cannot have a
 // sample recorded after Delete forgot its series.
 func (a statsAdapter) sample(ctx context.Context, now time.Time) error {
-	defer a.flows.definitions()()
+	unlock := a.flows.definitions()
 	flows, err := a.flows.List(ctx)
 	if err != nil {
+		unlock()
 		return err
 	}
-	all := a.stats.SnapshotAll(true)
+	current, lifetime := a.stats.Snapshots()
 	snap := make(map[string]observability.FlowStats, len(flows))
 	ids := make([]string, len(flows))
 	for i, f := range flows {
-		snap[f.ID] = all[f.ID]
+		snap[f.ID] = lifetime[f.ID]
 		ids[i] = f.ID
 	}
 	a.series.RecordAll(now, snap)
 	if a.repo == nil {
+		unlock()
 		return nil
 	}
-	return a.save(ctx, ids, now.Round(0), snap)
+	defer a.flows.statsWrites()() // before unlock: see flowAdapter.statsSaves
+	unlock()
+	return a.save(ctx, ids, now.Round(0), current, lifetime, snap)
 }
 
 // StatsSeries returns the sampled statistics of one flow, or of every

@@ -152,25 +152,21 @@ func (s *StatsRegistry) Clear(flow string, lifetime bool) {
 func (s *StatsRegistry) Load(current, lifetime map[string]FlowStats) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for dst, src := range map[*map[string]*FlowStats]map[string]FlowStats{&s.current: current, &s.lifetime: lifetime} {
-		m := make(map[string]*FlowStats, len(src))
-		for flow, fs := range src {
-			c := cloneStats(&fs)
-			m[flow] = &c
-		}
-		*dst = m
-	}
+	s.current, s.lifetime = loadAll(current), loadAll(lifetime)
 }
 
-// SnapshotAll returns a copy of every flow's current (or lifetime) stats,
-// taken at one instant.
-func (s *StatsRegistry) SnapshotAll(lifetime bool) map[string]FlowStats {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	m := s.current
-	if lifetime {
-		m = s.lifetime
+// loadAll copies stats into a registry map.
+func loadAll(stats map[string]FlowStats) map[string]*FlowStats {
+	m := make(map[string]*FlowStats, len(stats))
+	for flow, fs := range stats {
+		c := cloneStats(&fs)
+		m[flow] = &c
 	}
+	return m
+}
+
+// copyAll copies a registry map.
+func copyAll(m map[string]*FlowStats) map[string]FlowStats {
 	out := make(map[string]FlowStats, len(m))
 	for flow, fs := range m {
 		out[flow] = cloneStats(fs)
@@ -178,18 +174,22 @@ func (s *StatsRegistry) SnapshotAll(lifetime bool) map[string]FlowStats {
 	return out
 }
 
+// SnapshotAll returns a copy of every flow's current (or lifetime) stats,
+// taken at one instant.
+func (s *StatsRegistry) SnapshotAll(lifetime bool) map[string]FlowStats {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if lifetime {
+		return copyAll(s.lifetime)
+	}
+	return copyAll(s.current)
+}
+
 // Snapshots returns a copy of every flow's current and lifetime stats,
 // both taken at one instant.
 func (s *StatsRegistry) Snapshots() (current, lifetime map[string]FlowStats) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	copyAll := func(m map[string]*FlowStats) map[string]FlowStats {
-		out := make(map[string]FlowStats, len(m))
-		for flow, fs := range m {
-			out[flow] = cloneStats(fs)
-		}
-		return out
-	}
 	return copyAll(s.current), copyAll(s.lifetime)
 }
 

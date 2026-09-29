@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -68,8 +72,10 @@ func TestStatsStore(t *testing.T) {
 	ctx := context.Background()
 	mem := state.NewMemStore()
 	stats := observability.NewStatsRegistry()
-	flows := flowAdapter{store: mem, stats: stats, statsRepo: mem}
-	a := statsAdapter{flows: flows, stats: stats, series: observability.NewTimeSeries(time.Hour, 100), repo: mem, retention: time.Hour}
+	var logs bytes.Buffer
+	flows := flowAdapter{store: mem, stats: stats, statsRepo: mem, statsSaves: &sync.Mutex{}, defs: &sync.Mutex{}}
+	a := statsAdapter{flows: flows, stats: stats, series: observability.NewTimeSeries(time.Hour, 100), repo: mem, retention: time.Hour,
+		logger: slog.New(slog.NewTextHandler(&logs, nil))}
 	if _, err := flows.Create(ctx, gateway.Flow{ID: "adt"}); err != nil {
 		t.Fatal(err)
 	}
@@ -104,12 +110,22 @@ func TestStatsStore(t *testing.T) {
 		t.Errorf("stored after a reset = %+v", recs)
 	}
 
-	// A flow whose statistics cannot be removed stays.
-	flows.statsRepo = failingStats{mem, "delete"}
-	if err := flows.Delete(ctx, "adt"); !errors.Is(err, errStatsStore) {
+	// A reset the store cannot take is still done, and logged.
+	stats.Inc("adt", observability.Sent)
+	a.repo = failingStats{mem, "save"}
+	if err := a.ResetStats(ctx, "adt", false); err != nil || stats.Snapshot("adt", false).Sent != 0 {
+		t.Errorf("reset with a failing store = %v", err)
+	}
+	if !strings.Contains(logs.String(), "statistics reset not stored yet") {
+		t.Errorf("log = %q", logs.String())
+	}
+
+	// A flow whose statistics cannot be removed stays as it was.
+	a.flows.statsRepo = failingStats{mem, "delete"}
+	if err := a.flows.Delete(ctx, "adt"); !errors.Is(err, errStatsStore) {
 		t.Errorf("delete with a failing store = %v", err)
 	}
-	if _, err := flows.Get(ctx, "adt"); err != nil {
+	if _, err := a.flows.Get(ctx, "adt"); err != nil {
 		t.Errorf("the flow is gone: %v", err)
 	}
 
@@ -119,8 +135,18 @@ func TestStatsStore(t *testing.T) {
 			t.Errorf("sample with %s failing = %v", op, err)
 		}
 	}
+
+	// At shutdown, the save waits for the definitions only as long as allowed.
+	a.repo = mem
+	unlock := a.flows.definitions()
+	short, cancel := context.WithTimeout(ctx, 30*time.Millisecond)
+	defer cancel()
+	if err := a.saveNow(short, ""); !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("save while the definitions are held = %v", err)
+	}
+	unlock()
 	a.repo = nil
-	if err := a.saveNow(ctx); err != nil {
+	if err := a.saveNow(ctx, ""); err != nil {
 		t.Errorf("saving without a store = %v", err)
 	}
 }

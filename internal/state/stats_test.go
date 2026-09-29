@@ -17,7 +17,7 @@ type statsStore interface {
 	DeleteStatsOf(ctx context.Context, flow string) error
 }
 
-// TestStats: flow statistics are replaced as a whole, samples are read
+// TestStats: flow statistics are stored per flow, samples are read
 // back newest-n oldest first from a time on, and old samples or a flow's
 // statistics can be deleted, on every backend.
 func TestStats(t *testing.T) {
@@ -34,8 +34,8 @@ func TestStats(t *testing.T) {
 		if err := ss.SaveFlowStats(ctx, []FlowStatsRecord{{Flow: "lab", Current: `{"sent":2}`, Lifetime: `{"sent":10}`}, {Flow: "rad", Current: "{}", Lifetime: "{}"}}); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if got, err := ss.FlowStats(ctx); err != nil || len(got) != 2 || got[0].Flow != "lab" || got[0].Lifetime != `{"sent":10}` || got[1].Flow != "rad" {
-			t.Errorf("%s: replaced stats = %+v %v", name, got, err)
+		if got, err := ss.FlowStats(ctx); err != nil || len(got) != 3 || got[0].Flow != "adt" || got[1].Flow != "lab" || got[1].Lifetime != `{"sent":10}` || got[2].Flow != "rad" {
+			t.Errorf("%s: updated stats = %+v %v", name, got, err)
 		}
 
 		var samples []StatsSampleRecord
@@ -55,15 +55,21 @@ func TestStats(t *testing.T) {
 		if got, _ := ss.StatsSamples(ctx, base.Add(2*time.Minute), 100); len(got) != 4 {
 			t.Errorf("%s: since the third minute = %d samples", name, len(got))
 		}
-		if err := ss.DeleteStatsSamplesBefore(ctx, base.Add(2*time.Minute)); err != nil {
+		if err := ss.DeleteStatsSamplesBefore(ctx, base.Add(2*time.Minute+time.Microsecond)); err != nil { // milliseconds count
 			t.Fatalf("%s: %v", name, err)
+		}
+		if kept, _ := ss.StatsSamples(ctx, time.Time{}, 100); len(kept) != 4 || !kept[0].At.Equal(base.Add(2*time.Minute)) {
+			t.Errorf("%s: after the retention cut = %+v", name, kept)
 		}
 		if err := ss.DeleteStatsOf(ctx, "lab"); err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
+		if err := ss.DeleteStatsOf(ctx, "adt"); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
 		left, _ := ss.StatsSamples(ctx, time.Time{}, 100)
 		stats, _ := ss.FlowStats(ctx)
-		if len(left) != 2 || left[0].Flow != "adt" || !left[0].At.Equal(base.Add(2*time.Minute)) || len(stats) != 1 || stats[0].Flow != "rad" {
+		if len(left) != 0 || len(stats) != 1 || stats[0].Flow != "rad" {
 			t.Errorf("%s: left %+v and %+v", name, left, stats)
 		}
 	}

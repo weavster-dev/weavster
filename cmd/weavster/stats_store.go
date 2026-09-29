@@ -59,26 +59,23 @@ func restoreStats(ctx context.Context, repo statsRepository, stats *observabilit
 	return nil
 }
 
-// save stores every listed flow's current and lifetime statistics, the
-// samples taken at now (none when nil), and drops samples older than the
-// retention. The caller holds the definitions lock.
-func (a statsAdapter) save(ctx context.Context, flows []string, now time.Time, sampled map[string]observability.FlowStats) error {
-	current, lifetime := a.stats.Snapshots()
+// save stores the current and lifetime statistics of the flows, the
+// samples taken at now (none when sampled is nil), and drops samples older
+// than the retention. The caller holds the statistics-writes lock.
+func (a statsAdapter) save(ctx context.Context, flows []string, now time.Time, current, lifetime, sampled map[string]observability.FlowStats) error {
 	records := make([]state.FlowStatsRecord, 0, len(flows))
+	samples := make([]state.StatsSampleRecord, 0, len(sampled))
 	for _, f := range flows {
 		c, _ := json.Marshal(current[f])
 		l, _ := json.Marshal(lifetime[f])
 		records = append(records, state.FlowStatsRecord{Flow: f, Current: string(c), Lifetime: string(l)})
-	}
-	if err := a.repo.SaveFlowStats(ctx, records); err != nil {
-		return err
-	}
-	samples := make([]state.StatsSampleRecord, 0, len(sampled))
-	for _, f := range flows {
 		if st, ok := sampled[f]; ok {
 			b, _ := json.Marshal(st)
 			samples = append(samples, state.StatsSampleRecord{At: now, Flow: f, Stats: string(b)})
 		}
+	}
+	if err := a.repo.SaveFlowStats(ctx, records); err != nil {
+		return err
 	}
 	if err := a.repo.AppendStatsSamples(ctx, samples); err != nil {
 		return err
@@ -86,19 +83,30 @@ func (a statsAdapter) save(ctx context.Context, flows []string, now time.Time, s
 	return a.repo.DeleteStatsSamplesBefore(ctx, now.Add(-a.retention))
 }
 
-// saveNow stores the statistics as they are (a reset, shutdown).
-func (a statsAdapter) saveNow(ctx context.Context) error {
+// saveNow stores the statistics of one flow (every flow when flowID is
+// empty) as they are: after a reset, and at shutdown. It waits for the
+// definitions lock only as long as ctx allows.
+func (a statsAdapter) saveNow(ctx context.Context, flowID string) error {
 	if a.repo == nil {
 		return nil
 	}
-	defer a.flows.definitions()()
-	flows, err := a.flows.List(ctx)
+	unlock, err := a.flows.definitionsWithin(ctx)
 	if err != nil {
 		return err
 	}
-	ids := make([]string, len(flows))
-	for i, f := range flows {
-		ids[i] = f.ID
+	flows, err := a.flows.List(ctx)
+	if err != nil {
+		unlock()
+		return err
 	}
-	return a.save(ctx, ids, time.Now(), nil)
+	current, lifetime := a.stats.Snapshots()
+	var ids []string
+	for _, f := range flows {
+		if flowID == "" || f.ID == flowID {
+			ids = append(ids, f.ID)
+		}
+	}
+	defer a.flows.statsWrites()() // before unlock: see flowAdapter.statsSaves
+	unlock()
+	return a.save(ctx, ids, time.Now(), current, lifetime, nil)
 }
