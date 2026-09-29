@@ -33,15 +33,16 @@ func TestMain(m *testing.M) {
 }
 
 // start runs a server on a free address with extra configuration and
-// returns its base URL; it is stopped (and must exit 0) when the test ends.
-func start(t *testing.T, extra string) string {
+// returns its base URL and admin password; it is stopped (and must exit 0)
+// when the test ends.
+func start(t *testing.T, extra string) (string, string) {
 	t.Helper()
 	addr, err := harness.FreeAddr()
 	if err != nil {
 		t.Fatal(err)
 	}
 	base := "http://" + addr
-	s, err := harness.Start(bin, t.TempDir(), "listen: {address: \""+addr+"\"}\n"+extra, base+"/api/openapi.yaml", nil)
+	s, err := harness.Start(bin, t.TempDir(), harness.Options{Config: "listen: {address: \"" + addr + "\"}\n" + extra, BaseURL: base})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,13 +51,14 @@ func start(t *testing.T, extra string) string {
 			t.Errorf("SIGTERM: exit %d\n%s", code, s.Log())
 		}
 	})
-	return base
+	return base, s.Password
 }
 
 func TestAuthentication(t *testing.T) {
-	base := start(t, "auth: {lockout: {retryLimit: 3, lockoutPeriodSeconds: 300}}\n")
+	base, adminPassword := start(t, "auth: {lockout: {retryLimit: 3, lockoutPeriodSeconds: 300}}\n")
 	c := http.DefaultClient
-	req := func(method, path, body, user, password string, noCSRF bool) (int, string, http.Header) {
+	// req is one request; it fails t, the (sub)test it is called for.
+	req := func(t *testing.T, method, path, body, user, password string, noCSRF bool) (int, string, http.Header) {
 		t.Helper()
 		code, resp, header, err := harness.Request(c, method, base+path, body, user, password, noCSRF)
 		if err != nil {
@@ -65,7 +67,7 @@ func TestAuthentication(t *testing.T) {
 		return code, resp, header
 	}
 	const admin, ops, opsPassword = "admin", "ops", "Ops-Password-1"
-	if code, body, _ := req(http.MethodPost, "/api/v1/users", `{"username":"ops","password":"`+opsPassword+`","permissions":["flows:view"],"mustChangePassword":false}`, admin, harness.AdminPassword, false); code != http.StatusCreated {
+	if code, body, _ := req(t, http.MethodPost, "/api/v1/users", `{"username":"ops","password":"`+opsPassword+`","permissions":["flows:view"],"mustChangePassword":false}`, admin, adminPassword, false); code != http.StatusCreated {
 		t.Fatalf("create ops: %d %s", code, body)
 	}
 
@@ -78,17 +80,17 @@ func TestAuthentication(t *testing.T) {
 		{"no credentials", http.MethodGet, "/api/v1/flows", "", "", "", false, http.StatusUnauthorized},
 		{"metrics need credentials", http.MethodGet, "/metrics", "", "", "", false, http.StatusUnauthorized},
 		{"unknown user", http.MethodGet, "/api/v1/flows", "", "nobody", "Whatever-Pass-1", false, http.StatusUnauthorized},
-		{"right credentials", http.MethodGet, "/api/v1/flows", "", admin, harness.AdminPassword, false, http.StatusOK},
-		{"no CSRF marker", http.MethodGet, "/api/v1/flows", "", admin, harness.AdminPassword, true, http.StatusBadRequest},
-		{"no CSRF marker on a change", http.MethodPost, "/api/v1/flows", `{"id":"x"}`, admin, harness.AdminPassword, true, http.StatusBadRequest},
+		{"right credentials", http.MethodGet, "/api/v1/flows", "", admin, adminPassword, false, http.StatusOK},
+		{"no CSRF marker", http.MethodGet, "/api/v1/flows", "", admin, adminPassword, true, http.StatusBadRequest},
+		{"no CSRF marker on a change", http.MethodPost, "/api/v1/flows", `{"id":"x"}`, admin, adminPassword, true, http.StatusBadRequest},
 		{"a permission the user has", http.MethodGet, "/api/v1/flows", "", ops, opsPassword, false, http.StatusOK},
 		{"a permission the user lacks", http.MethodPost, "/api/v1/flows", `{"id":"x"}`, ops, opsPassword, false, http.StatusForbidden},
 		{"users:admin the user lacks", http.MethodGet, "/api/v1/users", "", ops, opsPassword, false, http.StatusForbidden},
-		{"TRACE is refused", http.MethodTrace, "/api/v1/flows", "", admin, harness.AdminPassword, false, http.StatusMethodNotAllowed},
+		{"TRACE is refused", http.MethodTrace, "/api/v1/flows", "", admin, adminPassword, false, http.StatusMethodNotAllowed},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			code, body, header := req(tc.method, tc.path, tc.body, tc.user, tc.password, tc.noCSRF)
+			code, body, header := req(t, tc.method, tc.path, tc.body, tc.user, tc.password, tc.noCSRF)
 			if code != tc.want {
 				t.Errorf("%s %s: %d %s, want %d", tc.method, tc.path, code, body, tc.want)
 			}
@@ -106,20 +108,20 @@ func TestAuthentication(t *testing.T) {
 
 	t.Run("lockout", func(t *testing.T) {
 		for i := 0; i < 3; i++ {
-			if code, _, _ := req(http.MethodGet, "/api/v1/flows", "", ops, "Wrong-Password-1", false); code != http.StatusUnauthorized {
+			if code, _, _ := req(t, http.MethodGet, "/api/v1/flows", "", ops, "Wrong-Password-1", false); code != http.StatusUnauthorized {
 				t.Fatalf("wrong password %d: %d", i+1, code)
 			}
 		}
-		if code, body, _ := req(http.MethodGet, "/api/v1/flows", "", ops, opsPassword, false); code != http.StatusUnauthorized {
+		if code, body, _ := req(t, http.MethodGet, "/api/v1/flows", "", ops, opsPassword, false); code != http.StatusUnauthorized {
 			t.Errorf("the right password after the lockout: %d %s, want 401", code, body)
 		}
-		if code, body, _ := req(http.MethodGet, "/api/v1/flows", "", admin, harness.AdminPassword, false); code != http.StatusOK {
+		if code, body, _ := req(t, http.MethodGet, "/api/v1/flows", "", admin, adminPassword, false); code != http.StatusOK {
 			t.Errorf("another account is not locked: %d %s", code, body)
 		}
 	})
 
 	t.Run("bearer token", func(t *testing.T) {
-		code, body, _ := req(http.MethodPost, "/api/v1/auth/login", `{"username":"admin","password":"`+harness.AdminPassword+`"}`, "", "", false)
+		code, body, _ := req(t, http.MethodPost, "/api/v1/auth/login", `{"username":"admin","password":"`+adminPassword+`"}`, "", "", false)
 		var login struct{ Token string }
 		if code != http.StatusOK || json.Unmarshal([]byte(body), &login) != nil || login.Token == "" {
 			t.Fatalf("login: %d %s", code, body)
@@ -168,7 +170,7 @@ func TestTLS(t *testing.T) {
 	}
 	config := "listen: {address: \"\", tlsAddress: \"" + addr + "\"}\n" +
 		"tls: {certFile: \"" + certFile + "\", keyFile: \"" + keyFile + "\", minVersion: \"1.3\"}\n"
-	s, err := harness.Start(bin, t.TempDir(), config, base+"/api/openapi.yaml", client)
+	s, err := harness.Start(bin, t.TempDir(), harness.Options{Config: config, BaseURL: base, Client: client})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +180,7 @@ func TestTLS(t *testing.T) {
 		}
 	}()
 
-	code, body, header, err := harness.Request(client, http.MethodGet, base+"/api/v1/system", "", "admin", harness.AdminPassword, false)
+	code, body, header, err := harness.Request(client, http.MethodGet, base+"/api/v1/system", "", "admin", s.Password, false)
 	if err != nil || code != http.StatusOK || !strings.Contains(body, `"status":"running"`) {
 		t.Errorf("over HTTPS with the private CA: %d %s %v", code, body, err)
 	}

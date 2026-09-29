@@ -21,26 +21,32 @@ func TestHarness(t *testing.T) {
 	config := "listen: {address: \"" + addr + "\"}\n"
 	base := "http://" + addr
 
+	opts := Options{Config: config, BaseURL: base}
+
 	t.Run("start and stop", func(t *testing.T) {
-		s, err := Start(bin, t.TempDir(), config, base+"/api/openapi.yaml", nil)
+		s, err := Start(bin, t.TempDir(), opts)
 		if err != nil {
 			t.Fatal(err)
 		}
-		code, body, _, err := Request(http.DefaultClient, http.MethodGet, base+"/api/v1/auth/me", "", "admin", AdminPassword, false)
+		code, body, _, err := Request(http.DefaultClient, http.MethodGet, base+"/api/v1/auth/me", "", "admin", s.Password, false)
 		if err != nil || code != http.StatusOK || !strings.Contains(body, `"username":"admin"`) {
 			t.Errorf("signed-in request: %d %s %v", code, body, err)
 		}
-		if code, _, _, _ := Request(http.DefaultClient, http.MethodPost, base+"/api/v1/auth/logout", `{}`, "", "", true); code == 0 {
-			t.Error("a request without credentials or marker got no answer")
+		// Another server on the same address is not taken for a new one:
+		// the new one cannot listen and exits, although the address answers.
+		if _, err := Start(bin, t.TempDir(), opts); err == nil || !strings.Contains(err.Error(), "address already in use") {
+			t.Errorf("a second server on the address: %v, want its listen error", err)
 		}
 		if code := s.Stop(); code != 0 {
 			t.Errorf("SIGTERM: exit %d\n%s", code, s.Log())
 		}
 	})
 	t.Run("killed", func(t *testing.T) {
-		s, err := Start(bin, t.TempDir(), config, base+"/api/openapi.yaml", nil, "WEAVSTER_E2E=1")
-		if err != nil {
-			t.Fatal(err)
+		o := opts
+		o.Password, o.Env = "Given-Password-1", []string{"WEAVSTER_E2E=1"}
+		s, err := Start(bin, t.TempDir(), o)
+		if err != nil || s.Password != o.Password {
+			t.Fatalf("start with a given password: %v", err)
 		}
 		s.Kill()
 		if code := s.Stop(); code != -1 {
@@ -48,7 +54,9 @@ func TestHarness(t *testing.T) {
 		}
 	})
 	t.Run("exits before it answers", func(t *testing.T) {
-		if _, err := Start(bin, t.TempDir(), "listen: {address: \"\"}\n", base+"/api/openapi.yaml", nil); err == nil ||
+		o := opts
+		o.Config = "listen: {address: \"\"}\n"
+		if _, err := Start(bin, t.TempDir(), o); err == nil ||
 			!strings.Contains(err.Error(), "listen.address or listen.tlsAddress is required") {
 			t.Errorf("err = %v, want the server's error", err)
 		}
@@ -57,10 +65,10 @@ func TestHarness(t *testing.T) {
 		if _, err := Build(filepath.Join(t.TempDir(), "missing", "\x00")); err == nil {
 			t.Error("Build into an invalid path succeeded")
 		}
-		if _, err := Start(bin, filepath.Join(t.TempDir(), "missing"), config, base, nil); err == nil {
+		if _, err := Start(bin, filepath.Join(t.TempDir(), "missing"), opts); err == nil {
 			t.Error("Start with no directory for the config succeeded")
 		}
-		if _, err := Start(filepath.Join(t.TempDir(), "missing"), t.TempDir(), config, base, nil); err == nil {
+		if _, err := Start(filepath.Join(t.TempDir(), "missing"), t.TempDir(), opts); err == nil {
 			t.Error("Start of a missing binary succeeded")
 		}
 		if _, _, _, err := Request(http.DefaultClient, "BAD METHOD", base, "", "", "", false); err == nil {

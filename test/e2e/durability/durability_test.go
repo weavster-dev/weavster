@@ -58,16 +58,16 @@ func freshSchema(t *testing.T) string {
 	b := make([]byte, 6)
 	_, _ = rand.Read(b)
 	schema := "e2e_" + hex.EncodeToString(b)
-	if _, err := db.Exec("CREATE SCHEMA " + schema); err != nil {
-		t.Fatal(err)
-	}
 	t.Cleanup(func() {
 		_, _ = db.Exec("DROP SCHEMA IF EXISTS " + schema + " CASCADE")
 		_ = db.Close()
 	})
-	u, err := url.Parse(dsn)
-	if err != nil {
+	if _, err := db.Exec("CREATE SCHEMA " + schema); err != nil {
 		t.Fatal(err)
+	}
+	u, err := url.Parse(dsn)
+	if err != nil || u.Scheme == "" {
+		t.Fatalf("WEAVSTER_TEST_POSTGRES_DSN must be a postgres:// URL (%v)", err)
 	}
 	q := u.Query()
 	q.Set("search_path", schema)
@@ -106,10 +106,11 @@ func (d *destination) requests() []string {
 
 // server is one test's server: its configuration survives restarts.
 type server struct {
-	t      *testing.T
-	base   string
-	config string
-	proc   *harness.Server
+	t        *testing.T
+	base     string
+	config   string
+	password string // the admin's, kept in the store across restarts
+	proc     *harness.Server
 }
 
 func newServer(t *testing.T, delivery string) *server {
@@ -130,11 +131,11 @@ func newServer(t *testing.T, delivery string) *server {
 
 func (s *server) start() {
 	s.t.Helper()
-	p, err := harness.Start(bin, s.t.TempDir(), s.config, s.base+"/api/openapi.yaml", nil)
+	p, err := harness.Start(bin, s.t.TempDir(), harness.Options{Config: s.config, BaseURL: s.base, Password: s.password})
 	if err != nil {
 		s.t.Fatal(err)
 	}
-	s.proc = p
+	s.proc, s.password = p, p.Password
 }
 
 func (s *server) crash() { s.proc.Kill(); s.proc = nil }
@@ -149,7 +150,7 @@ func (s *server) stop() {
 
 func (s *server) api(method, path, body string) (int, string) {
 	s.t.Helper()
-	code, resp, _, err := harness.Request(http.DefaultClient, method, s.base+path, body, "admin", harness.AdminPassword, false)
+	code, resp, _, err := harness.Request(http.DefaultClient, method, s.base+path, body, "admin", s.password, false)
 	if err != nil {
 		s.t.Fatal(err)
 	}
