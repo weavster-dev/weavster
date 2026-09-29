@@ -1,0 +1,32 @@
+:root { --bg: #f7f7f8; --fg: #1d1d1f; --muted: #6b6b76; --line: #c9c9d1; --card: #fff;
+  --started: #1f8a4c; --stopped: #8a8a95; --errored: #c62828; --paused: #b26a00; --deployed: #2f5fb3; }
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
+header { display: flex; align-items: center; gap: 1rem; padding: .6rem 1rem; background: var(--card); border-bottom: 1px solid var(--line); }
+header h1 { font-size: 1.1rem; margin: 0; flex: 1; }
+header h1 a { color: inherit; text-decoration: none; }
+.sub { color: var(--muted); font-weight: normal; font-size: .9rem; }
+main { padding: 1rem; }
+.state { color: var(--muted); }
+.state.error { color: var(--errored); }
+.bar { display: flex; flex-wrap: wrap; align-items: baseline; gap: .75rem; margin-bottom: .75rem; }
+.bar h2 { font-size: 1rem; margin: 0; }
+.updated { color: var(--muted); font-size: .85rem; }
+.graph { background: var(--card); border: 1px solid var(--line); border-radius: 6px; overflow: auto; }
+svg text { font: 12px system-ui, sans-serif; fill: var(--fg); }
+svg .muted { fill: var(--muted); }
+.node rect { fill: var(--card); stroke: var(--line); stroke-width: 1.5; rx: 6; }
+.node.status-started rect { stroke: var(--started); }
+.node.status-stopped rect, .node.status-undeployed rect, .node.status-halted rect { stroke: var(--stopped); }
+.node.status-paused rect { stroke: var(--paused); }
+.node.status-deployed rect { stroke: var(--deployed); }
+.node.status-errored rect { stroke: var(--errored); stroke-width: 2.5; }
+a .node:hover rect { fill: #eef3ff; }
+.edge { fill: none; stroke: var(--line); stroke-width: 1.5; marker-end: url(#arrow); }
+.edge.status-active { stroke: var(--started); }
+.edge.status-errored { stroke: var(--errored); }
+.edge.kind-dependency { stroke-dasharray: 5 4; }
+.legend { color: var(--muted); font-size: .85rem; margin-top: .5rem; }
+form.login { max-width: 20rem; display: grid; gap: .5rem; background: var(--card); padding: 1rem; border: 1px solid var(--line); border-radius: 6px; }
+form.login input { padding: .4rem; font: inherit; }
+form.login button, #signout { padding: .4rem .8rem; font: inherit; cursor: pointer; }

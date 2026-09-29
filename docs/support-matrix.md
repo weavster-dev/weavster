@@ -67,7 +67,7 @@ Every `/api/v1` route except login needs credentials. See [Authentication](authe
 | Refuse to run as root (override: `WEAVSTER_ALLOW_ROOT=1`) | Implemented (wired) | `TestSupportMatrixPrivilegedGuard` |
 | `GET /metrics` (Prometheus): per-flow and per-connector message counters, flows by status, processing slots in use and refusals, Go runtime and process metrics | Implemented (wired) | `TestOperationalMetrics` (the real binary: metrics, stats, and events agree after real traffic), `TestMetricsRoute`, `TestServerMetrics`. Needs `flows:view`, no CSRF marker. See [Metrics](metrics.md). |
 | OpenTelemetry tracing | Library-only | Not initialized by the server (deferred, D-55). |
-| Web UI | Unsupported | Only the JSON topology API exists. |
+| Read-only web UI (`/ui/`): all flows and one flow's source, transform, and destinations, with status and counts, refreshed every 5 seconds; sign-in and sign-out only | Implemented (wired) | `TestWebUI` (also under `listen.contextPath`), `TestRenderStates`, `TestLayout`, `TestReadOnly`, `TestPageHasNoInlineCode`, `TestUIMount`. See [Web UI](web-ui.md). |
 
 ## Message processing
 

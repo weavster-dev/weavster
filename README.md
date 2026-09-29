@@ -71,7 +71,8 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
   HL7 v2 messages, XML documents, and CSV (`inputFormat: hl7v2`, `xml`, or `delimited`); message
   search (flow, status, time,
   paging), reading one message and its content (audited), reprocessing, and removing messages;
-  read-only topology JSON built from the flows.
+  read-only topology JSON built from the flows, drawn by a read-only web UI at `/ui/`
+  (see docs/web-ui.md).
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
   account; security-relevant API calls are written to an audit log on stderr and in the store,
   searchable with `GET /api/v1/audit` (see docs/audit-log.md). Users persist

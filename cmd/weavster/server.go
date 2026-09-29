@@ -36,6 +36,7 @@ import (
 	"github.com/weavster-dev/weavster/internal/pipeline"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 	"github.com/weavster-dev/weavster/internal/state"
+	"github.com/weavster-dev/weavster/internal/webui"
 )
 
 // buildServer wires the ports/adapters selected by cfg into the single binary
@@ -248,6 +249,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		StatsHistory:    statsPort,
 		Events:          eventsAdapter{events},
 		Topology:        topologyAdapter{flows: flows, stats: stats, series: series},
+		UI:              webui.Handler(),
 		System:          newSystemAdapter(cfg, policy),
 		Listeners:       listeners(cfg.Listen),
 		Sources:         sourcePorts,

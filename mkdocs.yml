@@ -23,6 +23,7 @@ nav:
   - Audit Log: audit-log.md
   - Processing Messages: processing-messages.md
   - Topology: topology.md
+  - Web UI: web-ui.md
   - Flow Lifecycle: flow-lifecycle.md
   - Flow Dependencies, Export, Import: flow-export-import.md
   - Config Map, Scripts, Settings: config-items.md

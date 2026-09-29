@@ -154,6 +154,20 @@ func (s *Server) routes() http.Handler {
 		_, _ = w.Write([]byte(OpenAPISpec()))
 	})
 
+	// The web UI's files are public; the data it shows comes from the API
+	// with the user's own credentials. / and /ui lead to it, under
+	// listen.contextPath when there is one.
+	if s.cfg.UI != nil {
+		toUI := func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, s.cfg.ContextPath+"/ui/", http.StatusFound)
+		}
+		for _, path := range []string{"/", "/ui"} {
+			r.Get(path, toUI)
+			r.Head(path, toUI)
+		}
+		r.Handle("/ui/*", http.StripPrefix("/ui", s.cfg.UI))
+	}
+
 	// Prometheus scrapes with credentials (basic_auth) but no CSRF marker:
 	// outside /api/v1, audited and authenticated as it is.
 	if s.cfg.Metrics != nil {

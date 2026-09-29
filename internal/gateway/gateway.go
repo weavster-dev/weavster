@@ -353,6 +353,9 @@ type Config struct {
 	// Sources lists the ports flows' http sources listen on now.
 	Sources     SourcePorts
 	RequireCSRF bool
+	// UI, when set, serves the read-only web UI's static files at /ui/
+	// (no credentials: the page signs in to read the topology API).
+	UI http.Handler
 }
 
 // SourcePorts reports the ports flows' own sources listen on.
