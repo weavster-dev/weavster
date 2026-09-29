@@ -222,6 +222,11 @@ func TestDocsCLI(t *testing.T) {
 	documented := func(word string) bool {
 		return regexp.MustCompile("`" + regexp.QuoteMeta(word) + "(?:[ `]|$)").MatchString(page)
 	}
+	// A flag is a whole token, spelled with one dash or two (-x or --x).
+	flagDocumented := func(flag string) bool {
+		name := regexp.QuoteMeta(strings.TrimLeft(flag, "-"))
+		return regexp.MustCompile("(?:^|[\\s`(\\[])--?" + name + "(?:[\\s`=\\])]|$)").MatchString(page)
+	}
 	var usage bytes.Buffer
 	printUsage(&usage)
 	subs := regexp.MustCompile(`(?m)weavster ([a-z]+(?: validate)?)\b`).FindAllStringSubmatch(usage.String(), -1)
@@ -235,13 +240,13 @@ func TestDocsCLI(t *testing.T) {
 		var help, errb bytes.Buffer
 		run(append(strings.Fields(sub[1]), "-h"), strings.NewReader(""), &help, &errb)
 		for _, flag := range usageFlags(help.String() + errb.String()) {
-			if flag != "-h" && !strings.Contains(page, flag) {
+			if flag != "-h" && !flagDocumented(flag) {
 				t.Errorf("cli.md does not document weavster %s %s", sub[1], flag)
 			}
 		}
 	}
 	for _, flag := range usageFlags(usage.String()) {
-		if !documented(flag) && !documented("-"+flag) { // a subcommand's --flag
+		if !flagDocumented(flag) {
 			t.Errorf("cli.md does not document the %s flag", flag)
 		}
 	}
