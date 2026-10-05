@@ -38,8 +38,13 @@ func newHTTPClient(addr, user, pass string) *httpClient {
 	if addr == "" {
 		addr = "http://127.0.0.1:8080"
 	}
-	return &httpClient{base: strings.TrimSuffix(addr, "/"), user: user, pass: pass, http: http.DefaultClient}
+	return &httpClient{base: strings.TrimSuffix(addr, "/"), user: user, pass: pass, http: &http.Client{CheckRedirect: noRedirects}}
 }
+
+// noRedirects refuses every redirect: following one would send the
+// credentials and the request body to another address, even over plain
+// HTTP from an https one. The caller gets the 3xx as an error.
+func noRedirects(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 
 // withCA makes the client trust the certificates in the PEM file caFile
 // for https, besides the system's, and speak TLS 1.2 at least.
@@ -59,7 +64,7 @@ func (c *httpClient) withCA(caFile string) error {
 	}
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
-	c.http = &http.Client{Transport: transport}
+	c.http = &http.Client{Transport: transport, CheckRedirect: noRedirects}
 	return nil
 }
 
