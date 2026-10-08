@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -34,7 +36,7 @@ import (
 	"github.com/weavster-dev/weavster/internal/pipeline"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 	"github.com/weavster-dev/weavster/internal/state"
-	"github.com/weavster-dev/weavster/internal/topology"
+	"github.com/weavster-dev/weavster/internal/webui"
 )
 
 // buildServer wires the ports/adapters selected by cfg into the single binary
@@ -48,7 +50,11 @@ func buildServer(ctx context.Context, logger *slog.Logger, out io.Writer, cfg se
 // buildServerWithWorkers is buildServer that also returns the background
 // workers (delivery retries) for runServer to run for the server's lifetime.
 func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Writer, cfg serverconfig.Config) (http.Handler, func() error, func(context.Context), error) {
-	store, err := openStore(ctx, logger, cfg)
+	secretsReader := newSecretReader(cfg.Secrets.Dir)
+	if info, err := os.Stat(cfg.Secrets.Dir); (err != nil || !info.IsDir()) && cfg.Secrets.Dir != serverconfig.Default().Secrets.Dir {
+		logger.Warn("secrets.dir is not a directory: secrets are read from environment variables only", "dir", cfg.Secrets.Dir)
+	}
+	store, err := openStore(ctx, logger, cfg, secretsReader)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -68,7 +74,7 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	// Only durable stores persist users; the memory dialect would just
 	// duplicate the provider's own map.
 	var users auth.UserStore
-	if cfg.Store.Dialect == serverconfig.DialectSQLite || cfg.Store.Dialect == serverconfig.DialectPostgres {
+	if cfg.Store.Dialect == serverconfig.DialectPostgres {
 		// Every state backend implements userRepository
 		// (TestStoresImplementUserRepository).
 		users = userStoreAdapter{repo: store.(userRepository)}
@@ -94,52 +100,111 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	sink := audit.NewLocalSink(logger)
 	// Flow definitions live in the configured store; with the store
 	// disabled they are kept in memory.
-	// Every state backend implements flowRepository, itemRepository, and lookupRepository
+	// Every state backend implements flowRepository, itemRepository, lookupRepository, and auditRepository
 	// (TestStoresImplementFlowRepository).
 	mem := state.NewMemStore()
 	var repo flowRepository = mem
 	var items itemRepository = mem
 	var lookups lookupRepository = mem
+	var audits auditRepository = mem
 	if store != nil {
 		repo = store.(flowRepository)
 		items = store.(itemRepository)
 		lookups = store.(lookupRepository)
+		audits = store.(auditRepository)
 	}
 	stats, events := observability.NewStatsRegistry(), observability.NewEventLog()
-	series := observability.NewTimeSeries(time.Duration(cfg.Stats.RetentionHours)*time.Hour, maxStatsPoints)
+	// Events kept across restarts (#107 D-94): the newest are loaded back
+	// before anything records one (a flow deployed at start), and new ones
+	// are stored in the background until the store closes.
+	var ew *eventWriter
+	if store != nil {
+		ew = newEventWriter(store.(eventRepository), logger)
+		if err := ew.restore(ctx, events, time.Now()); err != nil {
+			_ = store.Close()
+			return nil, nil, nil, fmt.Errorf("store: events: %w", err)
+		}
+		ew.start()
+	}
+	retention := time.Duration(cfg.Stats.RetentionHours) * time.Hour
+	series := observability.NewTimeSeries(retention, maxStatsPoints)
+	// Statistics kept across restarts (#107 D-97): loaded before a flow
+	// deployed at start counts anything.
+	var statsRepo statsRepository
+	if cfg.Store.Dialect == serverconfig.DialectPostgres {
+		statsRepo = store.(statsRepository)
+		if err := restoreStats(ctx, statsRepo, stats, series, retention, time.Now()); err != nil {
+			ew.stop()
+			_ = store.Close()
+			return nil, nil, nil, fmt.Errorf("store: statistics: %w", err)
+		}
+	}
 	serverPorts := map[int]string{}
 	for _, l := range listeners(cfg.Listen) {
 		serverPorts[l.Port] = l.UsedBy
 	}
-	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events, serverPorts: serverPorts}
+	flows := flowAdapter{store: repo, stats: stats, series: series, locks: newFlowLocks(), defs: &sync.Mutex{}, events: events, serverPorts: serverPorts,
+		statsSaves: &sync.Mutex{}}
 	if cfg.Flows.DeployOnStartup && store != nil {
 		flows.DeployEnabled(ctx, logger)
 	}
-	statsPort := statsAdapter{flows: flows, stats: stats, series: series}
+	statsPort := statsAdapter{flows: flows, stats: stats, series: series, repo: statsRepo, retention: retention, logger: logger}
 	var ingest gateway.MessageIngester
 	var sourcePorts gateway.SourcePorts
+	var prune gateway.Pruner
+	var limit *processLimit
 	retry := func(context.Context) {}
 	if store != nil {
-		pipe := pipeline.New(store, newSink, processingObserver{stats, events}, pipeline.Options{
+		sinks := &sinkFactory{logger: logger, tlsOpts: tlsOptions(cfg), dbs: newDBPool(secretsReader), delivered: func(ctx context.Context, flowID, key string) (string, error) {
+			found, err := store.Search(ctx, state.Query{FlowID: flowID, Metadata: map[string]string{flowKeyMetadata: key}, Limit: 1})
+			if err != nil || len(found) == 0 {
+				return "", err
+			}
+			return found[0].ID, nil
+		}}
+		pipe := pipeline.New(store, sinks.build, processingObserver{stats, events}, pipeline.Options{
 			MaxAttempts: cfg.Delivery.MaxAttempts,
 			BackoffBase: time.Duration(cfg.Delivery.BackoffBaseMs) * time.Millisecond,
 			Gate:        flows.locks,
 		})
-		ia := ingestAdapter{flows: flows, pipe: pipe}
+		limit = newProcessLimit(cfg.Processing, ctx.Done(), logger)
+		ia := ingestAdapter{flows: flows, pipe: pipe, limit: limit}
+		// Flow destinations hand messages to other flows (#107 D-70) inside
+		// the sender's slot: a second slot could deadlock a full server.
+		inProcess := ia
+		inProcess.limit = nil
+		sinks.ingest = inProcess
 		ingest = ia
 		ma := messageAdapter{store: store, pipe: pipe, ingest: ia}
 		messages, deadLetters = ma, ma
 		trends = messageAdapter{store: store}
 		sources := newFileSources(flows, ia, eventLogRecorder{events}, logger)
-		listening := newPortSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, logger)
+		tables := newDatabaseSources(flows, ia, eventLogRecorder{events}, sinks.dbs, logger)
+		listening := newPortSources(flows, ia, eventLogRecorder{events}, serverPorts, tlsOptions(cfg), cfg.TLS.KeyFile, secretsReader, logger)
 		sourcePorts = listening
+		pr := newPruner(cfg.Prune, ma, audits, store.(eventRepository), eventLogRecorder{events}, logger)
+		prune = pr
 		retry = func(ctx context.Context) {
-			polled, served := make(chan struct{}), make(chan struct{})
+			polled, served, queried, pruned := make(chan struct{}), make(chan struct{}), make(chan struct{}), make(chan struct{})
+			go func() { pr.loop(ctx); close(pruned) }()        // message pruning (#107 D-88)
 			go func() { sources.loop(ctx); close(polled) }()   // flows' file sources (#107 D-56)
 			go func() { listening.loop(ctx); close(served) }() // flows' http and mllp sources (#107 D-57, D-60)
+			go func() { tables.loop(ctx); close(queried) }()   // flows' database sources (#107 D-76)
 			retryLoop(ctx, ia, time.Duration(cfg.Delivery.RetryIntervalMs)*time.Millisecond, logger)
 			<-polled
 			<-served
+			<-queried
+			<-pruned
+		}
+		closeStore = func() error { // after the API drained: nothing delivers any more
+			saveCtx, cancel := context.WithTimeout(context.Background(), statsSaveLimit)
+			if err := statsPort.saveNow(saveCtx, ""); err != nil {
+				logger.Warn("statistics not stored at shutdown", "error", err)
+			}
+			cancel()
+			ew.stop() // the last events, then no more
+			sinks.dbs.close()
+			return store.Close()
 		}
 	}
 
@@ -153,10 +218,11 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		<-sampled
 	}
 
+	accounts := userAdminAdapter{p: provider, mu: &sync.Mutex{}}
 	srv := gateway.New(gateway.Config{
 		Auth:            authAdapter{provider},
 		Passwords:       passwordAdapter{provider},
-		Users:           userAdminAdapter{p: provider, mu: &sync.Mutex{}},
+		Users:           accounts,
 		Items:           itemsAdapter{repo: items},
 		Snippets:        snippetsAdapter{repo: items, mu: &sync.Mutex{}},
 		Alerts:          alertsAdapter{repo: items, mu: &sync.Mutex{}},
@@ -164,7 +230,10 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Lookups:         lookupsAdapter{lookups},
 		ConfigPlanner:   configPlanner{},
 		Authorizer:      authorizerAdapter{},
-		Audit:           auditAdapter{sink},
+		Audit:           auditAdapter{s: sink, repo: audits, logger: logger},
+		AuditLog:        auditAdapter{s: sink, repo: audits, logger: logger, settle: auditSettle},
+		Preferences:     accounts,
+		PasswordCheck:   provider,
 		Flows:           flows,
 		Messages:        messages,
 		Trends:          trends,
@@ -174,9 +243,13 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 		Transfer:        flows,
 		Stats:           statsPort,
 		DeadLetters:     deadLetters,
+		Pruner:          prune,
+		Metrics:         metricsHandler(serverMetrics{stats: stats, flows: flows, limit: limit, logger: logger}),
+		ContextPath:     cfg.Listen.ContextPath,
 		StatsHistory:    statsPort,
 		Events:          eventsAdapter{events},
-		Topology:        topologyAdapter{flows: flows, stats: stats},
+		Topology:        topologyAdapter{flows: flows, stats: stats, series: series},
+		UI:              webui.Handler(),
 		System:          newSystemAdapter(cfg, policy),
 		Listeners:       listeners(cfg.Listen),
 		Sources:         sourcePorts,
@@ -185,28 +258,16 @@ func buildServerWithWorkers(ctx context.Context, logger *slog.Logger, out io.Wri
 	return srv.Router(), closeStore, workers, nil
 }
 
-// openStore connects the configured message store. Only PostgreSQL
-// connections are retried (spec §11); SQLite failures are permanent. The
-// disabled dialect returns a nil Store.
-func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config) (state.Store, error) {
-	sc, dsn := cfg.Store, cfg.StoreDSN()
+// openStore connects the configured message store, retrying PostgreSQL
+// connections (spec §11). The disabled dialect returns a nil Store.
+func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config, secrets secretValues) (state.Store, error) {
+	sc := cfg.Store
 	switch sc.Dialect {
 	case serverconfig.DialectDisabled:
 		logger.Warn("message store disabled; message endpoints return 503")
 		return nil, nil
 	case serverconfig.DialectMemory:
 		return state.NewMemStore(), nil
-	case serverconfig.DialectSQLite:
-		if dsn != ":memory:" && !strings.HasPrefix(dsn, "file:") {
-			if err := os.MkdirAll(filepath.Dir(dsn), 0o700); err != nil {
-				return nil, fmt.Errorf("store: %w", err)
-			}
-		}
-		s, err := state.OpenSQLite(ctx, dsn)
-		if err != nil {
-			return nil, fmt.Errorf("store: sqlite: %w", err)
-		}
-		return s, nil
 	}
 
 	var err error
@@ -219,12 +280,29 @@ func openStore(ctx context.Context, logger *slog.Logger, cfg serverconfig.Config
 			}
 		}
 		var s state.Store
-		if s, err = state.OpenPostgres(ctx, dsn, sc.MaxConnections); err == nil {
+		if s, err = openPostgres(ctx, sc, secrets); err == nil {
 			return s, nil
+		}
+		if newer := (*state.NewerSchemaError)(nil); errors.As(err, &newer) {
+			return nil, fmt.Errorf("store: %w", err) // a newer release's database: retrying cannot help
 		}
 		logger.Warn("store connection failed", "dialect", sc.Dialect, "attempt", attempt, "error", err)
 	}
 	return nil, fmt.Errorf("store: %s: giving up after %d attempts: %w", sc.Dialect, sc.MaxRetry+1, err)
+}
+
+// openPostgres connects to the store's PostgreSQL database, reading the
+// connection string from the secret store.dsnEnv when that is set (at
+// every attempt: the secret may appear meanwhile).
+func openPostgres(ctx context.Context, sc serverconfig.Store, secrets secretValues) (state.Store, error) {
+	dsn := sc.DSN
+	if sc.DSNEnv != "" {
+		var err error
+		if dsn, err = secrets.value(ctx, sc.DSNEnv); err != nil {
+			return nil, fmt.Errorf("store.dsnEnv: %w", err)
+		}
+	}
+	return state.OpenPostgres(ctx, dsn, sc.MaxConnections)
 }
 
 // runServer enforces the privileged-run guard (spec §11), loads the
@@ -284,6 +362,25 @@ func runServer(args []string, stderr io.Writer) int {
 	}
 	defer func() { _ = closeStore() }()
 
+	// The API ports are bound before any background work starts: a port
+	// that is taken stops the server before a source has taken a file or
+	// a message.
+	servers, err := listen(cfg, handler)
+	if err != nil {
+		return fail(err)
+	}
+	bound := make([]net.Listener, 0, len(servers))
+	for _, s := range servers {
+		ln, err := net.Listen("tcp", s.Addr)
+		if err != nil {
+			for _, b := range bound {
+				_ = b.Close()
+			}
+			return fail(err)
+		}
+		bound = append(bound, ln)
+	}
+
 	// Background workers run until runServer returns, and stop before the
 	// store closes.
 	workerCtx, stopWorkers := context.WithCancel(ctx)
@@ -291,25 +388,19 @@ func runServer(args []string, stderr io.Writer) int {
 	go func() { workers(workerCtx); close(workersDone) }()
 	defer stopWorkers()
 
-	servers, err := listen(cfg, handler)
-	if err != nil {
-		stopWorkers()
-		<-workersDone // no deliveries can be in progress this early
-		return fail(err)
-	}
 	errCh := make(chan error, len(servers))
-	for _, s := range servers {
-		go func(s *http.Server) {
+	for i, s := range servers {
+		go func(s *http.Server, ln net.Listener) {
 			var err error
 			if s.TLSConfig != nil {
-				err = s.ListenAndServeTLS("", "")
+				err = s.ServeTLS(ln, "", "")
 			} else {
-				err = s.ListenAndServe()
+				err = s.Serve(ln)
 			}
 			if err != nil && !errors.Is(err, http.ErrServerClosed) {
 				errCh <- err
 			}
-		}(s)
+		}(s, bound[i])
 	}
 
 	code := 0
@@ -519,10 +610,74 @@ func (authorizerAdapter) Authorize(ctx context.Context, id gateway.Identity, res
 	return auth.NewLocalAuthorizer().Authorize(ctx, u, resource, action)
 }
 
-type auditAdapter struct{ s *audit.LocalSink }
+// auditRepository keeps audit entries (the store: PostgreSQL, SQLite, or
+// memory).
+type auditRepository interface {
+	AppendAudit(ctx context.Context, r state.AuditRecord) (int64, error)
+	SearchAudit(ctx context.Context, q state.AuditQuery) ([]state.AuditRecord, error)
+	DeleteAuditBefore(ctx context.Context, t time.Time) (int, error)
+}
+
+// Stored audit entries (#107 D-93).
+const (
+	// auditWriteTimeout bounds the store write of one entry, so a slow
+	// store cannot hold up the response it records.
+	auditWriteTimeout = 2 * time.Second
+	// auditSettle: a search returns entries at least this old. Ids are
+	// taken when an entry is written but seen when it commits, which can
+	// be out of order; by then every earlier entry has committed or
+	// failed, so an afterId cursor never skips one.
+	auditSettle = auditWriteTimeout + time.Second
+)
+
+// auditAdapter writes each audit entry to the store and to the log
+// (stderr), redacted the same way and with the stored id, so both match. A
+// store failure is logged and never changes the response (#107 D-93).
+type auditAdapter struct {
+	s      *audit.LocalSink
+	repo   auditRepository
+	logger *slog.Logger
+	settle time.Duration // auditSettle; 0 in tests
+	now    func() time.Time
+}
 
 func (a auditAdapter) Record(ctx context.Context, e gateway.AuditEvent) error {
-	return a.s.Record(ctx, audit.Entry{Actor: e.Actor, Action: e.Action, Resource: e.Resource, Detail: e.Detail})
+	at := time.Now()
+	detail := audit.RedactSensitive(e.Detail)
+	sctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), auditWriteTimeout)
+	defer cancel()
+	id, serr := a.repo.AppendAudit(sctx, state.AuditRecord{At: at, Actor: e.Actor, Action: e.Action, Resource: e.Resource, Detail: detail})
+	if serr != nil {
+		a.logger.Warn("audit entry not stored", "action", e.Action, "resource", e.Resource, "error", serr)
+		id = 0 // the log line numbers it
+	}
+	return a.s.Record(ctx, audit.Entry{ID: id, At: at, Actor: e.Actor, Action: e.Action, Resource: e.Resource, Detail: detail})
+}
+
+// SearchAudit reads the stored audit entries.
+func (a auditAdapter) SearchAudit(ctx context.Context, q gateway.AuditQuery) ([]gateway.AuditEntry, error) {
+	sq := state.AuditQuery{Actor: q.Actor, Action: q.Action, Resource: q.Resource, From: q.From, To: q.To, AfterID: q.AfterID, Limit: q.Limit}
+	if q.OmitReads {
+		sq.ExcludeAction = gateway.AuditRead
+	}
+	if a.settle > 0 {
+		now := time.Now
+		if a.now != nil {
+			now = a.now
+		}
+		if settled := now().Add(-a.settle); sq.To.IsZero() || sq.To.After(settled) {
+			sq.To = settled
+		}
+	}
+	records, err := a.repo.SearchAudit(ctx, sq)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]gateway.AuditEntry, len(records))
+	for i, r := range records {
+		out[i] = gateway.AuditEntry{ID: r.ID, At: r.At, Actor: r.Actor, Action: r.Action, Resource: r.Resource, Detail: r.Detail}
+	}
+	return out, nil
 }
 
 // flowRepository is the durable flow-definition store (D-12), implemented by
@@ -613,6 +768,11 @@ type flowAdapter struct {
 	// serverPorts are the server's own ports (port -> listener name), which
 	// no flow source may use.
 	serverPorts map[int]string
+	// statsSaves orders statistics writes and flow deletes (which remove a
+	// flow's stored statistics): a save takes it before it releases defs,
+	// so a delete removes the stored statistics after any save of the
+	// flow, never before.
+	statsSaves *sync.Mutex
 }
 
 // definitions locks definition changes; it returns the unlock func.
@@ -622,6 +782,30 @@ func (a flowAdapter) definitions() func() {
 	}
 	a.defs.Lock()
 	return a.defs.Unlock
+}
+
+// statsWrites takes the statistics-writes lock (flowAdapter.statsSaves).
+func (a flowAdapter) statsWrites() func() {
+	if a.statsSaves == nil {
+		return func() {}
+	}
+	a.statsSaves.Lock()
+	return a.statsSaves.Unlock
+}
+
+// definitionsWithin is definitions, giving up when ctx ends first.
+func (a flowAdapter) definitionsWithin(ctx context.Context) (func(), error) {
+	if a.defs == nil {
+		return func() {}, nil
+	}
+	for !a.defs.TryLock() {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(10 * time.Millisecond):
+		}
+	}
+	return a.defs.Unlock, nil
 }
 
 func (a flowAdapter) lock(id string, skipDrain bool) func() {
@@ -687,7 +871,7 @@ func (a flowAdapter) deployDependencies(ctx context.Context, root gateway.Flow, 
 	closure := map[string]gateway.Flow{}
 	var collect func(f gateway.Flow) error
 	collect = func(f gateway.Flow) error {
-		for _, depID := range f.DependsOn {
+		for _, depID := range f.Dependencies() {
 			if _, seen := closure[depID]; seen || depID == root.ID {
 				continue
 			}
@@ -939,7 +1123,7 @@ func (a flowAdapter) UpdateMany(ctx context.Context, changes []gateway.FlowChang
 		} else if err != nil {
 			return updated, err
 		}
-		withDeps = withDeps || len(f.DependsOn) > 0
+		withDeps = withDeps || len(f.Dependencies()) > 0
 	}
 	if len(missing) > 0 {
 		return updated, fmt.Errorf("%w: %s", gateway.ErrFlowNotFound, strings.Join(missing, ", "))
@@ -955,11 +1139,10 @@ func (a flowAdapter) UpdateMany(ctx context.Context, changes []gateway.FlowChang
 		}
 		order = dependencyOrder(all, ids)
 	}
-	if hasSource(flows) {
-		all, err := a.withFlows(ctx, flows...)
-		if err != nil {
-			return updated, err
-		}
+	switch all, err := a.withFlows(ctx, flows...); {
+	case err != nil && refersToFlows(flows...):
+		return updated, err
+	case err == nil:
 		if err := checkSources(all, a.serverPorts); err != nil {
 			return updated, fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
 		}
@@ -1107,10 +1290,11 @@ func (a flowAdapter) RedeployAll(ctx context.Context) ([]gateway.Flow, error) {
 	return out, nil
 }
 
-// hasSource reports whether any of flows reads a source.
-func hasSource(flows []gateway.Flow) bool {
+// refersToFlows reports whether any of flows reads a source or depends on
+// or sends to another flow, so its checks need every stored flow.
+func refersToFlows(flows ...gateway.Flow) bool {
 	for _, f := range flows {
-		if f.Source != nil {
+		if f.Source != nil || len(f.Dependencies()) > 0 {
 			return true
 		}
 	}
@@ -1118,8 +1302,10 @@ func hasSource(flows []gateway.Flow) bool {
 }
 
 // checkSources refuses two flows reading the same directory, which would
-// take the same files (#107 D-56), or listening on the same port or on one
-// of the server's own ports (D-57).
+// take the same files (#107 D-56) — or, with a recursive source, a
+// directory or moveTo inside another flow's recursive directory (D-69) —
+// and two flows listening on the same port or on one of the server's own
+// ports (D-57).
 func checkSources(all map[string]gateway.Flow, serverPorts map[int]string) error {
 	ids := make([]string, 0, len(all))
 	for id := range all {
@@ -1140,12 +1326,87 @@ func checkSources(all map[string]gateway.Flow, serverPorts map[int]string) error
 				return fmt.Errorf("flows %s and %s both listen on port %d; a port can have one flow source", other, id, port)
 			}
 			listenedBy[port] = id
-		default:
+		case src.Type == "file":
 			dir := filepath.Clean(src.Dir)
 			if other, taken := readBy[dir]; taken {
 				return fmt.Errorf("flows %s and %s both read %s; a directory can have one file source", other, id, dir)
 			}
 			readBy[dir] = id
+		}
+	}
+	if err := checkRecursiveSources(all, ids); err != nil {
+		return err
+	}
+	return checkRoutes(all, ids)
+}
+
+// checkRoutes refuses a flow destination whose output its target flow
+// cannot read (#107 D-70): it would fail on every message and be retried
+// until dead-lettered.
+func checkRoutes(all map[string]gateway.Flow, ids []string) error {
+	for _, id := range ids {
+		pf, err := toPipelineFlow(all[id])
+		if err != nil {
+			continue // reported by the flow's own checks
+		}
+		for _, d := range pf.Destinations {
+			target, ok := all[d.Flow]
+			if d.Type != "flow" || !ok {
+				continue
+			}
+			sends, reads := pipeline.Receives(pf, d), readsFormat(target)
+			if sends == "" && d.Transform == nil && pf.Transform == nil {
+				sends = pf.InputFormat // passthrough keeps the input's declared format
+			}
+			if !formatFits(sends, reads) {
+				return fmt.Errorf("flow %s: destination %s sends %s, which flow %s (inputFormat %s) cannot read", id, d.Name, sends, d.Flow, reads)
+			}
+		}
+	}
+	return nil
+}
+
+// readsFormat is the format a flow needs its messages in: its inputFormat
+// (json when it transforms), or "" when it takes any bytes.
+func readsFormat(f gateway.Flow) string {
+	if f.InputFormat != "" && f.InputFormat != "json" {
+		return f.InputFormat
+	}
+	transforms := len(f.Transform) > 0 && string(f.Transform) != "null"
+	for _, d := range f.Destinations {
+		transforms = transforms || (len(d.Transform) > 0 && string(d.Transform) != "null")
+	}
+	if transforms {
+		return "json"
+	}
+	return ""
+}
+
+// formatFits reports whether output in format sends can be read as reads;
+// unknown passthrough output ("") is allowed.
+func formatFits(sends, reads string) bool {
+	return reads == "" || sends == "" || sends == reads || (reads == "delimited" && sends == "text")
+}
+
+// checkRecursiveSources refuses a recursive file source whose directory
+// holds another flow's source directory or moveTo: both flows would read
+// the same files.
+func checkRecursiveSources(all map[string]gateway.Flow, ids []string) error {
+	for _, a := range ids {
+		src := all[a].Source
+		if src == nil || src.Type != "file" || !src.Recursive {
+			continue
+		}
+		for _, b := range ids {
+			other := all[b].Source
+			if b == a || other == nil || other.Type != "file" {
+				continue
+			}
+			for _, p := range []string{other.Dir, other.MoveTo} {
+				if p != "" && flowdef.Within(p, src.Dir) {
+					return fmt.Errorf("flow %s reads %s recursively, which holds flow %s's %s; a directory can have one file source", a, filepath.Clean(src.Dir), b, filepath.Clean(p))
+				}
+			}
 		}
 	}
 	return nil
@@ -1171,7 +1432,7 @@ func checkDependencies(all map[string]gateway.Flow, roots []string) error {
 			return nil
 		}
 		mark[id] = visiting
-		for _, dep := range all[id].DependsOn {
+		for _, dep := range all[id].Dependencies() {
 			if dep == id {
 				return fmt.Errorf("flow %s cannot depend on itself", id)
 			}
@@ -1210,7 +1471,7 @@ func dependencyOrder(all map[string]gateway.Flow, ids []string) []string {
 			return
 		}
 		seen[id] = true
-		for _, dep := range all[id].DependsOn {
+		for _, dep := range all[id].Dependencies() {
 			visit(dep)
 		}
 		if want[id] {
@@ -1248,6 +1509,12 @@ func checkDefinition(f gateway.Flow) error {
 	if err == nil {
 		err = flowdef.CheckInput(f)
 	}
+	if err == nil {
+		err = flowdef.CheckTransforms(f)
+	}
+	if err == nil {
+		err = flowdef.CheckDestinations(f)
+	}
 	var pf pipeline.Flow
 	if err == nil {
 		pf, err = toPipelineFlow(f)
@@ -1268,12 +1535,14 @@ func (a flowAdapter) validateDefinition(ctx context.Context, f gateway.Flow) err
 	if err := checkDefinition(f); err != nil {
 		return err
 	}
-	if len(f.DependsOn) == 0 && f.Source == nil {
-		return nil
-	}
+	// Other flows can refer to f (a flow destination), so the checks
+	// across flows run for every flow; an unreadable stored flow blocks
+	// only a flow that itself refers to other flows.
 	all, err := a.withFlows(ctx, f)
-	if err != nil {
+	if err != nil && refersToFlows(f) {
 		return err
+	} else if err != nil {
+		return nil
 	}
 	if err := checkDependencies(all, []string{f.ID}); err != nil {
 		return fmt.Errorf("%w: %w", gateway.ErrInvalidFlow, err)
@@ -1302,7 +1571,7 @@ func (a flowAdapter) Export(ctx context.Context, ids []string) ([]gateway.Flow, 
 			return fmt.Errorf("%w: %s", gateway.ErrFlowNotFound, id)
 		}
 		selected[id] = true
-		for _, dep := range f.DependsOn {
+		for _, dep := range f.Dependencies() {
 			if err := add(dep); err != nil {
 				return err
 			}
@@ -1435,7 +1704,9 @@ func toPipelineFlow(f gateway.Flow) (pipeline.Flow, error) {
 			return pf, fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
 		}
 		pf.Destinations = append(pf.Destinations, pipeline.Destination{
-			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir,
+			Name: d.Name, Type: d.Type, URL: d.URL, Dir: d.Dir, Address: d.Address, TLS: d.TLS, CAFile: d.CAFile,
+			FrameStart: d.FrameStart, FrameEnd: d.FrameEnd, AckMode: d.AckMode, Flow: d.Flow,
+			Driver: d.Driver, DSNEnv: d.DSNEnv, Table: d.Table, Columns: d.Columns, KeyColumn: d.KeyColumn,
 			Method: d.Method, Timeout: time.Duration(d.TimeoutMs) * time.Millisecond, MaxRedirects: d.MaxRedirects,
 			Stopped: stopped[d.Name], Transform: t, ResponseTransform: rt,
 		})
@@ -1469,6 +1740,9 @@ func decodeTransform(raw json.RawMessage, name string) (*compiler.Transform, err
 type ingestAdapter struct {
 	flows flowAdapter
 	pipe  *pipeline.Pipeline
+	// limit bounds the messages processed at once (nil: unbounded, for
+	// in-process handoffs that already hold a slot).
+	limit *processLimit
 }
 
 func (a ingestAdapter) Ingest(ctx context.Context, flowID string, body []byte) (gateway.IngestResult, error) {
@@ -1480,7 +1754,11 @@ func (a ingestAdapter) IngestFrom(ctx context.Context, flowID string, body []byt
 	return a.ingest(ctx, flowID, body, metadata)
 }
 
-// ingest runs body through flowID, storing metadata with the new message.
+// ingest runs body through flowID, storing metadata with the new message,
+// within the processing limit when the adapter has one. The slot is taken
+// after the flow's lock and its running check: a flow being stopped or
+// changed makes its own messages wait, not fill every slot, and an unknown
+// or stopped flow is answered at once.
 func (a ingestAdapter) ingest(ctx context.Context, flowID string, body []byte, metadata map[string]string) (gateway.IngestResult, error) {
 	if a.flows.locks != nil {
 		defer a.flows.locks.ProcessFlow(flowID)()
@@ -1495,6 +1773,13 @@ func (a ingestAdapter) ingest(ctx context.Context, flowID string, body []byte, m
 	}
 	if err != nil {
 		return gateway.IngestResult{}, err
+	}
+	if a.limit != nil {
+		release, err := a.limit.acquire(ctx)
+		if err != nil {
+			return gateway.IngestResult{}, err
+		}
+		defer release()
 	}
 	// Processing is durable work: finish it even if the client disconnects,
 	// so the stored message never stops half-way. HTTP deliveries are
@@ -1548,20 +1833,20 @@ func (a ingestAdapter) retryDue(ctx context.Context) error {
 type adapterSink struct{ sink adapters.Sink }
 
 func (s adapterSink) Write(ctx context.Context, d pipeline.Delivery) error {
-	return s.sink.Write(ctx, adapterMessage(d))
+	return adapters.Classify(s.sink.Write(ctx, adapterMessage(d))) // a code for the attempt record (#107 D-78)
 }
 
 // httpSink is the HTTP destination: a sink that also returns replies.
 type httpSink struct{ sink *adapters.HTTPSink }
 
 func (s httpSink) Write(ctx context.Context, d pipeline.Delivery) error {
-	return s.sink.Write(ctx, adapterMessage(d))
+	return adapters.Classify(s.sink.Write(ctx, adapterMessage(d)))
 }
 
 func (s httpSink) WriteResponse(ctx context.Context, d pipeline.Delivery) (*pipeline.Reply, error) {
 	r, err := s.sink.WriteResponse(ctx, adapterMessage(d))
 	if err != nil || r == nil {
-		return nil, err
+		return nil, adapters.Classify(err)
 	}
 	return &pipeline.Reply{Body: r.Body, ContentType: r.ContentType}, nil
 }
@@ -1573,17 +1858,253 @@ func adapterMessage(d pipeline.Delivery) adapters.Message {
 	}}
 }
 
+// sinkFactory builds destination sinks; flow destinations need the
+// ingester, which exists only once the pipeline does, and a lookup of what
+// they already delivered.
+type sinkFactory struct {
+	ingest gateway.SourceIngester
+	// delivered finds the target's message stored for an idempotency key
+	// ("" when there is none).
+	delivered func(ctx context.Context, flowID, key string) (string, error)
+	logger    *slog.Logger
+	// tlsOpts are the server's TLS settings, also used by mllp
+	// destinations with tls.
+	tlsOpts gateway.TLSOptions
+	// dbs are database destinations' connection pools.
+	dbs *dbPool
+}
+
+func (s *sinkFactory) build(d pipeline.Destination) (pipeline.Sink, error) {
+	if d.Type == "flow" {
+		return flowSink{target: d.Flow, factory: s}, nil
+	}
+	return buildSink(d, s.tlsOpts, s.dbs)
+}
+
+// flowKeyMetadata stores a flow delivery's idempotency key with the target
+// message, so a retry finds it instead of storing the message again.
+const flowKeyMetadata = "source.idempotencyKey"
+
+// flowSink hands a delivery to another flow as a new message of it (#107
+// D-70); it is delivered once the target stored the message, and only
+// once per delivery: a retry after a lost success finds the stored message.
+type flowSink struct {
+	target  string
+	factory *sinkFactory
+}
+
+func (s flowSink) Write(ctx context.Context, d pipeline.Delivery) error {
+	if id, err := s.factory.delivered(ctx, s.target, d.IdempotencyKey); err != nil {
+		return fmt.Errorf("flow %s: %w", s.target, err)
+	} else if id != "" {
+		return nil // an earlier attempt stored it
+	}
+	res, err := s.factory.ingest.IngestFrom(ctx, s.target, d.Body, map[string]string{
+		"source.flow": d.FlowID, "source.message": d.MessageID, flowKeyMetadata: d.IdempotencyKey,
+	})
+	switch {
+	case err != nil && res.ID == "" && errors.Is(err, gateway.ErrFlowNotRunning):
+		return adapters.WithCode("flow:not-running", fmt.Errorf("flow %s: %w", s.target, err))
+	case err != nil && res.ID == "" && errors.Is(err, gateway.ErrFlowNotFound):
+		return adapters.WithCode("flow:not-found", fmt.Errorf("flow %s: %w", s.target, err))
+	case err != nil && res.ID == "":
+		return fmt.Errorf("flow %s: %w", s.target, err)
+	case err != nil: // stored: the target has it, and reports its own failure
+		s.factory.logger.Warn("flow destination: the target stored the message but processing failed",
+			"flow", d.FlowID, "message", d.MessageID, "target", s.target, "targetMessage", res.ID, "error", err)
+	}
+	return nil
+}
+
 // newSink builds the adapter for a flow destination.
 func newSink(d pipeline.Destination) (pipeline.Sink, error) {
+	return buildSink(d, gateway.DefaultTLSOptions(), nil)
+}
+
+// buildSink builds the adapter for a destination; an mllp destination
+// with tls uses tlsOpts (the server's minimum version and ciphers), and a
+// database destination a connection from dbs.
+func buildSink(d pipeline.Destination, tlsOpts gateway.TLSOptions, dbs *dbPool) (pipeline.Sink, error) {
 	switch d.Type {
+	case "database":
+		return databaseSink(d, dbs)
 	case "http":
 		return httpSink{adapters.NewHTTPSinkWith(d.URL, adapters.HTTPSinkOptions{
 			Method: d.Method, Timeout: d.Timeout, MaxRedirects: d.MaxRedirects,
 		})}, nil
 	case "file":
 		return adapterSink{adapters.NewFileSink(d.Dir)}, nil
+	case "mllp":
+		framing, err := mllpFraming(d.FrameStart, d.FrameEnd)
+		if err != nil {
+			return nil, err
+		}
+		var sink *adapters.MLLPSink
+		if d.TLS {
+			cfg, err := mllpClientTLS(d, tlsOpts)
+			if err != nil {
+				return nil, err
+			}
+			sink = adapters.NewMLLPSinkTLS(d.Address, d.Timeout, cfg)
+		} else {
+			sink = adapters.NewMLLPSinkWith(d.Address, d.Timeout)
+		}
+		return adapterSink{sink.WithMode(framing, d.AckMode == "none")}, nil
 	}
 	return nil, fmt.Errorf("unsupported destination type %q", d.Type)
+}
+
+// databaseSink builds a database destination's sink (#107 D-75): the
+// connection string is read from the secret DSNEnv for each message, so a
+// changed value applies without a restart.
+func databaseSink(d pipeline.Destination, dbs *dbPool) (pipeline.Sink, error) {
+	if dbs == nil {
+		return nil, errors.New("database destinations need the server's connection pool")
+	}
+	db, err := dbs.open(context.Background(), d.Driver, d.DSNEnv)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(d.Columns))
+	for n := range d.Columns {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	cols := make([]adapters.SQLColumn, len(names))
+	for i, n := range names {
+		cols[i] = adapters.SQLColumn{Name: n, Path: d.Columns[n]}
+	}
+	sink, err := adapters.NewSQLSink(db, adapters.SQLSinkOptions{Dialect: d.Driver, Table: d.Table, Columns: cols, KeyColumn: d.KeyColumn, Timeout: d.Timeout})
+	if err != nil {
+		return nil, err
+	}
+	return adapterSink{sink}, nil
+}
+
+// dbPool keeps one connection pool per driver and environment variable;
+// when the variable's connection string changes (a rotated password), the
+// old pool is closed and a new one opened.
+type dbPool struct {
+	mu     sync.Mutex
+	dbs    map[string]pooledDB
+	closed bool
+	// secrets holds the connection strings (dsnEnv).
+	secrets secretValues
+}
+
+// pooledDB is a pool and the connection string it was opened with.
+type pooledDB struct {
+	dsn string
+	db  *sql.DB
+}
+
+func newDBPool(secrets secretValues) *dbPool {
+	return &dbPool{dbs: map[string]pooledDB{}, secrets: secrets}
+}
+
+// open returns the pool for driver and the connection string in the secret
+// dsnEnv.
+func (p *dbPool) open(ctx context.Context, driver, dsnEnv string) (*sql.DB, error) {
+	dsn, err := p.secrets.value(ctx, dsnEnv)
+	if err != nil {
+		return nil, fmt.Errorf("database: %w", err)
+	}
+	return p.get(driver, dsnEnv, dsn)
+}
+
+// sqlDrivers are the database/sql drivers of the database destinations'
+// drivers.
+var sqlDrivers = map[string]string{adapters.DialectPostgres: "pgx", adapters.DialectSQLite: "sqlite"}
+
+// get returns the pool for driver and the variable env holding dsn.
+func (p *dbPool) get(driver, env, dsn string) (*sql.DB, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return nil, errors.New("database: the server is stopping")
+	}
+	key := driver + "\x00" + env
+	if old, ok := p.dbs[key]; ok {
+		if old.dsn == dsn {
+			return old.db, nil
+		}
+		_ = old.db.Close() // deliveries using it finish first (database/sql waits)
+	}
+	open := dsn
+	if driver == adapters.DialectSQLite {
+		open = sqliteWaits(dsn)
+	}
+	db, err := sql.Open(sqlDrivers[driver], open)
+	if err != nil {
+		return nil, errors.New("database: the connection string is not valid for the driver") // not the error: it can quote the string
+	}
+	if driver == adapters.DialectSQLite {
+		db.SetMaxOpenConns(1) // SQLite has one writer: deliveries take turns instead of failing SQLITE_BUSY
+	}
+	p.dbs[key] = pooledDB{dsn: dsn, db: db}
+	return db, nil
+}
+
+// sqliteBusyTimeout is how long a SQLite connection waits for another's
+// lock (another program, or another flow's pool on the same file) before
+// failing with "database is locked" (#389).
+const sqliteBusyTimeout = "_pragma=busy_timeout(5000)"
+
+// sqliteWaits is dsn with sqliteBusyTimeout, unless its query sets a busy
+// timeout itself (a _pragma=busy_timeout parameter, not a path that happens
+// to contain the words); it joins an existing query with &.
+func sqliteWaits(dsn string) string {
+	_, query, hasQuery := strings.Cut(dsn, "?")
+	if !hasQuery {
+		return dsn + "?" + sqliteBusyTimeout
+	}
+	for _, param := range strings.Split(query, "&") {
+		if strings.HasPrefix(strings.ToLower(param), "_pragma=busy_timeout") {
+			return dsn
+		}
+	}
+	return dsn + "&" + sqliteBusyTimeout
+}
+
+// close closes every pool; later gets fail.
+func (p *dbPool) close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.closed = true
+	for key, e := range p.dbs {
+		_ = e.db.Close()
+		delete(p.dbs, key)
+	}
+}
+
+// mllpFraming is an mllp source's or destination's framing (#107 D-72).
+func mllpFraming(start, end string) (adapters.MLLPFraming, error) {
+	s, e, err := flowdef.MLLPFraming(start, end)
+	return adapters.MLLPFraming{Start: s, End: e}, err
+}
+
+// mllpClientTLS verifies an mllp destination's receiver: its certificate
+// against the system's roots, or only CAFile's when set, and its host name
+// (the dialer takes it from the address), with the server's TLS settings
+// (#107 D-71). CAFile is read for each message, so a replaced file takes
+// effect without a restart.
+func mllpClientTLS(d pipeline.Destination, opts gateway.TLSOptions) (*tls.Config, error) {
+	cfg, err := gateway.BuildTLSConfig(opts)
+	if err != nil {
+		return nil, err
+	}
+	if d.CAFile == "" {
+		return cfg, nil
+	}
+	pem, err := os.ReadFile(d.CAFile)
+	if err != nil {
+		return nil, fmt.Errorf("caFile: %w", err)
+	}
+	cfg.RootCAs = x509.NewCertPool()
+	if !cfg.RootCAs.AppendCertsFromPEM(pem) {
+		return nil, errors.New("caFile: no PEM certificate in the file")
+	}
+	return cfg, nil
 }
 
 // flowErr translates state's flow errors into the gateway's.
@@ -1667,7 +2188,7 @@ func (a flowAdapter) Delete(ctx context.Context, id string) error {
 		if err := json.Unmarshal(d.Document, &f); err != nil {
 			return fmt.Errorf("cannot check dependents: flow %s is unreadable: %w", d.ID, err)
 		}
-		if slices.Contains(f.DependsOn, id) {
+		if slices.Contains(f.Dependencies(), id) {
 			dependents = append(dependents, f.ID)
 		}
 	}
@@ -1682,7 +2203,12 @@ func (a flowAdapter) Delete(ctx context.Context, id string) error {
 			return err
 		}
 	}
-	if err := a.store.DeleteFlow(ctx, id); err != nil {
+	// The store removes the stored statistics with the flow, after any
+	// save of them (see statsSaves).
+	unlock := a.statsWrites()
+	err = a.store.DeleteFlow(ctx, id)
+	unlock()
+	if err != nil {
 		return flowErr(err)
 	}
 	if a.events != nil {
@@ -1770,6 +2296,11 @@ type statsAdapter struct {
 	flows  flowAdapter
 	stats  *observability.StatsRegistry
 	series *observability.TimeSeries
+	// repo, when set, keeps the statistics and samples across restarts;
+	// samples older than retention are dropped from it.
+	repo      statsRepository
+	retention time.Duration
+	logger    *slog.Logger
 }
 
 func (a statsAdapter) FlowStats(ctx context.Context, flowID string, lifetime bool) (gateway.FlowStats, error) {
@@ -1802,6 +2333,11 @@ func (a statsAdapter) ResetStats(ctx context.Context, flowID string, lifetime bo
 		}
 	}
 	a.stats.Clear(flowID, lifetime)
+	// Stored now, so a restart does not bring the counts back. The reset
+	// itself is done; a failed save is caught up by the next sample.
+	if err := a.saveNow(ctx, flowID); err != nil {
+		a.logger.Warn("statistics reset not stored yet", "flow", flowID, "error", err)
+	}
 	return nil
 }
 
@@ -1837,18 +2373,27 @@ func (a statsAdapter) sampleLoop(ctx context.Context, interval time.Duration, lo
 // It holds the definitions lock, so a flow deleted meanwhile cannot have a
 // sample recorded after Delete forgot its series.
 func (a statsAdapter) sample(ctx context.Context, now time.Time) error {
-	defer a.flows.definitions()()
+	unlock := a.flows.definitions()
 	flows, err := a.flows.List(ctx)
 	if err != nil {
+		unlock()
 		return err
 	}
-	all := a.stats.SnapshotAll(true)
+	current, lifetime := a.stats.Snapshots()
 	snap := make(map[string]observability.FlowStats, len(flows))
-	for _, f := range flows {
-		snap[f.ID] = all[f.ID]
+	ids := make([]string, len(flows))
+	for i, f := range flows {
+		snap[f.ID] = lifetime[f.ID]
+		ids[i] = f.ID
 	}
 	a.series.RecordAll(now, snap)
-	return nil
+	if a.repo == nil {
+		unlock()
+		return nil
+	}
+	defer a.flows.statsWrites()() // before unlock: see flowAdapter.statsSaves
+	unlock()
+	return a.save(ctx, ids, now.Round(0), current, lifetime, snap)
 }
 
 // StatsSeries returns the sampled statistics of one flow, or of every
@@ -1927,48 +2472,6 @@ func (a eventsAdapter) CountEvents(_ context.Context, q gateway.EventQuery) (int
 
 func (a eventsAdapter) MaxEventID(context.Context) (int64, error) { return a.log.MaxID(), nil }
 
-type topologyAdapter struct {
-	flows gateway.FlowStore
-	stats *observability.StatsRegistry // nil: no activity
-}
-
-// activity is the flow's topology activity from its current counters.
-func (t topologyAdapter) activity(flowID string) *topology.Activity {
-	if t.stats == nil {
-		return nil
-	}
-	s := t.stats.Snapshot(flowID, false)
-	a := &topology.Activity{Received: s.Received, Sent: s.Sent, Errored: s.Errored, Queued: s.Queued}
-	if s.LastMessageAt != nil {
-		a.LastMessageAt = s.LastMessageAt.UTC().Format(time.RFC3339)
-	}
-	return a
-}
-
-func (t topologyAdapter) Overview(ctx context.Context) (topology.Graph, error) {
-	flows, err := t.flows.List(ctx)
-	if err != nil {
-		return topology.Graph{}, err
-	}
-	summaries := make([]topology.FlowSummary, 0, len(flows))
-	for _, f := range flows {
-		summaries = append(summaries, topology.FlowSummary{ID: f.ID, Name: f.Name, Status: f.Status, Activity: t.activity(f.ID)})
-	}
-	return topology.Overview(summaries), nil
-}
-
-func (t topologyAdapter) FlowInternal(ctx context.Context, id string) (topology.Graph, error) {
-	f, err := t.flows.Get(ctx, id)
-	if err != nil {
-		return topology.Graph{}, err
-	}
-	detail := topology.FlowDetail{ID: f.ID, Name: f.Name, Status: f.Status}
-	if typ := f.SourceKind(); typ != "" {
-		detail.Sources = []topology.Connector{{ID: f.ID + "-source", Label: typ + "://incoming", Type: typ, Status: f.Status}}
-	}
-	return topology.FlowInternal(detail), nil
-}
-
 // messageAdapter serves the message API from the store; deletes and
 // reprocessing go through the pipeline, which knows what is in flight.
 type messageAdapter struct {
@@ -1988,12 +2491,14 @@ func toStateQuery(q gateway.MessageQuery) state.Query {
 	}
 	return state.Query{
 		FlowID: q.FlowID, Status: state.Status(q.Status), From: q.From, To: q.To,
+		IDFrom: q.IDFrom, IDTo: q.IDTo, ContentType: q.ContentType,
+		MinAttempts: q.MinAttempts, MaxAttempts: q.MaxAttempts, Metadata: q.Metadata,
 		Limit: q.Limit, Offset: q.Offset, Sort: sort,
 	}
 }
 
 // Export writes an archive of the messages matching q.
-func (m messageAdapter) Export(ctx context.Context, q gateway.MessageQuery, key []byte) ([]byte, int, error) {
+func (m messageAdapter) Export(ctx context.Context, q gateway.MessageQuery, key []byte) ([]byte, []string, error) {
 	return state.ExportArchive(ctx, m.store, state.ExportOptions{Query: toStateQuery(q), Key: key})
 }
 
@@ -2007,26 +2512,43 @@ func (m messageAdapter) MessageTrends(ctx context.Context, q gateway.MessageTren
 // variable so tests can page through a few messages).
 var deletePage = 500
 
-// DeleteMatching removes every message matching q's filters. It pages by id
-// from an exclusive cursor, so messages skipped as busy do not shift the
-// pages, and stops only at an empty page. Each message is checked against
-// the filters again while the pipeline holds it, so one that changed since
-// the search (a queued message delivered meanwhile) is kept.
+// DeleteMatching removes every message matching q's filters.
 func (m messageAdapter) DeleteMatching(ctx context.Context, q gateway.MessageQuery) (deleted, busy int, err error) {
-	sq := toStateQuery(gateway.MessageQuery{FlowID: q.FlowID, Status: q.Status, From: q.From, To: q.To, Sort: "id"})
-	sq.Limit = deletePage
+	q.Sort, q.Offset = "id", 0 // every filter, paged by id
+	deleted, busyIDs, err := m.removeMatching(ctx, toStateQuery(q), nil)
+	return deleted, len(busyIDs), err
+}
+
+// removeMatching removes every message matching sq that eligible accepts
+// (every one when nil) and returns the ids skipped as busy. It pages by id
+// from an exclusive cursor, so messages skipped do not shift the pages,
+// and stops at an empty page or when ctx ends. Each message is checked
+// again while the pipeline holds it, so one that changed since the search
+// (a queued message delivered meanwhile) is kept.
+func (m messageAdapter) removeMatching(ctx context.Context, sq state.Query, eligible func(state.Message) bool) (deleted int, busy []string, err error) {
+	sq.Sort, sq.Offset, sq.Limit = "id", 0, deletePage
+	accept := func(msg state.Message) bool { return sq.Matches(msg) && (eligible == nil || eligible(msg)) }
 	for {
+		if err := ctx.Err(); err != nil {
+			return deleted, busy, err
+		}
 		page, err := m.store.Search(ctx, sq)
 		if err != nil || len(page) == 0 {
 			return deleted, busy, err
 		}
 		for _, msg := range page {
-			release, ok := m.pipe.Hold(msg.ID)
-			if !ok {
-				busy++
+			if err := ctx.Err(); err != nil {
+				return deleted, busy, err
+			}
+			if eligible != nil && !eligible(msg) {
 				continue
 			}
-			removed, err := m.removeIfMatching(ctx, msg.ID, sq)
+			release, ok := m.pipe.Hold(msg.ID)
+			if !ok {
+				busy = append(busy, msg.ID)
+				continue
+			}
+			removed, err := m.removeIf(ctx, msg.ID, accept)
 			release()
 			if err != nil {
 				return deleted, busy, err
@@ -2035,12 +2557,17 @@ func (m messageAdapter) DeleteMatching(ctx context.Context, q gateway.MessageQue
 				deleted++
 			}
 		}
-		sq.IDFrom = page[len(page)-1].ID + "\x00"
+		sq.IDAfter = page[len(page)-1].ID
 	}
 }
 
 // removeIfMatching deletes message id if it still matches sq's filters.
 func (m messageAdapter) removeIfMatching(ctx context.Context, id string, sq state.Query) (bool, error) {
+	return m.removeIf(ctx, id, sq.Matches)
+}
+
+// removeIf deletes message id if accept still accepts it as stored.
+func (m messageAdapter) removeIf(ctx context.Context, id string, accept func(state.Message) bool) (bool, error) {
 	msg, err := m.store.Get(ctx, id)
 	if errors.Is(err, state.ErrNotFound) {
 		return false, nil // removed meanwhile
@@ -2048,8 +2575,7 @@ func (m messageAdapter) removeIfMatching(ctx context.Context, id string, sq stat
 	if err != nil {
 		return false, err
 	}
-	if (sq.FlowID != "" && msg.FlowID != sq.FlowID) || (sq.Status != "" && msg.Status != sq.Status) ||
-		(!sq.From.IsZero() && msg.ReceivedAt.Before(sq.From)) || (!sq.To.IsZero() && msg.ReceivedAt.After(sq.To)) {
+	if !accept(msg) { // every filter, as the search applied them
 		return false, nil
 	}
 	if err := m.store.Delete(ctx, id); err != nil && !errors.Is(err, state.ErrNotFound) {
@@ -2106,6 +2632,11 @@ func (m messageAdapter) Search(ctx context.Context, q gateway.MessageQuery) ([]g
 	return out, nil
 }
 
+// Count is how many stored messages match q's filters.
+func (m messageAdapter) Count(ctx context.Context, q gateway.MessageQuery) (int, error) {
+	return m.store.Count(ctx, toStateQuery(q))
+}
+
 func (m messageAdapter) Get(ctx context.Context, id string) (gateway.Message, error) {
 	msg, err := m.store.Get(ctx, id)
 	if err != nil {
@@ -2123,11 +2654,7 @@ func (m messageAdapter) Content(ctx context.Context, id, part string) (gateway.M
 		if msg.Transformed == nil {
 			return gateway.MessageContent{}, fmt.Errorf("%w: message %s has no transformed content (status %s)", gateway.ErrNoContent, id, msg.Status)
 		}
-		ct := "application/octet-stream"
-		if msg.ContentType == "json" {
-			ct = "application/json"
-		}
-		return gateway.MessageContent{Body: msg.Transformed, ContentType: ct}, nil
+		return gateway.MessageContent{Body: msg.Transformed, ContentType: pipeline.MimeType(msg.ContentType)}, nil
 	}
 	return gateway.MessageContent{Body: msg.Raw, ContentType: "application/octet-stream"}, nil
 }
@@ -2241,7 +2768,7 @@ func (m messageAdapter) RequeueAll(ctx context.Context, flowID string) (gateway.
 	deleted := map[string]bool{}
 	cursor := ""
 	for {
-		page, err := m.store.Search(ctx, state.Query{Status: state.StatusDeadLettered, FlowID: flowID, IDFrom: cursor, Sort: "id", Limit: 500})
+		page, err := m.store.Search(ctx, state.Query{Status: state.StatusDeadLettered, FlowID: flowID, IDAfter: cursor, Sort: "id", Limit: 500})
 		if err != nil {
 			return res, err
 		}
@@ -2260,7 +2787,7 @@ func (m messageAdapter) RequeueAll(ctx context.Context, flowID string) (gateway.
 		if len(page) < 500 {
 			return res, nil
 		}
-		cursor = page[len(page)-1].ID + "\x00" // IDFrom is inclusive
+		cursor = page[len(page)-1].ID
 	}
 }
 
@@ -2292,10 +2819,14 @@ func toGatewayMessage(msg state.Message) gateway.Message {
 	if len(msg.Attempts) > 0 {
 		out.Attempts = make(map[string]gateway.MessageAttempt, len(msg.Attempts))
 		for dest, a := range msg.Attempts {
-			ga := gateway.MessageAttempt{Attempts: a.Attempts, LastError: a.LastError}
+			ga := gateway.MessageAttempt{Attempts: a.Attempts, LastError: a.LastError, LastCode: a.LastCode}
 			if !a.NextAttemptAt.IsZero() {
 				t := a.NextAttemptAt.UTC()
 				ga.NextAttemptAt = &t
+			}
+			if !a.LastAttemptAt.IsZero() {
+				t := a.LastAttemptAt.UTC()
+				ga.LastAttemptAt = &t
 			}
 			out.Attempts[dest] = ga
 		}

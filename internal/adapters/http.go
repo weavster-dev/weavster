@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -118,6 +119,9 @@ type httpStatusError struct {
 	code     int
 	location string // a redirect's target, not followed
 }
+
+// Code is "http:<status>".
+func (e *httpStatusError) Code() string { return "http:" + strconv.Itoa(e.code) }
 
 func (e *httpStatusError) Error() string {
 	if e.code < 400 && e.location != "" {

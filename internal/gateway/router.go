@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -77,6 +78,53 @@ const RouteNotFoundMessage = "no such endpoint"
 
 // Router builds the chi router with middleware and routes.
 func (s *Server) Router() http.Handler {
+	return underContextPath(s.cfg.ContextPath, s.routes())
+}
+
+// underContextPath serves h under prefix (listen.contextPath, spec §4.1):
+// /weavster/api/v1/flows reaches h as /api/v1/flows. Every other path
+// reaches h as one no route matches, so it gets the router's own 404 with
+// its security headers. An empty prefix serves h at the root.
+func underContextPath(prefix string, h http.Handler) http.Handler {
+	if prefix == "" {
+		return h
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rest, ok := strings.CutPrefix(r.URL.Path, prefix)
+		if !ok || (rest != "" && rest[0] != '/') {
+			rest = "/outside-the-context-path" // matches no route
+		}
+		if rest == "" {
+			rest = "/"
+		}
+		r2 := r.Clone(r.Context())
+		r2.URL.Path, r2.URL.RawPath = rest, rawAfter(r.URL.EscapedPath(), prefix, ok && rest != "/outside-the-context-path")
+		h.ServeHTTP(w, r2)
+	})
+}
+
+// rawAfter is the escaped path after the context prefix (which may itself
+// be escaped), so escaped parameters such as a lookup key A%2FB keep their
+// form; "" when the path is outside the prefix.
+func rawAfter(escaped, prefix string, inside bool) string {
+	if !inside {
+		return ""
+	}
+	for i := len(prefix); i <= len(escaped); i++ {
+		if (i == len(escaped) || escaped[i] == '/') && unescapes(escaped[:i], prefix) {
+			return escaped[i:]
+		}
+	}
+	return ""
+}
+
+func unescapes(escaped, want string) bool {
+	got, err := url.PathUnescape(escaped)
+	return err == nil && got == want
+}
+
+// routes is the API's router.
+func (s *Server) routes() http.Handler {
 	r := chi.NewRouter()
 	r.Use(apiVersion)
 	r.Use(SecurityHeaders)
@@ -106,6 +154,26 @@ func (s *Server) Router() http.Handler {
 		_, _ = w.Write([]byte(OpenAPISpec()))
 	})
 
+	// The web UI's files are public; the data it shows comes from the API
+	// with the user's own credentials. / and /ui lead to it, under
+	// listen.contextPath when there is one.
+	if s.cfg.UI != nil {
+		toUI := func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, s.cfg.ContextPath+"/ui/", http.StatusFound)
+		}
+		for _, path := range []string{"/", "/ui"} {
+			r.Get(path, toUI)
+			r.Head(path, toUI)
+		}
+		r.Handle("/ui/*", http.StripPrefix("/ui", s.cfg.UI))
+	}
+
+	// Prometheus scrapes with credentials (basic_auth) but no CSRF marker:
+	// outside /api/v1, audited and authenticated as it is.
+	if s.cfg.Metrics != nil {
+		r.With(s.audited, s.authenticate, s.require("flows", "view")).Get("/metrics", s.cfg.Metrics.ServeHTTP)
+	}
+
 	r.Route("/api/"+APIVersion, func(r chi.Router) {
 		r.Use(versionHeader(APIVersion))
 		// audited runs first so requests rejected by any later middleware
@@ -120,6 +188,10 @@ func (s *Server) Router() http.Handler {
 			r.Post("/auth/logout", s.handleLogout)
 			r.Get("/auth/me", s.handleMe)
 			r.Post("/auth/password", s.handleChangePassword)
+			r.Post("/auth/password/check", s.handlePasswordCheck)
+			r.Get("/users/{name}/preferences", s.handlePreferencesGet)
+			r.Put("/users/{name}/preferences", s.handlePreferencesPut)
+			r.Get("/users/{name}/loggedin", s.handleLoggedIn)
 			r.Get("/system", s.systemRoute(func(sr SystemReporter) any { return sr.Status() }))
 			r.Get("/system/about", s.systemRoute(func(sr SystemReporter) any { return sr.About() }))
 			r.Get("/system/password-requirements", s.systemRoute(func(sr SystemReporter) any { return sr.PasswordRequirements() }))
@@ -198,6 +270,9 @@ func (s *Server) Router() http.Handler {
 			r.With(alerts).Post("/alerts", s.handleAlertsSave)
 			r.With(alerts).Post("/alerts/import", s.handleAlertsImport)
 			r.With(alerts).Get("/alerts/options", s.handleAlertOptions)
+			r.With(alerts).Get("/alerts/statuses", s.handleAlertStatuses)
+			r.With(alerts).Get("/alerts/{name}/info", s.handleAlertInfo)
+			r.With(alerts).Post("/alerts/{name}/test", s.handleAlertTest)
 			r.With(alerts).Get("/alerts/{name}", s.handleAlertGet)
 			r.With(alerts).Put("/alerts/{name}", s.handleAlertsSave)
 			r.With(alerts).Delete("/alerts/{name}", s.handleAlertDelete)
@@ -234,6 +309,10 @@ func (s *Server) Router() http.Handler {
 			// message content: viewing messages is needed too, as a PHI access.
 			r.With(s.auditAs(AuditPHIAccess), s.require("messages", "view"), s.require("messages", "send")).Post("/messages/{id}/requeue", s.handleMessageRequeue)
 			r.With(s.require("messages", "send")).Post("/messages/requeue", s.handleMessagesRequeue)
+			r.With(s.auditAs(AuditRead), s.require("audit", "view")).Get("/audit", s.handleAuditSearch)
+			r.With(s.require("messages", "view")).Get("/system/prune", s.handlePruneStatus)
+			r.With(s.require("messages", "delete")).Post("/system/prune/start", s.handlePrune(true))
+			r.With(s.require("messages", "delete")).Post("/system/prune/stop", s.handlePrune(false))
 		})
 	})
 	return r

@@ -15,7 +15,7 @@ func TestFlowExportImport(t *testing.T) {
 	admin := basic(bootstrapAdmin, testAdminPassword)
 	start := func() (apiClient, func()) {
 		addr := freeAddr(t)
-		cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+		cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 		c := apiClient{t: t, base: "http://" + addr}
 		return c, startCLI(t, []string{"server", "--config", cfg}, c.base+"/api/openapi.yaml")
 	}

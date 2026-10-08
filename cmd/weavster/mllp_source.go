@@ -22,6 +22,10 @@ const mllpIdleTimeout = 5 * time.Minute
 // (10 MiB over a slow link takes minutes).
 const mllpFrameTimeout = 15 * time.Minute
 
+// mllpHandshakeTimeout bounds the TLS handshake of an mllp source with a
+// certificate.
+const mllpHandshakeTimeout = 30 * time.Second
+
 // maxControlIDMetadata caps the MSH-10 kept as metadata; HL7 allows at most
 // 199 characters, most versions 20.
 const maxControlIDMetadata = 199
@@ -30,12 +34,15 @@ const maxControlIDMetadata = 199
 // id and answers it with an ACK (#107 D-60): AA once the message is stored,
 // AR when it is refused (resending it unchanged would be refused again), AE
 // when it could not be stored (the sender may try again). MSA-3 says why in
-// fixed words, never with message content.
-func mllpHandler(id string, ingest gateway.SourceIngester) adapters.MLLPHandler {
+// fixed words, never with message content. Without reply it only ingests.
+func mllpHandler(id string, ingest gateway.SourceIngester, reply bool) adapters.MLLPHandler {
 	tooLarge := fmt.Sprintf("message larger than %d MiB", gateway.MaxMessageBytes>>20)
 	return func(frame []byte, readErr error) []byte {
 		msh := withoutFraming(firstSegment(frame)) // the ACK needs only MSH
 		ack := func(code, text string) []byte {
+			if !reply {
+				return nil // ackMode none: no ACK is sent (#107 D-72)
+			}
 			// HL7ACK answers any input (the HL7 parser accepts every byte string).
 			b, _ := codecs.HL7ACK(msh, codecs.HL7AckOptions{Code: code, Text: text, ControlID: newControlID(), Now: time.Now()})
 			return b
@@ -46,7 +53,7 @@ func mllpHandler(id string, ingest gateway.SourceIngester) adapters.MLLPHandler 
 		if !isMSH(msh) {
 			return ack(codecs.AckApplicationReject, "not an HL7 v2 message (no MSH segment)")
 		}
-		cid := controlID(msh)
+		cid := codecs.HL7ControlID(msh)
 		if len(cid) > maxControlIDMetadata {
 			cid = cid[:maxControlIDMetadata]
 		}
@@ -59,6 +66,8 @@ func mllpHandler(id string, ingest gateway.SourceIngester) adapters.MLLPHandler 
 			return ack(codecs.AckApplicationReject, "message refused by the flow")
 		case errors.Is(err, gateway.ErrFlowNotRunning), errors.Is(err, gateway.ErrFlowNotFound):
 			return ack(codecs.AckApplicationError, "flow is not accepting messages")
+		case errors.Is(err, gateway.ErrBusy):
+			return ack(codecs.AckApplicationError, "server busy")
 		default:
 			return ack(codecs.AckApplicationError, "message could not be processed")
 		}
@@ -75,11 +84,13 @@ func firstSegment(frame []byte) []byte {
 	return frame
 }
 
-// withoutFraming drops MLLP's start and end bytes from seg, so values the
-// ACK echoes from it can never end the ACK's frame early.
+// withoutFraming drops control bytes other than tab from seg (a first
+// segment has no line breaks), so values the ACK echoes from it can never
+// end the ACK's frame early, whatever the source's framing (#107 D-72: its
+// start and first end byte are such control bytes).
 func withoutFraming(seg []byte) []byte {
 	return bytes.Map(func(r rune) rune {
-		if r == 0x0b || r == 0x1c {
+		if (r < 0x20 && r != '\t') || r == 0x7f {
 			return -1
 		}
 		return r
@@ -95,17 +106,6 @@ func isMSH(seg []byte) bool {
 	c := seg[3]
 	alnum := c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9'
 	return !alnum && c != ' '
-}
-
-// controlID is MSH-10 of the MSH segment msh.
-func controlID(msh []byte) string {
-	v, _ := codecs.HL7v2().Parse(msh) // never fails
-	for _, seg := range v.(*codecs.HL7Message).Segments {
-		if f := seg.Field(10); seg.Name == "MSH" && len(f) > 0 {
-			return f[0]
-		}
-	}
-	return ""
 }
 
 // newControlID is a unique MSH-10 for an ACK: 20 hex characters, the

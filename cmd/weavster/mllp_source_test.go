@@ -37,15 +37,16 @@ func TestMLLPHandler(t *testing.T) {
 		{"not running", msg, nil, mllpIngest{err: gateway.ErrFlowNotRunning}, "MSA|AE|C1|flow is not accepting messages"},
 		{"removed", msg, nil, mllpIngest{err: gateway.ErrFlowNotFound}, "MSA|AE|C1|flow is not accepting messages"},
 		{"failed", msg, nil, mllpIngest{err: errors.New("disk full")}, "MSA|AE|C1|message could not be processed"},
+		{"busy", msg, nil, mllpIngest{err: gateway.ErrBusy}, "MSA|AE|C1|server busy"},
 		{"too large", []byte("MSH|^~\\&|LAB|HOSP|W|H|1||ORU^R01|BIG|P|2.5"), adapters.ErrMLLPFrameTooLarge, mllpIngest{}, "MSA|AR|BIG|message larger than 10 MiB"},
 		{"too large, nothing kept", nil, adapters.ErrMLLPFrameTooLarge, mllpIngest{}, "MSA|AR||message larger than 10 MiB"},
 		{"space before MSH", []byte(" " + string(msg)), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
 		{"MSHX", []byte("MSHX|1\r"), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
-		{"framing bytes in MSH-10", []byte("MSH|^~\\&|LAB|HOSP|W|H|1||ORU^R01|C\x1c1\x0b|P|2.5\r"), nil, mllpIngest{res: gateway.IngestResult{ID: "m1"}}, "MSA|AA|C1"},
+		{"framing bytes in MSH-10", []byte("MSH|^~\\&|LAB|HOSP|W|H|1||ORU^R01|C\x1c1\x0b\x02\x7f|P|2.5\r"), nil, mllpIngest{res: gateway.IngestResult{ID: "m1"}}, "MSA|AA|C1"},
 		{"line break before MSH", append([]byte("\r\n"), msg...), nil, mllpIngest{res: gateway.IngestResult{ID: "m1"}}, "MSA|AA|C1"},
 		{"not HL7", []byte("hello"), nil, mllpIngest{}, "MSA|AR||not an HL7 v2 message (no MSH segment)"},
 	} {
-		ack := string(mllpHandler("f", tt.ingest)(tt.frame, tt.readErr))
+		ack := string(mllpHandler("f", tt.ingest, true)(tt.frame, tt.readErr))
 		segs := strings.Split(strings.TrimSuffix(ack, "\r"), "\r")
 		if len(segs) != 2 || segs[1] != tt.want {
 			t.Errorf("%s: %q, want MSA %q", tt.name, ack, tt.want)
@@ -55,15 +56,13 @@ func TestMLLPHandler(t *testing.T) {
 		}
 	}
 	long := mllpIngestSpy{}
-	mllpHandler("f", &long)([]byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|"+strings.Repeat("9", 500)+"|P|2.5\r"), nil)
+	mllpHandler("f", &long, true)([]byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|"+strings.Repeat("9", 500)+"|P|2.5\r"), nil)
 	if len(long.cid) != maxControlIDMetadata {
 		t.Errorf("stored control id is %d characters", len(long.cid))
 	}
-	if got := controlID([]byte("PID|1\r")); got != "" {
-		t.Errorf("control id without MSH = %q", got)
-	}
-	if got := controlID([]byte("MSH|^~\\&|A\r")); got != "" {
-		t.Errorf("control id of a short MSH = %q", got)
+	silent := mllpIngestSpy{}
+	if ack := mllpHandler("f", &silent, false)(msg, nil); ack != nil || silent.cid != "C1" {
+		t.Errorf("without replies: ACK %q, stored control id %q", ack, silent.cid)
 	}
 }
 

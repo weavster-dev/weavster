@@ -52,7 +52,7 @@ func TestPortSourcesReconcile(t *testing.T) {
 	flows := &fakeFlowList{flows: []gateway.Flow{started("b", b, "/"), started("a", a, "/"),
 		started("busy", held.Addr().String(), "/"), started("api", "127.0.0.1:8080", "/")}}
 	events := &fakeEvents{}
-	s := newPortSources(flows, sourceIngest{}, events, map[int]string{8080: "api"}, gateway.DefaultTLSOptions(), "", logger)
+	s := newPortSources(flows, sourceIngest{}, events, map[int]string{8080: "api"}, gateway.DefaultTLSOptions(), "", noSecrets, logger)
 	defer s.closeAll()
 
 	s.reconcile(ctx)
@@ -113,7 +113,7 @@ func TestPortSourcesSecuredFailures(t *testing.T) {
 	missing := filepath.Join(dir, "missing.pem")
 	flows := &fakeFlowList{flows: []gateway.Flow{src("bad", freeAddr(t), missing, missing), src("server", freeAddr(t), certFile, link)}}
 	events := &reasonEvents{}
-	s := newPortSources(flows, sourceIngest{}, events, nil, gateway.DefaultTLSOptions(), keyFile, logger)
+	s := newPortSources(flows, sourceIngest{}, events, nil, gateway.DefaultTLSOptions(), keyFile, noSecrets, logger)
 	defer s.closeAll()
 	s.reconcile(ctx)
 	s.reconcile(ctx)

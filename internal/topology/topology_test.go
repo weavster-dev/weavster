@@ -1,10 +1,14 @@
 package topology
 
-import "testing"
+import (
+	"reflect"
+	"strings"
+	"testing"
+)
 
 func TestOverview(t *testing.T) {
 	g := Overview([]FlowSummary{
-		{ID: "a", Name: "Patient Admit", Status: "started", Routes: []string{"b"}},
+		{ID: "a", Name: "Patient Admit", Status: "started", Routes: []Link{{Flow: "b", Status: "idle"}}},
 		{ID: "b", Name: "Billing", Status: "stopped"},
 	})
 	if g.SchemaVersion != "1" {
@@ -50,45 +54,57 @@ func TestOverviewDependencyEdgeAndActivity(t *testing.T) {
 }
 
 func TestFlowInternal(t *testing.T) {
+	act := &Activity{Sent: 2}
 	g := FlowInternal(FlowDetail{
-		ID:     "a",
-		Name:   "Patient Admit",
-		Status: "started",
-		Sources: []Connector{
-			{ID: "file-1", Label: "file:///incoming", Type: "file", DataType: "hl7v2", Status: "started"},
+		ID: "a", Name: "Patient Admit", Status: "started",
+		Source:    &Part{ID: "file", Label: "file:/incoming", Status: "started", Meta: map[string]string{"connectorType": "file"}, EdgeStatus: "active"},
+		Transform: &Part{ID: "dsl:normalize", Label: "normalize", Status: "started"},
+		Destinations: []Part{
+			{ID: "his", Label: "his", Status: "started", Activity: act, EdgeStatus: "errored"},
+			{ID: "billing", Label: "billing", Status: "stopped", EdgeStatus: "idle"},
 		},
-		Transforms: []Stage{
-			{ID: "normalize", Label: "normalize", Status: "started"},
-		},
-		Destinations: []Connector{
-			{ID: "mllp-1", Label: "HIS MLLP", Type: "tcp", Status: "started"},
-		},
-		Routes: []string{"b"},
+		Routes: []Route{{Destination: "billing", Flow: "b", Status: "idle"}},
 	})
-	if g.FlowID != "a" {
-		t.Errorf("flowId = %q", g.FlowID)
+	if g.FlowID != "flow:a" || g.FlowName != "Patient Admit" || g.FlowStatus != "started" {
+		t.Errorf("flow = %q %q %q", g.FlowID, g.FlowName, g.FlowStatus)
 	}
-	// source -> transform -> destination message-path + route edge.
-	if len(g.Edges) != 3 {
-		t.Fatalf("edges = %+v", g.Edges)
+	var ids []string
+	for _, n := range g.Nodes {
+		ids = append(ids, n.ID)
 	}
-	if g.Edges[0].Kind != EdgeMessagePath || g.Edges[1].Kind != EdgeMessagePath || g.Edges[2].Kind != EdgeRoute {
-		t.Errorf("edge kinds = %+v", g.Edges)
+	if strings.Join(ids, " ") != "source:file transform:dsl:normalize destination:his destination:billing flow:b" {
+		t.Errorf("nodes = %v", ids)
 	}
-	if g.Nodes[0].ID != "source:file-1" || g.Nodes[1].ID != "transform:normalize" || g.Nodes[2].ID != "destination:mllp-1" {
-		t.Errorf("nodes = %+v", g.Nodes)
+	want := []Edge{
+		{ID: "edge:source:file:path:transform:dsl:normalize", From: "source:file", To: "transform:dsl:normalize", Kind: EdgeMessagePath, Status: "active"},
+		{ID: "edge:transform:dsl:normalize:path:destination:his", From: "transform:dsl:normalize", To: "destination:his", Kind: EdgeMessagePath, Status: "errored", Activity: act},
+		{ID: "edge:transform:dsl:normalize:path:destination:billing", From: "transform:dsl:normalize", To: "destination:billing", Kind: EdgeMessagePath, Status: "idle"},
+		{ID: "edge:destination:billing:route:flow:b", From: "destination:billing", To: "flow:b", Kind: EdgeRoute, Label: "routeMessage('b')", Status: "idle"},
+	}
+	if !reflect.DeepEqual(g.Edges, want) {
+		t.Errorf("edges = %+v", g.Edges)
 	}
 }
 
-func TestStableIDs(t *testing.T) {
-	g1 := FlowInternal(FlowDetail{ID: "a", Name: "X", Sources: []Connector{{ID: "s1", Type: "file"}}, Destinations: []Connector{{ID: "d1", Type: "tcp"}}})
-	g2 := FlowInternal(FlowDetail{ID: "a", Name: "X", Sources: []Connector{{ID: "s1", Type: "file"}}, Destinations: []Connector{{ID: "d1", Type: "tcp"}}})
-	if len(g1.Nodes) != len(g2.Nodes) {
-		t.Fatal("node counts differ")
-	}
-	for i := range g1.Nodes {
-		if g1.Nodes[i].ID != g2.Nodes[i].ID {
-			t.Errorf("node ids differ: %q vs %q", g1.Nodes[i].ID, g2.Nodes[i].ID)
+// TestFlowInternalPaths: the message path starts at the first part the
+// flow has.
+func TestFlowInternalPaths(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		f     FlowDetail
+		edges []string
+	}{
+		{"no source", FlowDetail{ID: "a", Transform: &Part{ID: "dsl:t"}, Destinations: []Part{{ID: "d"}}}, []string{"transform:dsl:t>destination:d"}},
+		{"no transform", FlowDetail{ID: "a", Source: &Part{ID: "http"}, Destinations: []Part{{ID: "d"}}}, []string{"source:http>destination:d"}},
+		{"destinations only", FlowDetail{ID: "a", Destinations: []Part{{ID: "d"}}}, nil},
+		{"source only", FlowDetail{ID: "a", Source: &Part{ID: "http"}}, nil},
+	} {
+		var got []string
+		for _, e := range FlowInternal(tt.f).Edges {
+			got = append(got, e.From+">"+e.To)
+		}
+		if !reflect.DeepEqual(got, tt.edges) {
+			t.Errorf("%s: edges %v, want %v", tt.name, got, tt.edges)
 		}
 	}
 }

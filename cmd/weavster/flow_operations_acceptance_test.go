@@ -10,7 +10,7 @@ import (
 // and initial state (auto-deploy at the next start) through the binary.
 func TestFlowOperations(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
@@ -52,6 +52,9 @@ func TestFlowOperations(t *testing.T) {
 		t.Errorf("after bulk update d = %s", body)
 	}
 	stop()
+	if !restartable(t) {
+		return
+	}
 
 	stop = startCLI(t, args, c.base+"/api/openapi.yaml")
 	defer stop()

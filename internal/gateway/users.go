@@ -87,19 +87,25 @@ func writeUserError(w http.ResponseWriter, err error) {
 
 // decodeStrict decodes a JSON body into v, rejecting unknown fields.
 func decodeStrict(w http.ResponseWriter, r *http.Request, v any) bool {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-	dec.DisallowUnknownFields()
-	err := dec.Decode(v)
-	if err == nil {
-		if _, tokErr := dec.Token(); tokErr != io.EOF {
-			err = errors.New("trailing data after the JSON document")
-		}
-	}
-	if err != nil {
+	if err := decodeJSON(w, r, v); err != nil {
 		writeStatusError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return false
 	}
 	return true
+}
+
+// decodeJSON decodes one JSON document (at most 1 MiB, no unknown fields)
+// into v; an empty body is io.EOF.
+func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return errors.New("trailing data after the JSON document")
+	}
+	return nil
 }
 
 // permAdmin is the permission that allows everything.
@@ -138,11 +144,16 @@ func (s *Server) guard(w http.ResponseWriter, r *http.Request, perms []string) b
 	return true
 }
 
-// ownToken is the caller's bearer token when it manages its own account,
-// so a change to it does not end the caller's own session.
-func ownToken(r *http.Request, name string) string {
+// ownToken preserves the caller's session only when its permissions are
+// unchanged. A permission change must invalidate the cached identity.
+func ownToken(r *http.Request, name string, permissions []string) string {
 	if id, ok := IdentityFrom(r.Context()); ok && id.Username == name {
-		return bearerToken(r)
+		before, after := slices.Clone(id.Permissions), slices.Clone(permissions)
+		slices.Sort(before)
+		slices.Sort(after)
+		if slices.Equal(slices.Compact(before), slices.Compact(after)) {
+			return bearerToken(r)
+		}
 	}
 	return ""
 }
@@ -216,7 +227,7 @@ func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request) {
 		writeUserError(w, err)
 		return
 	}
-	s.sessions.revokeUser(name, ownToken(r, name)) // new permissions apply from the next login
+	s.sessions.revokeUser(name, ownToken(r, name, u.Permissions)) // new permissions apply from the next login
 	writeJSON(w, http.StatusOK, u)
 }
 

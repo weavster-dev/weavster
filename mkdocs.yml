@@ -10,14 +10,23 @@ edit_uri: edit/main/docs/
 
 nav:
   - Home: index.md
+  - Getting Started: getting-started.md
+  - Install, Upgrade, Roll Back: install.md
+  - Operations: operations.md
   - Support Matrix: support-matrix.md
   - Server Configuration: server-config.md
+  - Production Setup: production.md
+  - Local Development with Docker Compose: docker-compose.md
+  - Capacity and Limits: limits.md
   - Authentication: authentication.md
+  - Metrics: metrics.md
   - Command-line client: cli.md
   - REST API: api.md
   - API errors: api-errors.md
   - Audit Log: audit-log.md
   - Processing Messages: processing-messages.md
+  - Topology: topology.md
+  - Web UI: web-ui.md
   - Flow Lifecycle: flow-lifecycle.md
   - Flow Dependencies, Export, Import: flow-export-import.md
   - Config Map, Scripts, Settings: config-items.md
@@ -30,16 +39,21 @@ nav:
   - System Information: system-info.md
   - JSON and XML: api-formats.md
   - Docs Site Guide: documentation.md
-  - MVP Project Plan: mvp-project-plan.md
-  - Agent Onboarding: agent-onboarding.md
 
 # Internal build-loop prompt is not part of the public docs site.
 exclude_docs: |
   prompt-3-kickoff.md
+  mvp-project-plan.md
+  agent-onboarding.md
 
-# Specs/manifest/AGENTS links live outside docs/; don't fail the build on them.
+# Every build is strict: a warning (a broken link between pages, a missing
+# anchor, a page outside the nav) fails it. Links to files outside docs/
+# are full GitHub URLs, which MkDocs does not check.
+strict: true
 validation:
+  omitted_files: warn
+  absolute_links: warn
+  unrecognized_links: warn
+  anchors: warn
   links:
-    not_found: ignore
-    absolute_links: ignore
-    unrecognized_links: ignore
+    not_found: warn

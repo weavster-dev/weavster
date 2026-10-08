@@ -8,11 +8,11 @@ import (
 
 // TestLookups: dynamic lookups are imported, matched by prefix, read one
 // by one and in batches, changed, and deleted over the API; reads and
-// writes need lookups:view and lookups:edit; entries survive a restart with
-// the SQLite store.
+// writes need lookups:view and lookups:edit; entries survive a restart (on
+// PostgreSQL).
 func TestLookups(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
@@ -50,6 +50,9 @@ func TestLookups(t *testing.T) {
 		t.Errorf("reader put: %d %s", code, body)
 	}
 	stop()
+	if !restartable(t) {
+		return
+	}
 
 	stop = startCLI(t, args, c.base+"/api/openapi.yaml")
 	defer stop()

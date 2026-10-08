@@ -25,6 +25,8 @@ const (
 	AuditLogin       = "auth.login"
 	AuditAuthFailure = "auth.failure"
 	AuditPHIAccess   = "phi.access"
+	// AuditRead: someone read the audit log (GET /api/v1/audit).
+	AuditRead = "audit.read"
 )
 
 // auditInfo is filled in while a request is handled and read by audited

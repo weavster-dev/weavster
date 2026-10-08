@@ -38,6 +38,14 @@ func TestAuditLog(t *testing.T) {
 	c.do(http.MethodPost, "/api/v1/flows", `{"id":"lab","name":"Lab"}`, admin)
 	c.do(http.MethodDelete, "/api/v1/flows/lab", "", admin)
 	c.do(http.MethodGet, "/api/v1/messages?status=sent&apiToken=s3cr3t-value", "", admin)
+	// Reads that disclose messages record what they disclosed.
+	createFlow(t, c, `{"id":"adt"}`)
+	id, _ := sendMessage(t, c, "adt", `{"k":"v"}`)
+	c.do(http.MethodGet, "/api/v1/messages?flowId=adt", "", admin)
+	c.do(http.MethodGet, "/api/v1/messages/"+id+"/content", "", admin)
+	c.do(http.MethodGet, "/api/v1/messages/"+id+"/content?part=transformed", "", admin)
+	c.do(http.MethodGet, "/api/v1/messages/export?flowId=adt", "", admin)
+	c.do(http.MethodGet, "/api/v1/messages/unknown/content", "", admin)
 	c.do(http.MethodGet, "/api/v1/flows", "", basic(bootstrapAdmin, "wrong-password"))
 	c.login(bootstrapAdmin, testAdminPassword)
 
@@ -45,7 +53,12 @@ func TestAuditLog(t *testing.T) {
 	for _, want := range []string{
 		`actor=admin action="POST /api/v1/flows" resource=/api/v1/flows detail=map[status:201]`,
 		`actor=admin action="DELETE /api/v1/flows/{id}" resource=/api/v1/flows/lab detail=map[status:204]`,
-		`actor=admin action=phi.access resource=/api/v1/messages detail="map[query.apiToken:[redacted] query.status:sent status:200]"`,
+		`actor=admin action=phi.access resource=/api/v1/messages detail="map[messages:0 messages.ids:[] query.apiToken:[redacted] query.status:sent status:200]"`,
+		`actor=admin action=phi.access resource=/api/v1/messages detail="map[messages:1 messages.ids:[\"` + id + `\"] query.flowId:adt status:200]"`,
+		`actor=admin action=phi.access resource=/api/v1/messages/` + id + `/content detail="map[part:raw status:200]"`,
+		`actor=admin action=phi.access resource=/api/v1/messages/` + id + `/content detail="map[part:transformed query.part:transformed status:200]"`,
+		`actor=admin action=phi.access resource=/api/v1/messages/export detail="map[messages:1 messages.ids:[\"` + id + `\"] query.flowId:adt status:200]"`,
+		`actor=admin action=phi.access resource=/api/v1/messages/unknown/content detail=map[status:404]`,
 		`actor=admin action=auth.failure resource=/api/v1/flows detail=map[status:401]`,
 		`actor=admin action=auth.login resource=/api/v1/auth/login detail=map[status:200]`,
 	} {

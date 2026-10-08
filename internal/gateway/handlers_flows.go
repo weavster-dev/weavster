@@ -76,12 +76,17 @@ func runtimeFieldError(doc map[string]any) string {
 	return ""
 }
 
-// decodeFlow reads a flow definition from the request body. Clients never
+// decodeFlow reads a flow definition of at most maxImportBytes. Clients never
 // send status (lifecycle operations own it); pathID, when set, must match
 // any id in the body.
 func decodeFlow(w http.ResponseWriter, r *http.Request, pathID string) (Flow, map[string]any, bool) {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxImportBytes))
 	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeStatusError(w, http.StatusRequestEntityTooLarge, "document larger than 50 MiB")
+			return Flow{}, nil, false
+		}
 		writeStatusError(w, http.StatusBadRequest, "could not read request body")
 		return Flow{}, nil, false
 	}
@@ -212,11 +217,25 @@ func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	res, err := s.cfg.Ingest.Ingest(r.Context(), r.PathValue("id"), body)
-	if err != nil {
+	writeIngestResult(w, res, err)
+}
+
+// writeIngestResult answers a message sent or reprocessed. A message stored
+// before a later failure is accepted (202), as every source does: the
+// server finishes it after a restart, and a resend would store it twice
+// under a new id and idempotency key (#107 D-80).
+func writeIngestResult(w http.ResponseWriter, res IngestResult, err error) {
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusAccepted, res)
+	case res.ID != "":
+		if res.Status == "" {
+			res.Status = "received" // stored; processing resumes
+		}
+		writeJSON(w, http.StatusAccepted, res)
+	default:
 		writeFlowError(w, err)
-		return
 	}
-	writeJSON(w, http.StatusAccepted, res)
 }
 
 func (s *Server) handleFlowAction(w http.ResponseWriter, r *http.Request) {
@@ -343,7 +362,7 @@ func (s *Server) handleActionAll(action string) http.HandlerFunc {
 // FlowBundleVersion is the export/import document version.
 const FlowBundleVersion = 1
 
-// maxImportBytes caps an import document.
+// maxImportBytes caps flow definition and import documents.
 const maxImportBytes = 50 << 20
 
 func (s *Server) handleFlowsExport(w http.ResponseWriter, r *http.Request) {

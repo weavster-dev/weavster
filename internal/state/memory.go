@@ -10,12 +10,19 @@ import (
 // MemStore is an in-memory Store (passthrough/buffered backend; tests + local
 // DX, constraint #3).
 type MemStore struct {
-	mu      sync.RWMutex
-	m       map[string]Message
-	flows   map[string]FlowDefinition
-	users   map[string]UserDocument
-	items   map[string]map[string]json.RawMessage // kind -> name -> value
-	lookups map[string]map[string]string          // group -> key -> value
+	mu       sync.RWMutex
+	m        map[string]Message
+	flows    map[string]FlowDefinition
+	users    map[string]UserDocument
+	items    map[string]map[string]json.RawMessage // kind -> name -> value
+	lookups  map[string]map[string]string          // group -> key -> value
+	audit    []AuditRecord                         // oldest first
+	auditSeq int64
+	events   []EventRecord // by id
+	eventIDs map[int64]bool
+	// Statistics: by flow, and samples oldest first.
+	flowStats []FlowStatsRecord
+	samples   []StatsSampleRecord
 }
 
 // NewMemStore returns an empty in-memory store.
@@ -36,7 +43,7 @@ func (s *MemStore) Put(_ context.Context, m Message) error {
 		}
 	}
 	m.UpdatedAt = now
-	s.m[m.ID] = cloneMessage(m)
+	s.m[m.ID] = storableText(cloneMessage(m))
 	return nil
 }
 
@@ -75,6 +82,27 @@ func (s *MemStore) Delete(_ context.Context, id string) error {
 	defer s.mu.Unlock()
 	delete(s.m, id)
 	return nil
+}
+
+func (s *MemStore) Count(_ context.Context, q Query) (int, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	n := 0
+	for _, m := range s.m {
+		if matches(m, q) {
+			n++
+		}
+	}
+	return n, nil
+}
+
+func (s *MemStore) ReceivedTimes(ctx context.Context, q Query) ([]time.Time, error) {
+	ms, err := s.Search(ctx, q)
+	out := make([]time.Time, len(ms))
+	for i, m := range ms {
+		out[i] = m.ReceivedAt
+	}
+	return out, err
 }
 
 func (s *MemStore) Search(_ context.Context, q Query) ([]Message, error) {

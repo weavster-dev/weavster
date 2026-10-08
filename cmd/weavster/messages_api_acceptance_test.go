@@ -63,7 +63,7 @@ func TestMessagesAPI(t *testing.T) {
 		contains     string
 	}{
 		{http.MethodGet, "/api/v1/messages/" + first, http.StatusOK, `"flowId":"a","status":"sent"`},
-		{http.MethodGet, "/api/v1/messages/" + first, http.StatusOK, `"attempts":{"out":{"attempts":1}}`},
+		{http.MethodGet, "/api/v1/messages/" + first, http.StatusOK, `"attempts":{"out":{"attempts":1,"lastAttemptAt":"`},
 		{http.MethodGet, "/api/v1/messages/" + first + "/content", http.StatusOK, "msg-0"},
 		{http.MethodGet, "/api/v1/messages/" + first + "/content?part=transformed", http.StatusOK, "msg-0"},
 		{http.MethodPost, "/api/v1/messages/" + first + "/reprocess", http.StatusAccepted, `"status":"sent"`},

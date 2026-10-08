@@ -1,0 +1,11 @@
+# Not needed to build the image; keeps the build context small and the
+# COPY layer cached across unrelated edits.
+.git
+.github
+bin
+site
+artifacts
+target
+coverage.out
+*.test
+/weavster

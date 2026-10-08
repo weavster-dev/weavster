@@ -40,7 +40,7 @@ func TestPipelineEndToEnd(t *testing.T) {
 	outDir := filepath.Join(t.TempDir(), "out")
 	addr := freeAddr(t)
 	base := "http://" + addr
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	stop := startCLI(t, []string{"server", "--config", cfg}, base+"/api/openapi.yaml")
 	defer stop()
 	c := apiClient{t: t, base: base}
@@ -59,7 +59,7 @@ func TestPipelineEndToEnd(t *testing.T) {
 	  ]
 	}`
 	createFlow(t, c, flow)
-	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"bad","transform":{"name":"t","steps":[{"build":{"template":"x"}}]}}`, admin); status != http.StatusBadRequest || !strings.Contains(body, "not supported yet") {
+	if status, body, _ := c.do(http.MethodPost, "/api/v1/flows", `{"id":"bad","transform":{"name":"t","steps":[{"filter":{"when":"a == b == c","action":"reject"}}]}}`, admin); status != http.StatusBadRequest || !strings.Contains(body, `invalid operand \"b == c\"`) {
 		t.Errorf("invalid flow: %d %q, want 400", status, body)
 	}
 

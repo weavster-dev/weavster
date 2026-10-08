@@ -201,3 +201,32 @@ func TestCoverageMatrix(t *testing.T) {
 		seen[e.Name] = true
 	}
 }
+
+func TestParseHL7ACKAndControlID(t *testing.T) {
+	for _, tt := range []struct {
+		in       string
+		code, id string
+		ok       bool
+	}{
+		{"MSH|^~\\&|A|B|C|D|1||ACK^A01|X|P|2.5\rMSA|AA|MSG1\r", "AA", "MSG1", true},
+		{"MSH|^~\\&|A\rMSA|CE|MSG2|busy\r", "CE", "MSG2", true},
+		{"MSH|^~\\&|A\rMSA|AR\r", "AR", "", true},
+		{"MSH|^~\\&|A\r", "", "", false},
+		{"MSH|^~\\&|A\rMSA||MSG1\r", "", "", false},
+		{"MSA|AA|MSG1\r", "", "", false},
+		{"PID|1\rMSA|AA|MSG1\r", "", "", false},
+		{"MSH|^~\\&|A|B|C|D|1||ORR^O02|X|P|2.5\rMSA|AA|MSG1\r", "AA", "MSG1", true},
+		{"hello", "", "", false},
+	} {
+		code, id, ok := ParseHL7ACK([]byte(tt.in))
+		if code != tt.code || id != tt.id || ok != tt.ok {
+			t.Errorf("%q: %q %q %v", tt.in, code, id, ok)
+		}
+	}
+	if got := HL7ControlID([]byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|C9|P|2.5\r")); got != "C9" {
+		t.Errorf("control id = %q", got)
+	}
+	if got := HL7ControlID([]byte("PID|1\r")); got != "" {
+		t.Errorf("control id without MSH = %q", got)
+	}
+}

@@ -26,6 +26,9 @@ func TestFlowStore(t *testing.T) {
 			return s.(flowStore)
 		},
 	}
+	if pg := testPostgres(t); pg != nil {
+		backends["postgres"] = func(*testing.T) flowStore { return pg.(flowStore) }
+	}
 	for name, open := range backends {
 		t.Run(name, func(t *testing.T) {
 			s := open(t)

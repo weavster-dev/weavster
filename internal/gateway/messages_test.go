@@ -16,6 +16,14 @@ import (
 // unknown.
 type messageOps struct{}
 
+// Count reports 7 matches, or fails for flowId=count-fails.
+func (messageOps) Count(_ context.Context, q MessageQuery) (int, error) {
+	if q.FlowID == "count-fails" {
+		return 0, errors.New("count failed")
+	}
+	return 7, nil
+}
+
 func (messageOps) Get(_ context.Context, id string) (Message, error) {
 	if id != "m" {
 		return Message{}, ErrMessageNotFound
@@ -47,8 +55,8 @@ func (messageOps) Reprocess(_ context.Context, id string) (IngestResult, error) 
 	return IngestResult{ID: "m2", Status: "sent"}, nil
 }
 
-func (messageOps) Export(_ context.Context, q MessageQuery, key []byte) ([]byte, int, error) {
-	return []byte(fmt.Sprintf("archive:%d:%t", q.Limit, key != nil)), 2, nil
+func (messageOps) Export(_ context.Context, q MessageQuery, key []byte) ([]byte, []string, error) {
+	return []byte(fmt.Sprintf("archive:%d:%t", q.Limit, key != nil)), []string{"m", "n"}, nil
 }
 
 func (messageOps) Import(_ context.Context, archive []byte, opts MessageImport) (MessageImportResult, error) {
@@ -99,6 +107,15 @@ func TestMessageHandlers(t *testing.T) {
 		{"bad limit", http.MethodGet, "/api/v1/messages?limit=5000", cfg, http.StatusBadRequest, "between 1 and 1000"},
 		{"bad offset", http.MethodGet, "/api/v1/messages?offset=-1", cfg, http.StatusBadRequest, "0 or more"},
 		{"bad sort", http.MethodGet, "/api/v1/messages?sort=status", cfg, http.StatusBadRequest, "sort must be"},
+		{"id range", http.MethodGet, "/api/v1/messages?idFrom=a&idTo=b", cfg, http.StatusOK, "[]"},
+		{"id range reversed", http.MethodGet, "/api/v1/messages?idFrom=b&idTo=a", cfg, http.StatusBadRequest, "idFrom must not be after idTo"},
+		{"bad minAttempts", http.MethodGet, "/api/v1/messages?minAttempts=0", cfg, http.StatusBadRequest, "minAttempts must be between 1 and 1000"},
+		{"bad maxAttempts", http.MethodGet, "/api/v1/messages?maxAttempts=x", cfg, http.StatusBadRequest, "maxAttempts must be between 1 and 1000"},
+		{"attempts reversed", http.MethodGet, "/api/v1/messages?minAttempts=3&maxAttempts=2", cfg, http.StatusBadRequest, "minAttempts must not be more than maxAttempts"},
+		{"metadata without a key", http.MethodGet, "/api/v1/messages?metadata.=x", cfg, http.StatusBadRequest, "must name a metadata key and be given once"},
+		{"metadata twice", http.MethodGet, "/api/v1/messages?metadata.a=1&metadata.a=2", cfg, http.StatusBadRequest, "must name a metadata key and be given once"},
+		{"too many metadata filters", http.MethodGet, "/api/v1/messages?" + manyMetadata(11), cfg, http.StatusBadRequest, "at most 10 metadata filters"},
+		{"count fails: the page without a total", http.MethodGet, "/api/v1/messages?flowId=count-fails", cfg, http.StatusOK, "[]"},
 		{"get", http.MethodGet, "/api/v1/messages/m", cfg, http.StatusOK, `"id":"m"`},
 		{"get unknown", http.MethodGet, "/api/v1/messages/zz", cfg, http.StatusNotFound, "message not found"},
 		{"content", http.MethodGet, "/api/v1/messages/m/content?part=transformed", cfg, http.StatusOK, "hello transformed"},
@@ -128,6 +145,32 @@ func TestMessageHandlers(t *testing.T) {
 				t.Errorf("got %d %q; want %d containing %q", rec.Code, rec.Body.String(), tt.status, tt.body)
 			}
 		})
+	}
+	// The total is in X-Total-Count.
+	rec := httptest.NewRecorder()
+	New(cfg).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/messages", nil))
+	if rec.Header().Get("X-Total-Count") != "7" {
+		t.Errorf("X-Total-Count = %q, want 7", rec.Header().Get("X-Total-Count"))
+	}
+	rec = httptest.NewRecorder()
+	New(cfg).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/messages?flowId=count-fails", nil))
+	if _, ok := rec.Header()["X-Total-Count"]; ok {
+		t.Error("X-Total-Count set although the count failed")
+	}
+	// The same invalid parameter is named every time.
+	for range 5 {
+		rec = httptest.NewRecorder()
+		New(cfg).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/v1/messages?metadata.b=1&metadata.b=2&metadata.=x", nil))
+		if !strings.Contains(rec.Body.String(), "metadata. must name") {
+			t.Fatalf("named %s, want metadata. (the first in order)", rec.Body.String())
+		}
+	}
+	// The new filters reach the store.
+	New(cfg).Router().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet,
+		"/api/v1/messages?idFrom=a&idTo=m&contentType=hl7v2&minAttempts=2&maxAttempts=5&metadata.source.file=a.hl7&metadata.region=eu", nil))
+	if got.IDFrom != "a" || got.IDTo != "m" || got.ContentType != "hl7v2" || got.MinAttempts != 2 || got.MaxAttempts != 5 ||
+		len(got.Metadata) != 2 || got.Metadata["source.file"] != "a.hl7" || got.Metadata["region"] != "eu" {
+		t.Errorf("query = %+v", got)
 	}
 	// The filters reach the store.
 	New(cfg).Router().ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet,
@@ -196,6 +239,8 @@ func TestMessagesBulkDelete(t *testing.T) {
 	}{
 		{"by flow", "/api/v1/messages?flowId=a", "", flows, http.StatusOK, `{"deleted":3,"busy":1,"restarted":[]}`, ""},
 		{"by status", "/api/v1/messages?status=errored", "", flows, http.StatusOK, `"deleted":3`, ""},
+		{"by metadata", "/api/v1/messages?metadata.source.file=a.hl7", "", flows, http.StatusOK, `"deleted":3`, ""},
+		{"by attempts", "/api/v1/messages?minAttempts=5", "", flows, http.StatusOK, `"deleted":3`, ""},
 		{"no filter", "/api/v1/messages", "", flows, http.StatusBadRequest, "all=true", ""},
 		{"all", "/api/v1/messages?all=true", "", flows, http.StatusOK, `"deleted":3`, ""},
 		{"all false is no filter", "/api/v1/messages?all=false", "", flows, http.StatusBadRequest, "all=true", ""},
@@ -232,4 +277,13 @@ func TestMessagesBulkDelete(t *testing.T) {
 			t.Errorf("unavailable: %d %s", rec.Code, rec.Body.String())
 		}
 	}
+}
+
+// manyMetadata is n distinct metadata filters as a query string.
+func manyMetadata(n int) string {
+	parts := make([]string, n)
+	for i := range parts {
+		parts[i] = fmt.Sprintf("metadata.k%d=v", i)
+	}
+	return strings.Join(parts, "&")
 }

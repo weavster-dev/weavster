@@ -287,9 +287,72 @@ func TestFileSourceUsesCurrentMoveTo(t *testing.T) {
 	settled(t, dir, "b.json", "{}")
 	flows.flows[0].Source = &gateway.FlowSource{Type: "file", Dir: dir, MoveTo: newTo} // updated; the cache is older
 	s.listed = s.now()                                                                 // keep the cached list for this pass
-	s.last["f"] = time.Time{}
+	s.clock.last["f"] = time.Time{}
 	s.pass(context.Background())
 	if _, err := os.Stat(filepath.Join(newTo, "b.json")); err != nil {
 		t.Errorf("not moved to the current moveTo: %v", err)
+	}
+}
+
+// TestListFilesRecursive: recursion reads files up to maxSourceDepth
+// levels of subdirectories and no deeper, filters by pattern, reports an
+// unreadable subdirectory, follows a root that is a symbolic link, and a
+// missing root is an error.
+func TestListFilesRecursive(t *testing.T) {
+	root := t.TempDir()
+	at := func(depth int) string {
+		p := root
+		for i := 0; i < depth; i++ {
+			p = filepath.Join(p, "d")
+		}
+		return p
+	}
+	for _, p := range []string{filepath.Join(root, "top.json"), filepath.Join(root, "top.txt"),
+		filepath.Join(at(maxSourceDepth), "deepest.json"), filepath.Join(at(maxSourceDepth+1), "too-deep.json"),
+		filepath.Join(root, "locked", "x.json")} {
+		if err := os.MkdirAll(filepath.Dir(p), 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(filepath.Join(root, "locked"), 0); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chmod(filepath.Join(root, "locked"), 0o750) }()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(root, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, ".cache"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".cache", ".x.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if files, _, _ := listFiles(root, true, ".*"); len(files) != 0 {
+		t.Errorf("a dot pattern entered a hidden directory: %v", files)
+	}
+	deepest := strings.Repeat("d/", maxSourceDepth) + "deepest.json"
+	for _, dir := range []string{root, link} {
+		files, skipped, err := listFiles(dir, true, "*.json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var rels []string
+		for _, f := range files {
+			rels = append(rels, f.rel)
+		}
+		want, wantSkipped := deepest+",top.json", "locked"
+		if os.Geteuid() == 0 { // root reads the locked directory anyway
+			want, wantSkipped = deepest+",locked/x.json,top.json", ""
+		}
+		if strings.Join(rels, ",") != want || strings.Join(skipped, ",") != wantSkipped {
+			t.Errorf("%s: listed %v, skipped %v; want %s, %s", dir, rels, skipped, want, wantSkipped)
+		}
+	}
+	if _, _, err := listFiles(filepath.Join(root, "missing"), true, "*"); err == nil {
+		t.Error("a missing root listed without error")
 	}
 }

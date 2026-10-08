@@ -295,7 +295,7 @@ func removalOrder(changes []ConfigChange) ([]ConfigChange, error) {
 			return nil, fmt.Errorf("%s: %w", c.Key, err)
 		}
 		id := strings.TrimPrefix(c.Key, "flow/")
-		deps[id], byID[id] = f.DependsOn, c
+		deps[id], byID[id] = f.Dependencies(), c // dependsOn and flow-destination targets
 	}
 	usedBy := map[string]int{} // removed flows that still depend on each flow
 	for _, ds := range deps {

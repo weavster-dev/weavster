@@ -11,35 +11,52 @@ import (
 	"math/big"
 	"regexp"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/weavster-dev/weavster/internal/compiler"
 )
 
-// ErrUnsupportedStep is returned by Compile for step kinds the interpreter
-// does not execute yet.
-var ErrUnsupportedStep = errors.New("dsl: step not supported yet")
-
 // Program is a validated transform ready to run.
 type Program struct {
 	name  string
 	steps []step
+	// build, the last step when present, renders the output.
+	build *buildStep
+}
+
+// Output is what a program produced.
+type Output struct {
+	Doc      map[string]any // the document after the steps
+	Filtered bool           // a filter step dropped the message
+	Excluded []string       // destinations excluded by destinationSet steps, sorted
+	// Body and Format are the build step's rendered output (nil and "" when
+	// the program has no build step: the output is Doc as JSON).
+	Body   []byte
+	Format string
 }
 
 type step interface {
-	// apply transforms doc in place and reports whether the message is
-	// filtered out.
-	apply(doc map[string]any) (filtered bool, err error)
+	// apply transforms doc in place, adds to excluded the destinations the
+	// message skips, and reports whether the message is filtered out.
+	apply(doc map[string]any, excluded map[string]bool) (filtered bool, err error)
 }
 
 // Compile validates t and prepares it for execution.
 func Compile(t compiler.Transform) (*Program, error) {
 	p := &Program{name: t.Name}
 	for i, s := range t.Steps {
+		if s.Build != nil && i != len(t.Steps)-1 {
+			return nil, fmt.Errorf("dsl: %s: step %d: build must be the last step", t.Name, i+1)
+		}
 		st, err := compileStep(s)
 		if err != nil {
 			return nil, fmt.Errorf("dsl: %s: step %d: %w", t.Name, i+1, err)
+		}
+		if b, ok := st.(buildStep); ok {
+			p.build = &b
+			continue
 		}
 		p.steps = append(p.steps, st)
 	}
@@ -64,30 +81,53 @@ func compileStep(s compiler.Step) (step, error) {
 	case s.Filter != nil:
 		return compileFilter(*s.Filter)
 	case s.Build != nil:
-		return nil, fmt.Errorf("build: %w", ErrUnsupportedStep)
+		return compileBuild(*s.Build)
 	default:
-		return nil, fmt.Errorf("destinationSet: %w", ErrUnsupportedStep)
+		return compileDestinationSet(*s.DestinationSet)
 	}
 }
 
-// Run applies the program to a copy of in and returns the result; in is
-// never modified. A nil in is treated as an empty object. filtered reports
-// that a filter step dropped the message; no later steps run.
-func (p *Program) Run(in map[string]any) (out map[string]any, filtered bool, err error) {
+// Format is the program's output format: its build step's, or "" when it
+// has none (the output is the document as JSON).
+func (p *Program) Format() string {
+	if p.build == nil {
+		return ""
+	}
+	return p.build.format
+}
+
+// Execute runs every step on a copy of in (never modified; nil is an empty
+// object) and returns what they produced: the document, whether a filter
+// dropped it (no later steps run), the excluded destinations, and the build
+// step's rendered output.
+func (p *Program) Execute(in map[string]any) (Output, error) {
 	doc, _ := deepCopy(in).(map[string]any)
 	if doc == nil {
 		doc = map[string]any{}
 	}
+	skip := map[string]bool{}
 	for i, st := range p.steps {
-		dropped, err := st.apply(doc)
+		dropped, err := st.apply(doc, skip)
 		if err != nil {
-			return nil, false, fmt.Errorf("dsl: %s: step %d: %w", p.name, i+1, err)
+			return Output{}, fmt.Errorf("dsl: %s: step %d: %w", p.name, i+1, err)
 		}
 		if dropped {
-			return doc, true, nil
+			return Output{Doc: doc, Filtered: true}, nil
 		}
 	}
-	return doc, false, nil
+	out := Output{Doc: doc}
+	for name := range skip {
+		out.Excluded = append(out.Excluded, name)
+	}
+	sort.Strings(out.Excluded)
+	if p.build != nil {
+		body, err := p.build.render(doc)
+		if err != nil {
+			return Output{}, fmt.Errorf("dsl: %s: step %d: build: %w", p.name, len(p.steps)+1, err)
+		}
+		out.Body, out.Format = body, p.build.format
+	}
+	return out, nil
 }
 
 // deepCopy copies JSON-shaped values so no two fields share an object or
@@ -123,6 +163,23 @@ func parsePath(s string) (path, error) {
 		return nil, fmt.Errorf("invalid path %q", s)
 	}
 	return parts, nil
+}
+
+// CheckPath reports whether s is a path the DSL reads: dot-separated
+// names, numbers indexing lists.
+func CheckPath(s string) error {
+	_, err := parsePath(s)
+	return err
+}
+
+// Lookup returns the value at path s in doc, or false when any segment is
+// missing (or s is not a path), as transforms read it.
+func Lookup(doc map[string]any, s string) (any, bool) {
+	p, err := parsePath(s)
+	if err != nil {
+		return nil, false
+	}
+	return p.get(doc)
 }
 
 // get returns the value at p, or false when any segment is missing.
@@ -210,7 +267,7 @@ func compileMap(m compiler.MapStep) (step, error) {
 	return mapStep{from: from, to: to, typ: m.Type}, nil
 }
 
-func (m mapStep) apply(doc map[string]any) (bool, error) {
+func (m mapStep) apply(doc map[string]any, _ map[string]bool) (bool, error) {
 	v, ok := m.from.get(doc)
 	if !ok {
 		return false, nil // a missing source leaves the target untouched
@@ -307,31 +364,44 @@ func compileSet(s compiler.SetStep) (step, error) {
 	if err != nil {
 		return nil, fmt.Errorf("set.field: %w", err)
 	}
-	var parts []templatePart
-	last := 0
-	for _, m := range placeholder.FindAllStringSubmatchIndex(s.Expr, -1) {
-		p, err := parsePath(s.Expr[m[2]:m[3]])
-		if err != nil {
-			return nil, fmt.Errorf("set.expr: %w", err)
-		}
-		parts = append(parts, templatePart{literal: s.Expr[last:m[0]]}, templatePart{ref: p})
-		last = m[1]
+	parts, err := compileTemplate(s.Expr)
+	if err != nil {
+		return nil, fmt.Errorf("set.expr: %w", err)
 	}
-	parts = append(parts, templatePart{literal: s.Expr[last:]})
 	return setStep{field: field, parts: parts}, nil
 }
 
-func (s setStep) apply(doc map[string]any) (bool, error) {
+// compileTemplate splits a template into literal and {{path}} parts.
+func compileTemplate(tmpl string) ([]templatePart, error) {
+	var parts []templatePart
+	last := 0
+	for _, m := range placeholder.FindAllStringSubmatchIndex(tmpl, -1) {
+		p, err := parsePath(tmpl[m[2]:m[3]])
+		if err != nil {
+			return nil, err
+		}
+		parts = append(parts, templatePart{literal: tmpl[last:m[0]]}, templatePart{ref: p})
+		last = m[1]
+	}
+	return append(parts, templatePart{literal: tmpl[last:]}), nil
+}
+
+// fill renders parts from doc, passing each value through escape.
+func fill(parts []templatePart, doc map[string]any, escape func(string) string) string {
 	var b strings.Builder
-	for _, part := range s.parts {
+	for _, part := range parts {
 		if part.ref == nil {
 			b.WriteString(part.literal)
 			continue
 		}
 		v, _ := part.ref.get(doc)
-		b.WriteString(text(v))
+		b.WriteString(escape(text(v)))
 	}
-	return false, s.field.set(doc, b.String())
+	return b.String()
+}
+
+func (s setStep) apply(doc map[string]any, _ map[string]bool) (bool, error) {
+	return false, s.field.set(doc, fill(s.parts, doc, func(v string) string { return v }))
 }
 
 // --- filter ---
@@ -348,10 +418,16 @@ func (o operand) value(doc map[string]any) (any, bool) {
 	return o.literal, true
 }
 
-type filterStep struct {
+// condition is a when expression: a truthy path, or two operands compared
+// with == or !=.
+type condition struct {
 	left, right operand
 	op          string // "==", "!=", or "" for a truthy test of left
-	reject      bool
+}
+
+type filterStep struct {
+	when   condition
+	reject bool
 }
 
 // splitComparison finds the first == or != outside quoted strings.
@@ -388,28 +464,70 @@ func compileFilter(f compiler.FilterStep) (step, error) {
 	default:
 		return nil, fmt.Errorf("filter.action must be reject or accept, got %q", f.Action)
 	}
-	when := strings.TrimSpace(f.When)
+	cond, err := parseCondition(f.When)
+	if err != nil {
+		return nil, fmt.Errorf("filter.when: %w", err)
+	}
+	st.when = cond
+	return st, nil
+}
+
+// parseCondition parses a when expression.
+func parseCondition(when string) (condition, error) {
+	when = strings.TrimSpace(when)
 	if l, op, rt, ok := splitComparison(when); ok {
 		left, err := parseOperand(l)
 		if err != nil {
-			return nil, fmt.Errorf("filter.when: %w", err)
+			return condition{}, err
 		}
 		right, err := parseOperand(rt)
 		if err != nil {
-			return nil, fmt.Errorf("filter.when: %w", err)
+			return condition{}, err
 		}
-		st.left, st.op, st.right = left, op, right
-		return st, nil
+		return condition{left: left, op: op, right: right}, nil
 	}
 	left, err := parseOperand(when)
 	if err != nil {
-		return nil, fmt.Errorf("filter.when: %w (use a path, or <operand> == / != <operand>)", err)
+		return condition{}, fmt.Errorf("%w (use a path, or <operand> == / != <operand>)", err)
 	}
 	if left.path == nil {
-		return nil, fmt.Errorf("filter.when: %q is a literal; use a path, or <operand> == / != <operand>", when)
+		return condition{}, fmt.Errorf("%q is a literal; use a path, or <operand> == / != <operand>", when)
 	}
-	st.left = left
+	return condition{left: left}, nil
+}
+
+// destinationSetStep excludes destinations for the message when its
+// condition holds (always without one), #107 D-20.
+type destinationSetStep struct {
+	when    *condition
+	exclude []string
+}
+
+func compileDestinationSet(d compiler.DestinationSetStep) (step, error) {
+	switch {
+	case len(d.Include) > 0:
+		return nil, errors.New("destinationSet.include is not supported: destinations can only be excluded")
+	case len(d.Exclude) == 0:
+		return nil, errors.New("destinationSet.exclude must name at least one destination")
+	}
+	st := destinationSetStep{exclude: d.Exclude}
+	if strings.TrimSpace(d.When) != "" {
+		cond, err := parseCondition(d.When)
+		if err != nil {
+			return nil, fmt.Errorf("destinationSet.when: %w", err)
+		}
+		st.when = &cond
+	}
 	return st, nil
+}
+
+func (d destinationSetStep) apply(doc map[string]any, excluded map[string]bool) (bool, error) {
+	if d.when == nil || d.when.holds(doc) {
+		for _, name := range d.exclude {
+			excluded[name] = true
+		}
+	}
+	return false, nil
 }
 
 func parseOperand(s string) (operand, error) {
@@ -434,23 +552,21 @@ func parseOperand(s string) (operand, error) {
 	return operand{path: p}, nil
 }
 
-func (f filterStep) apply(doc map[string]any) (bool, error) {
-	var cond bool
-	switch f.op {
-	case "":
-		v, ok := f.left.value(doc)
-		cond = ok && truthy(v)
-	default:
-		l, _ := f.left.value(doc)
-		r, _ := f.right.value(doc)
-		cond = equal(l, r)
-		if f.op == "!=" {
-			cond = !cond
-		}
+// holds evaluates the condition on doc.
+func (c condition) holds(doc map[string]any) bool {
+	if c.op == "" {
+		v, ok := c.left.value(doc)
+		return ok && truthy(v)
 	}
+	l, _ := c.left.value(doc)
+	r, _ := c.right.value(doc)
+	return equal(l, r) == (c.op == "==")
+}
+
+func (f filterStep) apply(doc map[string]any, _ map[string]bool) (bool, error) {
 	// reject drops the message when the condition holds; accept drops it
 	// when the condition does not hold.
-	return cond == f.reject, nil
+	return f.when.holds(doc) == f.reject, nil
 }
 
 func truthy(v any) bool {

@@ -189,3 +189,18 @@ func userErr(err error) error {
 	}
 	return err
 }
+
+// Preferences returns the user's preferences, kept with the account.
+func (a userAdminAdapter) Preferences(ctx context.Context, username string) (map[string]string, error) {
+	prefs, err := a.p.Preferences(ctx, username)
+	return prefs, userErr(err)
+}
+
+func (a userAdminAdapter) SetPreferences(ctx context.Context, username string, prefs map[string]string, asAdmin bool) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := a.adminTarget(ctx, username, asAdmin); err != nil {
+		return err
+	}
+	return userErr(a.p.SetPreferences(ctx, username, prefs))
+}

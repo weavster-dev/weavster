@@ -56,7 +56,8 @@ func TestOpenAPIMatchesRoutes(t *testing.T) {
 		}
 	}
 	routed := map[string]bool{}
-	mux, ok := New(Config{}).Router().(*chi.Mux)
+	// Optional routes mounted as the server mounts them.
+	mux, ok := New(Config{Metrics: http.NotFoundHandler()}).Router().(*chi.Mux)
 	if !ok {
 		t.Fatal("router is not a chi mux")
 	}
@@ -85,12 +86,12 @@ func TestOpenAPIMatchesRoutes(t *testing.T) {
 	}
 }
 
-// TestOpenAPIVersionHeader: every response of a versioned operation declares
-// the Weavster-API-Version header the server sends.
+// TestOpenAPIVersionHeader: every response of a versioned operation
+// (under /api/v1) declares the Weavster-API-Version header the server sends.
 func TestOpenAPIVersionHeader(t *testing.T) {
 	for path, item := range loadSpec(t).Paths.Map() {
-		if path == "/api/openapi.yaml" {
-			continue
+		if !strings.HasPrefix(path, "/api/"+APIVersion+"/") {
+			continue // /api/openapi.yaml, /metrics
 		}
 		for method, op := range item.Operations() {
 			for status, resp := range op.Responses.Map() {
@@ -332,7 +333,8 @@ func TestOpenAPIFlowSourceVariants(t *testing.T) {
 		{`{"type":"http"}`, false},
 		{`{"type":"http","address":":9001","dir":"/in"}`, false},
 		{`{"type":"file","dir":"/in","method":"POST"}`, false},
-		{`{"type":"file","dir":"/in","recursive":true}`, false},
+		{`{"type":"file","dir":"/in","recursive":true}`, true},
+		{`{"type":"http","address":":9001","recursive":true}`, false},
 		{`{"type":"http","address":":9001","username":"lab","passwordEnv":"WEAVSTER_SOURCE_LAB","certFile":"/c","keyFile":"/k"}`, true},
 		{`{"type":"http","address":":9001","username":"lab"}`, false},
 		{`{"type":"http","address":":9001","keyFile":"/k"}`, false},
@@ -358,6 +360,28 @@ func TestOpenAPIFlowSourceVariants(t *testing.T) {
 
 // TestOpenAPIFlowDestinationOptions: the request options apply to http
 // destinations only, like flow.schema.json.
+// TestOpenAPIFlowSourceDatabase: a database source needs its fields and
+// an interval of at least a second, like flow.schema.json.
+func TestOpenAPIFlowSourceDatabase(t *testing.T) {
+	schema := loadSpec(t).Components.Schemas["FlowSource"].Value
+	base := `"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_X","query":"SELECT 1 AS id","idColumn":"id","update":{"table":"t","key":"id","set":{"a":"1"}}`
+	for doc, ok := range map[string]bool{
+		`{` + base + `}`:                       true,
+		`{` + base + `,"pollIntervalMs":1000}`: true,
+		`{` + base + `,"pollIntervalMs":500}`:  false,
+		`{"type":"database","driver":"sqlite","dsnEnv":"WEAVSTER_DB_X","query":"SELECT 1","idColumn":"id"}`: false,
+		`{` + base + `,"dir":"/in"}`: false,
+	} {
+		var v any
+		if err := json.Unmarshal([]byte(doc), &v); err != nil {
+			t.Fatal(err)
+		}
+		if err := schema.VisitJSON(v); (err == nil) != ok {
+			t.Errorf("%s: %v", doc, err)
+		}
+	}
+}
+
 func TestOpenAPIFlowDestinationOptions(t *testing.T) {
 	schema := loadSpec(t).Components.Schemas["FlowDestination"].Value
 	for _, tt := range []struct {
@@ -367,6 +391,18 @@ func TestOpenAPIFlowDestinationOptions(t *testing.T) {
 		{`{"name":"a","type":"http","url":"https://x","method":"PUT","timeoutMs":5000,"maxRedirects":2}`, true},
 		{`{"name":"a","type":"file","dir":"/out"}`, true},
 		{`{"name":"a","type":"file","dir":"/out","timeoutMs":5000}`, false},
+		{`{"name":"a","type":"mllp","address":"lab:2575","timeoutMs":5000}`, true},
+		{`{"name":"a","type":"mllp","address":"lab:2575","maxRedirects":1}`, false},
+		{`{"name":"a","type":"mllp","address":"lab:2575","tls":true,"caFile":"/ca.pem"}`, true},
+		{`{"name":"a","type":"mllp","address":"lab:2575","caFile":"/ca.pem"}`, false},
+		{`{"name":"a","type":"mllp","address":"lab:2575","tls":false,"caFile":"/ca.pem"}`, false},
+		{`{"name":"a","type":"http","url":"https://x","tls":true}`, false},
+		{`{"name":"a","type":"mllp","address":"lab:2575","frameStart":"02","frameEnd":"03","ackMode":"none"}`, true},
+		{`{"name":"a","type":"mllp","address":"lab:2575","frameEnd":"1C0D0A"}`, false},
+		{`{"name":"a","type":"file","dir":"/out","ackMode":"none"}`, false},
+		{`{"name":"a","type":"flow","flow":"next"}`, true},
+		{`{"name":"a","type":"flow"}`, false},
+		{`{"name":"a","type":"flow","flow":"next","dir":"/o"}`, false},
 		{`{"name":"a","type":"http","url":"https://x","method":"GET"}`, false},
 		{`{"name":"a","type":"http","url":"https://x","maxRedirects":11}`, false},
 	} {

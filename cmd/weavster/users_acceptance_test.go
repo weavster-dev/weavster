@@ -16,13 +16,13 @@ import (
 )
 
 // TestUsersSurviveRestart proves durable local users: the first-run admin is
-// created once per data directory, and a changed password and an active
+// created once per database, and a changed password and an active
 // lockout persist across restarts.
 func TestUsersSurviveRestart(t *testing.T) {
 	t.Setenv(envBootstrapPassword, "")
 	addr := freeAddr(t)
 	base := "http://" + addr
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n"+
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+durableStoreConfig(t)+
 		"auth: {lockout: {retryLimit: 2, lockoutPeriodSeconds: 600}}\n")
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: base}

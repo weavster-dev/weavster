@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v5"
+
+	"github.com/weavster-dev/weavster/internal/compiler"
 )
 
 // Schema is the flow-definition JSON Schema, published as
@@ -53,10 +55,19 @@ func mustReservedIDs() map[string]bool {
 	return out
 }
 
+// AddSchemas adds flow.schema.json and the schemas it refers to (the
+// transform DSL's) to c, so any schema can refer to flows by SchemaID.
+func AddSchemas(c *jsonschema.Compiler) error {
+	if err := c.AddResource(SchemaID, bytes.NewReader(Schema)); err != nil {
+		return err
+	}
+	return c.AddResource(compiler.SchemaID, bytes.NewReader(compiler.Schema))
+}
+
 func mustCompileFlowSchema() *jsonschema.Schema {
 	c := jsonschema.NewCompiler()
 	c.Draft = jsonschema.Draft2020
-	if err := c.AddResource(SchemaID, bytes.NewReader(Schema)); err != nil {
+	if err := AddSchemas(c); err != nil {
 		panic(err)
 	}
 	return c.MustCompile(SchemaID)
@@ -101,7 +112,8 @@ func ValidateDoc(doc map[string]any) error {
 		if loc == "" {
 			loc = "/"
 		}
-		msgs = append(msgs, loc+": "+leaf.Message)
+		// A nullable enum's allowed values end in Go's <nil>: say null.
+		msgs = append(msgs, loc+": "+strings.ReplaceAll(leaf.Message, "<nil>", "null"))
 	}
 	sort.Strings(msgs)
 	if len(msgs) > 3 {

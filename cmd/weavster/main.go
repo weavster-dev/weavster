@@ -10,12 +10,43 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
+	"strings"
+
+	"github.com/weavster-dev/weavster/internal/state"
 )
 
+// version and buildDate are set by release builds
+// (-ldflags "-X main.version=... -X main.buildDate=...", scripts/release.sh).
 var (
 	version   = "0.1.0"
 	buildDate = "unknown"
 )
+
+// runVersion prints this binary's version, build date, and platform; it
+// needs no server (the shell's version command asks the server).
+func runVersion(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("version", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { _, _ = fmt.Fprintln(fs.Output(), "Usage: weavster version") }
+	if code, ok := parseFlags(fs, args, stderr); !ok {
+		if code == 0 {
+			fs.SetOutput(stdout)
+			fs.Usage()
+		}
+		return code
+	}
+	if fs.NArg() > 0 {
+		_, _ = fmt.Fprintf(stderr, "Error: unexpected arguments %q\n", fs.Args())
+		fs.Usage()
+		return 2
+	}
+	_, _ = fmt.Fprintf(stdout, "weavster %s (built %s, %s, %s/%s)\n", version, buildDate, runtime.Version(), runtime.GOOS, runtime.GOARCH)
+	return 0
+}
+
+// The store records which release applied each schema migration.
+func init() { state.AppVersion = version }
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
@@ -50,6 +81,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			return runServer(args[1:], stderr)
 		case "config":
 			return runConfig(args[1:], stdout, stderr)
+		case "version":
+			return runVersion(args[1:], stdout, stderr)
 		}
 	}
 
@@ -61,7 +94,8 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		password = fs.String("p", "", "login password")
 		script   = fs.String("s", "", "script file (batch mode)")
 		ver      = fs.Bool("v", false, "print the server's version")
-		config   = fs.String("c", "", "connection file (YAML: address, user, password)")
+		config   = fs.String("c", "", "connection file (YAML: address, user, password, ca)")
+		ca       = fs.String("ca", "", "PEM file of CA certificates trusted for an https address")
 		help     = fs.Bool("h", false, "print usage and exit")
 		debug    = fs.Bool("d", false, "debug mode (print the cause chain of errors)")
 	)
@@ -75,7 +109,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		printUsage(stdout)
 		return 0
 	}
-	conn := connection{Address: *addr, User: *user, Password: *password}
+	conn := connection{Address: *addr, User: *user, Password: *password, CA: *ca}
 	if *config != "" {
 		file, err := loadConnection(*config)
 		if err != nil {
@@ -89,6 +123,18 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 2
 	}
 	client := newHTTPClient(conn.Address, conn.User, conn.Password)
+	if conn.CA != "" {
+		if err := client.withCA(conn.CA); err != nil {
+			_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+			return 2
+		}
+		if !strings.HasPrefix(client.base, "https://") {
+			_, _ = fmt.Fprintf(stderr, "Warning: -ca is used only for https addresses; %s is not one\n", client.base)
+		}
+	}
+	if conn.User != "" && plainCredentials(client.base) {
+		_, _ = fmt.Fprintf(stderr, "Warning: %s is plain HTTP: the password is sent unencrypted; use https\n", client.base)
+	}
 	ctx := context.Background()
 	if conn.User != "" {
 		if err := client.login(ctx); err != nil {
@@ -119,8 +165,9 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 func printUsage(w io.Writer) {
 	_, _ = fmt.Fprintf(w, `Usage: weavster [flags]            interactive shell (or batch mode with -s)
        weavster server [--config FILE] [address]
-       weavster test [--filter NAME] [--format junit|json] [--output DIR]
+       weavster test [--filter NAME] [--format junit|json] [--output DIR] [PATH...]
        weavster config validate FILE...   check config-as-code files offline
+       weavster version                   print this binary's version
 
 Flags:
   -a address   Server address to connect to (default http://127.0.0.1:8080)
@@ -128,7 +175,8 @@ Flags:
   -p password  Login password
   -s script    Script file (batch mode)
   -v           Print the server's version
-  -c file      Connection file (YAML: address, user, password); flags override it
+  -c file      Connection file (YAML: address, user, password, ca); flags override it
+  -ca file     PEM file of CA certificates to trust for an https address (a private CA)
   -h           Print usage and exit
   -d           Debug mode (print the cause chain of errors)
 `)

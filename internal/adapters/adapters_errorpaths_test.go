@@ -10,6 +10,7 @@ import (
 	"net/smtp"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestSMTPSinkWriteError covers the error branch of SMTPSink.Write, which was
@@ -186,7 +187,9 @@ func TestMLLPSinkDialError(t *testing.T) {
 // MLLPSink.Write where an established connection fails on write.
 func TestMLLPSinkWriteError(t *testing.T) {
 	sink := NewMLLPSink("127.0.0.1:0")
-	sink.conn = &failingConn{err: errors.New("write failure")}
+	sink.dialer = func(context.Context, string) (net.Conn, error) {
+		return &failingConn{err: errors.New("write failure")}, nil
+	}
 	if err := sink.Write(context.Background(), Message{Body: []byte("body")}); err == nil {
 		t.Error("Write() expected conn write error, got nil")
 	}
@@ -229,6 +232,7 @@ type failingConn struct {
 	err error
 }
 
-func (c *failingConn) Write([]byte) (int, error) { return 0, c.err }
-func (c *failingConn) Read([]byte) (int, error)  { return 0, c.err }
-func (c *failingConn) Close() error              { return nil }
+func (c *failingConn) Write([]byte) (int, error)   { return 0, c.err }
+func (c *failingConn) Read([]byte) (int, error)    { return 0, c.err }
+func (c *failingConn) Close() error                { return nil }
+func (c *failingConn) SetDeadline(time.Time) error { return nil }

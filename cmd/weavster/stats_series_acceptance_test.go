@@ -123,8 +123,7 @@ func TestStatsSeries(t *testing.T) {
 // starts, not one interval later.
 func TestStatsSeriesFirstSample(t *testing.T) {
 	cfg := serverconfig.Default()
-	cfg.Store.Dialect = serverconfig.DialectSQLite
-	cfg.Paths.DataDir = t.TempDir()
+	cfg.Store.Dialect, cfg.Store.DSN = serverconfig.DialectPostgres, postgresStoreDSN(t)
 	first := startComposed(t, cfg, io.Discard)
 	createFlow(t, first, `{"id":"adt","destinations":[{"name":"out","type":"file","dir":"`+t.TempDir()+`"}]}`)
 

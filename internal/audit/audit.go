@@ -51,8 +51,12 @@ func (s *LocalSink) Record(_ context.Context, e Entry) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.seq++
-	e.ID = s.seq
-	e.At = time.Now()
+	if e.ID == 0 { // otherwise the stored entry's id, so both match
+		e.ID = s.seq
+	}
+	if e.At.IsZero() {
+		e.At = time.Now()
+	}
 	e.Detail = RedactSensitive(e.Detail)
 	if len(s.entries) < maxEntries {
 		s.entries = append(s.entries, e)

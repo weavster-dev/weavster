@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/weavster-dev/weavster/internal/state"
 )
@@ -27,11 +28,21 @@ func TestIdempotencyKey(t *testing.T) {
 }
 
 func TestSemanticsForAdapter(t *testing.T) {
-	if SemanticsForAdapter("tcp") != SemanticsAtLeastOnce {
-		t.Error("raw tcp mllp must be at-least-once")
-	}
-	if SemanticsForAdapter("http") != SemanticsExactlyOnce {
-		t.Error("http must be exactly-once")
+	for adapter, want := range map[string]DeliverySemantics{
+		"http":        SemanticsKeySent,
+		"web-service": SemanticsAtLeastOnce,
+		"tcp":         SemanticsAtLeastOnce,
+		"mllp":        SemanticsAtLeastOnce,
+		"file":        SemanticsAtLeastOnce,
+		"smtp":        SemanticsAtLeastOnce,
+		"document":    SemanticsAtLeastOnce,
+		"interflow":   SemanticsKeySent,
+		"database":    SemanticsAtLeastOnce, // the key only reaches the table with keyColumn
+		"something":   SemanticsAtLeastOnce,
+	} {
+		if got := SemanticsForAdapter(adapter); got != want {
+			t.Errorf("%s: %s, want %s", adapter, got, want)
+		}
 	}
 }
 
@@ -48,43 +59,32 @@ func TestReceiveAndTransform(t *testing.T) {
 		t.Errorf("status = %s", m.Status)
 	}
 
-	if err := o.Transform(ctx, "1", func(b []byte) ([]byte, error) { return []byte("done"), nil }); err != nil {
-		t.Fatal(err)
-	}
-	m, _ = s.Get(ctx, "1")
-	if m.Status != state.StatusTransformed || string(m.Transformed) != "done" {
-		t.Errorf("after transform: %+v", m)
-	}
-}
-
-func TestTransformPropagatesFailuresWithoutPersistingChanges(t *testing.T) {
-	ctx := context.Background()
-	s := state.NewMemStore()
-	o := New(s, nil, Options{})
-
-	if err := o.Transform(ctx, "missing", func([]byte) ([]byte, error) {
-		return []byte("unexpected"), nil
-	}); err == nil {
-		t.Fatal("Transform() missing message error = nil, want non-nil")
-	}
-
-	original := msg("1")
-	if err := s.Put(ctx, original); err != nil {
-		t.Fatal(err)
-	}
-	transformErr := errors.New("transform failed")
-	if err := o.Transform(ctx, "1", func([]byte) ([]byte, error) {
-		return nil, transformErr
-	}); !errors.Is(err, transformErr) {
-		t.Errorf("Transform() error = %v, want %v", err, transformErr)
-	}
-
-	got, err := s.Get(ctx, "1")
+	stored, err := o.SetTransformed(ctx, "1", []byte("done"), "hl7v2", map[string]string{"k": "v"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Status != original.Status || string(got.Transformed) != string(original.Transformed) {
-		t.Errorf("message persisted after transform failure: %+v", got)
+	m, _ = s.Get(ctx, "1")
+	if m.Status != state.StatusTransformed || string(m.Transformed) != "done" || m.Metadata["k"] != "v" || stored.Metadata["k"] != "v" || m.ContentType != "hl7v2" {
+		t.Errorf("after transform: %+v", m)
+	}
+	if _, err := o.SetTransformed(ctx, "1", []byte("again"), "", nil); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ = s.Get(ctx, "1"); string(m.Transformed) != "again" || m.Metadata["k"] != "v" || m.ContentType != "hl7v2" {
+		t.Errorf("metadata not kept: %+v", m)
+	}
+	if _, err := o.SetTransformed(ctx, "1", []byte("again"), "", map[string]string{"k": ""}); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ = s.Get(ctx, "1"); m.Metadata["k"] != "" {
+		t.Errorf("empty value did not remove the key: %+v", m)
+	}
+}
+
+func TestSetTransformedMissingMessage(t *testing.T) {
+	o := New(state.NewMemStore(), nil, Options{})
+	if _, err := o.SetTransformed(context.Background(), "missing", []byte("x"), "", nil); err == nil {
+		t.Fatal("SetTransformed() on a missing message = nil, want an error")
 	}
 }
 
@@ -206,3 +206,40 @@ func TestBackoff(t *testing.T) {
 		t.Errorf("backoff(2) = %v", o.Backoff(2))
 	}
 }
+
+// TestDeliverRecordsCode: a failed attempt records its code (an error's
+// Code()) and when it ended; a success clears the code.
+func TestDeliverRecordsCode(t *testing.T) {
+	ctx := context.Background()
+	s := state.NewMemStore()
+	_ = s.Put(ctx, msg("1"))
+	fail := true
+	o := New(s, func(context.Context, state.Message, string, string) error {
+		if fail {
+			return coded{"http:503"}
+		}
+		return nil
+	}, Options{BackoffBase: time.Millisecond})
+	before := time.Now()
+	_ = o.Deliver(ctx, "1", "d")
+	m, _ := s.Get(ctx, "1")
+	if a := m.Attempts["d"]; a.LastCode != "http:503" || a.LastAttemptAt.Before(before) {
+		t.Errorf("after a failure: %+v", a)
+	}
+	fail = false
+	_ = o.Deliver(ctx, "1", "d")
+	m, _ = s.Get(ctx, "1")
+	if a := m.Attempts["d"]; a.LastCode != "" || a.LastError != "" || a.LastAttemptAt.IsZero() {
+		t.Errorf("after a success: %+v", a)
+	}
+	plain := New(s, func(context.Context, state.Message, string, string) error { return errors.New("x") }, Options{})
+	_ = plain.Deliver(ctx, "1", "e")
+	if m, _ = s.Get(ctx, "1"); m.Attempts["e"].LastCode != "" || m.Attempts["e"].LastError != "x" {
+		t.Errorf("an error without a code: %+v", m.Attempts["e"])
+	}
+}
+
+type coded struct{ code string }
+
+func (c coded) Error() string { return "failed" }
+func (c coded) Code() string  { return c.code }

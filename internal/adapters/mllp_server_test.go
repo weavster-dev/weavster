@@ -3,9 +3,12 @@ package adapters
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -30,7 +33,7 @@ func TestReadFrame(t *testing.T) {
 		{"cut off after FS", "\x0bMSH\x1c", "", 100, io.EOF},
 		{"no start", "MSH", "", 100, io.EOF},
 	} {
-		got, err := readFrame(bufio.NewReaderSize(strings.NewReader(tt.in), 16), tt.max)
+		got, err := readFramed(bufio.NewReaderSize(strings.NewReader(tt.in), 16), tt.max, MLLPFraming{})
 		if !errors.Is(err, tt.err) || string(got) != tt.want {
 			t.Errorf("%s: %q, %v; want %q, %v", tt.name, got, err, tt.want, tt.err)
 		}
@@ -38,13 +41,13 @@ func TestReadFrame(t *testing.T) {
 	// A large frame spans many buffer fills; the next frame still reads.
 	big := strings.Repeat("y", 5000)
 	r := bufio.NewReaderSize(strings.NewReader("\x0b"+big+"\x1c\r\x0bnext\x1c\r"), 16)
-	if got, err := readFrame(r, 10000); err != nil || string(got) != big {
+	if got, err := readFramed(r, 10000, MLLPFraming{}); err != nil || string(got) != big {
 		t.Fatalf("big frame: %d bytes, %v", len(got), err)
 	}
-	if head, err := readFrame(bufio.NewReaderSize(strings.NewReader("\x0b"+big+"\x1c\r"), 16), 100); !errors.Is(err, ErrMLLPFrameTooLarge) || len(head) == 0 || len(head) > maxFrameHead || !strings.HasPrefix(big, string(head)) {
+	if head, err := readFramed(bufio.NewReaderSize(strings.NewReader("\x0b"+big+"\x1c\r"), 16), 100, MLLPFraming{}); !errors.Is(err, ErrMLLPFrameTooLarge) || len(head) == 0 || len(head) > maxFrameHead || !strings.HasPrefix(big, string(head)) {
 		t.Errorf("big frame over the limit: %d bytes kept, %v", len(head), err)
 	}
-	if got, err := readFrame(r, 10000); err != nil || string(got) != "next" {
+	if got, err := readFramed(r, 10000, MLLPFraming{}); err != nil || string(got) != "next" {
 		t.Errorf("frame after a big one: %q, %v", got, err)
 	}
 }
@@ -52,7 +55,7 @@ func TestReadFrame(t *testing.T) {
 // readReply reads one framed reply from conn.
 func readReply(t *testing.T, r *bufio.Reader) string {
 	t.Helper()
-	got, err := readFrame(r, 1<<20)
+	got, err := readFramed(r, 1<<20, MLLPFraming{})
 	if err != nil {
 		t.Fatalf("reply: %v", err)
 	}
@@ -92,8 +95,8 @@ func TestMLLPServer(t *testing.T) {
 	}
 	a, ar := dial()
 	b, br := dial()
-	_, _ = a.Write(append(frameMLLP([]byte("one")), frameMLLP([]byte("two"))...))
-	_, _ = b.Write(frameMLLP([]byte(strings.Repeat("z", 17))))
+	_, _ = a.Write(append(MLLPFraming{}.wrap([]byte("one")), MLLPFraming{}.wrap([]byte("two"))...))
+	_, _ = b.Write(MLLPFraming{}.wrap([]byte(strings.Repeat("z", 17))))
 	if got := readReply(t, ar) + "|" + readReply(t, ar); got != "ack one|ack two" {
 		t.Errorf("replies on a = %q", got)
 	}
@@ -111,7 +114,7 @@ func TestMLLPServer(t *testing.T) {
 	// connection: a idled out meanwhile).
 	_ = a.Close()
 	c, cr := dial()
-	_, _ = c.Write(frameMLLP([]byte("slow")))
+	_, _ = c.Write(MLLPFraming{}.wrap([]byte("slow")))
 	time.Sleep(50 * time.Millisecond)
 	closed := make(chan struct{})
 	go func() { _ = srv.Close(); close(closed) }()
@@ -180,5 +183,110 @@ func TestMLLPServerCloseCutsPartialFrame(t *testing.T) {
 	case <-closed:
 	case <-time.After(5 * time.Second):
 		t.Fatal("Close waited for a partial frame")
+	}
+}
+
+// TestMLLPServerTLS: on a tls listener, a client that completes the
+// handshake is answered, and one that never starts it is closed after
+// HandshakeTimeout rather than IdleTimeout.
+func TestMLLPServerTLS(t *testing.T) {
+	ts := httptest.NewUnstartedServer(nil) // for its 127.0.0.1 certificate
+	ts.StartTLS()
+	serverTLS, roots := ts.TLS.Clone(), ts.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
+	ts.Close()
+	ln, err := tls.Listen("tcp", "127.0.0.1:0", serverTLS)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := ServeMLLP(ln, func(frame []byte, _ error) []byte { return frame },
+		MLLPOptions{MaxFrame: 100, IdleTimeout: time.Minute, FrameTimeout: time.Minute, HandshakeTimeout: 200 * time.Millisecond})
+	defer func() { _ = srv.Close() }()
+
+	conn, err := tls.Dial("tcp", ln.Addr().String(), &tls.Config{RootCAs: roots, MinVersion: tls.VersionTLS12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = conn.Write(MLLPFraming{}.wrap([]byte("hello")))
+	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if reply, err := readFramed(bufio.NewReader(conn), 100, MLLPFraming{}); err != nil || string(reply) != "hello" {
+		t.Errorf("reply over TLS = %q, %v", reply, err)
+	}
+	_ = conn.Close()
+
+	stalled, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stalled.Close() }()
+	start := time.Now()
+	_ = stalled.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := stalled.Read(make([]byte, 1)); err == nil || time.Since(start) > 3*time.Second {
+		t.Errorf("a client that never shakes hands: %v after %s", err, time.Since(start))
+	}
+}
+
+// TestMLLPFraming: other start and end bytes delimit frames, a one-byte end
+// ends the frame at once, and a lone first end byte inside the message is
+// kept.
+func TestMLLPFraming(t *testing.T) {
+	for _, tt := range []struct {
+		name, in string
+		f        MLLPFraming
+		want     []string
+	}{
+		{"default", "\x0bone\x1c\r\x0btwo\x1c\r", MLLPFraming{}, []string{"one", "two"}},
+		{"one end byte", "\x02one\x03junk\x02two\x03", MLLPFraming{Start: 0x02, End: []byte{0x03}}, []string{"one", "two"}},
+		{"two end bytes", "\x02a\x03b\x03\n", MLLPFraming{Start: 0x02, End: []byte{0x03, '\n'}}, []string{"a\x03b"}},
+	} {
+		r := bufio.NewReader(strings.NewReader(tt.in))
+		var got []string
+		for {
+			frame, err := readFramed(r, 100, tt.f)
+			if err != nil {
+				break
+			}
+			got = append(got, string(frame))
+		}
+		if strings.Join(got, ",") != strings.Join(tt.want, ",") {
+			t.Errorf("%s: %q, want %q", tt.name, got, tt.want)
+		}
+		if w := tt.f.wrap([]byte("x")); string(w[1:2]) != "x" || (len(tt.f.End) > 0 && !bytes.HasSuffix(w, tt.f.End)) {
+			t.Errorf("%s: wrap = %q", tt.name, w)
+		}
+	}
+	if f := (MLLPFraming{Start: 0x02}).orDefault(); f.Start != 0x02 || !bytes.Equal(f.End, mllpEnd) {
+		t.Errorf("a start byte alone = %+v, want it with MLLP's end", f)
+	}
+	if _, err := readFramed(bufio.NewReader(strings.NewReader("\x02"+strings.Repeat("x", 200)+"\x03")), 100, MLLPFraming{Start: 0x02, End: []byte{0x03}}); !errors.Is(err, ErrMLLPFrameTooLarge) {
+		t.Errorf("an oversize frame with a one-byte end: %v", err)
+	}
+}
+
+// TestMLLPServerNoReply: with NoReply the handler runs for every frame but
+// nothing is written back.
+func TestMLLPServerNoReply(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handled := make(chan string, 2)
+	f := MLLPFraming{Start: 0x02, End: []byte{0x03}}
+	srv := ServeMLLP(ln, func(frame []byte, _ error) []byte { handled <- string(frame); return []byte("ack") },
+		MLLPOptions{MaxFrame: 100, IdleTimeout: time.Minute, FrameTimeout: time.Minute, Framing: f, NoReply: true})
+	defer func() { _ = srv.Close() }()
+	conn, err := net.Dial("tcp", ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	_, _ = conn.Write(append(f.wrap([]byte("one")), f.wrap([]byte("two"))...))
+	for _, want := range []string{"one", "two"} {
+		if got := <-handled; got != want {
+			t.Errorf("handled %q, want %q", got, want)
+		}
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
+	if n, _ := conn.Read(make([]byte, 10)); n != 0 {
+		t.Errorf("a reply was sent (%d bytes)", n)
 	}
 }

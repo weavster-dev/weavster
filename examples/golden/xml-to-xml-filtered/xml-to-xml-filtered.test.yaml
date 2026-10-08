@@ -1,0 +1,6 @@
+# The golden case xml-to-xml-filtered: what the flow in weavster.json makes of input.xml.
+flow: xml-to-xml-filtered
+cases:
+  - name: golden
+    inputFile: input.xml
+    expect: {status: filtered}

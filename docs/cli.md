@@ -18,9 +18,10 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
 
 | Flag | Meaning |
 |---|---|
-| `-a address` | Server address (default `http://127.0.0.1:8080`). Include the scheme. |
+| `-a address` | Server address (default `http://127.0.0.1:8080`). Include the scheme, and the server's [context path](server-config.md#listen) if it has one: `https://weavster.internal:8443/weavster`. With `-u`/`-p` and a plain `http://` address on another machine, the client warns that the password is sent unencrypted. |
 | `-u user`, `-p password` | Log in as this user. The credentials are checked at startup. If they are wrong, or the account must change its password first, the client prints `Could not log in to server.` and the server's reason, then continues (commands then fail with `401` or `403`). A password without a user exits `2`. |
-| `-c file` | Connection file with the address and credentials (see below). `-a`, `-u`, and `-p` override its values. A missing or invalid file exits `2`. |
+| `-c file` | Connection file with the address and credentials (see below). `-a`, `-u`, `-p`, and `-ca` override its values. A missing or invalid file exits `2`. |
+| `-ca file` | For an `https` address: a PEM file of CA certificates to trust besides the system's, for a server whose certificate comes from a private CA or is self-signed. A missing file, or one without a certificate, exits `2`. |
 | `-s file` | Script file: one command per line. Empty lines and lines starting with `#` are skipped. |
 | `-v` | Print the server's version and exit. It needs `-u`/`-p` (or `-c`), because the server only answers signed-in users; it exits `2` if the server cannot be reached or refuses the credentials. |
 | `-h` | Print usage and exit. |
@@ -29,12 +30,39 @@ weavster -a http://127.0.0.1:8080 -u admin -p 'A-Strong-Passw0rd' -s script.txt
 Connection file (`-c`), YAML with only these keys:
 
 ```yaml
-address: http://127.0.0.1:8080
+address: https://weavster.internal:8443/weavster
 user: admin
 password: A-Strong-Passw0rd
+ca: /etc/weavster/ca.pem          # optional: a private CA for https (a relative path is next to this file)
 ```
 
 Keep it readable only by you (`chmod 600`), because it holds a password.
+
+Give `-a` (or `address` in the connection file) the server's final address. The client does not
+follow HTTP redirects, so a redirect never carries your password or a message body to another
+address; it reports the `3xx` instead, as an error such as `Error: server returned 301 Moved Permanently: …`.
+If a proxy redirects, use the address it redirects to.
+
+### Connect over HTTPS
+
+The client speaks TLS 1.2 or later and checks the server's certificate. If the certificate comes
+from a private CA (or is self-signed), pass that CA:
+
+```bash
+weavster -a https://weavster.internal:8443 -ca /etc/weavster/ca.pem -u admin -p 'A-Strong-Passw0rd'
+```
+
+Without it, a command fails with the reason and a hint:
+
+```text
+Error: Get "https://weavster.internal:8443/api/v1/system": tls: failed to verify certificate: x509: certificate signed by unknown authority
+  The server's certificate is not signed by a CA this machine trusts: pass that CA with -ca FILE (or ca: in the connection file).
+```
+
+Other certificate problems get their own hint: a certificate issued for another name (connect
+with a name it lists), an expired one (renew it, or check the clock), or one refused for another
+reason, such as a missing server-auth key usage (reissue it). `-ca` applies to `https` addresses
+only; with an `http` address the client warns that it is not used.
 
 ## Interactive shell
 
@@ -109,7 +137,8 @@ Commands that change a flow print the server's reply (the flow, or the import/up
 | `importmessages "path" <flow>` | Imports an archive file into the flow (existing message ids are skipped). |
 | `exportmap "path"`, `importmap "path"` | Writes the config map to a JSON file, or replaces it with one. See [Config map, scripts, and settings](config-items.md). |
 | `exportscripts "path"`, `importscripts "path"` | The same for the global scripts. |
-| `snippet list`, `snippet import "path"`, `snippet export "path"`, `snippet remove <name>` | Manages code snippets; `snippet library …` does the same for libraries. See [Code snippets and libraries](snippets.md). |
+| `snippet list`, `snippet import "path"`, `snippet export "path"`, `snippet remove <name>` | Manages code snippets. |
+| `snippet library list`, `snippet library import "path"`, `snippet library export "path"`, `snippet library remove <name>` | The same for snippet libraries. See [Code snippets and libraries](snippets.md). |
 | `config validate "path"` | Checks a config-as-code document (YAML or JSON) on this machine; it needs no server or login. See [Config-as-code documents](config-as-code.md). |
 | `config diff "path"`, `config plan "path"` | Shows what applying the document would change: `diff` as text (`+`, `~` with changed values, `-`), `plan` as JSON. Nothing changes. |
 | `config apply "path" [--dry-run] [reason…]` | Plans the document, prints the plan, and applies it; refused if the server changed meanwhile, undone completely if a change fails. See [Apply](config-as-code.md#apply). |
@@ -144,6 +173,138 @@ import "backups/all flows.json" force
 | `help` | Lists the commands. |
 | `quit`, `exit` | End the interactive shell; ignored in batch mode. |
 
+## Test your flows (`weavster test`)
+
+`weavster test` runs your flows' transforms against sample messages, on your machine: no server
+and no database. Keep sample messages and what each flow must make of them in **fixture files**
+next to your [config-as-code documents](config-as-code.md), and run the command in CI before
+`config apply`.
+
+```bash
+weavster test --format junit --output artifacts/ .
+```
+
+It looks under each `PATH` (default: the current directory) for:
+
+- **config-as-code documents**: `*.yaml`, `*.yml`, or `*.json` files with `version: "1"`, or
+  without a `version` when every top-level key is a config section (`flows`, `alerts`, …).
+  Their flows are the ones the fixtures test. Other YAML and JSON (a compose file, a CI
+  workflow, `package.json`) is left alone.
+- **fixture files**: `*.test.yaml`, `*.test.yml`, or `*.test.json`.
+
+Hidden directories, `node_modules`, and directories it cannot read are skipped, and a file under
+two of the paths is read once.
+
+A fixture file names one flow and lists cases:
+
+```yaml
+# tests/adt.test.yaml
+flow: adt
+cases:
+  - name: admit
+    inputFile: a01.hl7              # relative to this file; or `input:` with the message inline
+    expect:
+      output: {patient: {lastName: DOE, mrn: "12345"}}
+      excluded: []
+      destinations:
+        his: {output: {id: "12345"}}
+  - name: update is filtered
+    input: "MSH|^~\\&|LAB|H|EHR|H|20240101120000||ADT^A08|2|P|2.5\rPID|1||12345^^^MRN||DOE^JOHN\r"
+    expect: {status: filtered}
+  - name: not hl7
+    input: hello
+    expect: {status: errored, error: HL7 v2}
+```
+
+Each case runs the message through the flow exactly as the server processes it: read with the
+flow's `inputFormat`, then its `transform` (filters, maps, sets, `destinationSet`, a build step),
+then the own `transform` of each destination the message reaches. Nothing is stored or delivered.
+
+| `expect` key | Checks | Default |
+|---|---|---|
+| `status` | `transformed`, `filtered` (a filter step dropped it), or `errored` (the input could not be read, or a step failed) | `transformed` |
+| `error` | Text the error must contain (with `status: errored`) | not checked |
+| `output` | The flow's JSON output has these fields with these values; fields you leave out are ignored, arrays and values must be equal. A field expected as `null` must be there, with `null` | not checked |
+| `outputText` | The flow's output, exactly (for a build step's HL7 v2, XML, or text) | not checked |
+| `outputFile` | The flow's output, exactly as in this file (relative to the fixture file); instead of `outputText` | not checked |
+| `excluded` | The destinations `destinationSet` steps left out (`[]`: none) | not checked |
+| `destinations.NAME` | That destination's own transform: `status`, `error`, `output`, `outputText`, `outputFile` as above | not checked |
+
+Each case is named `<fixture file without .test.yaml>/<case name>`, for example
+`tests/adt/admit`. The built-in codec checks also run, named `identity/…`: each parses a sample
+of a data format (HL7 v2, JSON, XML, delimited, raw) and must write it back byte for byte.
+
+```text
+$ weavster test --format json tests
+FAIL tests/adt/admit: output differs at patient.lastName: it is {"patient":{"lastName":"DOE",…}}, want the fields {"patient":{"lastName":"SMITH"}}
+[
+  {"name": "identity/hl7", "passed": true},
+  …
+  {"name": "tests/adt/admit", "passed": false, "failure": "output differs at patient.lastName: …"}
+]
+```
+
+- `--format junit` (default) writes JUnit XML, `--format json` JSON; `--output DIR` writes
+  `results.xml` or `results.json` into `DIR` instead of printing it. Failures are also printed
+  to stderr, one line each (`FAIL name: reason`).
+- `--filter TEXT` runs only the cases whose name contains `TEXT` (others are not run at all). If
+  none does, the command fails with `no case matches --filter "TEXT"`.
+- A fixture that cannot be run fails with the reason: a flow no document defines, a flow defined
+  in two documents, an unknown key (`field casez not found`), more than one YAML document in the
+  file, a case without a name, or a missing `inputFile`. A config-as-code document that does not
+  parse fails the run as well, whatever `--filter` selects.
+- Numbers in `output` compare by exact value: `1` and `1.0` are equal, but two 20-digit ids that
+  differ in the last digit are not.
+
+### A complete example
+
+The repository's [`examples/golden`](https://github.com/weavster-dev/weavster/tree/main/examples/golden)
+directory has one case per data format: HL7 v2 to JSON and to HL7 v2, XML to JSON and to XML (and
+one that is filtered), delimited text to JSON, and JSON to JSON and to text. Each case directory
+holds a one-flow `weavster.json`, the sample `input.*`, a fixture, and the `expected.*` output
+(except the filtered case, whose fixture expects `status: filtered` and has no output):
+
+```yaml
+# examples/golden/hl7v2-to-json/hl7v2-to-json.test.yaml
+flow: hl7v2-to-json
+cases:
+  - name: golden
+    inputFile: input.hl7
+    expect: {outputFile: expected.json}
+```
+
+```bash
+weavster test --format junit --output artifacts/ examples/golden
+```
+
+Weavster's own CI runs `weavster test --format junit --output artifacts/ examples/` (every example
+under `examples/`, these included), keeps `results.xml`, and sends the same cases through a
+running server to check that it produces the same outputs. Each case's fixture file is the one
+statement of what it expects, for both runs.
+
+### Pitfalls
+
+- A fixture only sees the documents under the paths you give. Pass the directory that holds both
+  (`weavster test .`), not just the tests directory.
+- `output` compares JSON values: `"12345"` (text) and `12345` (a number) differ. HL7 v2 fields
+  are text.
+- A flow without a `transform` passes messages through unchanged, so any input is `transformed`.
+
+## Run the server (`weavster server`)
+
+```bash
+weavster server --config /etc/weavster/weavster-server.yaml
+weavster server --config weavster-server.yaml 127.0.0.1:9090   # the address overrides listen.address
+weavster server                                                  # defaults: 127.0.0.1:8080, memory store
+```
+
+- `--config FILE` reads the [server configuration](server-config.md); without it the defaults
+  apply (a memory store: nothing is kept after the server stops).
+- An address after the flags replaces `listen.address` from the file.
+- The server runs until `SIGINT` or `SIGTERM`, then drains in-flight messages for up to
+  `listen.shutdownTimeoutMs` and exits `0`. It refuses to run as root unless
+  `WEAVSTER_ALLOW_ROOT=1` is set.
+
 ## Deprecated command names
 
 Scripts written for older tools can keep their command names. A deprecated name prints a warning
@@ -170,7 +331,8 @@ Update your scripts to the new names; the old ones may be removed in a later rel
 | `weavster -s script` (batch) | Every command succeeded | — | Any command failed (the script still runs to the end), a line longer than 1 MiB (the script stops there), an unknown flag, or a missing connection file |
 | `weavster` (interactive shell) | `quit`, `exit`, or end of input, even after failed commands (their errors are shown) | — | A line longer than 1 MiB, a read error, an unknown flag, or a missing connection file |
 | `weavster server` | `-h`, or a clean stop on SIGINT/SIGTERM | The configuration is invalid, the server could not start (store, TLS, bootstrap), or it runs as a privileged user without `WEAVSTER_ALLOW_ROOT=1` | An unknown flag or extra arguments |
-| `weavster test` | Every fixture passed, or `-h` | A fixture failed | An unknown flag, or the results could not be written |
+| `weavster test` | Every case passed, or `-h` | A case or fixture failed, a config-as-code document did not parse, or `--filter` matched nothing | An unknown flag, `--format` other than `junit` or `json`, a `PATH` that does not exist, or the results could not be written |
+| `weavster version` | Always (prints the binary's version, build date, Go version, and platform; no server needed) | — | Extra arguments |
 | `weavster config validate FILE...` | Every file is valid, or `-h` | A file is invalid | No file given, a file cannot be read or is larger than 50 MiB, or another `config` command (`diff`, `plan`, and `apply` need a server: run them in the shell or with `-s`) |
 
 `-h` (or `--help`) prints usage and exits `0` for every command. Usage errors are checked
