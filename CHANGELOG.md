@@ -138,6 +138,7 @@ All notable changes to this project are documented here, following
 
 ### Changed
 
+- The built `weavster` binary at the repository root is no longer tracked (it is ignored now); `go build ./cmd/weavster` used to modify a tracked file. AGENTS.md's test rule now matches D-55 and CONTRIBUTING.md: tests that restart the server run on PostgreSQL when `WEAVSTER_TEST_POSTGRES_DSN` is set.
 - Topology drill-down (#399): `flowId` is now `flow:<id>` (the path accepts `adt` or `flow:adt`), the placeholder source (`<type>://incoming`) is gone, and route edges start at the flow destination that sends. A flow whose stored status is empty shows `undeployed`.
 - `statuses` is a reserved alert id (#393). An alert saved with that id by an earlier release can still be listed, exported and deleted, but `GET /api/v1/alerts/statuses` now returns the statuses list. Export it, change its id, import it, and delete the old one (see Alerts).
 - A `file` destination's `dir` must be an absolute path (#329), as a file source's already is, so where files go never depends on the server's working directory. Flows stored earlier with a relative `dir` keep running; set an absolute path before you next update them.
