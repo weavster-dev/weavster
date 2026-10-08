@@ -38,6 +38,11 @@ ca: /etc/weavster/ca.pem          # optional: a private CA for https (a relative
 
 Keep it readable only by you (`chmod 600`), because it holds a password.
 
+Give `-a` (or `address` in the connection file) the server's final address. The client does not
+follow HTTP redirects, so a redirect never carries your password or a message body to another
+address; it reports the `3xx` instead, as an error such as `Error: server returned 301 Moved Permanently: …`.
+If a proxy redirects, use the address it redirects to.
+
 ### Connect over HTTPS
 
 The client speaks TLS 1.2 or later and checks the server's certificate. If the certificate comes
