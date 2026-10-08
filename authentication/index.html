@@ -488,8 +488,9 @@ returns <code>401</code>. Set <code>retryLimit: 0</code> to disable lockout. See
   lose <code>admin</code> (<code>409</code>).</li>
 <li>An account with <code>users:admin</code> but not <code>admin</code> can only grant permissions it holds itself, never
   <code>admin</code>, and cannot change, reset, or delete an account that has <code>admin</code> (<code>403</code>).</li>
-<li>Editing your own account (<code>PUT</code>) keeps your own session; setting your own password ends every
-  session, yours included.</li>
+<li>Editing your own account (<code>PUT</code>) keeps your own session only when your permissions stay the
+  same. Changing your permissions or setting your own password ends every session, yours included;
+  sign in again before making another API request.</li>
 <li>Invalid input returns <code>400</code> with the reason, an existing username <code>409</code>, and an unknown user
   <code>404</code>.</li>
 </ul>
