@@ -120,3 +120,22 @@ func TestRetryReturnsNoResponse(t *testing.T) {
 		t.Errorf("retry = %+v, %v; want sent with no response", retried, err)
 	}
 }
+
+// TestResponseOutputNullIsNoResponse: a JSON null reply is no response, so
+// the ingest reply leaves "response" out instead of sending null.
+func TestResponseOutputNullIsNoResponse(t *testing.T) {
+	f := Flow{ResponseSelector: "d", Destinations: []Destination{{Name: "d"}}}
+	for _, tt := range []struct {
+		body, ctype string
+		want        string
+	}{
+		{"null", "application/json", ""},
+		{" null\n", "application/json", ""},
+		{`{"ok":true}`, "application/json", `{"ok":true}`},
+		{"null", "text/plain", `"null"`},
+	} {
+		if got := responseOutput(f, &Reply{Body: []byte(tt.body), ContentType: tt.ctype}); string(got) != tt.want {
+			t.Errorf("%q %s = %q, want %q", tt.body, tt.ctype, got, tt.want)
+		}
+	}
+}

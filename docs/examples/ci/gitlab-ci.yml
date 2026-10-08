@@ -1,0 +1,60 @@
+# Weavster config-as-code on GitLab CI: plan on merge requests, apply on
+# merge to main. Save as .gitlab-ci.yml in the repository that holds
+# weavster.yaml.
+#
+# CI/CD variables: WEAVSTER_ADDRESS (https://weavster.example.com).
+# WEAVSTER_USER / WEAVSTER_PASSWORD twice: masked for all environments for
+# the plan user (not protected: merge request pipelines run on unprotected
+# branches), and masked + protected for the `production` environment for the
+# apply user (the environment-scoped values win in the apply job).
+# Anyone who can push a branch to this project can read the plan user's
+# password (a branch can change this file); merge requests from forks run in
+# the fork without these variables.
+#
+# Set the resource group to run applies in order, once per project:
+#   curl --request PUT --header "PRIVATE-TOKEN: $TOKEN" \
+#     "https://gitlab.example.com/api/v4/projects/$PROJECT_ID/resource_groups/weavster-config?process_mode=oldest_first"
+stages: [plan, apply]
+
+variables:
+  WEAVSTER_VERSION: latest # pin a commit hash (or a release tag once releases exist)
+
+.weavster:
+  image: golang:1.22
+  before_script:
+    - go install "github.com/weavster-dev/weavster/cmd/weavster@${WEAVSTER_VERSION}"
+    - |
+      umask 077
+      quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
+      {
+        printf 'address: %s\n' "$(quote "$WEAVSTER_ADDRESS")"
+        printf 'user: %s\n' "$(quote "$WEAVSTER_USER")"
+        printf 'password: %s\n' "$(quote "$WEAVSTER_PASSWORD")"
+      } > /tmp/weavster.conn
+
+plan:
+  extends: .weavster
+  stage: plan
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes: [weavster.yaml]
+  script:
+    - printf 'config diff "weavster.yaml"\n' > /tmp/plan.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/plan.txt
+
+apply:
+  extends: .weavster
+  stage: apply
+  resource_group: weavster-config # one apply at a time, oldest first (see above)
+  environment: production
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == "main"
+      changes: [weavster.yaml]
+  script:
+    # Separate runs, so nothing is deployed or started if the apply fails.
+    - printf 'config apply "weavster.yaml" %s\n' "merged ${CI_COMMIT_SHORT_SHA}" > /tmp/apply.txt
+    - printf 'deploy 120\n' > /tmp/deploy.txt
+    - printf 'flow start-all\n' > /tmp/start.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/apply.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/deploy.txt
+    - weavster -c /tmp/weavster.conn -s /tmp/start.txt

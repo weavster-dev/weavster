@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,9 @@ import (
 
 // SessionTTL is how long a login token stays valid.
 const SessionTTL = 12 * time.Hour
+
+// maxAuthBodyBytes bounds JSON buffering before credentials are checked.
+const maxAuthBodyBytes = 1 << 20
 
 // PasswordChanger errors the handler maps to 400 responses. Any other error
 // is an internal failure (500).
@@ -39,17 +43,26 @@ func IdentityFrom(ctx context.Context) (Identity, bool) {
 type session struct {
 	id      Identity
 	expires time.Time
+	// authAt is when the credentials were checked; a revocation of the
+	// user after it invalidates the session.
+	authAt time.Time
 }
 
 // sessions is the in-memory login token table.
 type sessions struct {
 	mu     sync.Mutex
 	tokens map[string]session
+	// revokedAt is when each user's sessions were last revoked, so a login
+	// that checked credentials before it cannot create a session after it.
+	revokedAt map[string]time.Time
 }
 
-func newSessions() *sessions { return &sessions{tokens: map[string]session{}} }
+func newSessions() *sessions {
+	return &sessions{tokens: map[string]session{}, revokedAt: map[string]time.Time{}}
+}
 
-func (s *sessions) create(id Identity) (string, error) {
+// create opens a session for id, whose credentials were checked at authAt.
+func (s *sessions) create(id Identity, authAt time.Time) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
@@ -63,7 +76,7 @@ func (s *sessions) create(id Identity) (string, error) {
 			delete(s.tokens, t)
 		}
 	}
-	s.tokens[token] = session{id: id, expires: now.Add(SessionTTL)}
+	s.tokens[token] = session{id: id, expires: now.Add(SessionTTL), authAt: authAt}
 	return token, nil
 }
 
@@ -71,7 +84,7 @@ func (s *sessions) lookup(token string) (Identity, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sess, ok := s.tokens[token]
-	if !ok || time.Now().After(sess.expires) {
+	if !ok || time.Now().After(sess.expires) || !sess.authAt.After(s.revokedAt[sess.id.Username]) {
 		delete(s.tokens, token)
 		return Identity{}, false
 	}
@@ -87,12 +100,19 @@ func (s *sessions) update(token string, id Identity) {
 	}
 }
 
-// revokeUser revokes every session of username except keep.
+// revokeUser revokes every session of username except keep, including
+// one a login in progress creates afterwards.
 func (s *sessions) revokeUser(username, keep string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	now := time.Now()
+	s.revokedAt[username] = now
 	for t, sess := range s.tokens {
-		if t != keep && sess.id.Username == username {
+		switch {
+		case t == keep:
+			sess.authAt = now.Add(time.Nanosecond) // stays valid
+			s.tokens[t] = sess
+		case sess.id.Username == username:
 			delete(s.tokens, t)
 		}
 	}
@@ -142,7 +162,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			return
 		}
 		info.id = id
-		if id.MustChangePassword && r.URL.Path != "/api/v1/auth/password" &&
+		if id.MustChangePassword && r.URL.Path != "/api/v1/auth/password" && r.URL.Path != "/api/v1/auth/password/check" &&
 			r.URL.Path != "/api/v1/auth/logout" && r.URL.Path != "/api/v1/auth/me" {
 			writeError(w, http.StatusForbidden, "PASSWORD_CHANGE_REQUIRED",
 				"change your password with POST /api/v1/auth/password before using the API")
@@ -150,6 +170,35 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), identityKey{}, id)))
 	})
+}
+
+// requireWhen checks the permission only for requests cond selects.
+func (s *Server) requireWhen(cond func(*http.Request) bool, resource, action string) func(http.Handler) http.Handler {
+	check := s.require(resource, action)
+	return func(next http.Handler) http.Handler {
+		checked := check(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if cond(r) {
+				checked.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// queryTrue selects requests whose query parameter name is not a false
+// value: set to anything but false/0, it counts as true, so a bad value
+// is checked rather than let through.
+func queryTrue(name string) func(*http.Request) bool {
+	return func(r *http.Request) bool {
+		v := r.URL.Query().Get(name)
+		if v == "" {
+			return false
+		}
+		b, err := strconv.ParseBool(v)
+		return err != nil || b
+	}
 }
 
 // require returns middleware that allows the request only when the
@@ -197,17 +246,23 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req loginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)).Decode(&req); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeStatusError(w, http.StatusRequestEntityTooLarge, "body larger than 1 MiB")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "body must be JSON with username and password")
 		return
 	}
 	auditInfoFrom(r.Context()).attempted = req.Username
+	authAt := time.Now()
 	id, err := s.cfg.Auth.Authenticate(r.Context(), req.Username, req.Password, req.MFACode)
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "UNAUTHORIZED", "invalid username or password")
 		return
 	}
-	token, err := s.sessions.create(id)
+	token, err := s.sessions.create(id, authAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "INTERNAL", "could not create session")
 		return
@@ -241,7 +296,12 @@ func (s *Server) handleChangePassword(w http.ResponseWriter, r *http.Request) {
 	}
 	id, _ := IdentityFrom(r.Context())
 	var req passwordRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAuthBodyBytes)).Decode(&req); err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeStatusError(w, http.StatusRequestEntityTooLarge, "body larger than 1 MiB")
+			return
+		}
 		writeError(w, http.StatusBadRequest, "BAD_REQUEST", "body must be JSON with oldPassword and newPassword")
 		return
 	}

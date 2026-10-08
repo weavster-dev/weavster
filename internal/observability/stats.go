@@ -3,6 +3,8 @@ package observability
 import (
 	"encoding/json"
 	"os"
+	"slices"
+	"sort"
 	"sync"
 	"time"
 )
@@ -126,6 +128,71 @@ func (s *StatsRegistry) Reset(flow string, lifetime bool) {
 	delete(m, flow)
 }
 
+// Clear clears a flow's (every flow's when flow is empty) current counters
+// and, with lifetime, its lifetime totals too, under one lock so no message
+// is counted in one and not the other.
+func (s *StatsRegistry) Clear(flow string, lifetime bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	maps := []map[string]*FlowStats{s.current}
+	if lifetime {
+		maps = append(maps, s.lifetime)
+	}
+	for _, m := range maps {
+		if flow == "" {
+			clear(m)
+			continue
+		}
+		delete(m, flow)
+	}
+}
+
+// Load replaces every flow's current and lifetime stats (stored ones, at
+// startup).
+func (s *StatsRegistry) Load(current, lifetime map[string]FlowStats) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.current, s.lifetime = loadAll(current), loadAll(lifetime)
+}
+
+// loadAll copies stats into a registry map.
+func loadAll(stats map[string]FlowStats) map[string]*FlowStats {
+	m := make(map[string]*FlowStats, len(stats))
+	for flow, fs := range stats {
+		c := cloneStats(&fs)
+		m[flow] = &c
+	}
+	return m
+}
+
+// copyAll copies a registry map.
+func copyAll(m map[string]*FlowStats) map[string]FlowStats {
+	out := make(map[string]FlowStats, len(m))
+	for flow, fs := range m {
+		out[flow] = cloneStats(fs)
+	}
+	return out
+}
+
+// SnapshotAll returns a copy of every flow's current (or lifetime) stats,
+// taken at one instant.
+func (s *StatsRegistry) SnapshotAll(lifetime bool) map[string]FlowStats {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if lifetime {
+		return copyAll(s.lifetime)
+	}
+	return copyAll(s.current)
+}
+
+// Snapshots returns a copy of every flow's current and lifetime stats,
+// both taken at one instant.
+func (s *StatsRegistry) Snapshots() (current, lifetime map[string]FlowStats) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return copyAll(s.current), copyAll(s.lifetime)
+}
+
 // Dump writes all flows' statistics to path as JSON (spec §2.11.36).
 func (s *StatsRegistry) Dump(path string, lifetime bool) error {
 	s.mu.Lock()
@@ -212,37 +279,102 @@ type TimeSeriesPoint struct {
 	Stats FlowStats `json:"stats"`
 }
 
-// TimeSeries is a bounded ring of per-flow snapshots for trending.
+// TimeSeries keeps per-flow snapshots for trending, dropping those older
+// than its retention and, past maxPoints in total, the oldest.
 type TimeSeries struct {
-	mu     sync.Mutex
-	points []TimeSeriesPoint
-	limit  int
+	mu        sync.Mutex
+	points    []TimeSeriesPoint // in recording order
+	retention time.Duration
+	maxPoints int
 }
 
-// NewTimeSeries returns a time-series ring holding at most limit points.
-func NewTimeSeries(limit int) *TimeSeries {
-	return &TimeSeries{limit: limit}
+// NewTimeSeries returns a time series keeping snapshots for retention, at
+// most maxPoints in total.
+func NewTimeSeries(retention time.Duration, maxPoints int) *TimeSeries {
+	return &TimeSeries{retention: retention, maxPoints: maxPoints}
 }
 
-// Record appends a snapshot.
-func (ts *TimeSeries) Record(flow string, s FlowStats) {
+// RecordAll appends one snapshot per flow, all stamped with the same
+// wall-clock time, and drops snapshots older than the retention before that
+// time and any past maxPoints.
+func (ts *TimeSeries) RecordAll(at time.Time, stats map[string]FlowStats) {
+	at = at.Round(0) // wall clock only, as reported and filtered
+	flows := make([]string, 0, len(stats))
+	for f := range stats {
+		flows = append(flows, f)
+	}
+	sort.Strings(flows)
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	ts.points = append(ts.points, TimeSeriesPoint{At: time.Now(), Flow: flow, Stats: s})
-	if len(ts.points) > ts.limit {
-		ts.points = ts.points[len(ts.points)-ts.limit:]
+	for _, f := range flows {
+		ts.points = append(ts.points, TimeSeriesPoint{At: at, Flow: f, Stats: stats[f]})
 	}
+	cut := max(0, len(ts.points)-ts.maxPoints)
+	for cut < len(ts.points) && ts.points[cut].At.Before(at.Add(-ts.retention)) {
+		cut++
+	}
+	ts.points = slices.Clone(ts.points[cut:]) // release the dropped points
 }
 
-// Series returns snapshots for a flow (or all flows when flow is empty).
-func (ts *TimeSeries) Series(flow string) []TimeSeriesPoint {
+// Load replaces the snapshots with points (stored ones, at startup), which
+// are in recording order.
+func (ts *TimeSeries) Load(points []TimeSeriesPoint) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.points = slices.Clone(points[max(0, len(points)-ts.maxPoints):])
+}
+
+// Recent returns each flow's snapshots from the newest one taken before
+// from onwards, in recording order, in one pass. RecordAll samples every
+// flow at one time, so the pass stops after the first sampling time before
+// from.
+func (ts *TimeSeries) Recent(from time.Time) map[string][]TimeSeriesPoint {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	out := map[string][]TimeSeriesPoint{}
+	var before time.Time // the first sampling time before from
+	for i := len(ts.points) - 1; i >= 0; i-- {
+		p := ts.points[i]
+		if p.At.Before(from) {
+			if before.IsZero() {
+				before = p.At
+			}
+			if !p.At.Equal(before) {
+				break
+			}
+		}
+		out[p.Flow] = append(out[p.Flow], p)
+	}
+	for _, pts := range out {
+		slices.Reverse(pts)
+	}
+	return out
+}
+
+// Forget drops every snapshot of flow.
+func (ts *TimeSeries) Forget(flow string) {
+	ts.mu.Lock()
+	defer ts.mu.Unlock()
+	ts.points = slices.DeleteFunc(ts.points, func(p TimeSeriesPoint) bool { return p.Flow == flow })
+}
+
+// Series returns the newest limit (0 = all) snapshots whose flow satisfies
+// keep, taken at or after from and at or before to (zero = open), in
+// recording order. Snapshots are recorded in time order, so the search
+// stops at the first one before from.
+func (ts *TimeSeries) Series(keep func(flow string) bool, from, to time.Time, limit int) []TimeSeriesPoint {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
 	out := make([]TimeSeriesPoint, 0)
-	for _, p := range ts.points {
-		if flow == "" || p.Flow == flow {
+	for i := len(ts.points) - 1; i >= 0 && (limit == 0 || len(out) < limit); i-- {
+		p := ts.points[i]
+		if !from.IsZero() && p.At.Before(from) {
+			break
+		}
+		if keep(p.Flow) && (to.IsZero() || !p.At.After(to)) {
 			out = append(out, p)
 		}
 	}
+	slices.Reverse(out)
 	return out
 }

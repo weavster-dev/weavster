@@ -41,7 +41,7 @@ func TestFileSourceAndSink(t *testing.T) {
 }
 
 func TestMLLPFrame(t *testing.T) {
-	frame := frameMLLP([]byte("MSH|..."))
+	frame := MLLPFraming{}.wrap([]byte("MSH|..."))
 	if frame[0] != mllpStart || frame[len(frame)-1] != mllpEnd[1] || frame[len(frame)-2] != mllpEnd[0] {
 		t.Fatalf("bad frame: %v", frame)
 	}
@@ -73,6 +73,7 @@ func TestMLLPSinkWritesFramed(t *testing.T) {
 			return
 		}
 		got <- body
+		_, _ = conn.Write(MLLPFraming{}.wrap([]byte("MSH|^~\\&|B\rMSA|AA|\r")))
 	}()
 
 	sink := NewMLLPSink(l.Addr().String())

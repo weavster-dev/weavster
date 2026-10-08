@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"errors"
 	"net/http"
 
@@ -39,9 +40,19 @@ func writeErrorWith(w http.ResponseWriter, status int, code, message string, ext
 	writeJSON(w, status, body)
 }
 
-// writeBackendError answers an unexpected backend error: 501 for an
-// Enterprise-only feature (D-17), otherwise a 500 that hides the detail.
+// writeBackendError answers a backend error: 503 for a busy server (with
+// Retry-After) or a request whose client left, 501 for an Enterprise-only
+// feature (D-17), otherwise a 500 that hides the detail.
 func writeBackendError(w http.ResponseWriter, err error) {
+	if errors.Is(err, context.Canceled) { // the client left while waiting; nobody reads this
+		writeStatusError(w, http.StatusServiceUnavailable, "request cancelled")
+		return
+	}
+	if errors.Is(err, ErrBusy) {
+		w.Header().Set("Retry-After", "1")
+		writeStatusError(w, http.StatusServiceUnavailable, ErrBusy.Error())
+		return
+	}
 	if errors.Is(err, enterprise.ErrNotImplemented) {
 		writeStatusError(w, http.StatusNotImplemented, err.Error())
 		return

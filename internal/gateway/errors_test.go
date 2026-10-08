@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +22,7 @@ func (notImplementedFlows) List(context.Context) ([]Flow, error) {
 
 // notImplementedSearch answers message and event searches with the D-17
 // sentinel.
-type notImplementedSearch struct{}
+type notImplementedSearch struct{ messageOps }
 
 func (notImplementedSearch) Search(context.Context, MessageQuery) ([]Message, error) {
 	return nil, fmt.Errorf("%w: message archive", enterprise.ErrNotImplemented)
@@ -29,6 +30,15 @@ func (notImplementedSearch) Search(context.Context, MessageQuery) ([]Message, er
 
 func (notImplementedSearch) SearchEvents(context.Context, EventQuery) ([]Event, error) {
 	return nil, fmt.Errorf("%w: event archive", enterprise.ErrNotImplemented)
+}
+func (notImplementedSearch) GetEvent(context.Context, int64) (Event, error) {
+	return Event{}, fmt.Errorf("%w: event archive", enterprise.ErrNotImplemented)
+}
+func (notImplementedSearch) CountEvents(context.Context, EventQuery) (int, error) {
+	return 0, fmt.Errorf("%w: event archive", enterprise.ErrNotImplemented)
+}
+func (notImplementedSearch) MaxEventID(context.Context) (int64, error) {
+	return 0, fmt.Errorf("%w: event archive", enterprise.ErrNotImplemented)
 }
 
 // TestErrorEnvelope: every error reply is the JSON envelope with the
@@ -53,6 +63,9 @@ func TestErrorEnvelope(t *testing.T) {
 		{"not implemented", http.MethodGet, "/api/v1/flows", ``, Config{Flows: &notImplementedFlows{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "not implemented in this edition: flow federation"},
 		{"not implemented messages", http.MethodGet, "/api/v1/messages", ``, Config{Messages: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "message archive"},
 		{"not implemented events", http.MethodGet, "/api/v1/events", ``, Config{Events: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "event archive"},
+		{"not implemented event", http.MethodGet, "/api/v1/events/1", ``, Config{Events: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "event archive"},
+		{"not implemented event count", http.MethodGet, "/api/v1/events/count", ``, Config{Events: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "event archive"},
+		{"not implemented max id", http.MethodGet, "/api/v1/events/max-id", ``, Config{Events: notImplementedSearch{}}, http.StatusNotImplemented, "NOT_IMPLEMENTED", "event archive"},
 		{"specific code kept", http.MethodPost, "/api/v1/flows/import", `{"version":1,"flows":[{"id":"a"}]}`, Config{Transfer: fakeTransfer{err: ErrImportIncomplete}}, http.StatusInternalServerError, "IMPORT_INCOMPLETE", "stopped part-way"},
 	}
 	for _, tt := range tests {
@@ -126,6 +139,48 @@ func TestIsVersion(t *testing.T) {
 	for seg, want := range map[string]bool{"v1": true, "v12": true, "v": false, "vx": false, "V1": false, "flows": false, "": false} {
 		if got := isVersion(seg); got != want {
 			t.Errorf("isVersion(%q) = %v, want %v", seg, got, want)
+		}
+	}
+}
+
+func TestUserHandlersUnavailableAndBadInput(t *testing.T) {
+	tests := []struct {
+		method, path, body string
+		status             int
+	}{
+		{http.MethodGet, "/api/v1/users", ``, http.StatusServiceUnavailable},
+		{http.MethodGet, "/api/v1/users/x", ``, http.StatusServiceUnavailable},
+		{http.MethodPost, "/api/v1/users", `{}`, http.StatusServiceUnavailable},
+		{http.MethodPut, "/api/v1/users/x", `{}`, http.StatusServiceUnavailable},
+		{http.MethodDelete, "/api/v1/users/x", ``, http.StatusServiceUnavailable},
+		{http.MethodPost, "/api/v1/users/x/password", `{}`, http.StatusServiceUnavailable},
+	}
+	for _, tt := range tests {
+		rec := httptest.NewRecorder()
+		New(Config{}).Router().ServeHTTP(rec, httptest.NewRequest(tt.method, tt.path, strings.NewReader(tt.body)))
+		if rec.Code != tt.status {
+			t.Errorf("%s %s: %d, want %d", tt.method, tt.path, rec.Code, tt.status)
+		}
+	}
+}
+
+// TestBackendErrorStatus: a busy server answers 503 with Retry-After; a
+// request whose client left 503; other errors 500 without detail.
+func TestBackendErrorStatus(t *testing.T) {
+	for _, tt := range []struct {
+		err        error
+		status     int
+		retryAfter string
+		message    string
+	}{
+		{fmt.Errorf("ingest: %w", ErrBusy), http.StatusServiceUnavailable, "1", "the server is busy"},
+		{fmt.Errorf("acquire: %w", context.Canceled), http.StatusServiceUnavailable, "", "request cancelled"},
+		{errors.New("disk: /secret/path"), http.StatusInternalServerError, "", "internal error"},
+	} {
+		rec := httptest.NewRecorder()
+		writeBackendError(rec, tt.err)
+		if rec.Code != tt.status || rec.Header().Get("Retry-After") != tt.retryAfter || !strings.Contains(rec.Body.String(), tt.message) {
+			t.Errorf("%v: %d %v %s", tt.err, rec.Code, rec.Header(), rec.Body)
 		}
 	}
 }

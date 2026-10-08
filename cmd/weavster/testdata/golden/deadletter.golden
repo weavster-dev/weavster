@@ -1,0 +1,16 @@
+# deadletter
+deadletter list
+deadletter show nope
+deadletter requeue nope
+deadletter requeue all
+deadletter remove nope
+deadletter frob
+--- stdout
+0 dead-lettered messages
+requeued 0 messages, skipped 0
+--- stderr
+Error: server returned 404 Not Found: message not found
+Error: server returned 404 Not Found: message not found
+Error: server returned 404 Not Found: message not found
+Error: usage: deadletter list [flow] | deadletter show <id> | deadletter requeue <id>|all [flow] | deadletter remove <id>
+--- exit 2

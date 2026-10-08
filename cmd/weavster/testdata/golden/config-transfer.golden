@@ -1,0 +1,19 @@
+# config-transfer
+exportcfg "$DIR/cfg.json"
+exportcfg "$DIR/cfg-map.json" overwriteconfigmap
+importcfg "$DIR/cfg.json"
+importcfg "$DIR/cfg.json" force nodeploy
+importcfg "$DIR/cfg-map.json" overwriteconfigmap force
+importcfg "$DIR/none.json"
+exportcfg
+--- stdout
+exported 1 flows, 1 alerts, 0 snippets, 0 snippet libraries, 1 scripts, 0 settings to $DIR/cfg.json
+exported 1 flows, 1 alerts, 0 snippets, 0 snippet libraries, 1 scripts, 0 settings, 1 config map entries to $DIR/cfg-map.json
+imported 1 flows (0 new, 1 replaced), 1 alerts, 0 snippets, 0 snippet libraries, 1 scripts, 0 settings from $DIR/cfg.json
+imported 1 flows (0 new, 1 replaced), 1 alerts, 0 snippets, 0 snippet libraries, 1 scripts, 0 settings from $DIR/cfg-map.json
+replaced the config map
+--- stderr
+Error: server returned 409 Conflict: already exist: flow adt, alert errors (use force=true to replace them)
+Error: open $DIR/none.json: no such file or directory
+Error: usage: exportcfg "path" [overwriteconfigmap]
+--- exit 2

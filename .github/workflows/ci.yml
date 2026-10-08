@@ -22,6 +22,82 @@ jobs:
       - name: Build
         run: go build ./...
 
+  postgres:
+    # The store, the database adapters, the server, and the black-box durability
+    # suite (test/e2e/durability) against PostgreSQL 16 (D-21, D-55): tests use
+    # WEAVSTER_TEST_POSTGRES_DSN, a fresh schema each.
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: weavster
+          POSTGRES_PASSWORD: weavster
+          POSTGRES_DB: weavster
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U weavster"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      WEAVSTER_TEST_POSTGRES_DSN: postgres://weavster:weavster@127.0.0.1:5432/weavster?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Test against PostgreSQL 16
+        run: go test -race ./internal/state/... ./internal/adapters/... ./internal/scheduler/... ./cmd/weavster/... ./test/e2e/durability/...
+
+  golden:
+    # The golden-path fixtures for each codec, run offline by the built
+    # binary as a user's CI would; the JUnit results are kept as an artifact.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build
+        run: go build -o bin/weavster ./cmd/weavster
+      - name: weavster test
+        run: bin/weavster test --format junit --output artifacts/ examples/
+      - name: Keep the JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weavster-test-junit
+          path: artifacts/results.xml
+
+  release:
+    # The release build (scripts/release.sh, as the release workflow runs it
+    # on a tag): archives and checksums for every target, verified, and the
+    # stamped version reported by the binary. Nothing is published.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build the archives and checksums
+        run: scripts/release.sh 0.0.0-ci dist
+      - name: Verify the archives
+        run: scripts/verify-release.sh 0.0.0-ci dist
+
+  docs:
+    # The documentation site builds with --strict (warnings fail) on every PR.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install mkdocs
+        run: pip install -r requirements.txt
+      - name: Build the docs
+        run: mkdocs build --strict
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -84,3 +160,22 @@ jobs:
           done
           docker logs weavster
           exit 1
+
+  compose:
+    # docker-compose.yml: the server with PostgreSQL 16 for local development.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke test the compose stack
+        run: scripts/compose-smoke.sh
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Getting started (docs/getting-started.md, against the stack)
+        run: scripts/getting-started.sh
+      - name: Server logs
+        if: failure()
+        run: docker compose logs
+      - name: Remove the stack
+        if: always()
+        run: docker compose down -v

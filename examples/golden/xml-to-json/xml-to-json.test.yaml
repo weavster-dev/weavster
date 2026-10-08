@@ -1,0 +1,6 @@
+# The golden case xml-to-json: what the flow in weavster.json makes of input.xml.
+flow: xml-to-json
+cases:
+  - name: golden
+    inputFile: input.xml
+    expect: {outputFile: expected.json}

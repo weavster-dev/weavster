@@ -1,0 +1,6 @@
+# version
+version
+--- stdout
+0.1.0
+--- stderr
+--- exit 0

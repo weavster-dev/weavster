@@ -44,6 +44,7 @@ func newAuthServer(passwords PasswordChanger) *Server {
 		}},
 		Authorizer: fakeAuthz{},
 		Passwords:  passwords,
+		System:     fakeSystem{},
 		Flows:      &stubFlows{},
 	})
 }
@@ -67,11 +68,11 @@ func serve(s *Server, method, path, body string, set func(*http.Request)) *httpt
 
 func TestAuthMiddleware(t *testing.T) {
 	s := newAuthServer(fakePasswords{})
-	token, err := s.sessions.create(Identity{Username: "viewer", Permissions: []string{"flows:view"}})
+	token, err := s.sessions.create(Identity{Username: "viewer", Permissions: []string{"flows:view"}}, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	expired, _ := s.sessions.create(Identity{Username: "viewer"})
+	expired, _ := s.sessions.create(Identity{Username: "viewer"}, time.Now())
 	s.sessions.tokens[expired] = session{expires: time.Now().Add(-time.Minute)}
 
 	tests := []struct {
@@ -151,7 +152,7 @@ func TestLoginAndPasswordHandlers(t *testing.T) {
 
 func TestChangePasswordClearsSessionFlag(t *testing.T) {
 	s := newAuthServer(fakePasswords{})
-	token, _ := s.sessions.create(Identity{Username: "fresh", MustChangePassword: true})
+	token, _ := s.sessions.create(Identity{Username: "fresh", MustChangePassword: true}, time.Now())
 	withToken := func(r *http.Request) { r.Header.Set("Authorization", "Bearer "+token) }
 	if rec := serve(s, http.MethodGet, "/api/v1/system", "", withToken); rec.Code != http.StatusForbidden {
 		t.Fatalf("before change: %d, want 403", rec.Code)
@@ -173,14 +174,14 @@ func TestChangePasswordClearsSessionFlag(t *testing.T) {
 
 func TestSessionsSweepAndRevokeUser(t *testing.T) {
 	s := newSessions()
-	old, _ := s.create(Identity{Username: "a"})
+	old, _ := s.create(Identity{Username: "a"}, time.Now())
 	s.tokens[old] = session{id: Identity{Username: "a"}, expires: time.Now().Add(-time.Second)}
-	keep, _ := s.create(Identity{Username: "a"})
+	keep, _ := s.create(Identity{Username: "a"}, time.Now())
 	if _, ok := s.tokens[old]; ok {
 		t.Error("expired session not swept on create")
 	}
-	drop, _ := s.create(Identity{Username: "a"})
-	other, _ := s.create(Identity{Username: "b"})
+	drop, _ := s.create(Identity{Username: "a"}, time.Now())
+	other, _ := s.create(Identity{Username: "b"}, time.Now())
 	s.revokeUser("a", keep)
 	for token, want := range map[string]bool{keep: true, drop: false, other: true} {
 		if _, ok := s.lookup(token); ok != want {

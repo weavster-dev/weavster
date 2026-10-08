@@ -10,9 +10,15 @@ import (
 	"testing"
 )
 
-type fakeIngest struct{ err error }
+type fakeIngest struct {
+	err    error
+	stored bool // the message was stored before err
+}
 
 func (f fakeIngest) Ingest(_ context.Context, flowID string, body []byte) (IngestResult, error) {
+	if f.err != nil && f.stored {
+		return IngestResult{ID: "m-" + flowID}, f.err
+	}
 	if f.err != nil {
 		return IngestResult{}, f.err
 	}
@@ -32,7 +38,8 @@ func TestIngestHandler(t *testing.T) {
 		{"unknown flow", fakeIngest{err: ErrFlowNotFound}, `{}`, http.StatusNotFound, "flow not found"},
 		{"invalid message", fakeIngest{err: fmt.Errorf("%w: body must be a JSON object", ErrInvalidMessage)}, `x`, http.StatusBadRequest, "body must be a JSON object"},
 		{"internal", fakeIngest{err: errors.New("disk full")}, `{}`, http.StatusInternalServerError, "internal error"},
-		{"too large", fakeIngest{}, strings.Repeat("x", maxMessageBytes+1), http.StatusRequestEntityTooLarge, "larger than 10 MiB"},
+		{"stored, then failed", fakeIngest{err: errors.New("disk full"), stored: true}, `{}`, http.StatusAccepted, `{"id":"m-f","status":"received"}`},
+		{"too large", fakeIngest{}, strings.Repeat("x", MaxMessageBytes+1), http.StatusRequestEntityTooLarge, "larger than 10 MiB"},
 		{"flow not running", fakeIngest{err: fmt.Errorf("%w: flow f is stopped", ErrFlowNotRunning)}, `{}`, http.StatusConflict, "flow f is stopped"},
 	}
 	for _, tt := range tests {
@@ -64,6 +71,10 @@ func TestIngestBodyReadError(t *testing.T) {
 
 type fakeStats struct{ err error }
 
+func (f fakeStats) AllFlowStats(context.Context, bool) (map[string]FlowStats, error) {
+	return map[string]FlowStats{"a": {Received: 1}}, f.err
+}
+func (f fakeStats) ResetStats(context.Context, string, bool) error { return f.err }
 func (f fakeStats) FlowStats(context.Context, string, bool) (FlowStats, error) {
 	return FlowStats{Received: 1}, f.err
 }
@@ -73,6 +84,14 @@ type fakeEvents struct{ err error }
 func (f fakeEvents) SearchEvents(context.Context, EventQuery) ([]Event, error) {
 	return []Event{{ID: 1, Type: "message.sent"}}, f.err
 }
+func (f fakeEvents) GetEvent(_ context.Context, id int64) (Event, error) {
+	if id != 1 {
+		return Event{}, ErrEventNotFound
+	}
+	return Event{ID: 1, Type: "message.sent"}, f.err
+}
+func (f fakeEvents) CountEvents(context.Context, EventQuery) (int, error) { return 1, f.err }
+func (f fakeEvents) MaxEventID(context.Context) (int64, error)            { return 1, f.err }
 
 func TestStatsAndEventsHandlers(t *testing.T) {
 	tests := []struct {
@@ -111,6 +130,9 @@ func (f fakeLifecycle) Transition(_ context.Context, id, action string) (Flow, e
 }
 
 func (f fakeLifecycle) RedeployAll(context.Context) ([]Flow, error) { return []Flow{{ID: "a"}}, f.err }
+func (f fakeLifecycle) TransitionAll(_ context.Context, action string) (TransitionAllResult, error) {
+	return TransitionAllResult{Changed: []string{"a"}, Skipped: []SkippedFlow{{ID: "b", Reason: action}}}, f.err
+}
 func (f fakeLifecycle) SetDestinationRunning(_ context.Context, id, dest string, running bool) (Flow, error) {
 	return Flow{ID: id}, f.err
 }
@@ -191,6 +213,18 @@ func TestFlowUpdateHandlers(t *testing.T) {
 		{"disable unavailable", http.MethodPost, "/api/v1/flows/f/disable", ``, Config{}, http.StatusServiceUnavailable},
 		{"enable unknown", http.MethodPost, "/api/v1/flows/f/enable", ``, Config{FlowUpdates: fakeUpdater{err: ErrFlowNotFound}}, http.StatusNotFound},
 		{"bulk update", http.MethodPut, "/api/v1/flows", `{"flows":[{"id":"a"}]}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusOK},
+		{"start all", http.MethodPost, "/api/v1/flows/start-all", ``, Config{Lifecycle: fakeLifecycle{}}, http.StatusOK},
+		{"start all unavailable", http.MethodPost, "/api/v1/flows/start-all", ``, Config{}, http.StatusServiceUnavailable},
+		{"start all incomplete", http.MethodPost, "/api/v1/flows/start-all", ``, Config{Lifecycle: fakeLifecycle{err: ErrTransitionIncomplete}}, http.StatusInternalServerError},
+		{"start all store error", http.MethodPost, "/api/v1/flows/start-all", ``, Config{Lifecycle: fakeLifecycle{err: errors.New("disk")}}, http.StatusInternalServerError},
+		{"all stats", http.MethodGet, "/api/v1/flows/stats", ``, Config{Stats: fakeStats{}}, http.StatusOK},
+		{"all stats unavailable", http.MethodGet, "/api/v1/flows/stats", ``, Config{}, http.StatusServiceUnavailable},
+		{"all stats bad lifetime", http.MethodGet, "/api/v1/flows/stats?lifetime=x", ``, Config{Stats: fakeStats{}}, http.StatusBadRequest},
+		{"all stats error", http.MethodGet, "/api/v1/flows/stats", ``, Config{Stats: fakeStats{err: errors.New("disk")}}, http.StatusInternalServerError},
+		{"reset stats", http.MethodPost, "/api/v1/flows/stats/reset?lifetime=true", ``, Config{Stats: fakeStats{}}, http.StatusNoContent},
+		{"reset flow stats unknown", http.MethodPost, "/api/v1/flows/f/stats/reset", ``, Config{Stats: fakeStats{err: ErrFlowNotFound}}, http.StatusNotFound},
+		{"reset stats unavailable", http.MethodPost, "/api/v1/flows/stats/reset", ``, Config{}, http.StatusServiceUnavailable},
+		{"reset stats bad lifetime", http.MethodPost, "/api/v1/flows/stats/reset?lifetime=x", ``, Config{Stats: fakeStats{}}, http.StatusBadRequest},
 		{"bulk update unavailable", http.MethodPut, "/api/v1/flows", `{"flows":[]}`, Config{}, http.StatusServiceUnavailable},
 		{"bulk update missing flows", http.MethodPut, "/api/v1/flows", `{}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},
 		{"bulk update with version", http.MethodPut, "/api/v1/flows", `{"version":1,"flows":[]}`, Config{FlowUpdates: fakeUpdater{}}, http.StatusBadRequest},

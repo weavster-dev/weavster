@@ -80,6 +80,16 @@ func TestPasswordPolicy(t *testing.T) {
 	if err := pol.Validate("short1A"); err == nil {
 		t.Error("short password must be rejected")
 	}
+	// Titlecase and caseless letters are letters, not special characters.
+	for _, pw := range []string{"ǅabcdef1A", "字abcdef1A"} {
+		if err := pol.Validate(pw); err != nil {
+			t.Errorf("%q: %v", pw, err)
+		}
+	}
+	// Length counts characters: five two-byte letters are five, not ten.
+	if err := (PasswordPolicy{MinLength: 8}).Validate("ééééé"); err == nil {
+		t.Error("5 characters accepted as 8")
+	}
 }
 
 func TestLockoutAndDecay(t *testing.T) {
@@ -324,5 +334,41 @@ func TestPasswordValidateSpecialForbidden(t *testing.T) {
 	}
 	if err := pol.Validate("abcd"); err != nil {
 		t.Errorf("no-special password must be accepted: %v", err)
+	}
+}
+
+func TestSetPassword(t *testing.T) {
+	ctx := context.Background()
+	p := NewLocalProvider(Options{Policy: PasswordPolicy{MinLength: 8}, Lockout: LockoutPolicy{RetryLimit: 1, LockoutPeriod: 3600}})
+	if err := p.CreateUser(ctx, User{Username: "u", PasswordHash: "first-pass"}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = p.Authenticate(ctx, "u", "wrong", "") // locks the account
+	u, _ := p.GetUser(ctx, "u")
+	if !p.Locked(*u) {
+		t.Fatal("account not locked after a failed login")
+	}
+	tests := []struct {
+		name, user, password string
+		wantErr              bool
+	}{
+		{"too short", "u", "short", true},
+		{"unknown user", "nobody", "long-enough", true},
+		{"set", "u", "second-pass", false},
+	}
+	for _, tt := range tests {
+		if err := p.SetPassword(ctx, tt.user, tt.password); (err != nil) != tt.wantErr {
+			t.Errorf("%s: err = %v", tt.name, err)
+		}
+	}
+	u, _ = p.GetUser(ctx, "u")
+	if p.Locked(*u) || !u.MustChangePassword {
+		t.Errorf("after SetPassword: locked %v, must change %v", p.Locked(*u), u.MustChangePassword)
+	}
+	if got, err := p.Authenticate(ctx, "u", "second-pass", ""); err != nil || got.Username != "u" {
+		t.Errorf("login with the set password: %v", err)
+	}
+	if len(KnownPermissions()) == 0 {
+		t.Error("no known permissions")
 	}
 }

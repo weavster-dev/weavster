@@ -1,0 +1,24 @@
+{
+  "version": "1",
+  "flows": {
+    "xml-to-xml": {
+      "inputFormat": "xml",
+      "transform": {
+        "steps": [
+          {
+            "filter": {
+              "when": "order.@status == 'cancelled'",
+              "action": "reject"
+            }
+          },
+          {
+            "build": {
+              "format": "xml",
+              "template": "<request id=\"{{order.@id}}\"><patient>{{order.patient.name.#text}}</patient><first-item sku=\"{{order.item.0.@sku}}\"/><second-item sku=\"{{order.item.1.@sku}}\"/></request>"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

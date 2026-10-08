@@ -35,3 +35,71 @@ func TestEventLogExport(t *testing.T) {
 		t.Fatalf("Export(since=future) len = %d, want 0", len(got))
 	}
 }
+
+func TestEventLogFiltersGetAndMaxID(t *testing.T) {
+	l := NewEventLog()
+	if l.MaxID() != 0 {
+		t.Error("empty log max id")
+	}
+	a := l.Add("flow.deployed", "", "a", nil)
+	b := l.Add("message.sent", "", "a", nil)
+	l.Add("message.sent", "", "b", nil)
+	if got := l.Search(EventFilter{AfterID: a.ID}); len(got) != 2 || got[0].ID != b.ID {
+		t.Errorf("afterId = %+v", got)
+	}
+	if got := l.Count(EventFilter{Until: a.At}); got < 1 {
+		t.Errorf("until = %d", got)
+	}
+	if got := l.Count(EventFilter{Until: a.At.Add(-time.Hour)}); got != 0 {
+		t.Errorf("until before all = %d", got)
+	}
+	if e, ok := l.Get(b.ID); !ok || e.Type != "message.sent" {
+		t.Errorf("get = %+v %v", e, ok)
+	}
+	if _, ok := l.Get(99); ok {
+		t.Error("get unknown")
+	}
+	if l.MaxID() != 3 {
+		t.Errorf("max id = %d", l.MaxID())
+	}
+}
+
+// TestEventLogCursorAndRing: with a cursor, a limit keeps the oldest
+// matches after it (polling never skips); Get finds events after the ring
+// has wrapped and not the ones it dropped.
+func TestEventLogCursorAndRing(t *testing.T) {
+	l := NewEventLog()
+	for i := 0; i < MaxEvents+5; i++ {
+		l.Add("e", "", "", nil)
+	}
+	got := l.Search(EventFilter{AfterID: 100, Cursor: true, Limit: 3})
+	if len(got) != 3 || got[0].ID != 101 || got[2].ID != 103 {
+		t.Errorf("cursor page = %v", got)
+	}
+	if newest := l.Search(EventFilter{Limit: 2}); newest[1].ID != int64(MaxEvents+5) {
+		t.Errorf("newest = %v", newest)
+	}
+	if _, ok := l.Get(5); ok {
+		t.Error("a dropped event was found")
+	}
+	for _, id := range []int64{6, 7000, int64(MaxEvents + 5)} {
+		if e, ok := l.Get(id); !ok || e.ID != id {
+			t.Errorf("get %d = %v %v", id, e.ID, ok)
+		}
+	}
+	if l.Count(EventFilter{AfterID: int64(MaxEvents)}) != 5 {
+		t.Error("count after cursor")
+	}
+}
+
+// TestEventLogCursorFromZero: a poll that starts at 0 (max-id of an empty
+// log) gets the oldest events, not the newest.
+func TestEventLogCursorFromZero(t *testing.T) {
+	l := NewEventLog()
+	for i := 0; i < 5; i++ {
+		l.Add("e", "", "", nil)
+	}
+	if got := l.Search(EventFilter{Cursor: true, Limit: 2}); got[0].ID != 1 || got[1].ID != 2 {
+		t.Errorf("from 0 = %v", got)
+	}
+}

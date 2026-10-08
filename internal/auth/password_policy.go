@@ -9,9 +9,14 @@ import (
 	"strings"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/argon2"
 )
+
+// ErrPasswordPolicy wraps a password the policy rejects (on create or
+// administrator set), with the reason.
+var ErrPasswordPolicy = errors.New("password rejected by the policy")
 
 // ErrPasswordReused is returned when a new password matches a prior one.
 var ErrPasswordReused = errors.New("auth: password was recently used")
@@ -32,7 +37,7 @@ type PasswordPolicy struct {
 
 // Validate checks a password against the policy (spec §2.13.41).
 func (p PasswordPolicy) Validate(password string) error {
-	if len(password) < p.MinLength {
+	if utf8.RuneCountInString(password) < p.MinLength { // characters, not bytes
 		return fmt.Errorf("auth: password shorter than %d characters", p.MinLength)
 	}
 	upper, lower, numeric, special := 0, 0, 0, 0
@@ -44,6 +49,8 @@ func (p PasswordPolicy) Validate(password string) error {
 			lower++
 		case unicode.IsDigit(r):
 			numeric++
+		case unicode.IsLetter(r):
+			// Letters without case (titlecase, CJK, …) are not special.
 		default:
 			special++
 		}

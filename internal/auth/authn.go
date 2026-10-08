@@ -38,6 +38,9 @@ type User struct {
 	// MustChangePassword blocks API use until the user changes their
 	// password (first-run bootstrap, D-22). ChangePassword clears it.
 	MustChangePassword bool
+	// Preferences are the user's own settings (spec §5), kept with the
+	// account; SetPreferences replaces them.
+	Preferences map[string]string `json:",omitempty"`
 }
 
 // AuthProvider is the port for identity/authentication (arch §3.1).
@@ -194,6 +197,12 @@ func (u *User) clone() User {
 	c := *u
 	c.Permissions = append([]string(nil), u.Permissions...)
 	c.PasswordHistory = append([]string(nil), u.PasswordHistory...)
+	if u.Preferences != nil {
+		c.Preferences = make(map[string]string, len(u.Preferences))
+		for k, v := range u.Preferences {
+			c.Preferences[k] = v
+		}
+	}
 	return c
 }
 
@@ -245,18 +254,26 @@ func (p *LocalProvider) isLocked(u *User) bool {
 }
 
 func (p *LocalProvider) CreateUser(ctx context.Context, u User) error {
+	// u.PasswordHash carries the plaintext password on creation. The
+	// Argon2id work runs outside the provider lock; the name is checked
+	// before (cheap) and again after it.
 	p.mu.Lock()
-	defer p.mu.Unlock()
-	if _, ok := p.users[u.Username]; ok {
+	_, taken := p.users[u.Username]
+	p.mu.Unlock()
+	if taken {
 		return ErrUserExists
 	}
-	// u.PasswordHash carries the plaintext password on creation.
 	if err := p.opts.Policy.Validate(u.PasswordHash); err != nil {
-		return err
+		return fmt.Errorf("%w: %w", ErrPasswordPolicy, err)
 	}
 	hash, err := HashPassword(u.PasswordHash)
 	if err != nil {
 		return err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, ok := p.users[u.Username]; ok {
+		return ErrUserExists
 	}
 	u.PasswordHash = hash
 	u.PasswordChangedAt = time.Now()
@@ -287,6 +304,7 @@ func (p *LocalProvider) UpdateUser(ctx context.Context, username string, u User)
 	u.FailedAttempts = existing.FailedAttempts
 	u.LockedUntil = existing.LockedUntil
 	u.MustChangePassword = existing.MustChangePassword
+	u.Preferences = existing.Preferences // SetPreferences changes them
 	if err := p.save(ctx, &u); err != nil {
 		return err
 	}
@@ -316,7 +334,8 @@ func (p *LocalProvider) GetUser(ctx context.Context, username string) (*User, er
 	if !ok {
 		return nil, ErrUserNotFound
 	}
-	return u, nil
+	c := u.clone() // a snapshot: the live record changes under the lock
+	return &c, nil
 }
 
 func (p *LocalProvider) ListUsers(ctx context.Context) ([]User, error) {
@@ -324,7 +343,7 @@ func (p *LocalProvider) ListUsers(ctx context.Context) ([]User, error) {
 	defer p.mu.Unlock()
 	out := make([]User, 0, len(p.users))
 	for _, u := range p.users {
-		out = append(out, *u)
+		out = append(out, u.clone())
 	}
 	return out, nil
 }
@@ -390,4 +409,89 @@ func (p *LocalProvider) ChangePassword(ctx context.Context, username, oldPasswor
 	return nil
 }
 
+// SetPassword sets a user's password on an administrator's behalf: the
+// policy applies (not the history), the user must change it at the next
+// login, and a lockout is cleared.
+func (p *LocalProvider) SetPassword(ctx context.Context, username, newPassword string) error {
+	p.mu.Lock()
+	_, exists := p.users[username]
+	p.mu.Unlock()
+	if !exists { // before the (expensive) hash; checked again under the lock
+		return ErrUserNotFound
+	}
+	if err := p.opts.Policy.Validate(newPassword); err != nil {
+		return fmt.Errorf("%w: %w", ErrPasswordPolicy, err)
+	}
+	hash, err := HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	u, ok := p.users[username]
+	if !ok {
+		return ErrUserNotFound
+	}
+	next := u.clone()
+	next.PasswordHash = hash
+	next.PasswordChangedAt = time.Now()
+	next.MustChangePassword = true
+	next.FailedAttempts = 0
+	next.LockedUntil = time.Time{}
+	next.PasswordHistory = append([]string{hash}, next.PasswordHistory...)
+	if len(next.PasswordHistory) > p.opts.Policy.ReuseLimit {
+		next.PasswordHistory = next.PasswordHistory[:p.opts.Policy.ReuseLimit]
+	}
+	if err := p.save(ctx, &next); err != nil {
+		return err
+	}
+	*u = next
+	return nil
+}
+
+// Locked reports whether u (a snapshot) is locked out right now.
+func (p *LocalProvider) Locked(u User) bool {
+	return p.isLocked(&u)
+}
+
 var _ AuthProvider = (*LocalProvider)(nil)
+
+// Preferences returns a copy of the user's preferences (never nil).
+func (p *LocalProvider) Preferences(_ context.Context, username string) (map[string]string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	u, ok := p.users[username]
+	if !ok {
+		return nil, ErrUserNotFound
+	}
+	out := make(map[string]string, len(u.Preferences))
+	for k, v := range u.Preferences {
+		out[k] = v
+	}
+	return out, nil
+}
+
+// SetPreferences replaces the user's preferences and saves the account.
+func (p *LocalProvider) SetPreferences(ctx context.Context, username string, prefs map[string]string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	u, ok := p.users[username]
+	if !ok {
+		return ErrUserNotFound
+	}
+	next := u.clone()
+	next.Preferences = make(map[string]string, len(prefs))
+	for k, v := range prefs {
+		next.Preferences[k] = v
+	}
+	if err := p.save(ctx, &next); err != nil {
+		return err
+	}
+	*u = next
+	return nil
+}
+
+// CheckPassword checks a candidate password against the password policy.
+func (p *LocalProvider) CheckPassword(password string) error {
+	return p.opts.Policy.Validate(password)
+}

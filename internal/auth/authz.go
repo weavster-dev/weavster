@@ -4,19 +4,38 @@ import "context"
 
 // Resource-category permission constants (spec §2.8.27).
 const (
-	PermAdmin         = "admin"
-	PermFlowsView     = "flows:view"
-	PermFlowsEdit     = "flows:edit"
-	PermFlowsDeploy   = "flows:deploy"
-	PermMessagesView  = "messages:view"
-	PermMessagesSend  = "messages:send"
-	PermAlertsEdit    = "alerts:edit"
-	PermEventsView    = "events:view"
-	PermSnippetsEdit  = "snippets:edit"
-	PermScriptsEdit   = "scripts:edit"
-	PermConfigMapEdit = "configmap:edit"
-	PermSettingsEdit  = "settings:edit"
+	PermAdmin           = "admin"
+	PermFlowsView       = "flows:view"
+	PermFlowsEdit       = "flows:edit"
+	PermFlowsDeploy     = "flows:deploy"
+	PermMessagesView    = "messages:view"
+	PermMessagesSend    = "messages:send"
+	PermMessagesContent = "messages:content"
+	PermMessagesDelete  = "messages:delete"
+	PermMessagesImport  = "messages:import"
+	PermAlertsEdit      = "alerts:edit"
+	PermEventsView      = "events:view"
+	PermSnippetsEdit    = "snippets:edit"
+	PermScriptsEdit     = "scripts:edit"
+	PermConfigMapEdit   = "configmap:edit"
+	PermSettingsEdit    = "settings:edit"
+	PermLookupsView     = "lookups:view"
+	PermLookupsEdit     = "lookups:edit"
+	PermAuditView       = "audit:view"
 )
+
+// PermUsersAdmin allows user administration.
+const PermUsersAdmin = "users:admin"
+
+// KnownPermissions lists every permission a user can be given.
+func KnownPermissions() []string {
+	return []string{
+		PermAdmin, PermUsersAdmin, PermFlowsView, PermFlowsEdit, PermFlowsDeploy,
+		PermMessagesView, PermMessagesSend, PermMessagesContent, PermMessagesDelete, PermMessagesImport,
+		PermEventsView, PermAlertsEdit, PermSnippetsEdit, PermScriptsEdit, PermConfigMapEdit, PermSettingsEdit,
+		PermLookupsView, PermLookupsEdit, PermAuditView,
+	}
+}
 
 // Authorizer is the port for authorization (arch §3.1).
 type Authorizer interface {

@@ -25,14 +25,17 @@ const (
 	AuditLogin       = "auth.login"
 	AuditAuthFailure = "auth.failure"
 	AuditPHIAccess   = "phi.access"
+	// AuditRead: someone read the audit log (GET /api/v1/audit).
+	AuditRead = "audit.read"
 )
 
 // auditInfo is filled in while a request is handled and read by audited
 // once the response is written.
 type auditInfo struct {
-	action    string   // set by auditAs on tagged routes
-	attempted string   // username offered in credentials
-	id        Identity // set once authenticated
+	action    string            // set by auditAs on tagged routes
+	attempted string            // username offered in credentials
+	id        Identity          // set once authenticated
+	detail    map[string]string // added by handlers (config apply)
 }
 
 type auditKey struct{}
@@ -50,6 +53,8 @@ type statusRecorder struct {
 	http.ResponseWriter
 	status int
 }
+
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
@@ -104,6 +109,9 @@ func (s *Server) audited(next http.Handler) http.Handler {
 		detail := map[string]string{"status": strconv.Itoa(rec.status)}
 		for k, v := range r.URL.Query() {
 			detail["query."+k] = strings.Join(v, ",")
+		}
+		for k, v := range info.detail {
+			detail[k] = v
 		}
 		// Audit failures never change the response.
 		_ = s.cfg.Audit.Record(r.Context(), AuditEvent{Actor: actor, Action: action, Resource: requestedPath(r), Detail: detail})

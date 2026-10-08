@@ -2,10 +2,6 @@ package gateway
 
 import "net/http"
 
-func (s *Server) handleSystem(w http.ResponseWriter, _ *http.Request) {
-	writeJSON(w, http.StatusOK, s.cfg.System)
-}
-
 func (s *Server) handleTopologyOverview(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Topology == nil {
 		writeStatusError(w, http.StatusServiceUnavailable, "topology unavailable")

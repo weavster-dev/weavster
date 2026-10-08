@@ -13,11 +13,14 @@ import (
 	"fmt"
 	"io"
 	"mime"
+	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/weavster-dev/weavster/internal/codecs"
 	"github.com/weavster-dev/weavster/internal/compiler"
 	"github.com/weavster-dev/weavster/internal/dsl"
 	"github.com/weavster-dev/weavster/internal/outbox"
@@ -25,8 +28,20 @@ import (
 )
 
 // ErrInvalidMessage is returned when a message cannot be processed by the
-// flow's transform (for example, the body is not a JSON object).
+// flow's transform (for example, the body is not a JSON object). The
+// returned error is an *InvalidMessageError carrying the reason.
 var ErrInvalidMessage = errors.New("pipeline: invalid message")
+
+// InvalidMessageError is a refused message and why, in words meant for
+// the sender ("body must be a JSON object"); it matches ErrInvalidMessage.
+type InvalidMessageError struct{ Reason string }
+
+func (e *InvalidMessageError) Error() string { return ErrInvalidMessage.Error() + ": " + e.Reason }
+
+// Is makes errors.Is(err, ErrInvalidMessage) hold.
+func (e *InvalidMessageError) Is(target error) bool { return target == ErrInvalidMessage }
+
+func invalid(reason string) error { return &InvalidMessageError{Reason: reason} }
 
 // Destination is one delivery target of a flow.
 type Destination struct {
@@ -34,9 +49,26 @@ type Destination struct {
 	// without using attempts until the destination is started.
 	Stopped bool
 	Name    string
-	Type    string // "http" or "file"
+	Type    string // "http", "file", or "mllp"
 	URL     string // http
 	Dir     string // file
+	Address string // mllp: host:port
+	Flow    string // flow: the target flow's id
+	// TLS and CAFile make an mllp destination connect over TLS, trusting
+	// CAFile's certificates instead of the system's when set.
+	TLS    bool
+	CAFile string
+	// FrameStart, FrameEnd (hex), and AckMode set an mllp destination's
+	// framing and whether it waits for ACKs.
+	FrameStart, FrameEnd, AckMode string
+	// Driver, DSNEnv, Table, Columns, and KeyColumn describe a database
+	// destination's insert (#107 D-75).
+	Driver, DSNEnv, Table, KeyColumn string
+	Columns                          map[string]string
+	// Method, Timeout, and MaxRedirects shape http requests (zero: defaults).
+	Method       string
+	Timeout      time.Duration
+	MaxRedirects int
 	// Transform, when set, runs on the flow's output before delivery to
 	// this destination; its filter steps drop the message for it alone.
 	Transform *compiler.Transform
@@ -52,10 +84,20 @@ type Flow struct {
 	Destinations []Destination
 	// ResponseSelector names the destination whose reply Process returns.
 	ResponseSelector string
+	// InputFormat is how transforms read a received message: "json" (or
+	// empty), or the JSON view of an HL7 v2 message ("hl7v2", #107 D-61),
+	// XML document ("xml", D-62), or delimited text ("delimited", D-63).
+	InputFormat string
+	// Delimiter and NoHeader describe InputFormat "delimited": the field
+	// delimiter (',' when zero) and whether the first row is data rather
+	// than column names (D-63).
+	Delimiter rune
+	NoHeader  bool
 }
 
 // Delivery is one message sent to one destination.
 type Delivery struct {
+	FlowID         string // the flow delivering it
 	MessageID      string
 	Body           []byte
 	ContentType    string // MIME type of Body
@@ -165,8 +207,18 @@ func Validate(f Flow) error {
 			return fmt.Errorf("destination %s: url must be an absolute http:// or https:// URL, got %q", d.Name, d.URL)
 		case d.Type == "file" && d.Dir == "":
 			return fmt.Errorf("destination %s: dir is required for type file", d.Name)
-		case d.Type != "http" && d.Type != "file":
-			return fmt.Errorf("destination %s: type must be http or file, got %q", d.Name, d.Type)
+		case d.Type == "mllp" && !validAddress(d.Address):
+			return fmt.Errorf("destination %s: address must be host:port with a port from 1 to 65535, got %q", d.Name, d.Address)
+		case d.Type == "mllp" && receives(f, d) != "hl7v2":
+			return fmt.Errorf("destination %s: an mllp destination needs an HL7 v2 message: the HL7 v2 message as received (inputFormat hl7v2 and no transforms), or a build step with format hl7v2 at the end of the flow's or this destination's transform", d.Name)
+		case d.Transform != nil && flowOutput(f) == "text":
+			return fmt.Errorf("destination %s: transform: the flow's build step outputs text, which a transform cannot read", d.Name)
+		case d.Type == "flow" && d.Flow == "":
+			return fmt.Errorf("destination %s: flow is required for type flow", d.Name)
+		case d.Type == "database" && !writesJSON(f, d):
+			return fmt.Errorf("destination %s: a database destination needs a JSON object: the flow's or this destination's transform output (without a build step to another format), or JSON messages passed through", d.Name)
+		case d.Type != "http" && d.Type != "file" && d.Type != "mllp" && d.Type != "flow" && d.Type != "database":
+			return fmt.Errorf("destination %s: type must be http, file, mllp, flow, or database, got %q", d.Name, d.Type)
 		}
 		if d.Transform != nil {
 			if _, err := dsl.Compile(*d.Transform); err != nil {
@@ -179,6 +231,9 @@ func Validate(f Flow) error {
 			}
 			if _, err := dsl.Compile(*d.ResponseTransform); err != nil {
 				return fmt.Errorf("destination %s: responseTransform: %w", d.Name, err)
+			}
+			if builds(d.ResponseTransform) != "" {
+				return fmt.Errorf("destination %s: responseTransform: build cannot be used here: the reply returned to the sender is JSON", d.Name)
 			}
 		}
 		seen[d.Name] = d.Type
@@ -193,6 +248,71 @@ func Validate(f Flow) error {
 	return nil
 }
 
+// builds reports a transform's build format ("" when it has no build step,
+// or does not compile: Validate reports that).
+func builds(t *compiler.Transform) string {
+	if t == nil {
+		return ""
+	}
+	prog, err := dsl.Compile(*t)
+	if err != nil {
+		return ""
+	}
+	return prog.Format()
+}
+
+// flowOutput is the format of f's output: its build format, json after
+// any other transform, or the input as received ("hl7v2", or "" for other
+// input).
+func flowOutput(f Flow) string {
+	switch {
+	case f.Transform == nil && f.InputFormat == "hl7v2":
+		return "hl7v2"
+	case f.Transform == nil:
+		return ""
+	}
+	if format := builds(f.Transform); format != "" {
+		return format
+	}
+	return "json"
+}
+
+// Receives is the format of what destination d is sent: a build format,
+// json, "hl7v2" for HL7 passthrough, or "" for other passthrough input.
+func Receives(f Flow, d Destination) string {
+	return receives(f, d)
+}
+
+// receives is the format of what destination d is sent.
+func receives(f Flow, d Destination) string {
+	if d.Transform == nil {
+		return flowOutput(f)
+	}
+	if format := builds(d.Transform); format != "" {
+		return format
+	}
+	return "json"
+}
+
+// writesJSON reports whether destination d is sent JSON: transform output
+// without a build to another format, or passthrough of JSON input.
+func writesJSON(f Flow, d Destination) bool {
+	switch receives(f, d) {
+	case "json":
+		return true
+	case "": // passthrough: no transform on the way
+		return f.InputFormat == "" || f.InputFormat == "json"
+	}
+	return false
+}
+
+// validAddress reports whether s is host:port with a numeric port 1–65535.
+func validAddress(s string) bool {
+	host, p, err := net.SplitHostPort(s)
+	port, perr := strconv.Atoi(p)
+	return err == nil && host != "" && perr == nil && port >= 1 && port <= 65535
+}
+
 func validHTTPURL(s string) bool {
 	u, err := url.Parse(s)
 	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
@@ -201,14 +321,24 @@ func validHTTPURL(s string) bool {
 // Process runs body through flow f and returns the stored message's id and
 // aggregate status. Delivery failures do not return an error: they are
 // recorded per destination and leave the message queued for RetryDue.
-func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, err error) {
+func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (Result, error) {
+	return p.ProcessWithMetadata(ctx, f, body, nil)
+}
+
+// ErrInFlight is returned by Remove for a message that is being processed
+// or retried.
+var ErrInFlight = errors.New("pipeline: message is being processed")
+
+// ProcessWithMetadata is Process that stores metadata with the message from
+// the start (for example where a reprocessed message came from).
+func (p *Pipeline) ProcessWithMetadata(ctx context.Context, f Flow, body []byte, metadata map[string]string) (_ Result, err error) {
 	if f.Transform != nil {
 		if _, err := dsl.Compile(*f.Transform); err != nil {
 			return Result{}, err
 		}
 	}
-	if needsObject(f) {
-		if _, err := decodeObject(body); err != nil {
+	if needsObject(f) || (f.InputFormat != "" && f.InputFormat != "json") { // a flow with a format takes only that format
+		if _, err := decodeInput(f, body); err != nil {
 			return Result{}, err
 		}
 	}
@@ -225,7 +355,7 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, 
 	if f.Transform != nil {
 		contentType = "json"
 	}
-	m := state.Message{ID: id, FlowID: f.ID, ContentType: contentType, Raw: body, Original: body}
+	m := state.Message{ID: id, FlowID: f.ID, ContentType: contentType, Raw: body, Original: body, Metadata: metadata}
 	if err := p.outbox(f, contentType, nil, nil).Receive(ctx, m); err != nil {
 		return Result{}, err
 	}
@@ -237,7 +367,11 @@ func (p *Pipeline) Process(ctx context.Context, f Flow, body []byte) (_ Result, 
 			}
 		}()
 	}
-	return p.resume(ctx, f, id, false)
+	res, err := p.resume(ctx, f, id, false)
+	if err != nil {
+		res.ID = id // stored: the caller must not send the same content again
+	}
+	return res, err
 }
 
 // needsObject reports whether messages of f must be JSON objects: the flow
@@ -254,6 +388,128 @@ func needsObject(f Flow) bool {
 	return false
 }
 
+// Hold reserves a message id as in flight, so no processing or retry starts
+// on it until release is called; ok is false while it is already busy.
+func (p *Pipeline) Hold(id string) (release func(), ok bool) {
+	if _, busy := p.inflight.LoadOrStore(id, struct{}{}); busy {
+		return nil, false
+	}
+	return func() { p.inflight.Delete(id) }, true
+}
+
+// Remove deletes a stored message unless it is being processed or retried
+// (ErrInFlight); while it is removed, no retry can start on it.
+func (p *Pipeline) Remove(ctx context.Context, id string) error {
+	return p.remove(ctx, id, false)
+}
+
+// RemoveDeadLettered is Remove for a dead-lettered message only: any other
+// status is ErrNotDeadLettered, checked while the message is held.
+func (p *Pipeline) RemoveDeadLettered(ctx context.Context, id string) error {
+	return p.remove(ctx, id, true)
+}
+
+func (p *Pipeline) remove(ctx context.Context, id string, deadLetteredOnly bool) error {
+	if _, busy := p.inflight.LoadOrStore(id, struct{}{}); busy {
+		return ErrInFlight
+	}
+	defer p.inflight.Delete(id)
+	m, err := p.store.Get(ctx, id)
+	if err != nil {
+		return err
+	}
+	if deadLetteredOnly && m.Status != state.StatusDeadLettered {
+		return fmt.Errorf("%w (status %s)", ErrNotDeadLettered, m.Status)
+	}
+	return p.store.Delete(ctx, id)
+}
+
+// ErrNotDeadLettered is returned by Requeue for a message that is not
+// dead-lettered.
+var ErrNotDeadLettered = errors.New("pipeline: message is not dead-lettered")
+
+// Requeue gives a dead-lettered message another round of delivery
+// attempts: every destination that has not delivered starts again with no
+// attempts, delivered destinations keep their record (they are never sent
+// again), the processing error is cleared, the "requeues" metadata counts
+// the requeue, and the message is queued for the next retry pass — or, if
+// it was never transformed (its flow was deleted before that), put back to
+// received so the retry pass transforms it first. It returns the message as
+// it was before (ErrInFlight while the message is busy, ErrNotDeadLettered
+// with the current status for any other status).
+func (p *Pipeline) Requeue(ctx context.Context, id string) (state.Message, error) {
+	if _, busy := p.inflight.LoadOrStore(id, struct{}{}); busy {
+		return state.Message{}, ErrInFlight
+	}
+	defer p.inflight.Delete(id)
+	m, err := p.store.Get(ctx, id)
+	if err != nil {
+		return state.Message{}, err
+	}
+	if m.Status != state.StatusDeadLettered {
+		return state.Message{}, fmt.Errorf("%w (status %s)", ErrNotDeadLettered, m.Status)
+	}
+	before := m
+	before.Attempts = make(map[string]state.DestinationAttempt, len(m.Attempts))
+	before.Metadata = make(map[string]string, len(m.Metadata))
+	attempts := make(map[string]state.DestinationAttempt, len(m.Attempts))
+	for dest, a := range m.Attempts {
+		before.Attempts[dest] = a
+		if a.Attempts > 0 && a.LastError == "" {
+			attempts[dest] = a // delivered
+		}
+	}
+	md := make(map[string]string, len(m.Metadata)+1)
+	for k, v := range m.Metadata {
+		before.Metadata[k] = v
+		if k != "error" {
+			md[k] = v
+		}
+	}
+	n, _ := strconv.Atoi(md["requeues"])
+	md["requeues"] = strconv.Itoa(n + 1)
+	m.Attempts, m.Metadata, m.Status = attempts, md, state.StatusQueued
+	if m.Transformed == nil {
+		m.Status = state.StatusReceived
+	}
+	return before, p.store.Put(ctx, m)
+}
+
+// decodeInput reads a received message the way f's input options say: the
+// JSON view of an HL7 v2 message ("hl7v2"), XML document ("xml"), or
+// delimited text ("delimited"), otherwise the JSON object.
+func decodeInput(f Flow, body []byte) (map[string]any, error) {
+	switch f.InputFormat {
+	case "hl7v2":
+		doc, err := codecs.HL7JSON(body)
+		return doc, refused("body must be an HL7 v2 message (MSH segment first)", err)
+	case "xml":
+		doc, err := codecs.XMLJSON(body)
+		return doc, refused("body must be a single well-formed XML document", err)
+	case "delimited":
+		delim := f.Delimiter
+		if delim == 0 {
+			delim = ','
+		}
+		doc, err := codecs.DelimitedJSON(body, delim, !f.NoHeader)
+		return doc, refused("body must be valid delimited text", err)
+	}
+	return decodeObject(body)
+}
+
+// refused is the invalid-message error for a view's refusal: what the body
+// must be, and the codec's reason when it gives one.
+func refused(must string, err error) error {
+	var r *codecs.RefusedError
+	switch {
+	case err == nil:
+		return nil
+	case errors.As(err, &r) && r.Reason != "":
+		return invalid(must + ": " + r.Reason)
+	}
+	return invalid(must)
+}
+
 // decodeObject decodes body as a single JSON object, keeping numbers exact
 // (json.Number) so identifiers like 20-digit MRNs survive untouched fields.
 func decodeObject(body []byte) (map[string]any, error) {
@@ -261,10 +517,10 @@ func decodeObject(body []byte) (map[string]any, error) {
 	dec := json.NewDecoder(bytes.NewReader(body))
 	dec.UseNumber()
 	if err := dec.Decode(&doc); err != nil || doc == nil {
-		return nil, fmt.Errorf("%w: body must be a JSON object", ErrInvalidMessage)
+		return nil, invalid("body must be a JSON object")
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return nil, fmt.Errorf("%w: body must be a single JSON object", ErrInvalidMessage)
+		return nil, invalid("body must be a single JSON object")
 	}
 	return doc, nil
 }
@@ -281,36 +537,30 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 	}
 	ob := p.outbox(f, m.ContentType, nil, nil)
 	if m.Status == state.StatusReceived {
-		transformed := m.Raw
-		if f.Transform != nil {
-			prog, err := dsl.Compile(*f.Transform)
-			if err != nil {
-				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
-			}
-			doc, err := decodeObject(m.Raw)
-			if err != nil {
-				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
-			}
-			out, filtered, err := prog.Run(doc)
-			if err != nil {
-				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
-			}
-			if filtered {
-				return p.complete(ctx, id, state.StatusFiltered, nil, retry, nil)
-			}
-			if transformed, err = json.Marshal(out); err != nil {
-				return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
-			}
+		// Every newly received message decides its own exclusions: the key
+		// is cleared ("") unless the flow transform sets it, so one carried
+		// over (a reprocessed message keeps its metadata) never applies.
+		routed := map[string]string{ExcludedMetadata: ""}
+		// What the stored output is, decided now (not at receive time, since
+		// the flow may have changed): passthrough, JSON, or a build format.
+		out, contentType, excluded, filtered, err := applyTransform(f, m.Raw)
+		switch {
+		case err != nil:
+			return p.complete(ctx, id, state.StatusErrored, err, retry, nil)
+		case filtered:
+			return p.complete(ctx, id, state.StatusFiltered, nil, retry, nil)
 		}
-		if err := ob.Transform(ctx, id, func([]byte) ([]byte, error) { return transformed, nil }); err != nil {
+		routed[ExcludedMetadata] = strings.Join(excluded, ",")
+		stored, err := ob.SetTransformed(ctx, id, out, contentType, routed)
+		if err != nil {
 			return Result{}, err
 		}
-		m.Transformed = transformed
+		m = stored
 	}
 
 	now := time.Now()
 	outs := destinationOutputs(f, m)
-	skip := filteredSet(outs)
+	skip := skipSet(outs, m)
 	// Only a delivery made while the sender waits (not a retry) replies.
 	var reply *Reply
 	replyTo := &reply
@@ -343,6 +593,91 @@ func (p *Pipeline) resume(ctx context.Context, f Flow, id string, retry bool) (R
 // (declared application/json or +json) as is and any other reply as a JSON
 // string. An empty reply, or one the transform cannot use (not a JSON
 // object, a failing step) or filters, returns nil.
+// isJSONNull reports whether b is the JSON literal null.
+func isJSONNull(b []byte) bool { return bytes.Equal(bytes.TrimSpace(b), []byte("null")) }
+
+// applyTransform runs f's transform over raw, read the way f's input options
+// say: the output, its content type (raw when the flow has no transform,
+// json, or a build step's format), the destinations destinationSet steps
+// excluded, and whether a filter dropped the message.
+func applyTransform(f Flow, raw []byte) (out []byte, contentType string, excluded []string, filtered bool, err error) {
+	if f.Transform == nil {
+		return raw, "raw", nil, false, nil
+	}
+	return execute(*f.Transform, f, raw)
+}
+
+// execute runs transform t over body, read the way format's input options
+// say: the output (a build step's, else the document as JSON), its format,
+// the destinations destinationSet steps excluded, and whether a filter
+// dropped it. Flow and destination transforms both run through it.
+func execute(t compiler.Transform, format Flow, body []byte) (out []byte, outFormat string, excluded []string, filtered bool, err error) {
+	prog, err := dsl.Compile(t)
+	if err != nil {
+		return nil, "", nil, false, err
+	}
+	doc, err := decodeInput(format, body)
+	if err != nil {
+		return nil, "", nil, false, err
+	}
+	res, err := prog.Execute(doc)
+	if err != nil || res.Filtered {
+		return nil, "", nil, res.Filtered, err
+	}
+	if res.Body != nil { // a build step rendered the output
+		return res.Body, res.Format, res.Excluded, false, nil
+	}
+	out, err = json.Marshal(res.Doc)
+	return out, "json", res.Excluded, false, err
+}
+
+// RunResult is what Run found a message would become.
+type RunResult struct {
+	Status      string   // transformed, filtered, or errored
+	Error       string   // why, when errored
+	Output      []byte   // the flow's output (transformed)
+	ContentType string   // its content type
+	Excluded    []string // destinations the flow's destinationSet steps excluded
+	// Destinations are the results of the destinations with their own
+	// transform that the message reaches.
+	Destinations map[string]DestinationRun
+}
+
+// DestinationRun is a destination transform's result.
+type DestinationRun struct {
+	Status      string // transformed, filtered, or errored
+	Error       string
+	Output      []byte
+	ContentType string
+}
+
+// Run is what processing would make of body, without storing or
+// delivering anything: the flow's transform, then each reached
+// destination's own transform, exactly as a message is processed (the
+// weavster test command runs fixtures through it).
+func Run(f Flow, body []byte) RunResult {
+	out, contentType, excluded, filtered, err := applyTransform(f, body)
+	switch {
+	case err != nil:
+		return RunResult{Status: "errored", Error: err.Error()}
+	case filtered:
+		return RunResult{Status: "filtered"}
+	}
+	res := RunResult{Status: "transformed", Output: out, ContentType: contentType, Excluded: excluded, Destinations: map[string]DestinationRun{}}
+	m := state.Message{Transformed: out, ContentType: contentType, Metadata: map[string]string{ExcludedMetadata: strings.Join(excluded, ",")}}
+	for name, r := range destinationOutputs(f, m) {
+		d := DestinationRun{Status: "transformed", Output: r.body, ContentType: r.format}
+		switch {
+		case r.err != nil:
+			d = DestinationRun{Status: "errored", Error: r.err.Error()}
+		case r.filtered:
+			d = DestinationRun{Status: "filtered"}
+		}
+		res.Destinations[name] = d
+	}
+	return res
+}
+
 func responseOutput(f Flow, r *Reply) json.RawMessage {
 	var t *compiler.Transform
 	for _, d := range f.Destinations {
@@ -351,8 +686,11 @@ func responseOutput(f Flow, r *Reply) json.RawMessage {
 		}
 	}
 	if t != nil {
-		out, _, err := destinationOutput(*t, r.Body)
-		if err != nil {
+		out, format, _, err := destinationOutput(*t, Flow{}, r.Body) // replies are read as JSON
+		if format != "json" {
+			return nil // the reply returned to the sender is JSON
+		}
+		if err != nil || isJSONNull(out) {
 			return nil
 		}
 		return out
@@ -361,6 +699,9 @@ func responseOutput(f Flow, r *Reply) json.RawMessage {
 	case len(r.Body) == 0:
 		return nil
 	case isJSONType(r.ContentType) && json.Valid(r.Body):
+		if isJSONNull(r.Body) { // a null reply is no response
+			return nil
+		}
 		return r.Body
 	}
 	s, _ := json.Marshal(string(r.Body)) // a string always encodes
@@ -378,8 +719,25 @@ func isJSONType(contentType string) bool {
 // the transform's error (a delivery failure).
 type destinationResult struct {
 	body     []byte
+	format   string // the body's format: "json", or a build step's
 	filtered bool
 	err      error
+}
+
+// MimeType is the Content-Type of content whose format is a message's
+// content type or a build step's format.
+func MimeType(format string) string {
+	switch format {
+	case "json":
+		return "application/json"
+	case "hl7v2":
+		return "x-application/hl7-v2+er7"
+	case "xml":
+		return "application/xml"
+	case "text":
+		return "text/plain; charset=utf-8"
+	}
+	return "application/octet-stream"
 }
 
 // destinationOutputs runs, once, the transform of every destination of f
@@ -389,39 +747,65 @@ type destinationResult struct {
 // transforms are deterministic, so every retry gets the same result.
 func destinationOutputs(f Flow, m state.Message) map[string]destinationResult {
 	outs := map[string]destinationResult{}
+	// The flow's output is JSON when a flow transform made it, else the
+	// message as received. Judge by what was stored, not the current
+	// definition, which may have changed since.
+	// Changed input options (delimiter, header) apply to messages still
+	// waiting, like any other definition change.
+	format := f
+	unreadable := false
+	switch m.ContentType {
+	case "json":
+		format = Flow{}
+	case "hl7v2", "xml": // a flow build step's output
+		format = Flow{InputFormat: m.ContentType}
+	case "text": // stays unreadable even if the flow changed since
+		unreadable = true
+	}
+	excluded := excludedSet(m)
 	for _, d := range f.Destinations {
 		a := m.Attempts[d.Name]
-		if d.Transform == nil || d.Stopped || (a.Attempts > 0 && a.LastError == "") {
+		if d.Transform == nil || d.Stopped || excluded[d.Name] || (a.Attempts > 0 && a.LastError == "") {
 			continue
 		}
 		var r destinationResult
-		r.body, r.filtered, r.err = destinationOutput(*d.Transform, m.Transformed)
+		if unreadable {
+			r.err = errors.New("the flow's output is text, which a transform cannot read")
+			outs[d.Name] = r
+			continue
+		}
+		r.body, r.format, r.filtered, r.err = destinationOutput(*d.Transform, format, m.Transformed)
 		outs[d.Name] = r
 	}
 	return outs
 }
 
-// destinationOutput runs transform t over body, the flow's output.
-func destinationOutput(t compiler.Transform, body []byte) (out []byte, filtered bool, err error) {
-	prog, err := dsl.Compile(t)
-	if err != nil {
-		return nil, false, err
-	}
-	doc, err := decodeObject(body)
-	if err != nil {
-		return nil, false, err
-	}
-	res, filtered, err := prog.Run(doc)
-	if err != nil || filtered {
-		return nil, filtered, err
-	}
-	out, err = json.Marshal(res)
-	return out, false, err
+// destinationOutput runs transform t over body, the flow's output, read the
+// way format's input options say.
+func destinationOutput(t compiler.Transform, format Flow, body []byte) (out []byte, outFormat string, filtered bool, err error) {
+	out, outFormat, _, filtered, err = execute(t, format, body)
+	return out, outFormat, filtered, err
 }
 
-// filteredSet lists the destinations whose own filter dropped the message.
-func filteredSet(outs map[string]destinationResult) map[string]bool {
-	skip := map[string]bool{}
+// ExcludedMetadata is the message metadata listing (comma-separated) the
+// destinations the flow's destinationSet steps excluded (#107 D-66).
+const ExcludedMetadata = "destinationSet.excluded"
+
+// excludedSet is the set of destinations stored as excluded for m.
+func excludedSet(m state.Message) map[string]bool {
+	out := map[string]bool{}
+	if v := m.Metadata[ExcludedMetadata]; v != "" {
+		for _, name := range strings.Split(v, ",") {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+// skipSet lists the destinations the message skips: excluded by the flow,
+// or dropped by the destination's own filter. Both count as done.
+func skipSet(outs map[string]destinationResult, m state.Message) map[string]bool {
+	skip := excludedSet(m)
 	for name, r := range outs {
 		if r.filtered {
 			skip[name] = true
@@ -450,10 +834,7 @@ func (p *Pipeline) pending(a state.DestinationAttempt, now time.Time) bool {
 // When reply is set, the reply to a successful delivery to the flow's
 // response selector is stored there.
 func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]destinationResult, reply **Reply) outbox.DeliverFunc {
-	mime := "application/octet-stream"
-	if contentType == "json" {
-		mime = "application/json"
-	}
+	mime := MimeType(contentType)
 	type built struct {
 		transformed bool
 		sink        Sink
@@ -478,9 +859,9 @@ func (p *Pipeline) deliverFunc(f Flow, contentType string, outs map[string]desti
 			case out.err != nil:
 				return fmt.Errorf("destination transform: %w", out.err)
 			}
-			body, destMime = out.body, "application/json"
+			body, destMime = out.body, MimeType(out.format)
 		}
-		d := Delivery{MessageID: m.ID, Body: body, ContentType: destMime, IdempotencyKey: key}
+		d := Delivery{FlowID: f.ID, MessageID: m.ID, Body: body, ContentType: destMime, IdempotencyKey: key}
 		if rs, ok := b.sink.(ResponseSink); ok && reply != nil && dest == f.ResponseSelector {
 			r, err := rs.WriteResponse(ctx, d)
 			if err == nil {
@@ -541,7 +922,7 @@ func (p *Pipeline) RetryDue(ctx context.Context, lookup FlowLookup) (int, error)
 			if ctx.Err() != nil {
 				return n, errors.Join(errs...)
 			}
-			page, err := p.store.Search(ctx, state.Query{Status: status, IDFrom: cursor, Sort: "id", Limit: retryPage})
+			page, err := p.store.Search(ctx, state.Query{Status: status, IDAfter: cursor, Sort: "id", Limit: retryPage})
 			if err != nil {
 				return n, errors.Join(append(errs, err)...)
 			}
@@ -560,7 +941,7 @@ func (p *Pipeline) RetryDue(ctx context.Context, lookup FlowLookup) (int, error)
 			if len(page) < retryPage {
 				break
 			}
-			cursor = page[len(page)-1].ID + "\x00" // IDFrom is inclusive
+			cursor = page[len(page)-1].ID
 		}
 	}
 	return n, errors.Join(errs...)
@@ -575,6 +956,19 @@ func (p *Pipeline) retryOne(ctx context.Context, m state.Message, lookup FlowLoo
 	defer p.inflight.Delete(m.ID)
 	if p.opts.Gate != nil {
 		defer p.opts.Gate.ProcessFlow(m.FlowID)()
+	}
+	// m comes from a search page read before this message was claimed: its
+	// first processing may have finished since (and let go of it), so work
+	// only from what is stored now, and leave a finished message alone.
+	latest, err := p.store.Get(ctx, m.ID)
+	if err != nil {
+		return false, err
+	}
+	switch latest.Status {
+	case state.StatusQueued, state.StatusTransformed, state.StatusReceived:
+		m = latest
+	default:
+		return false, nil
 	}
 	f, err := lookup(ctx, m.FlowID)
 	if errors.Is(err, ErrFlowGone) {
@@ -595,7 +989,7 @@ func (p *Pipeline) retryOne(ctx context.Context, m state.Message, lookup FlowLoo
 	}
 	if m.Status == state.StatusQueued {
 		now, due := time.Now(), false
-		skip := filteredSet(destinationOutputs(f, m))
+		skip := skipSet(destinationOutputs(f, m), m)
 		for _, d := range f.Destinations {
 			due = due || (!d.Stopped && !skip[d.Name] && p.pending(m.Attempts[d.Name], now))
 		}

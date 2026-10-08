@@ -1,0 +1,15 @@
+# deploy
+flow undeploy adt
+deploy
+deploy 30
+deploy soon
+flow start adt
+--- stdout
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"undeployed","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+deployed adt
+deployed 1 flows
+deployed 0 flows
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"started","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+--- stderr
+Error: timeout must be a positive number of seconds
+--- exit 2

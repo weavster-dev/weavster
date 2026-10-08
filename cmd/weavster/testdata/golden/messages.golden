@@ -1,0 +1,14 @@
+# messages
+exportmessages "$DIR/msgs.gz" adt
+exportmessages "$DIR/all.gz" *
+importmessages "$DIR/msgs.gz" adt
+exportmessages "$DIR/x.gz"
+importmessages "$DIR/none.gz" adt
+--- stdout
+exported 1 messages to $DIR/msgs.gz
+exported 1 messages to $DIR/all.gz
+{"imported":0,"skipped":1,"busy":0}
+--- stderr
+Error: usage: exportmessages "path" <flow id|name|*>
+Error: open $DIR/none.gz: no such file or directory
+--- exit 2

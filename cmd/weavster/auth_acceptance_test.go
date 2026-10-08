@@ -16,6 +16,7 @@ import (
 
 	"github.com/weavster-dev/weavster/internal/auth"
 	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/pipeline"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 	"github.com/weavster-dev/weavster/internal/state"
 )
@@ -27,6 +28,10 @@ var protectedRoutes = []struct {
 }{
 	{http.MethodGet, "/api/v1/system", ""},
 	{http.MethodGet, "/api/v1/auth/me", ""},
+	{http.MethodGet, "/api/v1/system/about", ""},
+	{http.MethodGet, "/api/v1/system/password-requirements", ""},
+	{http.MethodGet, "/api/v1/system/resources", ""},
+	{http.MethodGet, "/api/v1/system/guid", ""},
 	{http.MethodGet, "/api/v1/topology", "flows:view"},
 	{http.MethodGet, "/api/v1/topology/flows/admit", "flows:view"},
 	{http.MethodGet, "/api/v1/flows", "flows:view"},
@@ -34,9 +39,15 @@ var protectedRoutes = []struct {
 	{http.MethodPost, "/api/v1/flows", "flows:edit"},
 	{http.MethodDelete, "/api/v1/flows/admit", "flows:edit"},
 	{http.MethodGet, "/api/v1/messages", "messages:view"},
+	{http.MethodGet, "/api/v1/messages/trends?from=2026-01-01T00:00:00Z&to=2026-01-01T01:00:00Z", "messages:view"},
+	{http.MethodGet, "/api/v1/stats/series", "flows:view"},
 	{http.MethodPost, "/api/v1/flows/admit/messages", "messages:send"},
 	{http.MethodGet, "/api/v1/flows/admit/stats", "flows:view"},
 	{http.MethodGet, "/api/v1/events", "events:view"},
+	{http.MethodGet, "/api/v1/events/count", "events:view"},
+	{http.MethodGet, "/api/v1/events/max-id", "events:view"},
+	{http.MethodGet, "/api/v1/events/export", "events:view"},
+	{http.MethodGet, "/api/v1/events/1", "events:view"},
 	{http.MethodPost, "/api/v1/flows/admit/deploy", "flows:deploy"},
 	{http.MethodPost, "/api/v1/flows/redeploy-all", "flows:deploy"},
 	{http.MethodPut, "/api/v1/flows/admit", "flows:edit"},
@@ -44,6 +55,48 @@ var protectedRoutes = []struct {
 	{http.MethodGet, "/api/v1/flows/export", "flows:view"},
 	{http.MethodPost, "/api/v1/flows/import", "flows:edit"},
 	{http.MethodPost, "/api/v1/flows/admit/destinations/d/stop", "flows:deploy"},
+	{http.MethodPut, "/api/v1/flows", "flows:edit"},
+	{http.MethodGet, "/api/v1/flows/connector-names", "flows:view"},
+	{http.MethodGet, "/api/v1/flows/ports-in-use", "flows:view"},
+	{http.MethodPost, "/api/v1/flows/start-all", "flows:deploy"},
+	{http.MethodGet, "/api/v1/flows/stats", "flows:view"},
+	{http.MethodPost, "/api/v1/flows/stats/reset", "flows:deploy"},
+	{http.MethodPost, "/api/v1/flows/admit/stats/reset", "flows:deploy"},
+	{http.MethodGet, "/api/v1/messages/m1", "messages:view"},
+	{http.MethodGet, "/api/v1/messages/m1/content", "messages:content"},
+	{http.MethodDelete, "/api/v1/messages/m1", "messages:delete"},
+	{http.MethodPost, "/api/v1/messages/m1/reprocess", "messages:send"},
+	{http.MethodPost, "/api/v1/messages/m1/requeue", "messages:view,messages:send"},
+	{http.MethodPost, "/api/v1/messages/requeue", "messages:send"},
+	{http.MethodGet, "/api/v1/messages/export", "messages:content"},
+	{http.MethodPost, "/api/v1/messages/import", "messages:import"},
+	{http.MethodGet, "/api/v1/configmap", "configmap:edit"},
+	{http.MethodPut, "/api/v1/scripts/s", "scripts:edit"},
+	{http.MethodDelete, "/api/v1/settings/s", "settings:edit"},
+	{http.MethodDelete, "/api/v1/messages?all=true", "messages:delete"},
+	{http.MethodPost, "/api/v1/config/validate", "flows:edit"},
+	{http.MethodPost, "/api/v1/config/apply?fingerprint=x", "flows:view,flows:edit,alerts:edit,snippets:edit,scripts:edit,settings:edit,configmap:edit"},
+	{http.MethodPost, "/api/v1/config/plan", "flows:view,alerts:edit,snippets:edit,scripts:edit,settings:edit,configmap:edit"},
+	{http.MethodGet, "/api/v1/config/export", "flows:view,alerts:edit,snippets:edit,scripts:edit,settings:edit"},
+	{http.MethodGet, "/api/v1/config/export?includeConfigMap=true", "flows:view,alerts:edit,snippets:edit,scripts:edit,settings:edit,configmap:edit"},
+	{http.MethodPost, "/api/v1/config/import", "flows:edit,alerts:edit,snippets:edit,scripts:edit,settings:edit,flows:deploy"},
+	{http.MethodPost, "/api/v1/config/import?nodeploy=true&overwriteConfigMap=true", "flows:edit,alerts:edit,snippets:edit,scripts:edit,settings:edit,configmap:edit"},
+	{http.MethodGet, "/api/v1/lookups", "lookups:view"},
+	{http.MethodPost, "/api/v1/lookups/g/batch", "lookups:view"},
+	{http.MethodPut, "/api/v1/lookups/g/k", "lookups:edit"},
+	{http.MethodPost, "/api/v1/lookups/g/import", "lookups:edit"},
+	{http.MethodGet, "/api/v1/alerts", "alerts:edit"},
+	{http.MethodPost, "/api/v1/alerts/import", "alerts:edit"},
+	{http.MethodPost, "/api/v1/alerts/a/enable", "alerts:edit"},
+	{http.MethodDelete, "/api/v1/alerts/a", "alerts:edit"},
+	{http.MethodGet, "/api/v1/snippets", "snippets:edit"},
+	{http.MethodPost, "/api/v1/snippets", "snippets:edit"},
+	{http.MethodPut, "/api/v1/snippets/s", "snippets:edit"},
+	{http.MethodDelete, "/api/v1/snippets/s", "snippets:edit"},
+	{http.MethodGet, "/api/v1/snippet-libraries", "snippets:edit"},
+	{http.MethodPost, "/api/v1/snippet-libraries", "snippets:edit"},
+	{http.MethodPut, "/api/v1/snippet-libraries", "snippets:edit"},
+	{http.MethodDelete, "/api/v1/snippet-libraries/s", "snippets:edit"},
 }
 
 type apiClient struct {
@@ -162,13 +215,23 @@ func TestLoginLogout(t *testing.T) {
 	}
 }
 
+// missingPermission returns the permission a 403 body names.
+func missingPermission(body string) string {
+	_, after, _ := strings.Cut(body, "missing permission ")
+	perm, _, _ := strings.Cut(after, `"`)
+	return perm
+}
+
 // TestPermissionMatrix proves each route enforces its permission, using the
 // composition root's auth adapters with users holding one permission each.
 func TestPermissionMatrix(t *testing.T) {
 	provider := auth.NewLocalProvider(auth.Options{})
 	// Usernames are the permission with ":" replaced, since Basic auth
 	// usernames cannot contain a colon.
-	users := map[string][]string{"none": nil, "flows-view": {auth.PermFlowsView}, "flows-edit": {auth.PermFlowsEdit}, "messages-view": {auth.PermMessagesView}}
+	users := map[string][]string{"none": nil, "flows-view": {auth.PermFlowsView}, "flows-edit": {auth.PermFlowsEdit},
+		"messages-view": {auth.PermMessagesView}, "messages-content": {auth.PermMessagesContent},
+		"messages-delete": {auth.PermMessagesDelete}, "messages-send": {auth.PermMessagesSend},
+		"messages-import": {auth.PermMessagesImport}, "configmap-edit": {auth.PermConfigMapEdit}}
 	for name, perms := range users {
 		if err := provider.CreateUser(context.Background(), auth.User{Username: name, PasswordHash: "pw", Permissions: perms}); err != nil {
 			t.Fatal(err)
@@ -178,9 +241,12 @@ func TestPermissionMatrix(t *testing.T) {
 	if _, err := flows.Create(context.Background(), gateway.Flow{ID: "admit", Name: "Patient Admit"}); err != nil {
 		t.Fatal(err)
 	}
+	msgStore := state.NewMemStore()
+	pipe := pipeline.New(msgStore, newSink, nil, pipeline.Options{})
 	gw := gateway.New(gateway.Config{
 		Auth: authAdapter{provider}, Authorizer: authorizerAdapter{}, Passwords: provider,
-		Flows: flows, Messages: &messageAdapter{store: state.NewMemStore()}, Topology: topologyAdapter{flows: flows}, RequireCSRF: true,
+		Flows: flows, Messages: messageAdapter{store: msgStore, pipe: pipe, ingest: ingestAdapter{flows: flows, pipe: pipe}},
+		Topology: topologyAdapter{flows: flows}, RequireCSRF: true,
 	})
 	ts := httptest.NewServer(gw.Router())
 	defer ts.Close()
@@ -190,12 +256,16 @@ func TestPermissionMatrix(t *testing.T) {
 		for name := range users {
 			t.Run(rt.method+" "+rt.path+" as "+name, func(t *testing.T) {
 				status, body, _ := c.do(rt.method, rt.path, `{"id":"x"}`, basic(name, "pw"))
+				// A route needing several permissions (comma-separated) allows
+				// none of these one-permission users, and names the first
+				// one missing.
 				allowed := rt.perm == "" || strings.ReplaceAll(rt.perm, ":", "-") == name
 				if allowed && status == http.StatusForbidden {
 					t.Errorf("got 403 %q, want allowed", body)
 				}
-				if !allowed && (status != http.StatusForbidden || !strings.Contains(body, "missing permission "+rt.perm)) {
-					t.Errorf("got %d %q, want 403 missing %s", status, body, rt.perm)
+				if !allowed && (status != http.StatusForbidden || !strings.Contains(body, "missing permission ") ||
+					!strings.Contains(","+rt.perm+",", ","+missingPermission(body)+",")) {
+					t.Errorf("got %d %q, want 403 missing one of %s", status, body, rt.perm)
 				}
 			})
 		}

@@ -3,10 +3,13 @@ package scheduler
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 	"time"
 
 	_ "modernc.org/sqlite" // SQLite driver for local-DX queue tests
+
+	"github.com/weavster-dev/weavster/internal/state"
 )
 
 type fakeRunner struct {
@@ -27,7 +30,11 @@ func newSQLiteQueue(t *testing.T) *SQLJobQueue {
 	}
 	db.SetMaxOpenConns(1)
 	t.Cleanup(func() { _ = db.Close() })
-	q, err := NewSQLJobQueue(db, "sqlite")
+	// The jobs table comes from the store's migrations.
+	if err := state.Migrate(context.Background(), db, state.Migrations()); err != nil {
+		t.Fatal(err)
+	}
+	q, err := NewSQLJobQueue(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,5 +248,53 @@ func TestSchedulerReconcile(t *testing.T) {
 	}
 	if n != 1 {
 		t.Errorf("reconcile = %d, want 1", n)
+	}
+}
+
+// TestSQLJobQueueNeedsMigratedStore: a handle the store never migrated is
+// refused when the queue is made, not at the first Enqueue.
+func TestSQLJobQueueNeedsMigratedStore(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := NewSQLJobQueue(db); err == nil || !strings.Contains(err.Error(), "jobs table is missing") {
+		t.Fatalf("NewSQLJobQueue() = %v, want the missing table reported", err)
+	}
+}
+
+// TestClaimOrder: every queue claims the earliest due job first, then the
+// lowest id in byte order, whatever the order jobs were enqueued in.
+func TestClaimOrder(t *testing.T) {
+	now := time.Now()
+	for name, q := range testQueue(t) {
+		t.Run(name, func(t *testing.T) {
+			ctx := context.Background()
+			for _, j := range []Job{
+				{ID: "b", Type: "poll", NextRunAt: now.Add(-time.Minute)},
+				{ID: "a", Type: "poll", NextRunAt: now.Add(-time.Minute)},
+				{ID: "B", Type: "poll", NextRunAt: now.Add(-time.Minute)},
+				{ID: "z", Type: "poll", NextRunAt: now.Add(-2 * time.Minute)},
+			} {
+				if err := q.Enqueue(ctx, j); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var got []string
+			for {
+				j, ok, err := q.Claim(ctx, "n", time.Minute)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !ok {
+					break
+				}
+				got = append(got, j.ID)
+			}
+			if strings.Join(got, ",") != "z,B,a,b" {
+				t.Errorf("claimed %v, want z,B,a,b", got)
+			}
+		})
 	}
 }

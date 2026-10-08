@@ -42,11 +42,11 @@ Users, password changes, and lockout state are saved in the configured
 
 | `store.dialect` | Users after a restart |
 |---|---|
-| `sqlite` | Kept. The first-start step runs only once per database. After that, the bootstrap variables are ignored and the printed password is never shown again. |
+| `postgres` | Kept. The first-start step runs only once per database. After that, the bootstrap variables are ignored and the printed password is never shown again. |
 | `memory`, `disabled` | Lost. Every start repeats the first-start step, so a generated password changes each time. To keep a stable password, set `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD` or `WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD_FILE`. |
 
-If you lose a generated password on a `sqlite` store, there is no API to reset it. Stop the
-server and delete the database file (this also deletes flows and messages), or keep the
+If you lose a generated password on a PostgreSQL store, there is no API to reset it. Stop the
+server and drop the server's schema (this also deletes flows and messages), or keep the
 password somewhere safe when it is first printed.
 
 ### Changing a generated password
@@ -89,6 +89,9 @@ curl -s -H 'X-Weavster-CSRF: 1' \
 {"expiresAt":"2026-09-27T04:00:00Z","token":"5f0c…","user":{"username":"admin","permissions":["admin"],"mustChangePassword":false}}
 ```
 
+This edition has no multi-factor authentication: an `mfaCode` field in the login body (or an
+`X-Weavster-MFA` header) is accepted and ignored.
+
 A token is valid for 12 hours, or until you log out, change your password from another
 session, or the server restarts. The scheme name is case-insensitive (`bearer` works too).
 
@@ -109,7 +112,7 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 
 !!! warning "Lockout can shut out the only admin"
     Anyone who can reach the API can lock `admin` by sending wrong passwords, and there is no
-    second account to unlock it. With `store.dialect: sqlite` the lockout also survives a
+    second account to unlock it. With `store.dialect: postgres` the lockout also survives a
     restart, so you have to wait `lockoutPeriodSeconds`. Keep the server off untrusted
     networks. Setting `retryLimit: 0` removes this risk but allows unlimited password guessing.
 
@@ -117,14 +120,33 @@ returns `401`. Set `retryLimit: 0` to disable lockout. See [Server configuration
 
 | Route | Required permission |
 |---|---|
-| `GET /api/v1/system`, `/api/v1/auth/me`, `POST /api/v1/auth/password`, `POST /api/v1/auth/logout` | any signed-in user |
+| `GET /api/v1/system` and `/api/v1/system/about`, `/password-requirements`, `/resources`, `/guid`, `GET /api/v1/auth/me`, `POST /api/v1/auth/password`, `POST /api/v1/auth/password/check`, `POST /api/v1/auth/logout` | any signed-in user |
 | `GET /api/v1/flows`, `GET /api/v1/flows/{id}`, `GET /api/v1/flows/export`, `GET /api/v1/flows/connector-names`, `GET /api/v1/flows/ports-in-use`, `GET /api/v1/topology`, `GET /api/v1/topology/flows/{flowId}` | `flows:view` |
+| `POST /api/v1/config/validate` | `flows:edit` |
 | `POST /api/v1/flows`, `PUT /api/v1/flows`, `PUT /api/v1/flows/{id}`, `DELETE /api/v1/flows/{id}`, `POST /api/v1/flows/{id}/{enable,disable}`, `POST /api/v1/flows/import` | `flows:edit` |
-| `GET /api/v1/messages` | `messages:view` |
-| `POST /api/v1/flows/{id}/messages` | `messages:send` |
-| `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all`, `POST /api/v1/flows/{id}/destinations/{name}/{start,stop}` | `flows:deploy` |
-| `GET /api/v1/flows/{id}/stats` | `flows:view` |
-| `GET /api/v1/events` | `events:view` |
+| `GET /api/v1/messages`, `GET /api/v1/messages/{id}`, `GET /api/v1/messages/trends`, `GET /api/v1/system/prune` | `messages:view` |
+| `GET /api/v1/messages/{id}/content`, `GET /api/v1/messages/export` | `messages:content` |
+| `POST /api/v1/messages/import` | `messages:import` |
+| `DELETE /api/v1/messages/{id}`, `DELETE /api/v1/messages`, `POST /api/v1/system/prune/{start,stop}` | `messages:delete` |
+| `POST /api/v1/flows/{id}/messages`, `POST /api/v1/messages/{id}/reprocess`, `POST /api/v1/messages/requeue` | `messages:send` |
+| `POST /api/v1/messages/{id}/requeue` | `messages:view`, `messages:send` |
+| `POST /api/v1/flows/{id}/{deploy,undeploy,start,stop,pause,halt,resume}`, `POST /api/v1/flows/redeploy-all`, `POST /api/v1/flows/{deploy,undeploy,start,stop,pause,halt,resume}-all`, `POST /api/v1/flows/{id}/destinations/{name}/{start,stop}`, `POST /api/v1/flows/stats/reset`, `POST /api/v1/flows/{id}/stats/reset` | `flows:deploy` |
+| `GET /api/v1/flows/{id}/stats`, `GET /api/v1/flows/stats`, `GET /api/v1/stats/series`, `GET /metrics` | `flows:view` |
+| `GET /api/v1/events`, `/api/v1/events/{id}`, `/count`, `/max-id`, `/export` | `events:view` |
+| `GET /api/v1/audit` | `audit:view` |
+| `GET/POST /api/v1/users`, `GET/PUT/DELETE /api/v1/users/{name}`, `POST /api/v1/users/{name}/password` | `users:admin` |
+| `GET/PUT /api/v1/users/{name}/preferences`, `GET /api/v1/users/{name}/loggedin` | the user named, or `users:admin` |
+| `/api/v1/configmap`, `/api/v1/configmap/{name}` (all methods) | `configmap:edit` |
+| `/api/v1/scripts`, `/api/v1/scripts/{name}` (all methods) | `scripts:edit` |
+| `/api/v1/settings`, `/api/v1/settings/{name}` (all methods) | `settings:edit` |
+| `/api/v1/snippets`, `/api/v1/snippet-libraries` and their `/{name}` routes (all methods) | `snippets:edit` |
+| `/api/v1/alerts` and every route under it | `alerts:edit` |
+| `GET /api/v1/lookups…`, `POST /api/v1/lookups/{group}/batch` | `lookups:view` |
+| `PUT`/`DELETE /api/v1/lookups/{group}/{key}`, `DELETE /api/v1/lookups/{group}`, `POST /api/v1/lookups/{group}/import` | `lookups:edit` |
+| `POST /api/v1/config/apply` | `flows:view`, `flows:edit`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit` |
+| `POST /api/v1/config/plan` | `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `settings:edit`, and `configmap:edit` |
+| `GET /api/v1/config/export` | `flows:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, and `settings:edit`; also `configmap:edit` with `includeConfigMap=true` |
+| `POST /api/v1/config/import` | `flows:edit`, `alerts:edit`, `snippets:edit`, `scripts:edit`, and `settings:edit`; also `flows:deploy` unless `nodeploy=true`, and `configmap:edit` with `overwriteConfigMap=true` |
 
 The `admin` permission grants everything. A signed-in user without the permission gets:
 
@@ -132,7 +154,104 @@ The `admin` permission grants everything. A signed-in user without the permissio
 {"error":{"code":"FORBIDDEN","message":"missing permission flows:edit"}}
 ```
 
-The API cannot create other users yet; the only account is `admin`.
+The other permissions are `users:admin`, `flows:view`, `flows:edit`, `flows:deploy`,
+`messages:view`, `messages:send`, `messages:content`, `messages:delete`, `messages:import`,
+`events:view`, `alerts:edit`, `snippets:edit`, `scripts:edit`, `configmap:edit`,
+`settings:edit`, `lookups:view`, `lookups:edit`, and `audit:view`.
+
+## Manage users
+
+An account with `users:admin` (or `admin`) manages the other accounts.
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST http://127.0.0.1:8080/api/v1/users -d '{
+  "username": "ops", "password": "A-Temp-Passw0rd",
+  "permissions": ["flows:view", "flows:deploy", "events:view"],
+  "email": "ops@example.com", "org": "Radiology"
+}'
+```
+
+```json
+{"username":"ops","email":"ops@example.com","org":"Radiology","permissions":["events:view","flows:deploy","flows:view"],"mustChangePassword":true,"locked":false}
+```
+
+| Request | What it does |
+|---|---|
+| `GET /api/v1/users`, `GET /api/v1/users/{name}` | Lists accounts, or shows one. Password data is never returned. `locked` is true during a lockout. |
+| `POST /api/v1/users` | Creates an account (`201`), with optional `email` and `org` (organization). `username` is 1–64 characters from `A-Z a-z 0-9 . _ @ -`; `permissions` must be from the list above; the [password policy](server-config.md#auth) applies. The user must choose a new password at the first login unless you send `"mustChangePassword": false`. |
+| `PUT /api/v1/users/{name}` | Replaces `permissions` (required; `[]` for none). `email` and `org` change only when you send them. |
+| `POST /api/v1/users/{name}/password` | Sets a new password (`{"password":"…"}`, `204`). The user must change it at the next login, and a lockout ends. |
+| `DELETE /api/v1/users/{name}` | Deletes the account (`204`). |
+
+- Changing a user's permissions, setting their password, or deleting them ends all their open
+  sessions (bearer tokens); they sign in again.
+- You cannot delete your own account, and the last account with `admin` cannot be deleted or
+  lose `admin` (`409`).
+- An account with `users:admin` but not `admin` can only grant permissions it holds itself, never
+  `admin`, and cannot change, reset, or delete an account that has `admin` (`403`).
+- Editing your own account (`PUT`) keeps your own session only when your permissions stay the
+  same. Changing your permissions or setting your own password ends every session, yours included;
+  sign in again before making another API request.
+- Invalid input returns `400` with the reason, an existing username `409`, and an unknown user
+  `404`.
+
+## Preferences, sign-in status, and password checks
+
+Each user can keep their own preferences: a JSON object of names to text values, such as a UI
+theme or a default flow.
+`PUT /api/v1/users/{name}/preferences` replaces the whole set;
+`GET /api/v1/users/{name}/preferences` returns it (`{}` when none).
+
+```bash
+curl -s -u 'ops:PASSWORD' -H 'X-Weavster-CSRF: 1' -X PUT \
+  http://127.0.0.1:8080/api/v1/users/ops/preferences -d '{"theme":"dark","dashboard.flow":"adt"}'
+curl -s -u 'ops:PASSWORD' http://127.0.0.1:8080/api/v1/users/ops/preferences
+```
+
+```json
+{"dashboard.flow":"adt","theme":"dark"}
+```
+
+- Preferences are stored with the account, so they are kept across restarts on a PostgreSQL
+  store, and deleted with the account.
+- Up to 100 preferences; each name is 1–100 characters and each value text of at most 4096 bytes.
+  Anything else, or a value that is not a string, returns `400`.
+- A user reads and changes only their own; `users:admin` can reach anyone's, except that only an
+  account with `admin` can change the preferences of an account that has `admin`. Another user's
+  gets `403`, and an unknown user `404`.
+- The request body is at most 1 MiB; a larger one returns `400` with `request body too large`.
+
+`GET /api/v1/users/{name}/loggedin` tells whether the user has an open login session (a bearer
+token from `/api/v1/auth/login` that has not expired or been ended). Basic credentials are not
+sessions. The same rule applies: the user themselves, or `users:admin`.
+
+```bash
+curl -s -u 'admin:PASSWORD' http://127.0.0.1:8080/api/v1/users/ops/loggedin
+```
+
+```json
+{"loggedIn":true,"sessions":1}
+```
+
+An unknown user returns `404`. Sessions are held in memory, so
+after a restart every user shows `false` until they sign in again.
+
+`POST /api/v1/auth/password/check` tells any signed-in user whether a candidate password meets
+[`auth.passwordPolicy`](server-config.md#auth), without setting it:
+
+```bash
+curl -s -u 'ops:PASSWORD' -H 'X-Weavster-CSRF: 1' -X POST \
+  http://127.0.0.1:8080/api/v1/auth/password/check -d '{"password":"short"}'
+```
+
+```json
+{"valid":false,"reason":"password shorter than 8 characters"}
+```
+
+A password that passes returns `{"valid":true}`. The check also works while the user must still
+change their password, so a sign-in screen can check the new one first. It does not look at the
+user's current password; a change to the same password is still refused by
+`POST /api/v1/auth/password`.
 
 ## CLI
 

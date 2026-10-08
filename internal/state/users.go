@@ -61,7 +61,7 @@ func (s *sqlStore) PutUser(ctx context.Context, u UserDocument) error {
 
 func (s *sqlStore) ListUsers(ctx context.Context) ([]UserDocument, error) {
 	ctx = s.bind(ctx)
-	rows, err := s.db.QueryContext(ctx, `SELECT username, document FROM users ORDER BY username`)
+	rows, err := s.db.QueryContext(ctx, `SELECT username, document FROM users ORDER BY username /*C*/`)
 	if err != nil {
 		return nil, err
 	}

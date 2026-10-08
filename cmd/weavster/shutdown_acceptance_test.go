@@ -45,7 +45,7 @@ func TestGracefulShutdownRequeuesInFlightWork(t *testing.T) {
 	defer close(release)
 
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\", shutdownTimeoutMs: 200}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n"+
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\", shutdownTimeoutMs: 200}\n"+durableStoreConfig(t)+
 		"delivery: {backoffBaseMs: 10, retryIntervalMs: 600000}\n")
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}

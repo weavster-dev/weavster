@@ -1,0 +1,31 @@
+# flow-update
+flow update adt $DIR/adt.json
+flow update-all $DIR/all.json
+flow update adt
+--- stdout
+{"id":"adt","name":"ADT Inbound","sourceType":"","status":"undeployed","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}
+{"updated":["adt"]}
+--- stderr
+Error: usage:
+flow subcommands:
+  flow list
+  flow get <id>
+  flow create <file>
+  flow update <id> <file>
+  flow update-all <file>
+  flow rename <id> <name>
+  flow enable|disable <id>
+  flow remove <id>
+  flow export <file> [<id>...]
+  flow import <file> [--overwrite]
+  flow deploy|undeploy|start|stop|pause|halt|resume <id>
+  flow redeploy-all
+  flow deploy-all|undeploy-all|start-all|stop-all|pause-all|halt-all|resume-all
+  flow start-destination|stop-destination <id> <destination>
+  flow connectors
+  flow ports
+  flow stats [<id>]
+  flow reset-stats <id> [lifetime]
+
+<id> is a flow id or name; quote arguments with spaces: "ADT Inbound".
+--- exit 2

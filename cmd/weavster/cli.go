@@ -4,9 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 
 	"github.com/weavster-dev/weavster/internal/gateway"
@@ -14,7 +20,6 @@ import (
 
 // Client is the network-API surface used by the scriptable shell (spec §3).
 type Client interface {
-	UserList(ctx context.Context) ([]string, error)
 	Version(ctx context.Context) string
 	// Call sends one REST request and returns the response body. A reply
 	// that is not 2xx is an error carrying the status and the body.
@@ -33,7 +38,49 @@ func newHTTPClient(addr, user, pass string) *httpClient {
 	if addr == "" {
 		addr = "http://127.0.0.1:8080"
 	}
-	return &httpClient{base: addr, user: user, pass: pass, http: http.DefaultClient}
+	return &httpClient{base: strings.TrimSuffix(addr, "/"), user: user, pass: pass, http: &http.Client{CheckRedirect: noRedirects}}
+}
+
+// noRedirects refuses every redirect: following one would send the
+// credentials and the request body to another address, even over plain
+// HTTP from an https one. The caller gets the 3xx as an error.
+func noRedirects(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+
+// withCA makes the client trust the certificates in the PEM file caFile
+// for https, besides the system's, and speak TLS 1.2 at least.
+func (c *httpClient) withCA(caFile string) error {
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	if caFile != "" {
+		pem, err := os.ReadFile(caFile)
+		if err != nil {
+			return fmt.Errorf("CA file: %w", err)
+		}
+		if !pool.AppendCertsFromPEM(pem) {
+			return fmt.Errorf("CA file %s holds no PEM certificate", caFile)
+		}
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	c.http = &http.Client{Transport: transport, CheckRedirect: noRedirects}
+	return nil
+}
+
+// plainCredentials reports whether credentials would go unencrypted to
+// another host: an http address whose host is not a loopback one.
+func plainCredentials(addr string) bool {
+	u, err := url.Parse(addr)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip == nil || !ip.IsLoopback()
 }
 
 func (c *httpClient) request(ctx context.Context, method, path string, body []byte) (*http.Response, error) {
@@ -95,19 +142,18 @@ func (e *serverError) Error() string {
 	return "server returned " + e.Status + ": " + msg
 }
 
-func (c *httpClient) UserList(ctx context.Context) ([]string, error) {
-	// MVP: user listing is not exposed over REST yet; return empty.
-	return nil, nil
-}
-
 func (c *httpClient) Version(context.Context) string { return version }
 
 // runScript executes shell commands line-by-line (batch -s mode), returning
 // the §3.3 exit code.
 func runScript(script []byte, client Client, stdout, stderr io.Writer, debug bool) int {
 	sc := bufio.NewScanner(bytes.NewReader(script))
+	sc.Buffer(make([]byte, 0, 64<<10), maxShellLine+2) // the shell's line limit
 	rc := 0
 	for sc.Scan() {
+		if len(sc.Bytes()) > maxShellLine { // the buffer has room for CRLF only
+			return shellError(stderr, debug, fmt.Errorf("reading the script: %w", bufio.ErrTooLong))
+		}
 		line := strings.TrimSpace(sc.Text())
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -115,6 +161,9 @@ func runScript(script []byte, client Client, stdout, stderr io.Writer, debug boo
 		if code := dispatch(context.Background(), client, line, stdout, stderr, debug); code == 2 {
 			rc = 2
 		}
+	}
+	if err := sc.Err(); err != nil { // a line over the limit ends the script
+		return shellError(stderr, debug, fmt.Errorf("reading the script: %w", err))
 	}
 	return rc
 }

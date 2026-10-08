@@ -22,7 +22,7 @@ func MappingTable() []Mapping {
 		{Legacy: "scripted filter", New: "WASI module stub (flagged for review)", AutoTranslated: false},
 		{Legacy: "code snippet", New: "config.Snippets", AutoTranslated: true},
 		{Legacy: "global script", New: "config.Scripts (flagged for review)", AutoTranslated: false},
-		{Legacy: "config map entry", New: "config.Map", AutoTranslated: true},
+		{Legacy: "config map entry", New: "config.ConfigMap", AutoTranslated: true},
 		{Legacy: "message history", New: "metadata + references (--with-content opt-in)", AutoTranslated: true},
 	}
 }

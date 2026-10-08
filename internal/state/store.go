@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 	"time"
 )
 
@@ -31,6 +32,11 @@ const (
 type DestinationAttempt struct {
 	Attempts  int    `json:"attempts"`
 	LastError string `json:"lastError"`
+	// LastCode is the last failure's protocol-specific code ("http:503",
+	// "mllp:AE", "sqlstate:23505", "net:timeout", …; "" for none or after a
+	// success), and LastAttemptAt when the last attempt ended (#107 D-78).
+	LastCode      string    `json:"lastCode,omitempty"`
+	LastAttemptAt time.Time `json:"lastAttemptAt,omitempty"`
 	// NextAttemptAt is when a failed delivery is due for retry.
 	NextAttemptAt time.Time `json:"nextAttemptAt,omitempty"`
 }
@@ -56,8 +62,12 @@ type Message struct {
 
 // Query narrows a message search (spec §2.6.18).
 type Query struct {
-	IDFrom      string
-	IDTo        string
+	IDFrom string
+	IDTo   string
+	// IDAfter selects ids after it (exclusive): the cursor of a page read
+	// in id order.
+	IDAfter     string
+	FlowID      string
 	From        time.Time
 	To          time.Time
 	Status      Status
@@ -77,13 +87,21 @@ type Store interface {
 	Get(ctx context.Context, id string) (Message, error)
 	Delete(ctx context.Context, id string) error
 	Search(ctx context.Context, q Query) ([]Message, error)
+	// Count is how many messages match q's filters (Limit, Offset, and
+	// Sort ignored).
+	Count(ctx context.Context, q Query) (int, error)
+	// ReceivedTimes is the receive times of the messages q selects, in q's
+	// order and paging, without loading the messages.
+	ReceivedTimes(ctx context.Context, q Query) ([]time.Time, error)
+	// MessageTrends counts messages per time bucket and status.
+	MessageTrends(ctx context.Context, q TrendQuery) (TrendCounts, error)
 	Close() error
 }
 
 // sqlStore is the shared SQL-backed Store core used by the SQLite and
 // Postgres adapters (schema and query semantics are identical).
 type sqlStore struct {
-	db *sql.DB
+	db *dialectDB
 	// uncancelable detaches caller cancellation from every statement.
 	// SQLite sets it: modernc.org/sqlite (up to at least v1.38) leaves the
 	// file open and locked after Close when a context cancels a statement,
@@ -100,8 +118,8 @@ func (s *sqlStore) bind(ctx context.Context) context.Context {
 	return ctx
 }
 
-func openSQLStore(ctx context.Context, db *sql.DB) (*sqlStore, error) {
-	s := &sqlStore{db: db}
+func openSQLStore(ctx context.Context, db *sql.DB, postgres bool) (*sqlStore, error) {
+	s := &sqlStore{db: &dialectDB{db: db, postgres: postgres}}
 	if err := Migrate(ctx, db, Migrations()); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -111,8 +129,53 @@ func openSQLStore(ctx context.Context, db *sql.DB) (*sqlStore, error) {
 
 func (s *sqlStore) Close() error { return s.db.Close() }
 
+// storableText is m with its metadata and attempt texts as every backend
+// stores them (textValue: no NUL bytes, valid UTF-8).
+func storableText(m Message) Message {
+	if len(m.Metadata) > 0 {
+		md := make(map[string]string, len(m.Metadata))
+		for _, k := range storableKeys(m.Metadata) {
+			if _, taken := md[textValue(k)]; !taken {
+				md[textValue(k)] = textValue(m.Metadata[k])
+			}
+		}
+		m.Metadata = md
+	}
+	if len(m.Attempts) > 0 {
+		at := make(map[string]DestinationAttempt, len(m.Attempts))
+		for _, d := range storableKeys(m.Attempts) {
+			if _, taken := at[textValue(d)]; !taken {
+				a := m.Attempts[d]
+				a.LastError, a.LastCode = textValue(a.LastError), textValue(a.LastCode)
+				at[textValue(d)] = a
+			}
+		}
+		m.Attempts = at
+	}
+	return m
+}
+
+// storableKeys orders a map's keys so that when two normalise to the same
+// text the survivor is always the same one: a key stored as given wins over
+// one that normalisation changed, and otherwise the bytewise-lower key wins.
+func storableKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		ci, cj := textValue(keys[i]) != keys[i], textValue(keys[j]) != keys[j]
+		if ci != cj {
+			return cj
+		}
+		return keys[i] < keys[j]
+	})
+	return keys
+}
+
 func (s *sqlStore) Put(ctx context.Context, m Message) error {
 	ctx = s.bind(ctx)
+	m = storableText(m)
 	now := time.Now()
 	if m.ReceivedAt.IsZero() {
 		m.ReceivedAt = now
@@ -156,8 +219,8 @@ func (s *sqlStore) Put(ctx context.Context, m Message) error {
 	}
 	for dest, a := range m.Attempts {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO message_attempts (message_id, destination, attempts, last_error, next_attempt_at) VALUES (?, ?, ?, ?, ?)`,
-			m.ID, dest, a.Attempts, a.LastError, unixMilli(a.NextAttemptAt)); err != nil {
+			`INSERT INTO message_attempts (message_id, destination, attempts, last_error, next_attempt_at, last_code, last_attempt_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			m.ID, dest, a.Attempts, a.LastError, unixMilli(a.NextAttemptAt), a.LastCode, unixMilli(a.LastAttemptAt)); err != nil {
 			return err
 		}
 	}
@@ -202,16 +265,49 @@ func (s *sqlStore) Delete(ctx context.Context, id string) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// The message row first, as Put writes it first: both lock in the same
+	// order, so a Put and a Delete of one message cannot deadlock.
 	for _, q := range []string{
+		`DELETE FROM messages WHERE id = ?`,
 		`DELETE FROM message_metadata WHERE message_id = ?`,
 		`DELETE FROM message_attempts WHERE message_id = ?`,
-		`DELETE FROM messages WHERE id = ?`,
 	} {
 		if _, err := tx.ExecContext(ctx, q, id); err != nil {
 			return err
 		}
 	}
 	return tx.Commit()
+}
+
+func (s *sqlStore) Count(ctx context.Context, q Query) (int, error) {
+	ctx = s.bind(ctx)
+	where, args := buildWhere(q)
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT count(*) FROM messages `+where, args...).Scan(&n)
+	return n, err
+}
+
+func (s *sqlStore) ReceivedTimes(ctx context.Context, q Query) ([]time.Time, error) {
+	ctx = s.bind(ctx)
+	where, args := buildWhere(q)
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT received_at FROM messages `+where+` `+buildOrderSort(q.Sort)+` LIMIT ? OFFSET ?`, append(args, limit, q.Offset)...)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	var out []time.Time
+	for rows.Next() {
+		var ms int64
+		if err := rows.Scan(&ms); err != nil {
+			return nil, err
+		}
+		out = append(out, time.UnixMilli(ms))
+	}
+	return out, rows.Err()
 }
 
 func (s *sqlStore) Search(ctx context.Context, q Query) ([]Message, error) {
@@ -245,6 +341,9 @@ func (s *sqlStore) Search(ctx context.Context, q Query) ([]Message, error) {
 	out := make([]Message, 0, len(ids))
 	for _, id := range ids {
 		m, err := s.Get(ctx, id)
+		if errors.Is(err, ErrNotFound) {
+			continue // deleted since the id query
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -272,7 +371,7 @@ func (s *sqlStore) loadMetadata(ctx context.Context, id string) (map[string]stri
 
 func (s *sqlStore) loadAttempts(ctx context.Context, id string) (map[string]DestinationAttempt, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT destination, attempts, last_error, next_attempt_at FROM message_attempts WHERE message_id = ?`, id)
+		`SELECT destination, attempts, last_error, next_attempt_at, last_code, last_attempt_at FROM message_attempts WHERE message_id = ?`, id)
 	if err != nil {
 		return nil, err
 	}
@@ -281,12 +380,15 @@ func (s *sqlStore) loadAttempts(ctx context.Context, id string) (map[string]Dest
 	for rows.Next() {
 		var dest string
 		var a DestinationAttempt
-		var next int64
-		if err := rows.Scan(&dest, &a.Attempts, &a.LastError, &next); err != nil {
+		var next, last int64
+		if err := rows.Scan(&dest, &a.Attempts, &a.LastError, &next, &a.LastCode, &last); err != nil {
 			return nil, err
 		}
 		if next != 0 {
 			a.NextAttemptAt = time.UnixMilli(next)
+		}
+		if last != 0 {
+			a.LastAttemptAt = time.UnixMilli(last)
 		}
 		out[dest] = a
 	}

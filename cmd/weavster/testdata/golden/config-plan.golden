@@ -1,0 +1,21 @@
+# config-plan
+config diff "$DIR/config.yaml"
+config diff "$DIR/map.json"
+config plan "$DIR/map.json"
+config apply "$DIR/config.yaml" --dry-run
+--- stdout
+~ flow/adt
+    destinations: [{"dir":"$DIR/out","name":"out","type":"file"}] → (none)
+    enabled: true → false
+0 to add, 1 to change, 0 to remove, 1 unchanged
+~ flow/adt
+    destinations: [{"dir":"$DIR/out","name":"out","type":"file"}] → (none)
+    enabled: true → false
+0 to add, 1 to change, 0 to remove, 1 unchanged
+dry run: the plan is current; nothing was changed
+--- stderr
+Error: server returned 400 Bad Request: invalid configuration document: config: parse: yaml: unmarshal errors:
+  line 1: field region not found
+Error: server returned 400 Bad Request: invalid configuration document: config: parse: yaml: unmarshal errors:
+  line 1: field region not found
+--- exit 2

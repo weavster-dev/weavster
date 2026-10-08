@@ -1,0 +1,26 @@
+# snippets
+snippet library import "$DIR/libs.json"
+snippet import "$DIR/snippets.json"
+snippet list
+snippet library list
+snippet export "$DIR/snippets-out.json"
+snippet library export "$DIR/libs-out.json"
+snippet library remove hl7
+snippet remove pid
+snippet library remove hl7
+snippet remove pid
+snippet list extra
+--- stdout
+imported 1 snippet libraries from $DIR/libs.json
+imported 1 snippets from $DIR/snippets.json
+pid	hl7
+hl7	HL7 helpers
+exported 1 snippets to $DIR/snippets-out.json
+exported 1 snippet libraries to $DIR/libs-out.json
+removed pid
+removed hl7
+--- stderr
+Error: server returned 409 Conflict: snippet library still has snippets
+Error: server returned 404 Not Found: snippet not found
+Error: usage: snippet [library] list | import "path" | export "path" | remove <name>
+--- exit 2

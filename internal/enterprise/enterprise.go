@@ -1,6 +1,8 @@
 // Package enterprise holds the one sentinel error for Enterprise-deferred
-// features (D-17): every package returns ErrNotImplemented for them, the
-// API answers 501 with code NOT_IMPLEMENTED, and the CLI shows that reply.
+// features (D-17): every stub returns ErrNotImplemented (wrapped to name
+// the feature), and the API would answer it with 501 NOT_IMPLEMENTED. No
+// endpoint of this edition reaches a stub today: Enterprise-only settings
+// are refused as invalid (400) before that.
 package enterprise
 
 import "errors"

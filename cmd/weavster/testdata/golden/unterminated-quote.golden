@@ -1,0 +1,6 @@
+# unterminated-quote
+flow get "adt
+--- stdout
+--- stderr
+Error: unterminated quote
+--- exit 2

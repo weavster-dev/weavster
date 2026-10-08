@@ -2,8 +2,12 @@ package state
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
+	"net/url"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -16,9 +20,91 @@ func testBackends(t *testing.T) map[string]Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = sqlite.Close() })
-	return map[string]Store{
+	backends := map[string]Store{
 		"sqlite": sqlite,
 		"memory": NewMemStore(),
+	}
+	if pg := testPostgres(t); pg != nil {
+		backends["postgres"] = pg
+	}
+	return backends
+}
+
+// testPostgres opens a store in a fresh schema of the PostgreSQL database
+// WEAVSTER_TEST_POSTGRES_DSN names (the CI PostgreSQL job sets it), or
+// returns nil when it is not set: no test needs PostgreSQL to run.
+func testPostgres(t *testing.T) Store {
+	t.Helper()
+	dsn := testPostgresDSN(t)
+	if dsn == "" {
+		return nil
+	}
+	s, err := OpenPostgres(context.Background(), dsn, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	return s
+}
+
+// testPostgresDSN creates an empty schema for the test and returns a DSN
+// whose search_path selects it, or "" without WEAVSTER_TEST_POSTGRES_DSN.
+// The schema is dropped when the test ends (after the stores it opened are
+// closed, as cleanups run last-registered first).
+func testPostgresDSN(t *testing.T) string {
+	t.Helper()
+	dsn := os.Getenv("WEAVSTER_TEST_POSTGRES_DSN")
+	if dsn == "" {
+		return ""
+	}
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	admin, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := make([]byte, 6)
+	_, _ = rand.Read(b)
+	schema := "t_" + hex.EncodeToString(b)
+	t.Cleanup(func() {
+		_, _ = admin.ExecContext(ctx, "DROP SCHEMA IF EXISTS "+schema+" CASCADE")
+		_ = admin.Close()
+	})
+	if _, err := admin.ExecContext(ctx, "CREATE SCHEMA "+schema); err != nil {
+		t.Fatal(err)
+	}
+	q := u.Query()
+	q.Set("search_path", schema)
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
+// TestPostgresConcurrentMigrate: servers starting together on one empty
+// database migrate it once; none fails on a table another is creating.
+func TestPostgresConcurrentMigrate(t *testing.T) {
+	dsn := testPostgresDSN(t)
+	if dsn == "" {
+		t.Skip("WEAVSTER_TEST_POSTGRES_DSN not set")
+	}
+	errs := make(chan error, 4)
+	for i := range 4 {
+		go func() {
+			// A pool of one connection too: migrating must not wait for
+			// a second one while it holds the lock.
+			s, err := OpenPostgres(context.Background(), dsn, 1+i%2)
+			if err == nil {
+				err = s.Close()
+			}
+			errs <- err
+		}()
+	}
+	for range 4 {
+		if err := <-errs; err != nil {
+			t.Error(err)
+		}
 	}
 }
 
@@ -128,62 +214,6 @@ func ids(ms []Message) []string {
 	return out
 }
 
-func TestExportImport(t *testing.T) {
-	s := NewMemStore()
-	ctx := context.Background()
-	if err := s.Put(ctx, sampleMessage()); err != nil {
-		t.Fatal(err)
-	}
-
-	archive, err := Export(ctx, s, nil, FormRaw)
-	if err != nil {
-		t.Fatal(err)
-	}
-	fresh := NewMemStore()
-	n, err := Import(ctx, fresh, archive)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("imported %d, want 1", n)
-	}
-	got, _ := fresh.Get(ctx, "100")
-	if string(got.Raw) != string(sampleMessage().Raw) {
-		t.Errorf("raw content mismatch after import")
-	}
-}
-
-func TestExportImportEncrypted(t *testing.T) {
-	s := NewMemStore()
-	ctx := context.Background()
-	if err := s.Put(ctx, sampleMessage()); err != nil {
-		t.Fatal(err)
-	}
-
-	enc, err := ExportEncrypted(ctx, s, nil, FormTransformed, []byte("secret-key"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	fresh := NewMemStore()
-	n, err := ImportEncrypted(ctx, fresh, enc, []byte("secret-key"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != 1 {
-		t.Fatalf("imported %d, want 1", n)
-	}
-	got, _ := fresh.Get(ctx, "100")
-	if string(got.Transformed) != "transformed" {
-		t.Errorf("transformed content mismatch after encrypted import: %q", got.Transformed)
-	}
-
-	// Wrong key must fail.
-	fresh2 := NewMemStore()
-	if _, err := ImportEncrypted(ctx, fresh2, enc, []byte("wrong")); err == nil {
-		t.Error("expected decrypt failure with wrong key")
-	}
-}
-
 func TestMigrationsForwardOnly(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {
@@ -202,34 +232,6 @@ func TestMigrationsForwardOnly(t *testing.T) {
 	}
 }
 
-func TestContentForm(t *testing.T) {
-	m := Message{
-		Raw:         []byte("raw"),
-		Processed:   []byte("processed"),
-		Transformed: []byte("transformed"),
-		Encoded:     []byte("encoded"),
-		Response:    []byte("response"),
-		Original:    []byte("original"),
-	}
-	cases := []struct {
-		form string
-		want []byte
-	}{
-		{FormProcessed, m.Processed},
-		{FormTransformed, m.Transformed},
-		{FormEncoded, m.Encoded},
-		{FormResponse, m.Response},
-		{FormOriginal, m.Original},
-		{"unknown", m.Raw},
-	}
-	for _, tc := range cases {
-		got := m.ContentForm(tc.form)
-		if string(got) != string(tc.want) {
-			t.Errorf("ContentForm(%q) = %q, want %q", tc.form, got, tc.want)
-		}
-	}
-}
-
 func TestExportSpecificIDs(t *testing.T) {
 	s := NewMemStore()
 	ctx := context.Background()
@@ -245,18 +247,18 @@ func TestExportSpecificIDs(t *testing.T) {
 	}
 
 	// Export only m1
-	data, err := Export(ctx, s, []string{"m1"}, FormOriginal)
+	data, _, err := ExportArchive(ctx, s, ExportOptions{IDs: []string{"m1"}})
 	if err != nil {
 		t.Fatalf("export: %v", err)
 	}
 
 	fresh := NewMemStore()
-	n, err := Import(ctx, fresh, data)
+	res, err := ImportArchive(ctx, fresh, data, ImportOptions{})
 	if err != nil {
 		t.Fatalf("import: %v", err)
 	}
-	if n != 1 {
-		t.Errorf("imported %d, want 1", n)
+	if res.Imported != 1 {
+		t.Errorf("imported %d, want 1", res.Imported)
 	}
 }
 
@@ -269,14 +271,16 @@ func TestNextAttemptAtRoundTrip(t *testing.T) {
 	defer func() { _ = s.Close() }()
 	due := time.UnixMilli(time.Now().Add(time.Minute).UnixMilli())
 	m := Message{ID: "n", FlowID: "f", Status: StatusQueued, Attempts: map[string]DestinationAttempt{
-		"a": {Attempts: 1, LastError: "x", NextAttemptAt: due},
+		"a": {Attempts: 1, LastError: "x", LastCode: "http:503", LastAttemptAt: due.Add(-time.Minute), NextAttemptAt: due},
 		"b": {Attempts: 1},
 	}}
 	if err := s.Put(ctx, m); err != nil {
 		t.Fatal(err)
 	}
 	got, err := s.Get(ctx, "n")
-	if err != nil || !got.Attempts["a"].NextAttemptAt.Equal(due) || !got.Attempts["b"].NextAttemptAt.IsZero() {
+	a := got.Attempts["a"]
+	if err != nil || !a.NextAttemptAt.Equal(due) || !got.Attempts["b"].NextAttemptAt.IsZero() ||
+		a.LastCode != "http:503" || !a.LastAttemptAt.Equal(due.Add(-time.Minute)) || !got.Attempts["b"].LastAttemptAt.IsZero() {
 		t.Errorf("attempts = %+v, %v", got.Attempts, err)
 	}
 }
@@ -312,5 +316,35 @@ func TestSQLiteCancelReleasesFile(t *testing.T) {
 			t.Fatalf("iteration %d: write after a cancelled query and Close: %v", i, err)
 		}
 		_ = s2.Close()
+	}
+}
+
+// TestSearchIDAfter: IDAfter pages through messages in id order after a
+// cursor, on every backend (no NUL bytes in the query: PostgreSQL refuses
+// them).
+func TestSearchIDAfter(t *testing.T) {
+	ctx := context.Background()
+	for name, s := range testBackends(t) {
+		for _, id := range []string{"a", "b", "c", "B"} {
+			_ = s.Put(ctx, Message{ID: id, FlowID: "f", Status: StatusQueued})
+		}
+		var seen []string
+		cursor := ""
+		for {
+			page, err := s.Search(ctx, Query{IDAfter: cursor, Sort: "id", Limit: 2})
+			if err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
+			for _, m := range page {
+				seen = append(seen, m.ID)
+			}
+			if len(page) < 2 {
+				break
+			}
+			cursor = page[len(page)-1].ID
+		}
+		if fmt.Sprint(seen) != "[B a b c]" { // byte order on every backend
+			t.Errorf("%s: pages %v, want [B a b c]", name, seen)
+		}
 	}
 }

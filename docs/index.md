@@ -3,19 +3,20 @@
 Config-driven, message-oriented integration platform — a single static Go binary
 (no CGo, no external runtime).
 
+New here? [Getting started](getting-started.md) takes you from nothing to a processed message in
+about ten minutes.
+
 ## Reference
 
 - [Support matrix](support-matrix.md) — what the binary does today
-- [MVP Project Plan](mvp-project-plan.md) — scope, stack, build sequence
-- [Agent Onboarding](agent-onboarding.md) — coding rules for contributors and agents
 
 ## What exists now
 
 The server serves an authenticated REST API (HTTP, plus HTTPS when configured). Through it you
 define flows, send messages into them, transform messages with the YAML DSL, and deliver them
-to HTTP and file destinations with automatic retries; every message is stored with its status. See
-[Processing messages](processing-messages.md). Listening sources, scheduling, and WASM modules exist only as
-libraries in the source tree.
+to HTTP, file, and MLLP (HL7 v2) destinations with automatic retries; every message is stored with its status. See
+[Processing messages](processing-messages.md). A flow can also read files from a directory,
+listen on its own port for HTTP requests or HL7 v2 over MLLP, or poll a database query.
 
 See the [support matrix](support-matrix.md) for exactly what is wired, library-only,
 Enterprise-deferred, or unsupported.

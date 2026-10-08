@@ -27,7 +27,7 @@ It is a **greenfield replacement** for the legacy integration engine, built to t
 | YAML-DSL execution | **Prebuilt WASM DSL interpreter** embedded in the binary (built with pinned Go + TinyGo in CI; #107 D-03) |
 | Databases | **PostgreSQL** (prod) · **SQLite** (local DX) · **in-memory** (passthrough/buffered) |
 | API | REST + OpenAPI 3.1 (JSON-first) |
-| Config & IaC | YAML/JSON config-as-code + Terraform/OpenTofu/Pulumi samples |
+| Config & automation | YAML/JSON config-as-code files driven by the CLI; Git, CI, Terraform, and Pulumi are automation around the CLI and files (#107 D-55) |
 | Docs | **MkDocs** human site + **`agent-docs/`** (OpenAPI, JSON Schemas, `llms.txt`) |
 | Testing | Go `testing` + `weavster test` wrapper (JUnit XML / JSON) |
 
@@ -35,7 +35,11 @@ It is a **greenfield replacement** for the legacy integration engine, built to t
 
 ## 3. MVP scope — in vs out
 
-**In scope (MVP):** single Go binary/container; Postgres + SQLite/in-memory via the `Store` port; TLS + mTLS; local auth (password policy, lockout, anti-enumeration); built-in RBAC permission set; YAML DSL (executed by an embedded, prebuilt WASM interpreter — #107 D-03) + WASI transforms; internal scheduler with Postgres `SKIP LOCKED` job claiming; `weavster test`; Git-backed config-as-code + IaC samples; REST API + OpenAPI; **read-only** flow-topology web UI; Prometheus metrics + structured logs + events; and the **three critical gap closures** below.
+> **Rescoped by #107 D-55 (2026-09-27):** the MVP is a usable, locally running foundation driven by the CLI and config-as-code files. Where this plan and D-55 differ, D-55 wins; deferred work is listed under "Deferred from the MVP" in #107.
+
+**In scope (MVP):** single Go binary/container; PostgreSQL as the server's durable store (Docker Compose for local development) and an in-memory store for tests, via the `Store` port; a CLI that needs no database (`config validate` and `weavster test` run offline from files); config-as-code files planned and applied through the CLI (Git and CI are automation around it, with GitHub Actions/GitLab samples); file, HTTP, TCP/MLLP, and database sources/destinations with HL7 v2/JSON/XML/delimited codecs; the YAML DSL run in-process; retries and dead-letter; local auth (password policy, lockout) and HTTPS; built-in RBAC permission set; `weavster test`; REST API + OpenAPI; **read-only** flow-topology web UI; Prometheus metrics + structured logs + events; static binaries with checksums.
+
+**Deferred from the MVP (#107 D-55):** the in-server Git integration (Enterprise); SQLite as a server store; custom WASM/WASI transforms and the module registry; legacy import and data seeding; multi-node job leasing; exactly-once delivery; mTLS, cipher tuning, anti-enumeration timing, MFA/external-auth hooks; alert delivery, OTel; Terraform/Pulumi samples, release signing, and the installer.
 
 **Explicitly out (Enterprise, port exists but implementation excluded):** SSO (OIDC/SAML), complex RBAC/ABAC (OPA/Cedar), immutable/SIEM audit, K8s horizontal scaling, Redis/NATS queue + leader election, distributed tracing + transform replay, multi-tenancy, DICOM service-class provider, message-queue broker (queue/topic) adapters, KMS/Vault secret rotation, object/blob storage. *Leave the interface, stub the rest.*
 
@@ -67,7 +71,7 @@ Full detail (paths, files, dependencies, acceptance criteria, frameworks) lives 
 | Transform Compiler | `internal/compiler` | YAML DSL schema validation → IR for the embedded DSL interpreter |
 | Module Registry | `internal/registry` | WASM module version/sign/promote/rollback/GC *(glue, gap #2)* |
 | Config-as-Code | `internal/config` | plan/apply/drift, JSON-Schema validation |
-| Git Store | `internal/gitstore` | native Git-backed config (commit/push/pull/history/restore) |
+| Git Store | `internal/gitstore` | native Git-backed config (commit/push/pull/history/restore) — library only; Enterprise, not wired into the MVP binary (#107 D-55) |
 | Legacy Import ETL | `internal/migrate` | legacy XML → YAML migration *(glue, gap #1)* |
 | Outbox & Idempotency | `internal/outbox` | transactional outbox + idempotency keys + retry/dead-letter *(glue, gap #5)* |
 | Alerts | `internal/alerts` | alert definitions + evaluation |

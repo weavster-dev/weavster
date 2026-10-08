@@ -12,15 +12,24 @@ import (
 	"testing"
 
 	"github.com/weavster-dev/weavster/internal/gateway"
-	"github.com/weavster-dev/weavster/internal/observability"
 )
+
+// e2eSystem reports a fixed system id.
+type e2eSystem struct{}
+
+func (e2eSystem) Status() gateway.SystemStatus { return gateway.SystemStatus{ID: "e2e-instance"} }
+func (e2eSystem) About() gateway.SystemAbout   { return gateway.SystemAbout{} }
+func (e2eSystem) PasswordRequirements() gateway.PasswordRequirements {
+	return gateway.PasswordRequirements{}
+}
+func (e2eSystem) Resources() gateway.SystemResources { return gateway.SystemResources{} }
 
 // newServer starts a real gateway HTTP server. requireCSRF toggles the CSRF
 // marker middleware so the marker behaviour can be exercised end-to-end.
 func newServer(t *testing.T, requireCSRF bool) *httptest.Server {
 	t.Helper()
 	gw := gateway.New(gateway.Config{
-		System:      observability.SystemStatus("e2e-instance", "0.0.0-test", "now"),
+		System:      e2eSystem{},
 		RequireCSRF: requireCSRF,
 	})
 	ts := httptest.NewServer(gw.Router())
@@ -73,7 +82,7 @@ func TestSystemEndpoint(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	var info observability.SystemInfo
+	var info gateway.SystemStatus
 	if err := json.Unmarshal(body, &info); err != nil {
 		t.Fatalf("decode system JSON: %v", err)
 	}

@@ -10,7 +10,7 @@ import (
 // and auto-deploy of enabled flows on restart (flows.deployOnStartup).
 func TestFlowUpdateAndEnable(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
@@ -39,7 +39,8 @@ func TestFlowUpdateAndEnable(t *testing.T) {
 		{"null body", `null`, "must be a JSON object"},
 		{"status key", `{"name":"x","status":"stopped"}`, "status is managed"},
 		{"id change", `{"id":"g","name":"x"}`, "cannot be changed"},
-		{"bad transform", `{"transform":{"name":"t","steps":[{"build":{"template":"x"}}]}}`, "not supported yet"},
+		{"bad transform", `{"transform":{"name":"t","steps":[{"filter":{"when":"a == b == c","action":"reject"}}]}}`, `invalid operand \"b == c\"`},
+		{"unsupported step", `{"transform":{"name":"t","steps":[{"destinationSet":{"include":["x"]}}]}}`, "additionalProperties 'include' not allowed"},
 	} {
 		if code, body, _ := c.do(http.MethodPut, "/api/v1/flows/f", tc.body, admin); code != http.StatusBadRequest || !strings.Contains(body, tc.want) {
 			t.Errorf("%s: %d %q, want 400 %q", tc.name, code, body, tc.want)
@@ -65,6 +66,9 @@ func TestFlowUpdateAndEnable(t *testing.T) {
 		t.Errorf("enable unknown: %d, want 404", code)
 	}
 	stop()
+	if !restartable(t) {
+		return
+	}
 
 	// Restart: the enabled, undeployed flow is deployed and started; the
 	// disabled one is left undeployed; f keeps its state.
@@ -81,7 +85,7 @@ func TestFlowUpdateAndEnable(t *testing.T) {
 // flows stay undeployed across a restart.
 func TestDeployOnStartupDisabled(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\nflows: {deployOnStartup: false}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+durableStoreConfig(t)+"flows: {deployOnStartup: false}\n")
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)

@@ -1,0 +1,6 @@
+# unknown-command
+bogus
+--- stdout
+--- stderr
+Error: unknown command "bogus"
+--- exit 2

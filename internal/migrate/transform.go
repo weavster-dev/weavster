@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/weavster-dev/weavster/internal/artifact"
 	"github.com/weavster-dev/weavster/internal/config"
 	"github.com/weavster-dev/weavster/internal/flowdef"
 )
@@ -17,13 +18,14 @@ func Transform(le *LegacyExport, mappingVersion string) (*config.Config, []strin
 	}
 
 	cfg := &config.Config{
-		Version:  "1",
-		Flows:    make(map[string]flowdef.Flow),
-		Alerts:   make(map[string]config.Alert),
-		Snippets: make(map[string]string),
-		Scripts:  make(map[string]string),
-		Map:      make(map[string]string),
-		Settings: make(map[string]any),
+		Version:          "1",
+		Flows:            make(map[string]flowdef.Flow),
+		Alerts:           make(map[string]artifact.Alert),
+		Snippets:         make(map[string]artifact.Snippet),
+		SnippetLibraries: make(map[string]artifact.SnippetLibrary),
+		Scripts:          make(map[string]string),
+		ConfigMap:        make(map[string]string),
+		Settings:         make(map[string]any),
 	}
 
 	var review []string
@@ -78,15 +80,27 @@ func Transform(le *LegacyExport, mappingVersion string) (*config.Config, []strin
 		cfg.Flows[id] = f
 	}
 
+	// Snippet, script, and config-map names follow the same name rule as
+	// flow ids; a changed name is flagged for review.
+	rename := func(kind, name string, taken func(string) bool) string {
+		n := unique(validName(name), taken)
+		if n != name {
+			review = append(review, kind+":"+name+":renamed:"+n)
+		}
+		return n
+	}
 	for _, s := range le.Snippets {
-		cfg.Snippets[s.Name] = s.Body
+		name := rename("snippet", s.Name, func(c string) bool { _, ok := cfg.Snippets[c]; return ok })
+		cfg.Snippets[name] = artifact.Snippet{Name: name, Code: s.Body}
 	}
 	for _, s := range le.Scripts {
-		cfg.Scripts[s.Name] = s.Body
-		review = append(review, "script:"+s.Name) // scripts are not auto-translated
+		name := rename("script", s.Name, func(c string) bool { _, ok := cfg.Scripts[c]; return ok })
+		cfg.Scripts[name] = s.Body
+		review = append(review, "script:"+name) // scripts are not auto-translated
 	}
 	for _, e := range le.ConfigMap {
-		cfg.Map[e.Key] = e.Value
+		name := rename("configmap", e.Key, func(c string) bool { _, ok := cfg.ConfigMap[c]; return ok })
+		cfg.ConfigMap[name] = e.Value
 	}
 	return cfg, review, nil
 }

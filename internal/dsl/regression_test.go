@@ -35,7 +35,7 @@ func TestRunRegressions(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			out, filtered, err := p.Run(doc(t, tt.in))
+			out, filtered, err := run(p, doc(t, tt.in))
 			if err != nil || filtered != tt.wantFiltered {
 				t.Fatalf("filtered=%v err=%v, want filtered=%v", filtered, err, tt.wantFiltered)
 			}
@@ -64,7 +64,7 @@ func TestRunDoesNotModifyInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	in := doc(t, `{"a":{},"n":"oops"}`)
-	if _, _, err := p.Run(in); err == nil {
+	if _, _, err := run(p, in); err == nil {
 		t.Fatal("want conversion error")
 	}
 	if len(in["a"].(map[string]any)) != 0 {
@@ -77,7 +77,7 @@ func TestRunNilDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, _, err := p.Run(nil)
+	out, _, err := run(p, nil)
 	if err != nil || out["a"] != "x" {
 		t.Errorf("Run(nil) = %v, %v", out, err)
 	}
@@ -91,18 +91,18 @@ func TestRejectsUnsupportedSyntaxAndValues(t *testing.T) {
 	}
 	for _, v := range []string{"NaN", "Inf", "-infinity"} {
 		p, _ := Compile(mustParse(t, "name: t\nsteps:\n  - map: { from: a, to: b, type: number }"))
-		if _, _, err := p.Run(map[string]any{"a": v}); err == nil || !strings.Contains(err.Error(), "is not a number") {
+		if _, _, err := run(p, map[string]any{"a": v}); err == nil || !strings.Contains(err.Error(), "is not a number") {
 			t.Errorf("%s: err = %v, want not-a-number", v, err)
 		}
 	}
 	pn, _ := Compile(mustParse(t, "name: t\nsteps:\n  - map: { from: a, to: b, type: number }"))
 	for _, v := range []float64{math.NaN(), math.Inf(1)} {
-		if _, _, err := pn.Run(map[string]any{"a": v}); err == nil || !strings.Contains(err.Error(), "not a finite number") {
+		if _, _, err := run(pn, map[string]any{"a": v}); err == nil || !strings.Contains(err.Error(), "not a finite number") {
 			t.Errorf("%v: err = %v, want not-finite", v, err)
 		}
 	}
 	p, _ := Compile(mustParse(t, "name: t\nsteps:\n  - map: { from: a, to: items.5 }"))
-	if _, _, err := p.Run(doc(t, `{"a":1,"items":[]}`)); err == nil || !strings.Contains(err.Error(), "has no element 5") {
+	if _, _, err := run(p, doc(t, `{"a":1,"items":[]}`)); err == nil || !strings.Contains(err.Error(), "has no element 5") {
 		t.Errorf("out-of-range array set: err = %v", err)
 	}
 }
@@ -112,11 +112,11 @@ func TestJSONNumbers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, filtered, err := p.Run(map[string]any{"n": json.Number("2")})
+	out, filtered, err := run(p, map[string]any{"n": json.Number("2")})
 	if err != nil || filtered || out["m"] != json.Number("2") || out["s"] != "2" {
 		t.Errorf("out = %v, filtered = %v, err = %v", out, filtered, err)
 	}
-	if _, filtered, _ := p.Run(map[string]any{"n": json.Number("0")}); !filtered {
+	if _, filtered, _ := run(p, map[string]any{"n": json.Number("0")}); !filtered {
 		t.Error("json.Number 0 should be falsy")
 	}
 }
@@ -126,13 +126,13 @@ func TestExactNumberComparison(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, filtered, _ := p.Run(map[string]any{"id": json.Number("12345678901234567891"), "tiny": json.Number("1")}); !filtered {
+	if _, filtered, _ := run(p, map[string]any{"id": json.Number("12345678901234567891"), "tiny": json.Number("1")}); !filtered {
 		t.Error("different 20-digit numbers compared equal")
 	}
-	if _, filtered, _ := p.Run(map[string]any{"id": json.Number("12345678901234567890"), "tiny": json.Number("0.0000000000000000000001")}); filtered {
+	if _, filtered, _ := run(p, map[string]any{"id": json.Number("12345678901234567890"), "tiny": json.Number("0.0000000000000000000001")}); filtered {
 		t.Error("a tiny non-zero number was treated as falsy, or equal numbers did not match")
 	}
-	if _, filtered, _ := p.Run(map[string]any{"id": 12345678901234567890.0, "tiny": 0.0}); !filtered {
+	if _, filtered, _ := run(p, map[string]any{"id": 12345678901234567890.0, "tiny": 0.0}); !filtered {
 		t.Error("float64 zero should be falsy")
 	}
 }

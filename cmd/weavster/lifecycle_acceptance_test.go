@@ -8,11 +8,11 @@ import (
 )
 
 // TestFlowLifecycle drives every lifecycle operation over the API against a
-// sqlite store, checks invalid transitions and message acceptance, and that
-// the state survives a restart.
+// memory or PostgreSQL store, checks invalid transitions and message acceptance, and that
+// the state survives a restart (on PostgreSQL).
 func TestFlowLifecycle(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
@@ -86,6 +86,9 @@ func TestFlowLifecycle(t *testing.T) {
 	}
 	c.do(http.MethodPost, "/api/v1/flows/g/start", "", admin)
 	stop()
+	if !restartable(t) {
+		return
+	}
 
 	// State survives a restart.
 	stop = startCLI(t, args, c.base+"/api/openapi.yaml")
