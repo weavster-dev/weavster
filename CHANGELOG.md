@@ -7,6 +7,7 @@ All notable changes to this project are documented here, following
 
 ### Added
 
+- Tests (#422) for the TinyGo build invocation, audit PHI redaction and sink contracts, malformed password salts and digests, SMTP multi-recipient envelopes and send failures, the missing-secret error, malformed guest ABI failures in the executor, and alert manager control and import errors. Contributed as #130, #129, #128, #125, #124, #122, and #121.
 - Traceability matrix (#420): `specs/traceability-matrix.md` maps all 45 MUST/SHALL sentences of the functional spec and all 100 manifest acceptance criteria to the tests that prove them (85 tested) or to an explicit deferment (38 partial, 22 deferred, each citing 🔒 or a decision). `TestTraceabilityMatrix` keeps it complete: every requirement is quoted as it is, and every test it names exists. The maintainer sign-off (D-24) is still to be done. The user-administration test now checks `email` and `org` on create and update, and the create example in the docs shows `org`. The system-status test checks every field of the status. The security suite checks that an unknown user, a wrong password, and a locked account get the same 401 body.
 - Black-box end-to-end suites (#418) that build the `weavster` binary and run it as a separate process:
   - `test/e2e/security` covers refused and wrong credentials, lockout, bearer tokens and logout, the CSRF marker, permissions, security headers, and HTTPS with a private CA, including refusing untrusted and too-old TLS clients.
