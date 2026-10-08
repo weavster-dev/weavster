@@ -5,6 +5,9 @@ package secrets
 import (
 	"context"
 	"errors"
+	"fmt"
+
+	"github.com/weavster-dev/weavster/internal/enterprise"
 )
 
 // ErrNotFound is returned when a secret key has no value.
@@ -12,7 +15,7 @@ var ErrNotFound = errors.New("secrets: not found")
 
 // ErrEnterprise is returned by Enterprise-scoped adapters until a cloud
 // provider is wired in (gap #8).
-var ErrEnterprise = errors.New("secrets: enterprise feature not available")
+var ErrEnterprise = fmt.Errorf("%w: KMS/Vault key rotation", enterprise.ErrNotImplemented)
 
 // SecretProvider is the port for retrieving credential material (arch §3.1).
 type SecretProvider interface {

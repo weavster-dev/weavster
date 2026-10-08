@@ -1,0 +1,18 @@
+# alerts
+importalert "$DIR/alerts.json"
+importalert "$DIR/alerts.json"
+importalert "$DIR/alerts.json" force
+exportalert errors "$DIR/alert.json"
+exportalert * "$DIR/alerts-out.json"
+exportalert nope "$DIR/x.json"
+importalert
+--- stdout
+imported 1 alerts from $DIR/alerts.json
+imported 1 alerts from $DIR/alerts.json
+exported 1 alerts to $DIR/alert.json
+exported 1 alerts to $DIR/alerts-out.json
+--- stderr
+Error: server returned 409 Conflict: an alert with that id already exists
+Error: no alert has the id or name "nope"
+Error: usage: importalert "path" [force]
+--- exit 2

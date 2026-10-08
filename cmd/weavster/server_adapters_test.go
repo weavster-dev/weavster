@@ -2,10 +2,13 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"log/slog"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -77,7 +80,7 @@ func TestAuthorizerAdapterAuthorize(t *testing.T) {
 func TestAuditAdapterRecord(t *testing.T) {
 	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	sink := audit.NewLocalSink(logger)
-	a := auditAdapter{s: sink}
+	a := auditAdapter{s: sink, repo: state.NewMemStore(), logger: logger}
 
 	if err := a.Record(context.Background(), gateway.AuditEvent{Actor: "alice", Action: "create", Resource: "flow/f1"}); err != nil {
 		t.Errorf("Record: %v", err)
@@ -146,6 +149,15 @@ func TestStoresImplementFlowRepository(t *testing.T) {
 		if _, ok := s.(itemRepository); !ok {
 			t.Errorf("%T does not implement itemRepository", s)
 		}
+		if _, ok := s.(lookupRepository); !ok {
+			t.Errorf("%T does not implement lookupRepository", s)
+		}
+		if _, ok := s.(auditRepository); !ok {
+			t.Errorf("%T does not implement auditRepository", s)
+		}
+		if _, ok := s.(eventRepository); !ok {
+			t.Errorf("%T does not implement eventRepository", s)
+		}
 	}
 }
 
@@ -154,7 +166,8 @@ func TestStoresImplementFlowRepository(t *testing.T) {
 func TestTopologyAdapter(t *testing.T) {
 	ctx := context.Background()
 	flows := flowAdapter{store: state.NewMemStore()}
-	if _, err := flows.Create(ctx, gateway.Flow{ID: "admit", Name: "Patient Admit", SourceType: "file"}); err != nil {
+	if _, err := flows.Create(ctx, gateway.Flow{ID: "admit", Name: "Patient Admit", SourceType: "file",
+		Destinations: []gateway.FlowDestination{{Name: "out", Type: "file", Dir: "/tmp/out"}}}); err != nil {
 		t.Fatal(err)
 	}
 	ta := topologyAdapter{flows: flows}
@@ -162,7 +175,8 @@ func TestTopologyAdapter(t *testing.T) {
 	if graph, err := ta.Overview(ctx); err != nil || len(graph.Nodes) != 1 {
 		t.Errorf("Overview = %+v, %v; want one flow node", graph, err)
 	}
-	if graph, err := ta.FlowInternal(ctx, "admit"); err != nil || len(graph.Nodes) == 0 {
+	// A free-text sourceType is not a source: only the destination is drawn.
+	if graph, err := ta.FlowInternal(ctx, "admit"); err != nil || len(graph.Nodes) != 1 || graph.Nodes[0].ID != "destination:out" {
 		t.Errorf("FlowInternal admit = %+v, %v", graph, err)
 	}
 	if _, err := ta.FlowInternal(ctx, "noflow"); err == nil {
@@ -224,6 +238,16 @@ func (erroringStore) Search(context.Context, state.Query) ([]state.Message, erro
 }
 
 var errSearchFailed = errors.New("search failed")
+
+func (erroringStore) MessageTrends(context.Context, state.TrendQuery) (state.TrendCounts, error) {
+	return nil, errSearchFailed
+}
+
+func TestMessageAdapterTrendsError(t *testing.T) {
+	if _, err := (messageAdapter{store: erroringStore{}}).MessageTrends(context.Background(), gateway.MessageTrendQuery{Interval: time.Hour}); !errors.Is(err, errSearchFailed) {
+		t.Errorf("trends error = %v", err)
+	}
+}
 
 func TestMessageAdapterSearchError(t *testing.T) {
 	ma := messageAdapter{store: erroringStore{}}
@@ -289,7 +313,8 @@ func TestMessageAdapterDeleteMatching(t *testing.T) {
 	deletePage = 2
 	ctx := context.Background()
 	store := state.NewMemStore()
-	for _, m := range []state.Message{{ID: "a1", FlowID: "a"}, {ID: "a2", FlowID: "a"}, {ID: "a3", FlowID: "a"}, {ID: "a4", FlowID: "a"}, {ID: "a5", FlowID: "a"}, {ID: "b1", FlowID: "b"}} {
+	for _, m := range []state.Message{{ID: "a1", FlowID: "a"}, {ID: "a2", FlowID: "a"}, {ID: "a3", FlowID: "a"}, {ID: "a4", FlowID: "a"}, {ID: "a5", FlowID: "a"},
+		{ID: "b1", FlowID: "b", Attempts: map[string]state.DestinationAttempt{"out": {Attempts: 2}}}} {
 		m.Status = state.StatusSent
 		_ = store.Put(ctx, m)
 	}
@@ -314,6 +339,10 @@ func TestMessageAdapterDeleteMatching(t *testing.T) {
 		{"other status", state.Query{Status: state.StatusQueued}},
 		{"received earlier", state.Query{From: time.Now().Add(time.Hour)}},
 		{"received later", state.Query{To: time.Unix(0, 0)}},
+		{"other content type", state.Query{ContentType: "hl7v2"}},
+		{"more attempts now", state.Query{MaxAttempts: 1}},
+		{"other metadata", state.Query{Metadata: map[string]string{"source.file": "a.hl7"}}},
+		{"outside the id range", state.Query{IDTo: "a9"}},
 	} {
 		if removed, err := ma.removeIfMatching(ctx, "b1", tt.q); removed || err != nil {
 			t.Errorf("%s: removed = %v, %v; want kept", tt.name, removed, err)
@@ -324,5 +353,152 @@ func TestMessageAdapterDeleteMatching(t *testing.T) {
 	}
 	if _, _, err := (messageAdapter{store: erroringStore{}}).DeleteMatching(ctx, gateway.MessageQuery{}); !errors.Is(err, errSearchFailed) {
 		t.Errorf("search error = %v", err)
+	}
+}
+
+// flowIngest answers IngestFrom with res and err and records the call.
+type flowIngest struct {
+	res      gateway.IngestResult
+	err      error
+	target   string
+	metadata map[string]string
+}
+
+func (f *flowIngest) IngestFrom(_ context.Context, flowID string, _ []byte, md map[string]string) (gateway.IngestResult, error) {
+	f.target, f.metadata = flowID, md
+	return f.res, f.err
+}
+
+// TestFlowSink: a flow delivery succeeds once the target stored the
+// message (even if processing then failed), fails otherwise, and a retry
+// that finds the message already stored for its key stores nothing new.
+func TestFlowSink(t *testing.T) {
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	none := func(context.Context, string, string) (string, error) { return "", nil }
+	for _, tt := range []struct {
+		name      string
+		in        flowIngest
+		delivered func(context.Context, string, string) (string, error)
+		ok        bool
+		ingested  bool
+	}{
+		{"stored", flowIngest{res: gateway.IngestResult{ID: "m2"}}, none, true, true},
+		{"stored, then failed", flowIngest{res: gateway.IngestResult{ID: "m2"}, err: errors.New("disk full")}, none, true, true},
+		{"not running", flowIngest{err: gateway.ErrFlowNotRunning}, none, false, true},
+		{"already stored", flowIngest{}, func(_ context.Context, flow, key string) (string, error) {
+			if flow == "next" && key == "k1" {
+				return "m2", nil
+			}
+			return "", nil
+		}, true, false},
+		{"lookup failed", flowIngest{}, func(context.Context, string, string) (string, error) { return "", errors.New("store down") }, false, false},
+	} {
+		in := tt.in
+		sink, _ := (&sinkFactory{ingest: &in, delivered: tt.delivered, logger: logger}).build(pipeline.Destination{Type: "flow", Flow: "next"})
+		err := sink.Write(context.Background(), pipeline.Delivery{FlowID: "from", MessageID: "m1", IdempotencyKey: "k1", Body: []byte("{}")})
+		if (err == nil) != tt.ok || (in.target != "") != tt.ingested {
+			t.Errorf("%s: %v, ingested %v", tt.name, err, in.target != "")
+		}
+		if tt.ingested && (in.target != "next" || in.metadata["source.flow"] != "from" || in.metadata["source.message"] != "m1" || in.metadata[flowKeyMetadata] != "k1") {
+			t.Errorf("%s: target %s, metadata %v", tt.name, in.target, in.metadata)
+		}
+	}
+	if _, err := (&sinkFactory{}).build(pipeline.Destination{Type: "ftp"}); err == nil {
+		t.Error("an unknown type built a sink")
+	}
+}
+
+// TestMLLPClientTLS: an mllp destination verifies its receiver's host name,
+// against caFile's certificates when set, with the server's TLS settings; an unreadable caFile or one
+// without a certificate fails the delivery.
+func TestMLLPClientTLS(t *testing.T) {
+	dir := t.TempDir()
+	certFile, keyFile, _ := selfSignedCert(t, dir)
+	for _, tt := range []struct {
+		name, caFile, want string
+		roots              bool
+	}{
+		{"system roots", "", "", false},
+		{"caFile", certFile, "", true},
+		{"missing caFile", filepath.Join(dir, "none.pem"), "caFile:", false},
+		{"caFile without a certificate", keyFile, "no PEM certificate", false},
+	} {
+		opts := gateway.DefaultTLSOptions()
+		opts.MinVersion = tls.VersionTLS13
+		cfg, err := mllpClientTLS(pipeline.Destination{Type: "mllp", Address: "lab.example:2575", TLS: true, CAFile: tt.caFile}, opts)
+		switch {
+		case (tt.want == "") != (err == nil) || (err != nil && !strings.Contains(err.Error(), tt.want)):
+			t.Errorf("%s: %v, want %q", tt.name, err, tt.want)
+		case err == nil && (cfg.MinVersion != tls.VersionTLS13 || (cfg.RootCAs != nil) != tt.roots):
+			t.Errorf("%s: MinVersion %x, roots %v", tt.name, cfg.MinVersion, cfg.RootCAs != nil)
+		}
+	}
+	if _, err := mllpClientTLS(pipeline.Destination{Type: "mllp", Address: "lab:2575", TLS: true}, gateway.TLSOptions{}); err == nil {
+		t.Error("mllpClientTLS without TLS options: want error")
+	}
+	if _, err := newSink(pipeline.Destination{Type: "mllp", Address: "lab:2575", TLS: true, CAFile: filepath.Join(dir, "none.pem")}); err == nil {
+		t.Error("newSink with a missing caFile: want error")
+	}
+	if _, err := newSink(pipeline.Destination{Type: "mllp", Address: "lab:2575", TLS: true}); err != nil {
+		t.Errorf("newSink over TLS: %v", err)
+	}
+}
+
+// TestDBPool: one pool per driver and variable, replaced (the old one
+// closed) when the variable's connection string changes, all closed on
+// shutdown; a database destination needs the pool and its variable.
+func TestDBPool(t *testing.T) {
+	p := newDBPool(noSecrets)
+	a, err := p.get("sqlite", "WEAVSTER_DB_A", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := p.get("sqlite", "WEAVSTER_DB_A", ":memory:"); b != a {
+		t.Error("a second pool for the same variable")
+	}
+	if a.Stats().MaxOpenConnections != 1 {
+		t.Errorf("a SQLite pool allows %d connections, want 1 (one writer)", a.Stats().MaxOpenConnections)
+	}
+	if c, _ := p.get("postgres", "WEAVSTER_DB_A", "postgres://x"); c == a {
+		t.Error("drivers share a pool")
+	}
+	rotated, _ := p.get("sqlite", "WEAVSTER_DB_A", "file::memory:?x=1")
+	if rotated == a || a.Ping() == nil {
+		t.Error("a changed connection string did not replace and close the old pool")
+	}
+	p.close()
+	if len(p.dbs) != 0 || rotated.Ping() == nil {
+		t.Error("pools not closed")
+	}
+	if _, err := p.get("sqlite", "WEAVSTER_DB_A", ":memory:"); err == nil {
+		t.Error("a pool opened after close")
+	}
+	d := pipeline.Destination{Type: "database", Driver: "sqlite", DSNEnv: "WEAVSTER_DB_POOL_TEST", Table: "t", Columns: map[string]string{"b": "b", "a": "a"}}
+	if _, err := newSink(d); err == nil {
+		t.Error("newSink without a pool: want error")
+	}
+	if _, err := buildSink(d, gateway.DefaultTLSOptions(), newDBPool(noSecrets)); err == nil || !strings.Contains(err.Error(), "WEAVSTER_DB_POOL_TEST is not set") {
+		t.Errorf("unset variable: %v", err)
+	}
+	t.Setenv("WEAVSTER_DB_POOL_TEST", ":memory:")
+	if _, err := buildSink(d, gateway.DefaultTLSOptions(), newDBPool(noSecrets)); err != nil {
+		t.Errorf("buildSink: %v", err)
+	}
+}
+
+// TestSQLiteWaits: a SQLite connection string gets a busy timeout, joined
+// to any query it has, unless it sets one itself.
+func TestSQLiteWaits(t *testing.T) {
+	for in, want := range map[string]string{
+		"/data/x.db":                                  "/data/x.db?_pragma=busy_timeout(5000)",
+		"file:/data/x.db?mode=rw":                     "file:/data/x.db?mode=rw&_pragma=busy_timeout(5000)",
+		"/data/x.db?_pragma=busy_timeout(1)":          "/data/x.db?_pragma=busy_timeout(1)",
+		"/data/busy_timeout.db":                       "/data/busy_timeout.db?_pragma=busy_timeout(5000)",
+		"/data/x.db?note=busy_timeout":                "/data/x.db?note=busy_timeout&_pragma=busy_timeout(5000)",
+		"/data/x.db?mode=rw&_pragma=busy_timeout(10)": "/data/x.db?mode=rw&_pragma=busy_timeout(10)",
+	} {
+		if got := sqliteWaits(in); got != want {
+			t.Errorf("sqliteWaits(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

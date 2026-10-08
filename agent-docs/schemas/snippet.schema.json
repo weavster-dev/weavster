@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"snippet.schema.json","properties":{"name":{"type":"string"},"library":{"type":"string"},"description":{"type":"string"},"code":{"type":"string"}},"additionalProperties":false,"type":"object"}

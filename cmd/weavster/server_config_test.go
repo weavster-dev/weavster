@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"encoding/pem"
 	"io"
 	"math/big"
@@ -71,28 +72,20 @@ func TestServerConfigStore(t *testing.T) {
 		store      string
 		wantStatus int
 		wantBody   string
-		wantFile   string
 	}{
 		{name: "memory", store: "dialect: memory", wantStatus: http.StatusOK, wantBody: "[]"},
-		{name: "sqlite-default-dsn", store: "dialect: sqlite", wantStatus: http.StatusOK, wantBody: "[]", wantFile: "weavster.db"},
 		{name: "disabled", store: "dialect: disabled", wantStatus: http.StatusServiceUnavailable, wantBody: "messages unavailable"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dataDir := filepath.Join(t.TempDir(), "data")
 			addr := freeAddr(t)
-			cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {"+tt.store+"}\npaths: {dataDir: \""+dataDir+"\"}\n")
+			cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {"+tt.store+"}\n")
 			stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 			defer stop()
 
 			status, body := apiGet(t, http.DefaultClient, "http://"+addr+"/api/v1/messages", true)
 			if status != tt.wantStatus || !strings.Contains(body, tt.wantBody) {
 				t.Errorf("GET /api/v1/messages = %d %q, want %d containing %q", status, body, tt.wantStatus, tt.wantBody)
-			}
-			if tt.wantFile != "" {
-				if _, err := os.Stat(filepath.Join(dataDir, tt.wantFile)); err != nil {
-					t.Errorf("store file not created: %v", err)
-				}
 			}
 		})
 	}
@@ -133,6 +126,39 @@ func TestServerConfigTLS(t *testing.T) {
 	}
 }
 
+// TestSystemTLSMatchesListener: over the real HTTPS listener, the suite a
+// TLS 1.2 client negotiates is one /api/v1/system reports, and no suite for
+// another key type is claimed.
+func TestSystemTLSMatchesListener(t *testing.T) {
+	dir := t.TempDir()
+	certFile, keyFile, pool := selfSignedCert(t, dir) // ECDSA
+	addr, tlsAddr := freeAddr(t), freeAddr(t)
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\", tlsAddress: \""+tlsAddr+"\"}\n"+
+		"tls: {certFile: \""+certFile+"\", keyFile: \""+keyFile+"\", minVersion: \"1.2\"}\n")
+	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
+	defer stop()
+
+	client := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MaxVersion: tls.VersionTLS12}}}
+	req, _ := http.NewRequest(http.MethodGet, "https://"+tlsAddr+"/api/v1/system", nil)
+	req.Header.Set(gateway.MarkerHeader, gateway.MarkerValue)
+	req.SetBasicAuth(bootstrapAdmin, testAdminPassword)
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	var status struct {
+		TLS struct{ Ciphers []string }
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		t.Fatal(err)
+	}
+	reported := strings.Join(status.TLS.Ciphers, ",")
+	if negotiated := tls.CipherSuiteName(resp.TLS.CipherSuite); !strings.Contains(reported, negotiated) || strings.Contains(reported, "_RSA_") {
+		t.Errorf("negotiated %s; reported %s", negotiated, reported)
+	}
+}
+
 // TestServerConfigErrors proves invalid configuration and store connection
 // failures stop startup with exit 1 and an Error: message.
 func TestServerConfigErrors(t *testing.T) {
@@ -162,12 +188,9 @@ func TestServerConfigErrors(t *testing.T) {
 			return []string{"server", "--config", writeConfig(t,
 				"store: {dialect: postgres, dsn: \"postgres://u:p@127.0.0.1:1/db?connect_timeout=1\", maxRetry: 2, retryWaitMs: 10}\n")}
 		}, want: "giving up after 3 attempts"},
-		{name: "sqlite-dir-uncreatable", args: func(t *testing.T) []string {
-			return []string{"server", "--config", writeConfig(t, "store: {dialect: sqlite}\npaths: {dataDir: \""+filepath.Join(blocker, "sub")+"\"}\n")}
-		}, want: "Error: store:"},
-		{name: "sqlite-not-retried", args: func(t *testing.T) []string {
-			return []string{"server", "--config", writeConfig(t, "store: {dialect: sqlite, dsn: \""+t.TempDir()+"\", maxRetry: 5, retryWaitMs: 60000}\n")}
-		}, want: "Error: store: sqlite:"},
+		{name: "sqlite-removed", args: func(t *testing.T) []string {
+			return []string{"server", "--config", writeConfig(t, "store: {dialect: sqlite, dsn: \""+filepath.Join(t.TempDir(), "weavster.db")+"\"}\n")}
+		}, want: "store.dialect sqlite is no longer supported: use postgres for a durable store, or memory"},
 		{name: "extra-arguments", args: func(*testing.T) []string {
 			return []string{"server", "127.0.0.1:0", "--config", "weavster.yaml"}
 		}, want: "unexpected arguments", code: 2},
@@ -276,7 +299,7 @@ func selfSignedCert(t *testing.T, dir string) (certFile, keyFile string, pool *x
 // store: a flow created through the API is still there after a restart.
 func TestFlowsSurviveRestart(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+durableStoreConfig(t))
 	base := "http://" + addr
 	c := apiClient{t: t, base: base}
 	admin := basic(bootstrapAdmin, testAdminPassword)

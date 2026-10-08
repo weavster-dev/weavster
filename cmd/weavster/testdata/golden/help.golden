@@ -1,0 +1,28 @@
+# help
+help
+flow help
+--- stdout
+commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate|diff|plan "path", config apply "path" [--dry-run] [reason], exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", deadletter list [flow]|show <id>|requeue <id>|requeue all [flow]|remove <id>, importmap|exportmap|importscripts|exportscripts "path", quit
+flow subcommands:
+  flow list
+  flow get <id>
+  flow create <file>
+  flow update <id> <file>
+  flow update-all <file>
+  flow rename <id> <name>
+  flow enable|disable <id>
+  flow remove <id>
+  flow export <file> [<id>...]
+  flow import <file> [--overwrite]
+  flow deploy|undeploy|start|stop|pause|halt|resume <id>
+  flow redeploy-all
+  flow deploy-all|undeploy-all|start-all|stop-all|pause-all|halt-all|resume-all
+  flow start-destination|stop-destination <id> <destination>
+  flow connectors
+  flow ports
+  flow stats [<id>]
+  flow reset-stats <id> [lifetime]
+
+<id> is a flow id or name; quote arguments with spaces: "ADT Inbound".
+--- stderr
+--- exit 0

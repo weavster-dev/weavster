@@ -1,0 +1,18 @@
+# flow-stats
+flow stats
+flow stats adt
+flow reset-stats adt
+flow reset-stats adt lifetime
+resetstats
+resetstats lifetime
+resetstats now
+--- stdout
+adt	received=0 filtered=0 transformed=0 sent=0 errored=0 queued=0
+adt	received=0 filtered=0 transformed=0 sent=0 errored=0 queued=0
+statistics reset for adt
+statistics reset for adt
+statistics reset for every flow
+statistics reset for every flow
+--- stderr
+Error: usage: resetstats [lifetime]
+--- exit 2

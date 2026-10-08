@@ -1,0 +1,8 @@
+# Server configuration for docker-compose.yml (local development only).
+listen:
+  address: 0.0.0.0:8080
+store:
+  dialect: postgres
+  dsn: postgres://weavster:weavster@db:5432/weavster?sslmode=disable
+  maxRetry: 10
+  retryWaitMs: 1000

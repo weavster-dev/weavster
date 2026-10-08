@@ -32,13 +32,13 @@ func newPostgresMockQueue(t *testing.T) (*SQLJobQueue, sqlmock.Sqlmock) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	q := &SQLJobQueue{db: db, dialect: "postgres"}
+	q := &SQLJobQueue{db: db, postgres: true}
 	return q, mock
 }
 
 const claimSelect = `SELECT id, type, payload FROM jobs
-		WHERE status = 'queued' AND next_run_at <= $1 AND lease_until <= $1
-		ORDER BY next_run_at ASC LIMIT 1
+		WHERE status = 'queued' AND next_run_at <= $1 AND lease_until <= $2
+		ORDER BY next_run_at ASC, id COLLATE "C" ASC LIMIT 1
 		FOR UPDATE SKIP LOCKED`
 
 const claimUpdate = `UPDATE jobs SET claimed_by = $1, lease_until = $2, status = 'running', attempts = attempts + 1 WHERE id = $3`
@@ -51,7 +51,7 @@ func TestClaimPostgresHappyPath(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(claimSelect).
-		WithArgs(now).
+		WithArgs(now, now).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "type", "payload"}).
 			AddRow("j1", "poll", "{}"))
 	mock.ExpectExec(claimUpdate).
@@ -81,7 +81,7 @@ func TestClaimPostgresNoDueRows(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(claimSelect).
-		WithArgs(now).
+		WithArgs(now, now).
 		WillReturnError(sql.ErrNoRows)
 	mock.ExpectRollback()
 
@@ -125,7 +125,7 @@ func TestClaimPostgresScanError(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(claimSelect).
-		WithArgs(now).
+		WithArgs(now, now).
 		WillReturnError(errors.New("scan boom"))
 	mock.ExpectRollback()
 
@@ -149,7 +149,7 @@ func TestClaimPostgresUpdateError(t *testing.T) {
 
 	mock.ExpectBegin()
 	mock.ExpectQuery(claimSelect).
-		WithArgs(now).
+		WithArgs(now, now).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "type", "payload"}).
 			AddRow("j1", "poll", "{}"))
 	mock.ExpectExec(claimUpdate).
@@ -163,6 +163,28 @@ func TestClaimPostgresUpdateError(t *testing.T) {
 	}
 	if ok {
 		t.Error("claimPostgres: ok = true, want false on error")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+// TestClaimPostgresCommitError: when the claim does not commit, the job is
+// not claimed (ok is false), so the caller does not run it.
+func TestClaimPostgresCommitError(t *testing.T) {
+	q, mock := newPostgresMockQueue(t)
+	now := time.Now().UnixMilli()
+	mock.ExpectBegin()
+	mock.ExpectQuery(claimSelect).
+		WithArgs(now, now).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "type", "payload"}).AddRow("j1", "poll", "{}"))
+	mock.ExpectExec(claimUpdate).
+		WithArgs("node-a", now+1, "j1").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit().WillReturnError(errors.New("connection lost"))
+
+	if _, ok, err := q.claimPostgres(context.Background(), "node-a", now, now+1); err == nil || ok {
+		t.Fatalf("claimPostgres = ok %v, %v; want not claimed with the error", ok, err)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unmet expectations: %v", err)

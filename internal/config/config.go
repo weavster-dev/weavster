@@ -3,64 +3,120 @@
 package config
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
+	"regexp"
 	"sync"
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/weavster-dev/weavster/internal/artifact"
 	"github.com/weavster-dev/weavster/internal/flowdef"
 )
 
 // Config is the root config-as-code document: the single source of truth for
-// flows, alerts, snippets, scripts, the config map, and settings (arch §6).
+// flows, alerts, snippets, snippet libraries, global scripts, the config
+// map, and settings (arch §6, #107 D-46). Each section is keyed by the
+// artifact's id or name; an artifact that repeats it must match its key.
 type Config struct {
 	Version string `json:"version" yaml:"version"`
 	// Flows are flow definitions keyed by flow id: the same model the flow
 	// API accepts (flow.schema.json).
-	Flows    map[string]flowdef.Flow `json:"flows" yaml:"-"` // decoded through JSON (parse)
-	Alerts   map[string]Alert        `json:"alerts" yaml:"alerts"`
-	Snippets map[string]string       `json:"snippets" yaml:"snippets"`
-	Scripts  map[string]string       `json:"scripts" yaml:"scripts"`
-	Map      map[string]string       `json:"map" yaml:"map"`
-	Settings map[string]any          `json:"settings" yaml:"settings"`
-}
-
-// Alert is an alert definition (spec §2.7.24).
-type Alert struct {
-	Trigger    string   `json:"trigger" yaml:"trigger"`
-	Recipients []string `json:"recipients" yaml:"recipients"`
-	Scope      string   `json:"scope" yaml:"scope"`
-	Enabled    bool     `json:"enabled" yaml:"enabled"`
+	Flows            map[string]flowdef.Flow            `json:"flows" yaml:"-"` // decoded through JSON (parse)
+	Alerts           map[string]artifact.Alert          `json:"alerts" yaml:"alerts"`
+	Snippets         map[string]artifact.Snippet        `json:"snippets" yaml:"snippets"`
+	SnippetLibraries map[string]artifact.SnippetLibrary `json:"snippetLibraries" yaml:"snippetLibraries"`
+	// Scripts and ConfigMap hold text values; Settings any JSON value.
+	Scripts   map[string]string `json:"scripts" yaml:"scripts"`
+	ConfigMap map[string]string `json:"configmap" yaml:"configmap"`
+	Settings  map[string]any    `json:"settings" yaml:"settings"`
+	// Managed names the sections a parsed document writes; a plan removes
+	// nothing from the others (#107 D-47). Nil means every section.
+	Managed map[string]bool `json:"-" yaml:"-"`
 }
 
 // Parse decodes a config document. YAML is the canonical format; JSON is a
-// YAML subset and is accepted as-is (arch §6). A flow's id defaults to its
-// key and must match it when set.
+// YAML subset and is accepted as-is (arch §6). Unknown fields anywhere are
+// errors. An artifact's id (flows, alerts) or name (snippets, libraries)
+// defaults to its key and must match it when set.
 func Parse(data []byte) (*Config, error) {
 	c, _, err := parse(data)
 	return c, err
 }
 
-// parse decodes the document with YAML rules, except flows: each flow is
-// converted to JSON and decoded as a flow definition, so transforms stay
-// JSON objects. It also returns each flow as written, for validation.
+// goTypeName matches the Go type yaml names in errors.
+var goTypeName = regexp.MustCompile(` in type [\w.]+`)
+
+// document is Config as written; flows stay YAML nodes so each is decoded
+// as a flow definition through JSON (transforms stay JSON objects).
+type document struct {
+	Version          string                             `yaml:"version"`
+	Flows            map[string]yaml.Node               `yaml:"flows"`
+	Alerts           map[string]artifact.Alert          `yaml:"alerts"`
+	Snippets         map[string]artifact.Snippet        `yaml:"snippets"`
+	SnippetLibraries map[string]artifact.SnippetLibrary `yaml:"snippetLibraries"`
+	Scripts          map[string]string                  `yaml:"scripts"`
+	ConfigMap        map[string]string                  `yaml:"configmap"`
+	Settings         map[string]any                     `yaml:"settings"`
+}
+
+// parse decodes the document strictly. It also returns each flow as
+// written, for validation against the flow schema.
 func parse(data []byte) (*Config, map[string]json.RawMessage, error) {
-	var c Config
-	var doc struct {
-		Flows map[string]yaml.Node `yaml:"flows"`
+	var doc document
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	var keys map[string]yaml.Node // which sections are written, even empty
+	err := yaml.Unmarshal(data, &keys)
+	if err == nil {
+		err = dec.Decode(&doc)
 	}
-	if err := yaml.Unmarshal(data, &c); err != nil {
-		return nil, nil, fmt.Errorf("config: parse: %w", err)
+	if errors.Is(err, io.EOF) || (err == nil && len(keys) == 0 && doc.Version == "") {
+		return nil, nil, errors.New("config: the document is empty")
 	}
-	if err := yaml.Unmarshal(data, &doc); err != nil {
-		return nil, nil, fmt.Errorf("config: parse: %w", err)
+	if err != nil {
+		// "field x not found in type config.document": name the field only.
+		return nil, nil, fmt.Errorf("config: parse: %s", goTypeName.ReplaceAllString(err.Error(), ""))
 	}
+	if err := dec.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return nil, nil, errors.New("config: parse: the file holds more than one YAML document (---); put everything in one")
+	}
+	if doc.Version != "" && doc.Version != "1" {
+		return nil, nil, fmt.Errorf("config: version %q is not supported; use \"1\"", doc.Version)
+	}
+	c := &Config{Version: doc.Version, Alerts: doc.Alerts, Snippets: doc.Snippets, SnippetLibraries: doc.SnippetLibraries,
+		Scripts: doc.Scripts, ConfigMap: doc.ConfigMap, Settings: doc.Settings}
 	if c.Version == "" {
 		c.Version = "1"
 	}
-	normalize(&c)
+	c.Managed = map[string]bool{}
+	for section := range sections {
+		_, written := keys[section] // "flows:" with no entries still counts
+		c.Managed[section] = written
+	}
+	normalize(c)
+	for key, a := range c.Alerts {
+		if err := keyed(&a, "alerts", key); err != nil {
+			return nil, nil, err
+		}
+		c.Alerts[key] = a
+	}
+	for key, sn := range c.Snippets {
+		if err := keyed(&sn, "snippets", key); err != nil {
+			return nil, nil, err
+		}
+		c.Snippets[key] = sn
+	}
+	for key, l := range c.SnippetLibraries {
+		if err := keyed(&l, "snippetLibraries", key); err != nil {
+			return nil, nil, err
+		}
+		c.SnippetLibraries[key] = l
+	}
 	written := make(map[string]json.RawMessage, len(doc.Flows))
 	for key, node := range doc.Flows {
 		var v any
@@ -85,7 +141,20 @@ func parse(data []byte) (*Config, map[string]json.RawMessage, error) {
 		c.Flows[key] = f
 		written[key] = js
 	}
-	return &c, written, nil
+	return c, written, nil
+}
+
+// keyed sets an artifact's id or name to its key, or checks that they match.
+func keyed(a interface{ Key() (*string, string) }, section, key string) error {
+	ref, field := a.Key()
+	switch *ref {
+	case "":
+		*ref = key
+	case key:
+	default:
+		return fmt.Errorf("config: %s.%s: %s %q must match the key", section, key, field, *ref)
+	}
+	return nil
 }
 
 func normalize(c *Config) {
@@ -93,16 +162,19 @@ func normalize(c *Config) {
 		c.Flows = map[string]flowdef.Flow{}
 	}
 	if c.Alerts == nil {
-		c.Alerts = map[string]Alert{}
+		c.Alerts = map[string]artifact.Alert{}
 	}
 	if c.Snippets == nil {
-		c.Snippets = map[string]string{}
+		c.Snippets = map[string]artifact.Snippet{}
+	}
+	if c.SnippetLibraries == nil {
+		c.SnippetLibraries = map[string]artifact.SnippetLibrary{}
 	}
 	if c.Scripts == nil {
 		c.Scripts = map[string]string{}
 	}
-	if c.Map == nil {
-		c.Map = map[string]string{}
+	if c.ConfigMap == nil {
+		c.ConfigMap = map[string]string{}
 	}
 	if c.Settings == nil {
 		c.Settings = map[string]any{}
@@ -131,7 +203,8 @@ func (c *Config) Marshal() ([]byte, error) {
 }
 
 // Artifacts flattens the config into artifact keys -> serialized content.
-// Keys are of the form "<kind>/<name>" (e.g. "flow/myflow", "alert/myalert").
+// Keys are "<kind>/<name>": flow, alert, snippet, library, script,
+// configmap, settings.
 func (c *Config) Artifacts() map[string][]byte {
 	out := make(map[string][]byte)
 	for k, v := range c.Flows {
@@ -141,13 +214,16 @@ func (c *Config) Artifacts() map[string][]byte {
 		out["alert/"+k] = mustJSON(v)
 	}
 	for k, v := range c.Snippets {
-		out["snippet/"+k] = []byte(v)
+		out["snippet/"+k] = mustJSON(v)
+	}
+	for k, v := range c.SnippetLibraries {
+		out["library/"+k] = mustJSON(v)
 	}
 	for k, v := range c.Scripts {
 		out["script/"+k] = []byte(v)
 	}
-	for k, v := range c.Map {
-		out["map/"+k] = []byte(v)
+	for k, v := range c.ConfigMap {
+		out["configmap/"+k] = []byte(v)
 	}
 	for k, v := range c.Settings {
 		out["settings/"+k] = mustJSON(v)

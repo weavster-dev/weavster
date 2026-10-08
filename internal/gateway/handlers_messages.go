@@ -3,10 +3,13 @@ package gateway
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -32,8 +35,24 @@ func (s *Server) handleMessagesSearch(w http.ResponseWriter, r *http.Request) {
 		writeBackendError(w, err)
 		return
 	}
+	ids := make([]string, len(msgs))
+	for i, m := range msgs {
+		ids[i] = m.ID
+	}
+	s.auditDisclosed(r, ids)
+	// The total is a second query: when it fails the page is still
+	// answered, without X-Total-Count.
+	if total, err := s.cfg.Messages.Count(r.Context(), q); err == nil {
+		w.Header().Set("X-Total-Count", strconv.Itoa(total))
+	}
 	writeJSON(w, http.StatusOK, msgs)
 }
+
+// Search filter limits.
+const (
+	maxMetadataFilters = 10
+	maxAttemptsFilter  = 1000
+)
 
 // messageQuery reads the search parameters (limit up to maxLimit); on a bad
 // value it answers 400 and returns false.
@@ -44,18 +63,8 @@ func messageQuery(w http.ResponseWriter, r *http.Request, maxLimit int) (Message
 		writeStatusError(w, http.StatusBadRequest, msg)
 		return q, false
 	}
-	for _, p := range []struct {
-		name string
-		t    *time.Time
-	}{{"from", &q.From}, {"to", &q.To}} {
-		if raw := v.Get(p.name); raw != "" {
-			// An unencoded "+" in an offset arrives as a space.
-			parsed, err := time.Parse(time.RFC3339, strings.ReplaceAll(raw, " ", "+"))
-			if err != nil {
-				return bad(p.name + " must be an RFC 3339 time, for example 2026-09-26T12:00:00Z")
-			}
-			*p.t = parsed
-		}
+	if msg := timeRange(v, &q.From, &q.To); msg != "" {
+		return bad(msg)
 	}
 	if raw := v.Get("limit"); raw != "" {
 		n, err := strconv.Atoi(raw)
@@ -71,6 +80,45 @@ func messageQuery(w http.ResponseWriter, r *http.Request, maxLimit int) (Message
 		}
 		q.Offset = n
 	}
+	q.IDFrom, q.IDTo, q.ContentType = v.Get("idFrom"), v.Get("idTo"), v.Get("contentType")
+	if q.IDFrom != "" && q.IDTo != "" && q.IDFrom > q.IDTo {
+		return bad("idFrom must not be after idTo")
+	}
+	for _, p := range []struct {
+		name string
+		n    *int
+	}{{"minAttempts", &q.MinAttempts}, {"maxAttempts", &q.MaxAttempts}} {
+		if raw := v.Get(p.name); raw != "" {
+			n, err := strconv.Atoi(raw)
+			if err != nil || n < 1 || n > maxAttemptsFilter {
+				return bad(fmt.Sprintf("%s must be between 1 and %d", p.name, maxAttemptsFilter))
+			}
+			*p.n = n
+		}
+	}
+	if q.MinAttempts > 0 && q.MaxAttempts > 0 && q.MinAttempts > q.MaxAttempts {
+		return bad("minAttempts must not be more than maxAttempts")
+	}
+	var names []string
+	for name := range v {
+		if strings.HasPrefix(name, "metadata.") {
+			names = append(names, name)
+		}
+	}
+	if len(names) > maxMetadataFilters {
+		return bad(fmt.Sprintf("at most %d metadata filters", maxMetadataFilters))
+	}
+	sort.Strings(names) // the same parameter is named on every request
+	for _, name := range names {
+		key := strings.TrimPrefix(name, "metadata.")
+		if key == "" || len(v[name]) != 1 {
+			return bad(fmt.Sprintf("%s must name a metadata key and be given once", name))
+		}
+		if q.Metadata == nil {
+			q.Metadata = map[string]string{}
+		}
+		q.Metadata[key] = v[name][0]
+	}
 	if raw := v.Get("sort"); raw != "" {
 		switch raw {
 		case "receivedAt", "-receivedAt", "id", "-id":
@@ -80,6 +128,28 @@ func messageQuery(w http.ResponseWriter, r *http.Request, maxLimit int) (Message
 		}
 	}
 	return q, true
+}
+
+// timeRange reads the optional from and to query parameters (RFC 3339)
+// into from and to; it returns what is wrong with them, or "".
+func timeRange(v url.Values, from, to *time.Time) string {
+	for _, p := range []struct {
+		name string
+		t    *time.Time
+	}{{"from", from}, {"to", to}} {
+		if raw := v.Get(p.name); raw != "" {
+			// An unencoded "+" in an offset arrives as a space.
+			parsed, err := time.Parse(time.RFC3339, strings.ReplaceAll(raw, " ", "+"))
+			if err != nil {
+				return p.name + " must be an RFC 3339 time, for example 2026-09-26T12:00:00Z"
+			}
+			*p.t = parsed
+		}
+	}
+	if !from.IsZero() && !to.IsZero() && from.After(*to) {
+		return "from must not be after to"
+	}
+	return ""
 }
 
 // Archive limits and header.
@@ -120,7 +190,7 @@ func (s *Server) handleMessagesExport(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	archive, count, err := s.cfg.Messages.Export(r.Context(), q, key)
+	archive, ids, err := s.cfg.Messages.Export(r.Context(), q, key)
 	if err != nil {
 		writeBackendError(w, err)
 		return
@@ -132,7 +202,8 @@ func (s *Server) handleMessagesExport(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/gzip")
 		w.Header().Set("Content-Disposition", `attachment; filename="messages.json.gz"`)
 	}
-	w.Header().Set("Weavster-Message-Count", strconv.Itoa(count))
+	s.auditDisclosed(r, ids)
+	w.Header().Set("Weavster-Message-Count", strconv.Itoa(len(ids)))
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(archive)
 }
@@ -210,6 +281,7 @@ func (s *Server) handleMessageContent(w http.ResponseWriter, r *http.Request) {
 		writeFlowError(w, err)
 		return
 	}
+	s.auditDetail(r, "part", part) // disclosed
 	w.Header().Set("Content-Type", c.ContentType)
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
@@ -221,7 +293,19 @@ func (s *Server) handleMessageDelete(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusServiceUnavailable, "messages unavailable")
 		return
 	}
-	if err := s.cfg.Messages.Delete(r.Context(), r.PathValue("id")); err != nil {
+	id, err := r.PathValue("id"), error(nil)
+	switch status, ok := r.URL.Query()["status"]; {
+	case !ok:
+		err = s.cfg.Messages.Delete(r.Context(), id)
+	case len(status) != 1 || status[0] != "dead-lettered":
+		writeStatusError(w, http.StatusBadRequest, "status can only be dead-lettered")
+		return
+	case !s.deadLettersAvailable(w):
+		return
+	default: // delete only if still dead-lettered, checked atomically
+		err = s.cfg.DeadLetters.Remove(r.Context(), id)
+	}
+	if err != nil {
 		writeFlowError(w, err)
 		return
 	}
@@ -258,9 +342,8 @@ func (s *Server) handleMessagesDelete(w http.ResponseWriter, r *http.Request) {
 		writeStatusError(w, http.StatusServiceUnavailable, "flow lifecycle unavailable")
 		return
 	}
-	filtered := q.FlowID != "" || q.Status != "" || !q.From.IsZero() || !q.To.IsZero()
-	if !filtered && all != "true" {
-		writeStatusError(w, http.StatusBadRequest, "give a filter (flowId, status, from, to), or all=true to remove every message")
+	if !q.HasFilter() && all != "true" {
+		writeStatusError(w, http.StatusBadRequest, "give a filter (the search filters: flowId, status, from, to, idFrom, idTo, contentType, minAttempts, maxAttempts, metadata.KEY), or all=true to remove every message")
 		return
 	}
 	res := MessagesDeleted{Restarted: []string{}}
@@ -269,7 +352,8 @@ func (s *Server) handleMessagesDelete(w http.ResponseWriter, r *http.Request) {
 		res.Restarted, stopErr = s.stopStartedFlows(r, q.FlowID)
 	}
 	if stopErr == nil {
-		res.Deleted, res.Busy, deleteErr = s.cfg.Messages.DeleteMatching(r.Context(), q)
+		// Every match is removed even if the client goes away meanwhile.
+		res.Deleted, res.Busy, deleteErr = s.cfg.Messages.DeleteMatching(context.WithoutCancel(r.Context()), q)
 	}
 	// Start the stopped flows again even if the client has gone away.
 	ctx := context.WithoutCancel(r.Context())
@@ -321,9 +405,13 @@ func (s *Server) handleMessageReprocess(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	res, err := s.cfg.Messages.Reprocess(r.Context(), r.PathValue("id"))
-	if err != nil {
-		writeFlowError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusAccepted, res)
+	writeIngestResult(w, res, err)
+}
+
+// auditDisclosed records which messages a read disclosed (PHI access):
+// messages, how many, and messages.ids, every id as a JSON array (so an id
+// holding a comma stays one id).
+func (s *Server) auditDisclosed(r *http.Request, ids []string) {
+	list, _ := json.Marshal(ids) // strings always marshal
+	s.auditDetail(r, "messages", strconv.Itoa(len(ids)), "messages.ids", string(list))
 }

@@ -10,13 +10,14 @@ import (
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
 )
 
-// SQL for the lease-lifecycle operations. These are single-line so they match
-// the normalized matcher installed by newPostgresMockQueue verbatim.
+// SQL for the lease-lifecycle operations as PostgreSQL receives it ($n
+// placeholders). These are single-line so they match the normalized
+// matcher installed by newPostgresMockQueue verbatim.
 const (
-	heartbeatUpdate = `UPDATE jobs SET lease_until = ? WHERE id = ? AND claimed_by = ?`
-	completeDelete  = `DELETE FROM jobs WHERE id = ? AND claimed_by = ?`
-	requeueUpdate   = `UPDATE jobs SET status = 'queued', claimed_by = '', lease_until = 0, last_error = ? WHERE id = ? AND claimed_by = ?`
-	reconcileUpdate = `UPDATE jobs SET status = 'queued', claimed_by = '' WHERE status = 'running' AND lease_until <= ?`
+	heartbeatUpdate = `UPDATE jobs SET lease_until = $1 WHERE id = $2 AND claimed_by = $3`
+	completeDelete  = `DELETE FROM jobs WHERE id = $1 AND claimed_by = $2`
+	requeueUpdate   = `UPDATE jobs SET status = 'queued', claimed_by = '', lease_until = 0, last_error = $1 WHERE id = $2 AND claimed_by = $3`
+	reconcileUpdate = `UPDATE jobs SET status = 'queued', claimed_by = '' WHERE status = 'running' AND lease_until <= $1`
 )
 
 // TestSQLJobQueueHeartbeatDBError covers the ExecContext error branch of

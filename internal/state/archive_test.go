@@ -52,9 +52,9 @@ func TestArchiveRoundTrip(t *testing.T) {
 	want := fullMessage("m1", "f")
 	_ = src.Put(ctx, want)
 	for _, key := range [][]byte{nil, []byte("0123456789abcdef0123456789abcdef")} {
-		archive, n, err := ExportArchive(ctx, src, ExportOptions{Query: Query{FlowID: "f"}, Key: key})
-		if err != nil || n != 1 {
-			t.Fatalf("export = %d, %v", n, err)
+		archive, ids, err := ExportArchive(ctx, src, ExportOptions{Query: Query{FlowID: "f"}, Key: key})
+		if err != nil || len(ids) != 1 || ids[0] != want.ID {
+			t.Fatalf("export = %v, %v", ids, err)
 		}
 		dst := NewMemStore()
 		if res, err := ImportArchive(ctx, dst, archive, ImportOptions{Key: key}); err != nil || res.Imported != 1 {

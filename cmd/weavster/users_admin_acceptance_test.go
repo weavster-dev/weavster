@@ -103,16 +103,28 @@ func TestUserAdministration(t *testing.T) {
 		{"make itself admin", http.MethodPut, "/api/v1/users/useradm", `{"permissions":["admin"]}`, http.StatusForbidden, "cannot grant admin"},
 		{"reset the admin's password", http.MethodPost, "/api/v1/users/admin/password", `{"password":"Hijack-Passw0rd"}`, http.StatusForbidden, "only an account with admin"},
 		{"delete the admin", http.MethodDelete, "/api/v1/users/admin", ``, http.StatusForbidden, "only an account with admin"},
-		{"grant what it holds", http.MethodPost, "/api/v1/users", `{"username":"x3","password":"` + pw + `","permissions":["flows:view"]}`, http.StatusCreated, `"username":"x3"`},
+		{"grant what it holds", http.MethodPost, "/api/v1/users", `{"username":"x3","password":"` + pw + `","permissions":["flows:view"],"email":"x3@example.com","org":"Radiology"}`, http.StatusCreated, `"username":"x3"`},
 	} {
 		code, body, _ := c.do(s.method, s.path, s.body, ua)
 		if code != s.status || !strings.Contains(body, s.want) {
 			t.Errorf("useradm %s: %d %q; want %d containing %q", s.name, code, body, s.status, s.want)
 		}
 	}
+	// contact is a user's email and org as the server returns them.
+	contact := func(body string) string {
+		t.Helper()
+		var u struct{ Email, Org string }
+		if err := json.Unmarshal([]byte(body), &u); err != nil {
+			t.Fatalf("user %q: %v", body, err)
+		}
+		return u.Email + " / " + u.Org
+	}
+	if _, body, _ := c.do(http.MethodGet, "/api/v1/users/x3", "", admin); contact(body) != "x3@example.com / Radiology" {
+		t.Errorf("created with email and org: %s", body)
+	}
 	// Editing your own account keeps your own session.
 	own := token("useradm", upw)
-	if code, body, _ := c.do(http.MethodPut, "/api/v1/users/useradm", `{"permissions":["users:admin","flows:view"],"email":"me@example.com"}`, bearer(own)); code != http.StatusOK || !strings.Contains(body, `"email":"me@example.com"`) {
+	if code, body, _ := c.do(http.MethodPut, "/api/v1/users/useradm", `{"permissions":["users:admin","flows:view"],"email":"me@example.com","org":"Radiology"}`, bearer(own)); code != http.StatusOK || contact(body) != "me@example.com / Radiology" {
 		t.Errorf("own update: %d %q", code, body)
 	}
 	if code, _, _ := c.do(http.MethodGet, "/api/v1/users", "", bearer(own)); code != http.StatusOK {
@@ -125,9 +137,9 @@ func TestUserAdministration(t *testing.T) {
 	if code, _, _ := c.do(http.MethodGet, "/api/v1/users", "", bearer(own)); code != http.StatusUnauthorized {
 		t.Errorf("own session after resetting your own password: %d, want 401", code)
 	}
-	// Omitted email keeps it.
-	if _, body, _ := c.do(http.MethodPut, "/api/v1/users/useradm", `{"permissions":["users:admin","flows:view"]}`, admin); !strings.Contains(body, `"email":"me@example.com"`) {
-		t.Errorf("update without email cleared it: %s", body)
+	// Omitted email and org keep them.
+	if _, body, _ := c.do(http.MethodPut, "/api/v1/users/useradm", `{"permissions":["users:admin","flows:view"]}`, admin); contact(body) != "me@example.com / Radiology" {
+		t.Errorf("update without email and org cleared them: %s", body)
 	}
 
 	// CLI.

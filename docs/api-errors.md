@@ -27,8 +27,8 @@ Every error reply of the REST API has the same JSON shape, with `Content-Type: a
 | `413` | `PAYLOAD_TOO_LARGE` | The body is larger than the endpoint allows (10 MiB for messages, 50 MiB for import and bulk update). |
 | `500` | `INTERNAL` | Unexpected server-side failure. |
 | `500` | `IMPORT_INCOMPLETE`, `UPDATE_INCOMPLETE`, `REDEPLOY_INCOMPLETE` | A multi-flow operation stopped part-way; the reply also lists what was already written. |
-| `501` | `NOT_IMPLEMENTED` | The feature exists only in the Enterprise edition. `message` names it, for example `not implemented in this edition: SSO`. |
-| `503` | `SERVICE_UNAVAILABLE` | The part of the server that handles the request is not running, for example message endpoints with `store.dialect: disabled`. |
+| `501` | `NOT_IMPLEMENTED` | Reserved for a feature that exists only in the Enterprise edition; `message` would name it. No endpoint of this edition answers `501` today: Enterprise-only settings are refused with `400` instead (see [Enterprise-deferred stubs](support-matrix.md#enterprise-deferred-stubs)). |
+| `503` | `SERVICE_UNAVAILABLE` | The part of the server that handles the request is not running, for example message endpoints with `store.dialect: disabled`; or the server is busy processing as many messages as [`processing.maxConcurrent`](server-config.md#processing) allows (the reply then has `Retry-After: 1`: send again shortly). |
 
 ## In the command-line client
 
@@ -37,5 +37,4 @@ code `2`:
 
 ```text
 Error: server returned 404 Not Found: flow not found
-Error: server returned 501 Not Implemented: not implemented in this edition: SSO
 ```

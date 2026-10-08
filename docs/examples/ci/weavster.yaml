@@ -1,0 +1,16 @@
+# The configuration this repository manages (config-as-code, version 1).
+# Sections left out are not managed: the server keeps what it has for them.
+version: "1"
+flows:
+  adt:
+    id: adt
+    name: ADT inbound
+    enabled: true
+    destinations:
+      - name: archive
+        type: file
+        dir: /var/lib/weavster/out/adt
+scripts:
+  deploy: log("deployed from CI")
+settings:
+  retention: {days: 30}

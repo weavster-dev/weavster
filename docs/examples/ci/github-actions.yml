@@ -1,0 +1,94 @@
+# Weavster config-as-code on GitHub Actions: plan on pull requests, apply on
+# merge to main. Save as .github/workflows/weavster.yml in the repository that
+# holds weavster.yaml.
+#
+# Secrets: WEAVSTER_ADDRESS (https://weavster.example.com) as a repository
+# secret. WEAVSTER_USER / WEAVSTER_PASSWORD twice: as repository secrets for
+# the plan user, and as secrets of the `production` environment for the apply
+# user (environment secrets override repository secrets in the apply job).
+# GitHub gives no secrets to pull requests from forks: their plan job fails to
+# log in, and a maintainer runs the plan from a branch in this repository.
+name: weavster-config
+
+on:
+  pull_request:
+    paths: [weavster.yaml]
+  push:
+    branches: [main]
+    paths: [weavster.yaml]
+
+permissions:
+  contents: read
+
+env:
+  WEAVSTER_VERSION: latest # pin a commit hash (or a release tag once releases exist)
+
+jobs:
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # A newer push to the same pull request replaces its running plan.
+    concurrency:
+      group: weavster-plan-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - &checkout
+        uses: actions/checkout@v4
+      - &setup-go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - &install
+        name: Install weavster
+        run: go install "github.com/weavster-dev/weavster/cmd/weavster@${WEAVSTER_VERSION}"
+      - &connect
+        name: Write the connection file
+        env:
+          WEAVSTER_ADDRESS: ${{ secrets.WEAVSTER_ADDRESS }}
+          WEAVSTER_USER: ${{ secrets.WEAVSTER_USER }}
+          WEAVSTER_PASSWORD: ${{ secrets.WEAVSTER_PASSWORD }}
+        run: |
+          umask 077
+          quote() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/''/g")"; }
+          {
+            printf 'address: %s\n' "$(quote "$WEAVSTER_ADDRESS")"
+            printf 'user: %s\n' "$(quote "$WEAVSTER_USER")"
+            printf 'password: %s\n' "$(quote "$WEAVSTER_PASSWORD")"
+          } > "$RUNNER_TEMP/weavster.conn"
+      - name: Plan
+        run: |
+          printf 'config diff "weavster.yaml"\n' > "$RUNNER_TEMP/plan.txt"
+          status=0
+          weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/plan.txt" > plan.out 2>&1 || status=$?
+          cat plan.out
+          {
+            echo '### Weavster plan for weavster.yaml'
+            echo '```'
+            cat plan.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
+  apply:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment: production # holds the apply user's secrets; add required reviewers to gate applies
+    # One apply at a time. A newer merge replaces an apply still waiting to
+    # start; it applies the whole document, so nothing is lost.
+    concurrency:
+      group: weavster-apply
+      cancel-in-progress: false
+    steps:
+      - *checkout
+      - *setup-go
+      - *install
+      - *connect
+      - name: Apply, deploy, and start
+        # Separate runs, so nothing is deployed or started if the apply fails.
+        run: |
+          printf 'config apply "weavster.yaml" %s\n' "merged ${GITHUB_SHA}" > "$RUNNER_TEMP/apply.txt"
+          printf 'deploy 120\n' > "$RUNNER_TEMP/deploy.txt"
+          printf 'flow start-all\n' > "$RUNNER_TEMP/start.txt"
+          weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/apply.txt" &&
+            weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/deploy.txt" &&
+            weavster -c "$RUNNER_TEMP/weavster.conn" -s "$RUNNER_TEMP/start.txt"

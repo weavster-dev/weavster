@@ -204,12 +204,12 @@
       "path": "internal/config",
       "origin": "architecture §6 + viability-gap-6 (plan vs apply)",
       "files_to_create": ["config.go", "schema.go", "plan.go", "apply.go", "drift.go", "config_test.go"],
-      "depends_on": ["State Manager", "Git Store"],
+      "depends_on": ["State Manager"],
       "acceptance_criteria": [
         "All flows/alerts/snippets/scripts/maps/settings are YAML/JSON under a versioned config root; single source of truth (architecture §6).",
         "config validate / config diff / apply --dry-run produce a plan of changes (added/updated/removed) before mutation (architecture §6, gap #6).",
         "config plan (dry-run diff) + config apply (mutate) with machine-readable JSON plan and --diff output (gap #6).",
-        "Drift detection: compare live state vs Git source of truth with an out-of-band changes report (gap #6).",
+        "Drift detection: `config diff` compares a config document from the user's files with the live state, reporting out-of-band changes; the files in the user's repository are the source of truth, and in-server Git is Enterprise (gap #6, #107 D-55).",
         "Stores applied plans in the audit log (who/what approved) (gap #6).",
         "Passes `go test -race ./internal/config/...`."
       ],
@@ -218,7 +218,7 @@
     {
       "logical_name": "Git Store",
       "path": "internal/gitstore",
-      "origin": "black-box §2.10.34 + §2.12 version control",
+      "origin": "black-box §2.10.34 + §2.12 version control — Enterprise; library only, not wired into the MVP binary (#107 D-55)",
       "files_to_create": ["gitstore.go", "history.go", "workingtree.go", "gitstore_test.go"],
       "depends_on": [],
       "acceptance_criteria": [

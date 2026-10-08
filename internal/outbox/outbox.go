@@ -35,6 +35,17 @@ type Outbox struct {
 	opts    Options
 }
 
+// codeOf is the protocol-specific code a sink attached to err (an error
+// with a Code() string method; the server's sinks classify network and
+// TLS failures too, #107 D-78), or "".
+func codeOf(err error) string {
+	var c interface{ Code() string }
+	if errors.As(err, &c) {
+		return c.Code()
+	}
+	return ""
+}
+
 // New returns an outbox with sane defaults applied.
 func New(store state.Store, deliver DeliverFunc, opts Options) *Outbox {
 	if opts.MaxAttempts <= 0 {
@@ -52,20 +63,32 @@ func (o *Outbox) Receive(ctx context.Context, m state.Message) error {
 	return o.store.Put(ctx, m)
 }
 
-// Transform applies fn to the raw content and persists the result
-// (transform -> persist result, gap #5).
-func (o *Outbox) Transform(ctx context.Context, id string, fn func([]byte) ([]byte, error)) error {
+// SetTransformed stores out as the message's transformed content (transform
+// -> persist result, gap #5), its content type (unchanged when empty), and
+// metadata (an empty value removes the key), in one write, so what the transform decided (such as excluded
+// destinations) is never stored without its output or the other way round.
+// It returns the stored message.
+func (o *Outbox) SetTransformed(ctx context.Context, id string, out []byte, contentType string, metadata map[string]string) (state.Message, error) {
 	m, err := o.store.Get(ctx, id)
 	if err != nil {
-		return err
+		return state.Message{}, err
 	}
-	out, err := fn(m.Raw)
-	if err != nil {
-		return err
+	for k, v := range metadata {
+		switch {
+		case v == "":
+			delete(m.Metadata, k)
+		case m.Metadata == nil:
+			m.Metadata = map[string]string{k: v}
+		default:
+			m.Metadata[k] = v
+		}
 	}
 	m.Transformed = out
+	if contentType != "" {
+		m.ContentType = contentType
+	}
 	m.Status = state.StatusTransformed
-	return o.store.Put(ctx, m)
+	return m, o.store.Put(ctx, m)
 }
 
 // Deliver sends the message to one destination and records the outcome. It
@@ -90,7 +113,8 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 		}
 		if delivered {
 			cur.Attempts++
-			cur.LastError = ""
+			cur.LastError, cur.LastCode = "", ""
+			cur.NextAttemptAt = time.Time{} // delivered: nothing is due
 			m.Attempts[dest] = cur
 			return o.store.Put(ctx, m)
 		}
@@ -99,9 +123,11 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 	attempt := cur.Attempts + 1
 	key := IdempotencyKey(m.ID, dest)
 
-	if err := o.deliver(ctx, m, dest, key); err == nil {
+	err = o.deliver(ctx, m, dest, key)
+	cur.LastAttemptAt = time.Now()
+	if err == nil {
 		cur.Attempts = attempt
-		cur.LastError = ""
+		cur.LastError, cur.LastCode = "", ""
 		cur.NextAttemptAt = time.Time{}
 		m.Attempts[dest] = cur
 		// The message status is left to the caller: other destinations may
@@ -109,6 +135,7 @@ func (o *Outbox) Deliver(ctx context.Context, id, dest string) error {
 		return o.store.Put(ctx, m)
 	} else {
 		cur.Attempts = attempt
+		cur.LastCode = codeOf(err)
 		if errors.Is(err, ErrAmbiguous) {
 			cur.LastError = ErrAmbiguous.Error()
 		} else {

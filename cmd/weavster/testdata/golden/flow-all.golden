@@ -1,0 +1,24 @@
+# flow-all
+flow stop-all
+flow start-all
+flow pause-all
+flow resume-all
+flow halt-all
+flow resume-all
+flow redeploy-all
+flow undeploy-all
+flow deploy-all
+flow start-all
+--- stdout
+{"changed":["adt"],"skipped":[]}
+{"changed":["adt"],"skipped":[]}
+{"changed":["adt"],"skipped":[]}
+{"changed":["adt"],"skipped":[]}
+{"changed":["adt"],"skipped":[]}
+{"changed":["adt"],"skipped":[]}
+[{"id":"adt","name":"ADT Inbound","sourceType":"","status":"deployed","enabled":true,"destinations":[{"name":"out","type":"file","dir":"$DIR/out"}]}]
+{"changed":["adt"],"skipped":[]}
+{"changed":["adt"],"skipped":[]}
+{"changed":["adt"],"skipped":[]}
+--- stderr
+--- exit 0

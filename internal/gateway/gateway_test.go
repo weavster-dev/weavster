@@ -6,10 +6,10 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
-	"github.com/weavster-dev/weavster/internal/observability"
 	"github.com/weavster-dev/weavster/internal/topology"
 )
 
@@ -46,12 +46,22 @@ func (fakeMessages) Search(context.Context, MessageQuery) ([]Message, error) {
 	return []Message{{ID: "1", Status: "sent"}}, nil
 }
 
+// fakeSystem reports fixed system information.
+type fakeSystem struct{}
+
+func (fakeSystem) Status() SystemStatus { return SystemStatus{ID: "weavster-1", Status: "running"} }
+func (fakeSystem) About() SystemAbout   { return SystemAbout{Name: "Weavster"} }
+func (fakeSystem) PasswordRequirements() PasswordRequirements {
+	return PasswordRequirements{MinLength: 8, Rules: []string{"at least 8 characters"}}
+}
+func (fakeSystem) Resources() SystemResources { return SystemResources{CPUs: 4} }
+
 func newTestServer(requireCSRF bool) *Server {
 	return New(Config{
 		Topology:    fakeTopology{},
 		Flows:       &fakeFlows{flows: []Flow{{ID: "f1", Name: "Admit", SourceType: "file", Status: "started", Enabled: true}}},
 		Messages:    fakeMessages{},
-		System:      observability.SystemStatus("weavster-1", "0.1.0", "2026-08-23"),
+		System:      fakeSystem{},
 		RequireCSRF: requireCSRF,
 	})
 }
@@ -196,6 +206,25 @@ func TestSystemStatus(t *testing.T) {
 	}
 }
 
+func TestSystemViews(t *testing.T) {
+	srv := newTestServer(false).Router()
+	for path, want := range map[string]string{
+		"/api/v1/system/about": `"name":"Weavster"`, "/api/v1/system/password-requirements": `"rules":["at least 8 characters"]`,
+		"/api/v1/system/resources": `"cpus":4`,
+	} {
+		if rec := do(t, srv, http.MethodGet, path, false); rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("%s = %d %s", path, rec.Code, rec.Body.String())
+		}
+	}
+	rec := do(t, srv, http.MethodGet, "/api/v1/system/guid", false)
+	if rec.Code != http.StatusOK || !regexp.MustCompile(`"guid":"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"`).MatchString(rec.Body.String()) {
+		t.Errorf("guid = %s", rec.Body.String())
+	}
+	if rec := do(t, New(Config{}).Router(), http.MethodGet, "/api/v1/system", false); rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("no reporter = %d", rec.Code)
+	}
+}
+
 func TestTopologyFlowInternal(t *testing.T) {
 	srv := newTestServer(true).Router()
 	rec := do(t, srv, http.MethodGet, "/api/v1/topology/flows/flow-x", true)
@@ -269,7 +298,7 @@ func newErrServer() *Server {
 		Topology:    errTopology{},
 		Flows:       &errFlows{},
 		Messages:    errMessages{},
-		System:      observability.SystemStatus("weavster-1", "0.1.0", "2026-08-23"),
+		System:      fakeSystem{},
 		RequireCSRF: false,
 	})
 }

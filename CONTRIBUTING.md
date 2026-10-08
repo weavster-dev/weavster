@@ -49,7 +49,8 @@ GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build ./cmd/weavster
 - **Layout.** `cmd/weavster` (entrypoint) · `internal/<module>` (private) · `pkg/` (exported libs only).
 - **Simplicity first.** Minimum code that solves the problem; no speculative abstractions.
 - **Surgical changes.** Touch only what the task requires; match existing style.
-- **Tests never require Postgres.** Use SQLite in-memory (`:memory:`) or temp files.
+- **Tests never require Postgres.** Use SQLite in-memory (`:memory:`) or temp files. Tests that restart the server need a durable server store (PostgreSQL only, D-55): they run when `WEAVSTER_TEST_POSTGRES_DSN` is set (the `postgres` CI job) and are skipped, or end before the restart, without it.
+- **Black-box suites.** `test/e2e/security` and `test/e2e/durability` build the `weavster` binary and run it as its own process (`test/e2e/harness`), using only HTTP and signals: SIGTERM for a clean stop, SIGKILL for a crash. The durability suite needs `WEAVSTER_TEST_POSTGRES_DSN`.
 
 ## Development workflow
 
@@ -78,6 +79,16 @@ GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build ./cmd/weavster
    that the document validates with kin-openapi (OpenAPI 3.0 rules; keep to constructs valid in
    both 3.0 and 3.1, for example no `type` lists), and that every documented operation reaches its
    handler and answers only statuses it documents.
+   CLI output is pinned by golden files in `cmd/weavster/testdata/golden/`: `TestCLIGolden` runs
+   each case in `cmd/weavster/golden_test.go` against one server and compares stdout, stderr, and
+   the exit code. A new CLI command needs a case there (the test fails when a command or subcommand listed by
+   `help` or a `flow` subcommand has none). After an intended output change, rewrite the files and
+   review the diff:
+
+   ```bash
+   go test ./cmd/weavster -run TestCLIGolden -update
+   git diff cmd/weavster/testdata/golden
+   ```
 6. Add a `CHANGELOG.md` entry under `[Unreleased]` (Added/Changed/Fixed/Removed).
 7. Ensure `README.md` reflects what exists now — never aspirational.
 8. Open a pull request using the PR template and reference the issue (`Closes #N`).
