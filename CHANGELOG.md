@@ -176,6 +176,7 @@ All notable changes to this project are documented here, following
 
 ### Fixed
 
+- Changing your own permissions now ends your own sessions too (#234). A user who removed a permission from their own account used to keep it through the token they made the change with. Editing your own account without changing permissions still keeps your session.
 - Creating or updating a flow reads at most 50 MiB of request body, the same limit as flow import (#278). A larger body gets `413 PAYLOAD_TOO_LARGE` before it is parsed or stored.
 - Login and password change read at most 1 MiB of request body (#256). They used to read a body of any size before checking credentials, so an unauthenticated client could make the server buffer arbitrarily large requests. A larger body now gets `413 PAYLOAD_TOO_LARGE` before the credentials are checked.
 - The command-line client no longer follows HTTP redirects (#330). A redirect, including one from https to plain http on the same host, used to resend the user's credentials and the request body. The client now reports the `3xx` as an error, with or without `-ca`.
