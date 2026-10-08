@@ -151,3 +151,24 @@ func TestSchemaID(t *testing.T) {
 		t.Errorf("$id = %q, %v; want %q", s.ID, err, SchemaID)
 	}
 }
+
+func TestReserved(t *testing.T) {
+	tests := []struct {
+		id   string
+		want bool
+	}{
+		{id: "export", want: true},
+		{id: "import", want: true},
+		{id: "redeploy-all", want: true},
+		{id: "patient-intake", want: false},
+		{id: "", want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.id, func(t *testing.T) {
+			if got := Reserved(tt.id); got != tt.want {
+				t.Errorf("Reserved(%q) = %t, want %t", tt.id, got, tt.want)
+			}
+		})
+	}
+}
