@@ -2,6 +2,7 @@ package observability
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -82,16 +83,47 @@ func TestEventLogSearchCount(t *testing.T) {
 }
 
 func TestTimeSeries(t *testing.T) {
-	ts := NewTimeSeries(3)
-	for i := 0; i < 5; i++ {
-		ts.Record("flow:a", FlowStats{Received: int64(i)})
+	ts := NewTimeSeries(2*time.Minute, 100)
+	t0 := time.Date(2026, 9, 27, 10, 0, 0, 0, time.UTC)
+	for i := 0; i < 5; i++ { // one snapshot a minute for flows a and b
+		ts.RecordAll(t0.Add(time.Duration(i)*time.Minute), map[string]FlowStats{"b": {Received: int64(10 + i)}, "a": {Received: int64(i)}})
 	}
-	got := ts.Series("flow:a")
-	if len(got) != 3 {
-		t.Errorf("series length = %d, want 3 (bounded)", len(got))
+	only := func(f string) func(string) bool { return func(g string) bool { return g == f } }
+	all := func(string) bool { return true }
+	for _, tt := range []struct {
+		name     string
+		keep     func(string) bool
+		from, to time.Time
+		limit    int
+		want     []int64
+	}{
+		{"retention drops older snapshots", only("a"), time.Time{}, time.Time{}, 0, []int64{2, 3, 4}},
+		{"every flow, by time then flow", all, time.Time{}, time.Time{}, 0, []int64{2, 12, 3, 13, 4, 14}},
+		{"from inclusive", only("b"), t0.Add(3 * time.Minute), time.Time{}, 0, []int64{13, 14}},
+		{"to inclusive", only("a"), time.Time{}, t0.Add(3 * time.Minute), 0, []int64{2, 3}},
+		{"limit keeps the newest", all, time.Time{}, time.Time{}, 3, []int64{13, 4, 14}},
+		{"unknown flow", only("c"), time.Time{}, time.Time{}, 0, []int64{}},
+	} {
+		got := []int64{}
+		for _, p := range ts.Series(tt.keep, tt.from, tt.to, tt.limit) {
+			got = append(got, p.Stats.Received)
+		}
+		if fmt.Sprint(got) != fmt.Sprint(tt.want) {
+			t.Errorf("%s: %v, want %v", tt.name, got, tt.want)
+		}
 	}
-	if got[0].Stats.Received != 2 {
-		t.Errorf("oldest retained = %+v, want Received=2", got[0])
+	ts.Forget("a")
+	if got := ts.Series(all, time.Time{}, time.Time{}, 0); len(got) != 3 || got[0].Flow != "b" {
+		t.Errorf("after forget = %+v", got)
+	}
+	// Past maxPoints the oldest are dropped; times are wall clock only.
+	capped := NewTimeSeries(time.Hour, 3)
+	for i := 0; i < 3; i++ {
+		capped.RecordAll(time.Now(), map[string]FlowStats{"a": {Received: int64(i)}, "b": {}})
+	}
+	got := capped.Series(all, time.Time{}, time.Time{}, 0)
+	if len(got) != 3 || got[0].Flow != "b" || got[1].Stats.Received != 2 || got[0].At != got[0].At.Round(0) { // b, a2, b
+		t.Errorf("capped = %+v", got)
 	}
 }
 

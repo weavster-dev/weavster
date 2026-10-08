@@ -82,7 +82,7 @@ func startFlow(t *testing.T, c apiClient, id string) {
 func TestRetryRecoversQueuedMessage(t *testing.T) {
 	url, up, hits := flakyDownstream(t)
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n"+
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t)+
 		"delivery: {maxAttempts: 50, backoffBaseMs: 10, retryIntervalMs: 20}\n")
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 	defer stop()
@@ -107,7 +107,7 @@ func TestQueuedWorkSurvivesRestart(t *testing.T) {
 	addr := freeAddr(t)
 	// A long retry interval: after the startup pass, the first server never
 	// retries, so only the restarted server can deliver the message.
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n"+
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+durableStoreConfig(t)+
 		"delivery: {maxAttempts: 5, backoffBaseMs: 10, retryIntervalMs: 600000}\n")
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
@@ -137,7 +137,7 @@ func TestQueuedWorkSurvivesRestart(t *testing.T) {
 func TestDeadLetterAfterMaxAttempts(t *testing.T) {
 	url, _, _ := flakyDownstream(t)
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n"+
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t)+
 		"delivery: {maxAttempts: 3, backoffBaseMs: 10, retryIntervalMs: 20}\n")
 	stop := startCLI(t, []string{"server", "--config", cfg}, "http://"+addr+"/api/openapi.yaml")
 	defer stop()

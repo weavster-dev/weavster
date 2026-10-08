@@ -106,7 +106,7 @@ func anys(list []string) []any {
 
 // CheckAlert validates one alert definition; the error is safe to show.
 func CheckAlert(a Alert) error {
-	if a.ID == "import" || a.ID == "options" {
+	if a.ID == "import" || a.ID == "options" || a.ID == "statuses" {
 		return fmt.Errorf("id %q is reserved", a.ID)
 	}
 	if n := utf8.RuneCountInString(a.Name); n == 0 || n > 200 {

@@ -24,7 +24,7 @@ func TestDestinationStartStop(t *testing.T) {
 	}
 	sa, sb := counter(&a), counter(&b)
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n"+
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t)+
 		"delivery: {backoffBaseMs: 10, retryIntervalMs: 20}\n")
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
@@ -46,6 +46,9 @@ func TestDestinationStartStop(t *testing.T) {
 		t.Fatalf("while b stopped: status %s, a=%d b=%d", status, a.Load(), b.Load())
 	}
 	stop()
+	if !restartable(t) {
+		return
+	}
 
 	stop, stderr := startCLIWithStderr(t, args, c.base+"/api/openapi.yaml")
 	defer stop()

@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -23,7 +24,7 @@ type FlowStats struct {
 	Errored       int64                     `json:"errored"`
 	Queued        int64                     `json:"queued"`
 	Destinations  map[string]ConnectorStats `json:"destinations"`
-	LastMessageAt *time.Time                `json:"lastMessageAt"`
+	LastMessageAt *time.Time                `json:"lastMessageAt,omitempty"` // absent until the first message
 }
 
 // StatsProvider reports flow statistics.
@@ -34,6 +35,34 @@ type StatsProvider interface {
 	// ResetStats clears a flow's (all flows' when flowID is empty) current
 	// statistics, and with lifetime its lifetime totals too.
 	ResetStats(ctx context.Context, flowID string, lifetime bool) error
+}
+
+// StatsSample is one flow's lifetime statistics at one sampling time
+// (spec §2.11.37).
+type StatsSample struct {
+	At     time.Time `json:"at"`
+	FlowID string    `json:"flowId"`
+	Stats  FlowStats `json:"stats"`
+}
+
+// StatsSeriesQuery narrows a statistics time-series read.
+type StatsSeriesQuery struct {
+	FlowID   string    // empty = every flow
+	From, To time.Time // at or after / at or before; zero = open
+	Limit    int       // the newest N matching samples
+}
+
+// Statistics time-series limits.
+const (
+	DefaultStatsSeriesLimit = 1000
+	MaxStatsSeriesLimit     = 10000
+)
+
+// StatsHistory reads the statistics time series.
+type StatsHistory interface {
+	// StatsSeries returns the newest q.Limit matching samples, oldest first;
+	// ErrFlowNotFound when q.FlowID names no flow.
+	StatsSeries(ctx context.Context, q StatsSeriesQuery) ([]StatsSample, error)
 }
 
 // Event is one entry of the event log.
@@ -91,6 +120,33 @@ func (s *Server) handleFlowStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, st)
+}
+
+func (s *Server) handleStatsSeries(w http.ResponseWriter, r *http.Request) {
+	if s.cfg.StatsHistory == nil {
+		writeStatusError(w, http.StatusServiceUnavailable, "statistics unavailable")
+		return
+	}
+	v := r.URL.Query()
+	q := StatsSeriesQuery{FlowID: v.Get("flowId"), Limit: DefaultStatsSeriesLimit}
+	if msg := timeRange(v, &q.From, &q.To); msg != "" {
+		writeStatusError(w, http.StatusBadRequest, msg)
+		return
+	}
+	if raw := v.Get("limit"); raw != "" {
+		n, err := strconv.Atoi(raw)
+		if err != nil || n < 1 || n > MaxStatsSeriesLimit {
+			writeStatusError(w, http.StatusBadRequest, "limit must be between 1 and 10000")
+			return
+		}
+		q.Limit = n
+	}
+	samples, err := s.cfg.StatsHistory.StatsSeries(r.Context(), q)
+	if err != nil {
+		writeFlowError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, samples)
 }
 
 // lifetimeParam reads the optional lifetime=true|false query parameter; on
@@ -164,23 +220,42 @@ func eventQuery(w http.ResponseWriter, r *http.Request, withLimit bool) (EventQu
 		return bad(msg)
 	}
 	if raw := v.Get("afterId"); raw != "" {
-		n, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || n < 0 {
-			return bad("afterId must be a whole number from 0 to 9223372036854775807")
+		n, msg := parseAfterID(raw)
+		if msg != "" {
+			return bad(msg)
 		}
 		q.AfterID, q.Cursor = n, true
 	}
 	if withLimit {
-		q.Limit = DefaultEventLimit
-		if raw := v.Get("limit"); raw != "" {
-			n, err := strconv.Atoi(raw)
-			if err != nil || n < 1 || n > MaxEventLimit {
-				return bad("limit must be between 1 and 10000")
-			}
-			q.Limit = n
+		n, msg := parseLimit(v.Get("limit"), DefaultEventLimit, MaxEventLimit)
+		if msg != "" {
+			return bad(msg)
 		}
+		q.Limit = n
 	}
 	return q, true
+}
+
+// parseAfterID reads an afterId cursor; it returns what is wrong, or "".
+func parseAfterID(raw string) (int64, string) {
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n < 0 {
+		return 0, "afterId must be a whole number from 0 to 9223372036854775807"
+	}
+	return n, ""
+}
+
+// parseLimit reads a page size (def when raw is ""); it returns what is
+// wrong, or "".
+func parseLimit(raw string, def, maxLimit int) (int, string) {
+	if raw == "" {
+		return def, ""
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 || n > maxLimit {
+		return 0, fmt.Sprintf("limit must be between 1 and %d", maxLimit)
+	}
+	return n, ""
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
@@ -262,6 +337,10 @@ func (s *Server) handleEventExport(w http.ResponseWriter, r *http.Request) {
 		writeBackendError(w, err)
 		return
 	}
-	w.Header().Set("Content-Disposition", `attachment; filename="events.json"`)
+	name := "events.json"
+	if wantsXML(w) {
+		name = "events.xml"
+	}
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
 	writeJSON(w, http.StatusOK, events)
 }

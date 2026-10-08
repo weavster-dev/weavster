@@ -38,6 +38,9 @@ type User struct {
 	// MustChangePassword blocks API use until the user changes their
 	// password (first-run bootstrap, D-22). ChangePassword clears it.
 	MustChangePassword bool
+	// Preferences are the user's own settings (spec §5), kept with the
+	// account; SetPreferences replaces them.
+	Preferences map[string]string `json:",omitempty"`
 }
 
 // AuthProvider is the port for identity/authentication (arch §3.1).
@@ -194,6 +197,12 @@ func (u *User) clone() User {
 	c := *u
 	c.Permissions = append([]string(nil), u.Permissions...)
 	c.PasswordHistory = append([]string(nil), u.PasswordHistory...)
+	if u.Preferences != nil {
+		c.Preferences = make(map[string]string, len(u.Preferences))
+		for k, v := range u.Preferences {
+			c.Preferences[k] = v
+		}
+	}
 	return c
 }
 
@@ -295,6 +304,7 @@ func (p *LocalProvider) UpdateUser(ctx context.Context, username string, u User)
 	u.FailedAttempts = existing.FailedAttempts
 	u.LockedUntil = existing.LockedUntil
 	u.MustChangePassword = existing.MustChangePassword
+	u.Preferences = existing.Preferences // SetPreferences changes them
 	if err := p.save(ctx, &u); err != nil {
 		return err
 	}
@@ -445,3 +455,43 @@ func (p *LocalProvider) Locked(u User) bool {
 }
 
 var _ AuthProvider = (*LocalProvider)(nil)
+
+// Preferences returns a copy of the user's preferences (never nil).
+func (p *LocalProvider) Preferences(_ context.Context, username string) (map[string]string, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	u, ok := p.users[username]
+	if !ok {
+		return nil, ErrUserNotFound
+	}
+	out := make(map[string]string, len(u.Preferences))
+	for k, v := range u.Preferences {
+		out[k] = v
+	}
+	return out, nil
+}
+
+// SetPreferences replaces the user's preferences and saves the account.
+func (p *LocalProvider) SetPreferences(ctx context.Context, username string, prefs map[string]string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	u, ok := p.users[username]
+	if !ok {
+		return ErrUserNotFound
+	}
+	next := u.clone()
+	next.Preferences = make(map[string]string, len(prefs))
+	for k, v := range prefs {
+		next.Preferences[k] = v
+	}
+	if err := p.save(ctx, &next); err != nil {
+		return err
+	}
+	*u = next
+	return nil
+}
+
+// CheckPassword checks a candidate password against the password policy.
+func (p *LocalProvider) CheckPassword(password string) error {
+	return p.opts.Policy.Validate(password)
+}

@@ -10,9 +10,15 @@ import (
 	"testing"
 )
 
-type fakeIngest struct{ err error }
+type fakeIngest struct {
+	err    error
+	stored bool // the message was stored before err
+}
 
 func (f fakeIngest) Ingest(_ context.Context, flowID string, body []byte) (IngestResult, error) {
+	if f.err != nil && f.stored {
+		return IngestResult{ID: "m-" + flowID}, f.err
+	}
 	if f.err != nil {
 		return IngestResult{}, f.err
 	}
@@ -32,7 +38,8 @@ func TestIngestHandler(t *testing.T) {
 		{"unknown flow", fakeIngest{err: ErrFlowNotFound}, `{}`, http.StatusNotFound, "flow not found"},
 		{"invalid message", fakeIngest{err: fmt.Errorf("%w: body must be a JSON object", ErrInvalidMessage)}, `x`, http.StatusBadRequest, "body must be a JSON object"},
 		{"internal", fakeIngest{err: errors.New("disk full")}, `{}`, http.StatusInternalServerError, "internal error"},
-		{"too large", fakeIngest{}, strings.Repeat("x", maxMessageBytes+1), http.StatusRequestEntityTooLarge, "larger than 10 MiB"},
+		{"stored, then failed", fakeIngest{err: errors.New("disk full"), stored: true}, `{}`, http.StatusAccepted, `{"id":"m-f","status":"received"}`},
+		{"too large", fakeIngest{}, strings.Repeat("x", MaxMessageBytes+1), http.StatusRequestEntityTooLarge, "larger than 10 MiB"},
 		{"flow not running", fakeIngest{err: fmt.Errorf("%w: flow f is stopped", ErrFlowNotRunning)}, `{}`, http.StatusConflict, "flow f is stopped"},
 	}
 	for _, tt := range tests {

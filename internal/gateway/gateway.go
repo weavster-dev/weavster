@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"sync"
 	"time"
 
@@ -42,6 +43,9 @@ type Flow = flowdef.Flow
 // FlowDestination is one delivery target of a flow (flowdef.Destination).
 type FlowDestination = flowdef.Destination
 
+// FlowSource is where a flow reads messages on its own.
+type FlowSource = flowdef.Source
+
 // FlowUpdater changes a stored flow's definition; the runtime status is
 // never changed by these calls.
 type FlowUpdater interface {
@@ -66,7 +70,7 @@ type FlowChange struct {
 type PortInUse struct {
 	Address string `json:"address"`
 	Port    int    `json:"port"`
-	// UsedBy names the listener, e.g. "api" or "api-tls".
+	// UsedBy names the listener, e.g. "api", "api-tls", or "flow:adt".
 	UsedBy string `json:"usedBy"`
 }
 
@@ -138,6 +142,9 @@ var (
 	ErrInvalidFlow    = errors.New("invalid flow")
 	ErrInvalidMessage = errors.New("invalid message")
 	ErrFlowNotRunning = errors.New("flow is not accepting messages")
+	// ErrBusy refuses a message while the server processes as many as it
+	// may at once (#107 D-79); the sender should retry shortly.
+	ErrBusy = errors.New("the server is busy: too many messages are being processed; retry shortly")
 	// ErrInvalidTransition is wrapped with the reason, e.g. "cannot pause a
 	// flow that is stopped".
 	ErrInvalidTransition = errors.New("invalid lifecycle transition")
@@ -196,20 +203,37 @@ type Message struct {
 
 // MessageAttempt is one destination's delivery state for a message.
 type MessageAttempt struct {
-	Attempts      int        `json:"attempts"`
-	LastError     string     `json:"lastError,omitempty"`
+	Attempts  int    `json:"attempts"`
+	LastError string `json:"lastError,omitempty"`
+	// LastCode is the last failure's protocol-specific code (#107 D-78).
+	LastCode      string     `json:"lastCode,omitempty"`
+	LastAttemptAt *time.Time `json:"lastAttemptAt,omitempty"`
 	NextAttemptAt *time.Time `json:"nextAttemptAt,omitempty"`
 }
 
 // MessageQuery narrows a message search; the store applies every filter
 // before Limit and Offset.
 type MessageQuery struct {
-	Status   string
-	FlowID   string
-	From, To time.Time // receive time, inclusive; zero = open
-	Limit    int
-	Offset   int
-	Sort     string // receivedAt or id, "-" prefix for descending
+	Status       string
+	FlowID       string
+	From, To     time.Time // receive time, inclusive; zero = open
+	IDFrom, IDTo string    // id range, inclusive; "" = open
+	ContentType  string    // the message's format, e.g. hl7v2
+	// MinAttempts/MaxAttempts: some destination took between them (0 = no
+	// bound).
+	MinAttempts, MaxAttempts int
+	Metadata                 map[string]string // every key has this value
+	Limit                    int
+	Offset                   int
+	Sort                     string // receivedAt or id, "-" prefix for descending
+}
+
+// HasFilter reports whether q narrows the messages at all (paging and sort
+// aside).
+func (q MessageQuery) HasFilter() bool {
+	return q.FlowID != "" || q.Status != "" || !q.From.IsZero() || !q.To.IsZero() ||
+		q.IDFrom != "" || q.IDTo != "" || q.ContentType != "" || q.MinAttempts > 0 || q.MaxAttempts > 0 ||
+		len(q.Metadata) > 0
 }
 
 // MessageContent is one stored part of a message.
@@ -221,6 +245,8 @@ type MessageContent struct {
 // MessageStore reads and manages stored messages.
 type MessageStore interface {
 	Search(ctx context.Context, q MessageQuery) ([]Message, error)
+	// Count is how many messages match q's filters (paging ignored).
+	Count(ctx context.Context, q MessageQuery) (int, error)
 	// Get returns one message (ErrMessageNotFound).
 	Get(ctx context.Context, id string) (Message, error)
 	// Content returns a part of a message: "raw" or "transformed".
@@ -232,7 +258,7 @@ type MessageStore interface {
 	Reprocess(ctx context.Context, id string) (IngestResult, error)
 	// Export writes an archive of the matching messages (complete, every
 	// content part), encrypted when key is set.
-	Export(ctx context.Context, q MessageQuery, key []byte) (archive []byte, count int, err error)
+	Export(ctx context.Context, q MessageQuery, key []byte) (archive []byte, ids []string, err error)
 	// Import restores an archive: ErrInvalidArchive when it cannot be read,
 	// ErrFlowNotFound when it refers to a missing flow (nothing written),
 	// ErrMessageImportIncomplete when a write fails part-way (the result
@@ -301,12 +327,40 @@ type Config struct {
 	FlowUpdates FlowUpdater
 	Transfer    FlowTransfer
 	Stats       StatsProvider
-	Events      EventSearcher
-	Topology    TopologyProvider
-	System      SystemReporter
+	// DeadLetters requeues dead-lettered messages.
+	DeadLetters DeadLetterRequeuer
+	// Pruner removes old messages; nil without a message store.
+	Pruner Pruner
+	// Metrics serves GET /metrics (Prometheus text format); nil leaves it
+	// unmounted.
+	Metrics http.Handler
+	// ContextPath serves everything under this prefix (listen.contextPath);
+	// "" serves at the root.
+	ContextPath string
+	// AuditLog searches the stored audit entries; nil answers 503.
+	AuditLog AuditLog
+	// Preferences keeps users' preferences; nil answers 503.
+	Preferences UserPreferences
+	// PasswordCheck checks candidate passwords; nil answers 503.
+	PasswordCheck PasswordChecker
+	// StatsHistory reads the sampled statistics time series.
+	StatsHistory StatsHistory
+	Events       EventSearcher
+	Topology     TopologyProvider
+	System       SystemReporter
 	// Listeners are the ports the server listens on (ports-in-use).
-	Listeners   []PortInUse
+	Listeners []PortInUse
+	// Sources lists the ports flows' http sources listen on now.
+	Sources     SourcePorts
 	RequireCSRF bool
+	// UI, when set, serves the read-only web UI's static files at /ui/
+	// (no credentials: the page signs in to read the topology API).
+	UI http.Handler
+}
+
+// SourcePorts reports the ports flows' own sources listen on.
+type SourcePorts interface {
+	Ports() []PortInUse
 }
 
 // Server is the HTTP gateway.

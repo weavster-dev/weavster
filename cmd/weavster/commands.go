@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -108,6 +109,8 @@ func dispatch(ctx context.Context, client Client, line string, stdout, stderr io
 		return clearAllMessages(ctx, client, fields[1:], stdout, stderr, debug)
 	case "dump": // spec §3.2: dump stats|events "path"
 		return dumpCommand(ctx, client, fields[1:], stdout, stderr, debug)
+	case "deadletter": // #107 §8: list, show, requeue, remove dead-lettered messages
+		return deadLetterCommand(ctx, client, fields[1:], stdout, stderr, debug)
 	default:
 		_, _ = fmt.Fprintf(stderr, "Error: unknown command %q\n", fields[0])
 		return 2
@@ -122,6 +125,19 @@ var deprecatedCommands = map[string]string{"channel": "flow", "codetemplate": "s
 // type. It returns exit code 2.
 func shellError(stderr io.Writer, debug bool, err error) int {
 	_, _ = fmt.Fprintf(stderr, "Error: %v\n", err)
+	var unknown x509.UnknownAuthorityError
+	var invalid x509.CertificateInvalidError
+	var hostname x509.HostnameError
+	switch {
+	case errors.As(err, &unknown):
+		_, _ = fmt.Fprintln(stderr, "  The server's certificate is not signed by a CA this machine trusts: pass that CA with -ca FILE (or ca: in the connection file).")
+	case errors.As(err, &hostname):
+		_, _ = fmt.Fprintln(stderr, "  The server's certificate was issued for another name: connect with a name it lists, or reissue it.")
+	case errors.As(err, &invalid) && invalid.Reason == x509.Expired:
+		_, _ = fmt.Fprintln(stderr, "  The server's certificate has expired or is not valid yet: renew it (or check this machine's clock).")
+	case errors.As(err, &invalid):
+		_, _ = fmt.Fprintln(stderr, "  The server's certificate was refused (the error says why, for example a missing server-auth key usage): reissue it.")
+	}
 	if debug {
 		for cause := errors.Unwrap(err); cause != nil; cause = errors.Unwrap(cause) {
 			_, _ = fmt.Fprintf(stderr, "  caused by %T: %v\n", cause, cause)
@@ -131,7 +147,7 @@ func shellError(stderr io.Writer, debug bool, err error) int {
 }
 
 func printShellHelp(w io.Writer) {
-	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate|diff|plan "path", config apply "path" [--dry-run] [reason], exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", importmap|exportmap|importscripts|exportscripts "path", quit`)
+	_, _ = fmt.Fprintln(w, `commands: help, status, version, deploy [timeout], resetstats [lifetime], exportmessages "path" <flow|*>, importmessages "path" <flow>, import "path" [force], export id|"name"|* "path", flow <subcommand> (flow help), user list|add|remove|changepw, snippet [library] list|import "path"|export "path"|remove <name>, config validate|diff|plan "path", config apply "path" [--dry-run] [reason], exportcfg "path" [overwriteconfigmap], importcfg "path" [nodeploy] [overwriteconfigmap] [force], importalert "path" [force], exportalert id|"name"|* "path", clearallmessages, dump stats|events "path", deadletter list [flow]|show <id>|requeue <id>|requeue all [flow]|remove <id>, importmap|exportmap|importscripts|exportscripts "path", quit`)
 }
 
 // splitArgs splits a command line into words. Double quotes group words
@@ -696,12 +712,24 @@ func importConfig(ctx context.Context, client Client, args []string, stdout, std
 }
 
 // configCommand runs config-as-code commands on a YAML or JSON document,
-// none of which change the server: validate checks it, diff shows what
-// applying it would change, and plan prints that as JSON.
+// none of which change the server: validate checks it locally (no server),
+// diff shows what applying it would change, and plan prints that as JSON.
 func configCommand(ctx context.Context, client Client, args []string, stdout, stderr io.Writer, debug bool) int {
-	paths := map[string]string{"validate": "/api/v1/config/validate", "diff": "/api/v1/config/plan", "plan": "/api/v1/config/plan"}
+	paths := map[string]string{"diff": "/api/v1/config/plan", "plan": "/api/v1/config/plan"}
 	if len(args) >= 2 && args[0] == "apply" {
 		return configApply(ctx, client, args[1], args[2:], stdout, stderr, debug)
+	}
+	if len(args) == 2 && args[0] == "validate" {
+		doc, err := readDocument(args[1])
+		var out string
+		if err == nil {
+			out, err = checkDocument(args[1], doc)
+		}
+		if err != nil {
+			return shellError(stderr, debug, err)
+		}
+		_, _ = fmt.Fprint(stdout, out)
+		return 0
 	}
 	if len(args) != 2 || paths[args[0]] == "" {
 		_, _ = fmt.Fprintln(stderr, "Error: usage: config validate|diff|plan \"path\" | config apply \"path\" [--dry-run] [reason...]")
@@ -722,17 +750,38 @@ func configCommand(ctx context.Context, client Client, args []string, stdout, st
 	return 0
 }
 
+// maxDocumentBytes is the largest config-as-code document, as on the server.
+const maxDocumentBytes = 50 << 20
+
+// readDocument reads a config-as-code document of at most maxDocumentBytes.
+func readDocument(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	doc, err := io.ReadAll(io.LimitReader(f, maxDocumentBytes+1))
+	if err == nil && len(doc) > maxDocumentBytes {
+		err = fmt.Errorf("%s: larger than 50 MiB", path)
+	}
+	return doc, err
+}
+
+// checkDocument checks a config-as-code document on this machine, with the
+// rules of this client's version; it needs no server and no database
+// (#107 D-55).
+func checkDocument(path string, doc []byte) (string, error) {
+	n, err := configValidator{}.ValidateConfig(doc)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", path, err)
+	}
+	return fmt.Sprintf("%s is valid: %d flows, %d alerts, %d snippets, %d snippet libraries, %d scripts, %d config map entries, %d settings\n",
+		path, n.Flows, n.Alerts, n.Snippets, n.SnippetLibraries, n.Scripts, n.ConfigMap, n.Settings), nil
+}
+
 // configOutput renders a config command's reply.
 func configOutput(cmd, path string, reply []byte) (string, error) {
 	switch cmd {
-	case "validate":
-		var res struct{ Counts gateway.ConfigSummary }
-		if err := json.Unmarshal(reply, &res); err != nil {
-			return "", err
-		}
-		n := res.Counts
-		return fmt.Sprintf("%s is valid: %d flows, %d alerts, %d snippets, %d snippet libraries, %d scripts, %d config map entries, %d settings\n",
-			path, n.Flows, n.Alerts, n.Snippets, n.SnippetLibraries, n.Scripts, n.ConfigMap, n.Settings), nil
 	case "diff":
 		var plan gateway.ConfigPlan
 		if err := json.Unmarshal(reply, &plan); err != nil {

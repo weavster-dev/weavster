@@ -1,0 +1,64 @@
+# JSON and XML
+
+The API speaks JSON. A client that explicitly asks for XML gets the API's responses as XML
+instead, errors included.
+
+## Ask for XML
+
+Send `Accept: application/xml` (or `text/xml`):
+
+```bash
+curl -s -u 'admin:PASSWORD' -H 'X-Weavster-CSRF: 1' -H 'Accept: application/xml' \
+  http://127.0.0.1:8080/api/v1/flows/adt
+```
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<response><id>adt</id><name>ADT Inbound</name><sourceType></sourceType><status>started</status><enabled type="boolean">true</enabled><destinations type="array"><item><name>out</name><type>file</type><dir>/var/out</dir></item></destinations></response>
+```
+
+XML is used only when the `Accept` header names `application/xml` or `text/xml` with the highest
+quality (`q`) of everything it lists, and higher than JSON's. JSON's quality comes from the most
+specific range that matches it: `application/json`, then `application/*`, then `*/*`.
+Otherwise — no `Accept` header, `*/*`, or a web browser's usual header — the reply is JSON.
+
+| `Accept` | Reply |
+|---|---|
+| `application/xml` | XML |
+| `application/json;q=0.5, application/xml` | XML |
+| `application/xml;q=0.9, */*;q=0.8` | XML |
+| `application/json, application/xml` | JSON (same quality) |
+| `application/xml, */*` | JSON (`*/*` gives JSON the same quality) |
+| `text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8` (a browser) | JSON |
+
+A range with a malformed `q` (not a number from 0 to 1) is ignored. Replies carry
+`Vary: Accept`.
+
+## How JSON becomes XML
+
+| JSON | XML |
+|---|---|
+| The whole reply | `<response>` |
+| An object | Its keys as child elements, in the same order: `{"id":"adt"}` → `<id>adt</id>`. |
+| A key that is not an XML name (`ICD/10`, `1st`, the empty key, one starting with `xml`) | `<entry key="ICD/10">…</entry>` |
+| An array | `type="array"`, with one `<item>` per element. |
+| An empty object `{}` | An empty element with `type="object"` (an empty string is an empty element with no `type`). |
+| A string | Text (`<`, `&`, and quotes escaped). |
+| A number, `true`/`false`, `null` | Text with `type="number"`, `type="boolean"`, or an empty element with `type="null"`. Numbers keep every digit. |
+
+An error is the same envelope as in JSON:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<response><error><code>NOT_FOUND</code><message>flow not found</message></error></response>
+```
+
+## What stays as it is
+
+- **Request bodies are JSON only** (and YAML for [config-as-code documents](config-as-code.md)).
+  Send `Content-Type: application/json`; an XML body is refused as invalid JSON.
+- Message content from `GET /api/v1/messages/{id}/content` is sent exactly as stored, with its
+  own content type, even when it is JSON.
+- Message archives (`application/gzip` or encrypted) and the OpenAPI document
+  (`GET /api/openapi.yaml`) are never converted.
+- `GET /api/v1/events/export` served as XML is named `events.xml` instead of `events.json`.

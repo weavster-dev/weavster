@@ -49,7 +49,8 @@ GOOS=darwin  GOARCH=arm64 CGO_ENABLED=0 go build ./cmd/weavster
 - **Layout.** `cmd/weavster` (entrypoint) · `internal/<module>` (private) · `pkg/` (exported libs only).
 - **Simplicity first.** Minimum code that solves the problem; no speculative abstractions.
 - **Surgical changes.** Touch only what the task requires; match existing style.
-- **Tests never require Postgres.** Use SQLite in-memory (`:memory:`) or temp files.
+- **Tests never require Postgres.** Use SQLite in-memory (`:memory:`) or temp files. Tests that restart the server need a durable server store (PostgreSQL only, D-55): they run when `WEAVSTER_TEST_POSTGRES_DSN` is set (the `postgres` CI job) and are skipped, or end before the restart, without it.
+- **Black-box suites.** `test/e2e/security` and `test/e2e/durability` build the `weavster` binary and run it as its own process (`test/e2e/harness`), using only HTTP and signals: SIGTERM for a clean stop, SIGKILL for a crash. The durability suite needs `WEAVSTER_TEST_POSTGRES_DSN`.
 
 ## Development workflow
 

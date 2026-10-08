@@ -124,6 +124,12 @@ func TestRemovalOrder(t *testing.T) {
 	if strings.Join(keys, ",") != "flow/app,flow/mid,flow/base" {
 		t.Errorf("order = %v", keys)
 	}
+	// A flow destination's target is removed after the flow sending to it.
+	sender, _ := json.Marshal(Flow{ID: "z-intake", Destinations: []FlowDestination{{Name: "x", Type: "flow", Flow: "a-lab"}}})
+	got, err = removalOrder([]ConfigChange{change("a-lab"), {Key: "flow/z-intake", Action: "remove", Before: sender}})
+	if err != nil || len(got) != 2 || got[0].Key != "flow/z-intake" || got[1].Key != "flow/a-lab" {
+		t.Errorf("route order = %+v, %v", got, err)
+	}
 	if _, err := removalOrder([]ConfigChange{{Key: "flow/x", Before: json.RawMessage(`[`)}}); err == nil {
 		t.Error("bad before: no error")
 	}

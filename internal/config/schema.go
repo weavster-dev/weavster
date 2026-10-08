@@ -123,6 +123,14 @@ func ParseValid(data []byte) (*Config, error) {
 // a snippet's library must be in the document, and settings must be JSON.
 func checkArtifacts(c *Config) []string {
 	var errs []string
+	for _, k := range sortedKeys(c.Flows) {
+		f := c.Flows[k]
+		for _, err := range []error{flowdef.CheckSource(f.Source), flowdef.CheckInput(f), flowdef.CheckTransforms(f), flowdef.CheckDestinations(f)} {
+			if err != nil {
+				errs = append(errs, "flows."+k+": "+err.Error())
+			}
+		}
+	}
 	for _, k := range sortedKeys(c.Alerts) {
 		if err := artifact.CheckName(k); err != nil {
 			errs = append(errs, "alerts."+k+": "+err.Error())
@@ -181,7 +189,7 @@ var configSchema = sync.OnceValues(func() (*jsonschema.Schema, error) {
 	}
 	compiler := jsonschema.NewCompiler()
 	compiler.Draft = jsonschema.Draft2020
-	if err := compiler.AddResource(flowdef.SchemaID, bytes.NewReader(flowdef.Schema)); err != nil {
+	if err := flowdef.AddSchemas(compiler); err != nil {
 		return nil, err
 	}
 	if err := compiler.AddResource("config.schema.json", bytes.NewReader(schema)); err != nil {

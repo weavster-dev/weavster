@@ -25,6 +25,8 @@ const (
 	AuditLogin       = "auth.login"
 	AuditAuthFailure = "auth.failure"
 	AuditPHIAccess   = "phi.access"
+	// AuditRead: someone read the audit log (GET /api/v1/audit).
+	AuditRead = "audit.read"
 )
 
 // auditInfo is filled in while a request is handled and read by audited
@@ -51,6 +53,8 @@ type statusRecorder struct {
 	http.ResponseWriter
 	status int
 }
+
+func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter }
 
 func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code

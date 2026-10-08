@@ -1,0 +1,8 @@
+# What the hello flow must make of a message, checked offline by
+# `weavster test` before anything reaches a server.
+flow: hello
+cases:
+  - name: greets the patient
+    input: '{"patient":{"name":"Ada Lovelace","mrn":"12345"}}'
+    expect:
+      output: {greeting: {to: Ada Lovelace, mrn: "12345"}}

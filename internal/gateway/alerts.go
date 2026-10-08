@@ -56,16 +56,23 @@ func writeAlertError(w http.ResponseWriter, err error) {
 }
 
 func (s *Server) handleAlertsList(w http.ResponseWriter, r *http.Request) {
+	if list, ok := s.sortedAlerts(w, r); ok {
+		writeJSON(w, http.StatusOK, append([]Alert{}, list...))
+	}
+}
+
+// sortedAlerts returns every alert sorted by id.
+func (s *Server) sortedAlerts(w http.ResponseWriter, r *http.Request) ([]Alert, bool) {
 	if !s.alertsAvailable(w) {
-		return
+		return nil, false
 	}
 	list, err := s.cfg.Alerts.ListAlerts(r.Context())
 	if err != nil {
 		writeAlertError(w, err)
-		return
+		return nil, false
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].ID < list[j].ID })
-	writeJSON(w, http.StatusOK, append([]Alert{}, list...))
+	return list, true
 }
 
 // handleAlertsSave serves POST (create one) and PUT on one alert.
@@ -97,19 +104,9 @@ func (s *Server) handleAlertsImport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleAlertGet(w http.ResponseWriter, r *http.Request) {
-	if !s.alertsAvailable(w) {
-		return
+	if a, ok := s.alertFor(w, r); ok {
+		writeJSON(w, http.StatusOK, a)
 	}
-	id, ok := pathName(w, r)
-	if !ok {
-		return
-	}
-	a, err := s.cfg.Alerts.GetAlert(r.Context(), id)
-	if err != nil {
-		writeAlertError(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, a)
 }
 
 func (s *Server) handleAlertDelete(w http.ResponseWriter, r *http.Request) {

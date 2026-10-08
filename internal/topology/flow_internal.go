@@ -1,19 +1,25 @@
 package topology
 
-// Connector describes a source or destination in a flow.
-type Connector struct {
-	ID       string
+// Part is a source, transform, or destination of a flow: its node, and the
+// message-path edge that reaches it (for a destination) or leaves it (for
+// the source).
+type Part struct {
+	ID       string // unique within the flow, without the kind prefix
 	Label    string
-	Type     string
-	DataType string
 	Status   string
+	Activity *Activity
+	Meta     map[string]string
+	// EdgeStatus is the status of the part's message-path edge.
+	EdgeStatus string
 }
 
-// Stage describes a transform stage in a flow.
-type Stage struct {
-	ID     string
-	Label  string
-	Status string
+// Route is an outbound route from a destination to another flow, with the
+// traffic across it.
+type Route struct {
+	Destination string // the destination's Part.ID
+	Flow        string // the target flow id
+	Status      string
+	Activity    *Activity
 }
 
 // FlowDetail is the input for the flow-internal graph.
@@ -21,66 +27,58 @@ type FlowDetail struct {
 	ID           string
 	Name         string
 	Status       string
-	Sources      []Connector
-	Transforms   []Stage
-	Destinations []Connector
-	Routes       []string // outbound route targets (flow ids)
+	Source       *Part // nil: messages only arrive through the API
+	Transform    *Part // nil: messages pass through unchanged
+	Destinations []Part
+	Routes       []Route
 }
 
-// FlowInternal builds the flow-internal graph: source -> transform ->
-// destination nodes with message-path edges, plus outbound route edges
-// (contract §3.2).
+// FlowInternal builds the flow-internal graph (contract §3.2, #107 D-13):
+// source -> transform -> each destination along message-path edges, and a
+// route edge from each flow destination to its target flow, which is
+// included as a flow node so every edge ends at a node.
 func FlowInternal(f FlowDetail) Graph {
 	g := NewGraph()
-	g.FlowID = f.ID
+	if f.ID != "" {
+		g.FlowID = "flow:" + f.ID
+	}
 	g.FlowName = f.Name
 	g.FlowStatus = f.Status
 
-	for _, s := range f.Sources {
-		g.Nodes = append(g.Nodes, Node{
-			ID: "source:" + s.ID, Kind: KindSource, Label: s.Label, Status: s.Status,
-			Meta: map[string]string{"connectorType": s.Type, "dataType": s.DataType},
-		})
+	var prev *Edge // the edge template from the last node on the path
+	if s := f.Source; s != nil {
+		id := "source:" + s.ID
+		g.Nodes = append(g.Nodes, Node{ID: id, Kind: KindSource, Label: s.Label, Status: s.Status, Activity: s.Activity, Meta: s.Meta})
+		prev = &Edge{From: id, Status: s.EdgeStatus, Activity: s.Activity}
 	}
-	for _, t := range f.Transforms {
-		g.Nodes = append(g.Nodes, Node{ID: "transform:" + t.ID, Kind: KindTransform, Label: t.Label, Status: t.Status})
+	if t := f.Transform; t != nil {
+		id := "transform:" + t.ID
+		g.Nodes = append(g.Nodes, Node{ID: id, Kind: KindTransform, Label: t.Label, Status: t.Status, Activity: t.Activity, Meta: t.Meta})
+		if prev != nil {
+			g.Edges = append(g.Edges, pathEdge(prev.From, id, prev.Status, prev.Activity))
+		}
+		prev = &Edge{From: id}
 	}
 	for _, d := range f.Destinations {
-		g.Nodes = append(g.Nodes, Node{
-			ID: "destination:" + d.ID, Kind: KindDestination, Label: d.Label, Status: d.Status,
-			Meta: map[string]string{"connectorType": d.Type},
-		})
-	}
-
-	// Message path: source -> first transform -> ... -> destination(s).
-	if len(f.Sources) > 0 {
-		first := "source:" + f.Sources[0].ID
-		if len(f.Transforms) > 0 {
-			next := "transform:" + f.Transforms[0].ID
-			g.Edges = append(g.Edges, Edge{ID: "edge:" + first + ":path:" + next, From: first, To: next, Kind: EdgeMessagePath, Status: "active"})
-			prev := next
-			for _, t := range f.Transforms[1:] {
-				cur := "transform:" + t.ID
-				g.Edges = append(g.Edges, Edge{ID: "edge:" + prev + ":path:" + cur, From: prev, To: cur, Kind: EdgeMessagePath, Status: "active"})
-				prev = cur
-			}
-			for _, d := range f.Destinations {
-				to := "destination:" + d.ID
-				g.Edges = append(g.Edges, Edge{ID: "edge:" + prev + ":path:" + to, From: prev, To: to, Kind: EdgeMessagePath, Status: "active"})
-			}
-		} else {
-			for _, d := range f.Destinations {
-				to := "destination:" + d.ID
-				g.Edges = append(g.Edges, Edge{ID: "edge:" + first + ":path:" + to, From: first, To: to, Kind: EdgeMessagePath, Status: "active"})
-			}
+		id := "destination:" + d.ID
+		g.Nodes = append(g.Nodes, Node{ID: id, Kind: KindDestination, Label: d.Label, Status: d.Status, Activity: d.Activity, Meta: d.Meta})
+		if prev != nil {
+			g.Edges = append(g.Edges, pathEdge(prev.From, id, d.EdgeStatus, d.Activity))
 		}
 	}
-
-	// Outbound route edges.
-	for _, to := range f.Routes {
-		g.Edges = append(g.Edges, Edge{
-			ID: "edge:flow:" + f.ID + ":route:flow:" + to, From: "flow:" + f.ID, To: "flow:" + to, Kind: EdgeRoute,
-		})
+	targets := map[string]bool{}
+	for _, r := range f.Routes {
+		from, to := "destination:"+r.Destination, "flow:"+r.Flow
+		g.Edges = append(g.Edges, Edge{ID: "edge:" + from + ":route:" + to, From: from, To: to, Kind: EdgeRoute,
+			Label: "routeMessage('" + r.Flow + "')", Status: r.Status, Activity: r.Activity})
+		if !targets[r.Flow] {
+			targets[r.Flow] = true
+			g.Nodes = append(g.Nodes, Node{ID: to, Kind: KindFlow, Label: r.Flow})
+		}
 	}
 	return g
+}
+
+func pathEdge(from, to, status string, activity *Activity) Edge {
+	return Edge{ID: "edge:" + from + ":path:" + to, From: from, To: to, Kind: EdgeMessagePath, Status: status, Activity: activity}
 }

@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -66,7 +67,26 @@ func TestValidate(t *testing.T) {
 		{"http without scheme", Flow{Destinations: []Destination{{Name: "a", Type: "http", URL: "ehr.example.com/in"}}}, "absolute http:// or https:// URL"},
 		{"ftp url", Flow{Destinations: []Destination{{Name: "a", Type: "http", URL: "ftp://x"}}}, "absolute http:// or https:// URL"},
 		{"file without dir", Flow{Destinations: []Destination{{Name: "a", Type: "file"}}}, "dir is required"},
-		{"bad type", Flow{Destinations: []Destination{{Name: "a", Type: "smtp"}}}, "type must be http or file"},
+		{"bad type", Flow{Destinations: []Destination{{Name: "a", Type: "smtp"}}}, "type must be http, file, mllp, flow, or database"},
+		{"flow", Flow{Destinations: []Destination{{Name: "a", Type: "flow", Flow: "next"}}}, ""},
+		{"database from json", Flow{Destinations: []Destination{{Name: "a", Type: "database"}}}, ""},
+		{"database after a transform", Flow{InputFormat: "hl7v2", Transform: &compiler.Transform{Name: "t"}, Destinations: []Destination{{Name: "a", Type: "database"}}}, ""},
+		{"database from hl7v2", Flow{InputFormat: "hl7v2", Destinations: []Destination{{Name: "a", Type: "database"}}}, "needs a JSON object"},
+		{"database from xml passthrough", Flow{InputFormat: "xml", Destinations: []Destination{{Name: "a", Type: "database"}}}, "needs a JSON object"},
+		{"database after a build", Flow{Transform: transform(t, "name: t\nsteps:\n  - build: { format: text, template: 'x' }"), Destinations: []Destination{{Name: "a", Type: "database"}}}, "needs a JSON object"},
+		{"flow without a target", Flow{Destinations: []Destination{{Name: "a", Type: "flow"}}}, "flow is required for type flow"},
+		{"mllp", Flow{InputFormat: "hl7v2", Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, ""},
+		{"mllp from json", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, "needs an HL7 v2 message"},
+		{"mllp after a transform", Flow{InputFormat: "hl7v2", Transform: &compiler.Transform{Name: "t"}, Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, "needs an HL7 v2 message"},
+		{"mllp with its own transform", Flow{InputFormat: "hl7v2", Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575", Transform: &compiler.Transform{Name: "t"}}}}, "needs an HL7 v2 message"},
+		{"mllp after an hl7v2 build", Flow{Transform: buildTo("hl7v2"), Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, ""},
+		{"mllp with its own hl7v2 build", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575", Transform: buildTo("hl7v2")}}}, ""},
+		{"mllp after an xml build", Flow{Transform: buildTo("xml"), Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example:2575"}}}, "needs an HL7 v2 message"},
+		{"build in a response transform", Flow{ResponseSelector: "a", Destinations: []Destination{{Name: "a", Type: "http", URL: "https://x", ResponseTransform: buildTo("text")}}}, "build cannot be used here"},
+		{"transform after a text build", Flow{Transform: buildTo("text"), Destinations: []Destination{{Name: "a", Type: "file", Dir: "d", Transform: &compiler.Transform{Name: "t"}}}}, "outputs text, which a transform cannot read"},
+		{"mllp without port", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "lab.example"}}}, "address must be host:port"},
+		{"mllp without host", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: ":2575"}}}, "address must be host:port"},
+		{"mllp port zero", Flow{Destinations: []Destination{{Name: "a", Type: "mllp", Address: "x:0"}}}, "address must be host:port"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -183,17 +203,22 @@ func TestProcessErrors(t *testing.T) {
 }
 
 // flakyStore fails the Nth Put or Get (1-based; 0 = never).
+// flakyStore fails its failPut-th write or failGet-th read; with sticky, a
+// failed write takes the store down for good (every later call fails), as
+// if the server had stopped there.
 type flakyStore struct {
 	*state.MemStore
 	puts, gets       int
 	failPut, failGet int
+	sticky, down     bool
 }
 
 var errStore = errors.New("store down")
 
 func (s *flakyStore) Put(ctx context.Context, m state.Message) error {
 	s.puts++
-	if s.puts == s.failPut {
+	if s.puts == s.failPut || s.down {
+		s.down = s.sticky
 		return errStore
 	}
 	return s.MemStore.Put(ctx, m)
@@ -201,10 +226,17 @@ func (s *flakyStore) Put(ctx context.Context, m state.Message) error {
 
 func (s *flakyStore) Get(ctx context.Context, id string) (state.Message, error) {
 	s.gets++
-	if s.gets == s.failGet {
+	if s.gets == s.failGet || s.down {
 		return state.Message{}, errStore
 	}
 	return s.MemStore.Get(ctx, id)
+}
+
+func (s *flakyStore) Search(ctx context.Context, q state.Query) ([]state.Message, error) {
+	if s.down {
+		return nil, errStore
+	}
+	return s.MemStore.Search(ctx, q)
 }
 
 // TestProcessStoreFailures fails each persistence call in turn and checks
@@ -304,5 +336,251 @@ func TestHold(t *testing.T) {
 		t.Error("hold after release refused")
 	} else {
 		release2()
+	}
+}
+
+// TestProcessReturnsIDOnceStored: a failure after the message was stored
+// still returns its id, so a caller never sends the same content again.
+func TestProcessReturnsIDOnceStored(t *testing.T) {
+	ctx := context.Background()
+	f := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	for _, tt := range []struct {
+		failPut int
+		stored  bool
+	}{
+		{1, false}, // the first write (receive) fails: nothing stored
+		{2, true},  // a later write fails: the message exists
+	} {
+		store := &flakyStore{MemStore: state.NewMemStore(), failPut: tt.failPut}
+		p := New(store, func(Destination) (Sink, error) { return &toggleSink{}, nil }, nil, Options{})
+		res, err := p.Process(ctx, f, []byte("x"))
+		if !errors.Is(err, errStore) || (res.ID != "") != tt.stored {
+			t.Errorf("failPut %d: id %q, err %v", tt.failPut, res.ID, err)
+		}
+	}
+}
+
+// TestProcessHL7Input: with inputFormat hl7v2, transforms read the HL7 v2
+// message's JSON view (the flow's, or a destination's when the flow has
+// none); a message that is not HL7 is refused.
+func TestProcessHL7Input(t *testing.T) {
+	ctx := context.Background()
+	sink := &recordingSink{}
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil }, nil, Options{})
+	msg := []byte("MSH|^~\\&|LAB|HOSP|W|H|1||ADT^A01|C1|P|2.5\rPID|1||123||DOE^JOHN\r")
+	flowT := Flow{ID: "f", InputFormat: "hl7v2", Transform: transform(t, "name: t\nsteps:\n  - map: { from: PID.5.1, to: last }"),
+		Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	destT := Flow{ID: "g", InputFormat: "hl7v2", Destinations: []Destination{
+		{Name: "a", Type: "file", Dir: "d", Transform: transform(t, "name: d\nsteps:\n  - filter: { when: \"MSH.9.2 == 'A01'\", action: accept }\n  - map: { from: PID.5.2, to: first }")},
+	}}
+	for i, f := range []Flow{flowT, destT} {
+		res, err := p.Process(ctx, f, msg)
+		if err != nil || res.Status != state.StatusSent {
+			t.Fatalf("%s: res = %+v, err = %v", f.ID, res, err)
+		}
+		want := []string{`"last":"DOE"`, `"first":"JOHN"`}[i]
+		if !strings.Contains(sink.bodies[i], want) || sink.types[i] != "application/json" {
+			t.Errorf("%s: delivered %s as %s", f.ID, sink.bodies[i], sink.types[i])
+		}
+	}
+	pass := Flow{ID: "h", InputFormat: "hl7v2", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	for _, f := range []Flow{flowT, pass} {
+		_, err := p.Process(ctx, f, []byte(`{"PID":{}}`))
+		var invalid *InvalidMessageError
+		if !errors.As(err, &invalid) || invalid.Reason != "body must be an HL7 v2 message (MSH segment first)" || !errors.Is(err, ErrInvalidMessage) {
+			t.Errorf("%s: JSON into an hl7v2 flow: %v", f.ID, err)
+		}
+	}
+
+	// A message stored as received (no flow transform then) is read as HL7
+	// by destination transforms even after a flow transform is added.
+	later := destT
+	later.Transform = transform(t, "name: t\nsteps:\n  - set: { field: x, expr: y }")
+	outs := destinationOutputs(later, state.Message{ContentType: "raw", Transformed: msg})
+	if r := outs["a"]; r.err != nil || !strings.Contains(string(r.body), `"first":"JOHN"`) {
+		t.Errorf("stored HL7 after the definition changed: %s, %v", r.body, r.err)
+	}
+}
+
+// TestProcessXMLInput: with inputFormat xml, transforms read the XML
+// document's JSON view; anything else is refused with a fixed reason.
+func TestProcessXMLInput(t *testing.T) {
+	ctx := context.Background()
+	sink := &recordingSink{}
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil }, nil, Options{})
+	f := Flow{ID: "x", InputFormat: "xml", Transform: transform(t, "name: t\nsteps:\n  - map: { from: order.@id, to: id }\n  - map: { from: order.patient.name.#text, to: name }"),
+		Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	if _, err := p.Process(ctx, f, []byte(`<order id="7"><patient><name>DOE</name></patient></order>`)); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sink.bodies[0], `"id":"7"`) || !strings.Contains(sink.bodies[0], `"name":"DOE"`) {
+		t.Errorf("delivered %s", sink.bodies[0])
+	}
+	pass := Flow{ID: "y", InputFormat: "xml", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d"}}}
+	for body, want := range map[string]string{
+		`{"a":1}`:     "body must be a single well-formed XML document: text outside the root element",
+		`<a/><b/>`:    "body must be a single well-formed XML document: more than one root element",
+		`<a><secret>`: "body must be a single well-formed XML document",
+	} {
+		_, err := p.Process(ctx, pass, []byte(body))
+		var invalid *InvalidMessageError
+		if !errors.As(err, &invalid) || invalid.Reason != want {
+			t.Errorf("%s: %v, want %q", body, err, want)
+		}
+	}
+}
+
+// TestProcessDelimitedInput: with inputFormat delimited, transforms read
+// {"rows": ...}, with or without a header row and with any delimiter.
+func TestProcessDelimitedInput(t *testing.T) {
+	ctx := context.Background()
+	sink := &recordingSink{}
+	p := New(state.NewMemStore(), func(Destination) (Sink, error) { return sink, nil }, nil, Options{})
+	dest := []Destination{{Name: "a", Type: "file", Dir: "d"}}
+	header := Flow{ID: "h", InputFormat: "delimited", Transform: transform(t, "name: t\nsteps:\n  - map: { from: rows.1.last, to: second }"), Destinations: dest}
+	tabs := Flow{ID: "t", InputFormat: "delimited", Delimiter: '\t', NoHeader: true, Transform: transform(t, "name: t\nsteps:\n  - map: { from: rows.0.1, to: last }"), Destinations: dest}
+	if _, err := p.Process(ctx, header, []byte("mrn,last\n1,DOE\n2,ROE\n")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := p.Process(ctx, tabs, []byte("1\tDOE\n")); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(sink.bodies[0], `"second":"ROE"`) || !strings.Contains(sink.bodies[1], `"last":"DOE"`) {
+		t.Errorf("delivered %v", sink.bodies)
+	}
+	for body, want := range map[string]string{
+		"a,b\n1\n":  "body must be valid delimited text: rows have different numbers of fields",
+		"a\n\"x\"y": `body must be valid delimited text: a quoted value is not closed, or has a " not doubled`,
+		"":          "body must be valid delimited text: no rows",
+	} {
+		_, err := p.Process(ctx, header, []byte(body))
+		var invalid *InvalidMessageError
+		if !errors.As(err, &invalid) || invalid.Reason != want {
+			t.Errorf("%q: %v, want %q", body, err, want)
+		}
+	}
+}
+
+// TestProcessDestinationSet: the flow's destinationSet steps exclude
+// destinations for a message, the exclusion is stored with the message and
+// honored by retries, and a message with every destination excluded is
+// filtered.
+func TestProcessDestinationSet(t *testing.T) {
+	ctx := context.Background()
+	sinks := map[string]*recordingSink{"ehr": {}, "archive": {}}
+	store := state.NewMemStore()
+	p := New(store, func(d Destination) (Sink, error) { return sinks[d.Name], nil }, nil, Options{MaxAttempts: 3})
+	f := Flow{ID: "f",
+		Transform:    transform(t, "name: t\nsteps:\n  - destinationSet: { exclude: [ehr], when: \"kind == 'orm'\" }\n  - destinationSet: { exclude: [archive], when: test }"),
+		Destinations: []Destination{{Name: "ehr", Type: "file", Dir: "d"}, {Name: "archive", Type: "file", Dir: "d"}}}
+	for _, tt := range []struct {
+		body, status, ehr, archive, excluded string
+	}{
+		{`{"kind":"adt"}`, "sent", "1", "1", ""},
+		{`{"kind":"orm"}`, "sent", "1", "2", "ehr"},
+		{`{"kind":"orm","test":true}`, "filtered", "1", "2", "archive,ehr"},
+	} {
+		res, err := p.Process(ctx, f, []byte(tt.body))
+		if err != nil || string(res.Status) != tt.status {
+			t.Fatalf("%s: %+v %v", tt.body, res, err)
+		}
+		m, _ := store.Get(ctx, res.ID)
+		if got := fmt.Sprint(len(sinks["ehr"].bodies), len(sinks["archive"].bodies)); got != tt.ehr+" "+tt.archive || m.Metadata[ExcludedMetadata] != tt.excluded {
+			t.Errorf("%s: deliveries ehr/archive %s, excluded %q; want %s %s, %q", tt.body, got, m.Metadata[ExcludedMetadata], tt.ehr, tt.archive, tt.excluded)
+		}
+	}
+
+	// A reprocessed message arrives with the old exclusion in its metadata;
+	// this run excludes nothing, so it is removed and ehr gets the message.
+	// The same holds for a flow with no transform at all.
+	plain := Flow{ID: "p", Destinations: f.Destinations}
+	res0, err := p.ProcessWithMetadata(ctx, plain, []byte(`{}`), map[string]string{ExcludedMetadata: "ehr"})
+	if err != nil || res0.Status != state.StatusSent {
+		t.Fatalf("reprocessed, no transform: %+v %v", res0, err)
+	}
+	if m, _ := store.Get(ctx, res0.ID); m.Metadata[ExcludedMetadata] != "" || len(sinks["ehr"].bodies) != 2 {
+		t.Errorf("no transform: excluded %q, ehr deliveries %d; want none, 2", m.Metadata[ExcludedMetadata], len(sinks["ehr"].bodies))
+	}
+	res, err := p.ProcessWithMetadata(ctx, f, []byte(`{"kind":"adt"}`), map[string]string{ExcludedMetadata: "ehr"})
+	if err != nil || res.Status != state.StatusSent {
+		t.Fatalf("reprocessed: %+v %v", res, err)
+	}
+	if m, _ := store.Get(ctx, res.ID); m.Metadata[ExcludedMetadata] != "" || len(sinks["ehr"].bodies) != 3 {
+		t.Errorf("reprocessed: excluded %q, ehr deliveries %d; want none, 3", m.Metadata[ExcludedMetadata], len(sinks["ehr"].bodies))
+	}
+
+	// A retry honors the stored exclusion even though archive failed first.
+	sinks["archive"].fail = errors.New("down")
+	res, err = p.Process(ctx, f, []byte(`{"kind":"orm"}`))
+	if err != nil || res.Status != state.StatusQueued {
+		t.Fatalf("with archive down: %+v %v", res, err)
+	}
+	sinks["archive"].fail = nil
+	m, _ := store.Get(ctx, res.ID)
+	m.Attempts["archive"] = state.DestinationAttempt{Attempts: 1, LastError: "down"} // due now
+	_ = store.Put(ctx, m)
+	if _, err := p.RetryDue(ctx, func(context.Context, string) (Flow, error) { return f, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if m, _ = store.Get(ctx, res.ID); m.Status != state.StatusSent || len(sinks["ehr"].bodies) != 3 {
+		t.Errorf("after retry: status %s, ehr deliveries %d (want sent, 3: ehr stays excluded)", m.Status, len(sinks["ehr"].bodies))
+	}
+}
+
+// buildTo is a transform whose only step builds format.
+func buildTo(format string) *compiler.Transform {
+	return &compiler.Transform{Name: "b", Steps: []compiler.Step{{Build: &compiler.BuildStep{Template: "MSH|^~\\&|A", Format: format}}}}
+}
+
+// TestProcessBuild: a flow's build step makes the output (with its
+// Content-Type); a destination transform reads that output's view; a
+// destination can build its own format.
+func TestProcessBuild(t *testing.T) {
+	ctx := context.Background()
+	sinks := map[string]*recordingSink{"lab": {}, "ehr": {}, "raw": {}}
+	store := state.NewMemStore()
+	p := New(store, func(d Destination) (Sink, error) { return sinks[d.Name], nil }, nil, Options{})
+	f := Flow{ID: "f", InputFormat: "hl7v2",
+		Transform: transform(t, "name: t\nsteps:\n  - map: { from: PID.5.1, to: last }\n  - build: { format: hl7v2, template: \"MSH|^~\\\\&|W|H|LAB|H|1||ADT^A08|{{MSH.10.1}}|P|2.5\\nPID|1||||{{last}}\" }"),
+		Destinations: []Destination{
+			{Name: "lab", Type: "file", Dir: "d"},
+			{Name: "ehr", Type: "file", Dir: "d", Transform: transform(t, "name: d\nsteps:\n  - build: { format: xml, template: \"<p last='{{PID.5.1}}' type='{{MSH.9.2}}'/>\" }")},
+			{Name: "raw", Type: "file", Dir: "d", Transform: transform(t, "name: j\nsteps:\n  - map: { from: PID.5.1, to: name }")},
+		}}
+	res, err := p.Process(ctx, f, []byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|C7|P|2.5\rPID|1||123||DOE^JOHN\r"))
+	if err != nil || res.Status != state.StatusSent {
+		t.Fatalf("%+v %v", res, err)
+	}
+	for name, want := range map[string]string{
+		"lab": "x-application/hl7-v2+er7 MSH|^~\\&|W|H|LAB|H|1||ADT^A08|C7|P|2.5\rPID|1||||DOE\r",
+		"ehr": "application/xml <p last='DOE' type='A08'/>",
+		"raw": `application/json {"MSH":`,
+	} {
+		if got := sinks[name].types[0] + " " + sinks[name].bodies[0]; !strings.HasPrefix(got, want) {
+			t.Errorf("%s got %q, want %q", name, got, want)
+		}
+	}
+	if m, _ := store.Get(ctx, res.ID); m.ContentType != "hl7v2" {
+		t.Errorf("stored content type %q", m.ContentType)
+	}
+	// A build that cannot produce its format errors the message.
+	bad := Flow{ID: "b", Transform: transform(t, "name: t\nsteps:\n  - build: { format: xml, template: '<a>{{x}}' }"), Destinations: []Destination{{Name: "lab", Type: "file", Dir: "d"}}}
+	if res, err := p.Process(ctx, bad, []byte(`{"x":1}`)); err != nil || res.Status != state.StatusErrored {
+		t.Errorf("broken build: %+v %v", res, err)
+	}
+	for format, want := range map[string]string{"text": "text/plain; charset=utf-8", "raw": "application/octet-stream"} {
+		if got := MimeType(format); got != want {
+			t.Errorf("MimeType(%s) = %s", format, got)
+		}
+	}
+}
+
+// TestStoredTextOutput: a stored text output stays unreadable for
+// destination transforms even after the flow definition changed.
+func TestStoredTextOutput(t *testing.T) {
+	later := Flow{ID: "f", Destinations: []Destination{{Name: "a", Type: "file", Dir: "d", Transform: transform(t, "name: d\nsteps:\n  - set: { field: x, expr: y }")}}}
+	outs := destinationOutputs(later, state.Message{ContentType: "text", Transformed: []byte(`{"looks":"like json"}`)})
+	if r := outs["a"]; r.err == nil || !strings.Contains(r.err.Error(), "output is text") {
+		t.Errorf("text output read by a destination transform: %+v", r)
 	}
 }

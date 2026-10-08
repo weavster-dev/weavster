@@ -19,6 +19,7 @@ import (
 
 	"github.com/weavster-dev/weavster/internal/codecs"
 	"github.com/weavster-dev/weavster/internal/gateway"
+	"github.com/weavster-dev/weavster/internal/outbox"
 	"github.com/weavster-dev/weavster/internal/serverconfig"
 )
 
@@ -62,7 +63,7 @@ func TestSupportMatrixWired(t *testing.T) {
 		{name: "flows-list", method: http.MethodGet, path: "/api/v1/flows", marker: true, want: http.StatusOK, contains: `"lab"`},
 		{name: "flows-get", method: http.MethodGet, path: "/api/v1/flows/lab", marker: true, want: http.StatusOK, contains: "Lab Results"},
 		{name: "topology-overview", method: http.MethodGet, path: "/api/v1/topology", marker: true, want: http.StatusOK, contains: "flow:lab"},
-		{name: "topology-flow", method: http.MethodGet, path: "/api/v1/topology/flows/lab", marker: true, want: http.StatusOK, contains: "source:"},
+		{name: "topology-flow", method: http.MethodGet, path: "/api/v1/topology/flows/lab", marker: true, want: http.StatusOK, contains: `"flowId":"flow:lab"`},
 		{name: "flows-delete", method: http.MethodDelete, path: "/api/v1/flows/lab", marker: true, want: http.StatusNoContent},
 		{name: "flows-delete-missing", method: http.MethodDelete, path: "/api/v1/flows/lab", marker: true, want: http.StatusNotFound},
 		{name: "flows-get-missing", method: http.MethodGet, path: "/api/v1/flows/lab", marker: true, want: http.StatusNotFound},
@@ -283,13 +284,13 @@ func TestSupportMatrixCodecs(t *testing.T) {
 	var documented []string
 	for _, line := range strings.Split(table, "\n") {
 		cells := strings.Split(line, "|")
-		if len(cells) != 7 || !strings.HasPrefix(strings.TrimSpace(cells[1]), "`") {
+		if len(cells) != 8 || !strings.HasPrefix(strings.TrimSpace(cells[1]), "`") {
 			continue
 		}
 		for i := range cells {
 			cells[i] = strings.TrimSpace(cells[i])
 		}
-		documented = append(documented, strings.Join([]string{strings.Trim(cells[1], "`"), cells[2], cells[3], cells[4], cells[5]}, " | "))
+		documented = append(documented, strings.Join([]string{strings.Trim(cells[1], "`"), cells[2], cells[3], cells[4], cells[5], cells[6]}, " | "))
 	}
 
 	var want []string
@@ -301,11 +302,51 @@ func TestSupportMatrixCodecs(t *testing.T) {
 		if e.Acknowledgment {
 			ack = "yes"
 		}
-		want = append(want, strings.Join([]string{e.Name, tier, e.Versions, ack, e.Notes}, " | "))
+		want = append(want, strings.Join([]string{e.Name, tier, e.Server, e.Versions, ack, e.Notes}, " | "))
 	}
 	sort.Strings(documented)
 	sort.Strings(want)
 	if got, exp := strings.Join(documented, "\n"), strings.Join(want, "\n"); got != exp {
 		t.Errorf("docs codec table:\n%s\nCoverageMatrix:\n%s", got, exp)
+	}
+}
+
+// TestSupportMatrixDeliveryKeys keeps the delivery-guarantee table in line
+// with outbox.SemanticsForAdapter: "Sends idempotency key" is yes exactly
+// for key-sending adapters, and every wired sink's guarantee is stated as
+// at-least-once (no sink is exactly-once).
+func TestSupportMatrixDeliveryKeys(t *testing.T) {
+	data, err := os.ReadFile("../../docs/support-matrix.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, table, ok := strings.Cut(string(data), "| Adapter | Source | Sink | Guarantee | Sends idempotency key |")
+	if !ok {
+		t.Fatal("delivery guarantee table not found")
+	}
+	table, _, _ = strings.Cut(table, "\n\n")
+	adapters := map[string]string{"File": "file", "HTTP": "http", "TCP/MLLP": "mllp", "Database": "database", "SMTP": "smtp",
+		"Web service (SOAP/REST)": "web-service", "Document": "document", "In-process inter-flow (`flow` destination)": "interflow"}
+	seen := 0
+	for _, line := range strings.Split(table, "\n") {
+		cells := strings.Split(line, "|")
+		if len(cells) != 7 {
+			continue
+		}
+		adapter, ok := adapters[strings.TrimSpace(cells[1])]
+		if !ok {
+			continue
+		}
+		seen++
+		sends := strings.HasPrefix(strings.TrimSpace(cells[5]), "yes")
+		if keyed := outbox.SemanticsForAdapter(adapter) == outbox.SemanticsKeySent; sends != keyed {
+			t.Errorf("%s: table says key sent=%v, SemanticsForAdapter says %s", cells[1], sends, outbox.SemanticsForAdapter(adapter))
+		}
+		if strings.TrimSpace(cells[3]) == "wired" && !strings.HasPrefix(strings.TrimSpace(cells[4]), "at-least-once") {
+			t.Errorf("%s: a wired sink's guarantee must start with at-least-once, got %q", cells[1], cells[4])
+		}
+	}
+	if seen != len(adapters) {
+		t.Errorf("checked %d adapter rows, want %d", seen, len(adapters))
 	}
 }

@@ -10,7 +10,7 @@ func TestXMLSerializeRejectsUnsupportedValue(t *testing.T) {
 	if err == nil {
 		t.Fatal("Serialize() error = nil, want unsupported-value error")
 	}
-	if !strings.Contains(err.Error(), "xml: serialize expects *XMLNode") {
-		t.Errorf("Serialize() error = %q, want XMLNode contract", err)
+	if !strings.Contains(err.Error(), "xml: serialize expects *XMLDocument") {
+		t.Errorf("Serialize() error = %q, want XMLDocument contract", err)
 	}
 }

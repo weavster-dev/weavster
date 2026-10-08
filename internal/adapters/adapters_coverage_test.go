@@ -111,7 +111,7 @@ func TestMLLPSourceListenReadCloseLifecycle(t *testing.T) {
 			return
 		}
 		defer func() { _ = conn.Close() }()
-		_, _ = conn.Write(frameMLLP([]byte("ADT^A01")))
+		_, _ = conn.Write(MLLPFraming{}.wrap([]byte("ADT^A01")))
 	}()
 
 	m, err := src.Read(context.Background())

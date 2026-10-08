@@ -3,6 +3,7 @@ package codecs
 import (
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRegistry(t *testing.T) {
@@ -59,8 +60,59 @@ func TestHL7Ack(t *testing.T) {
 	if !strings.Contains(ack, "MSA|AA|MSG0001") {
 		t.Errorf("expected MSA with AA and echoed control id, got %q", ack)
 	}
-	if !strings.Contains(ack, "|ACK|") {
-		t.Errorf("expected MSH-9 ACK message type, got %q", ack)
+	if !strings.Contains(ack, "|ACK^A01|") {
+		t.Errorf("expected MSH-9 ACK^A01 message type, got %q", ack)
+	}
+}
+
+// TestHL7ACKOptions: the ACK carries the given code, text, its own control
+// id, and the time it was made; a message without MSH still gets one.
+func TestHL7ACKOptions(t *testing.T) {
+	now := time.Date(2026, 9, 27, 1, 2, 3, 0, time.UTC)
+	in := []byte("MSH|^~\\&|SENDAPP|SENDFAC|RECVAPP|RECVFAC|20240101120000||ADT^A01|MSG0001|P|2.5\rPID|1||12345||DOE^JOHN\r")
+	if ack, _ := HL7ACK(in, HL7AckOptions{Code: AckApplicationAccept}); strings.Contains(string(ack), "|00010101") {
+		t.Errorf("zero Now gave %q", ack)
+	}
+	for _, tt := range []struct {
+		name string
+		in   []byte
+		opts HL7AckOptions
+		want string
+	}{
+		{"accept", in, HL7AckOptions{Code: AckApplicationAccept, ControlID: "A1", Now: now},
+			"MSH|^~\\&|RECVAPP|RECVFAC|SENDAPP|SENDFAC|20260927010203||ACK^A01|A1|P|2.5\rMSA|AA|MSG0001\r"},
+		{"error with text", in, HL7AckOptions{Code: AckApplicationError, Text: "flow is not accepting messages", Now: now},
+			"MSH|^~\\&|RECVAPP|RECVFAC|SENDAPP|SENDFAC|20260927010203||ACK^A01|MSG0001|P|2.5\rMSA|AE|MSG0001|flow is not accepting messages\r"},
+		{"no MSH", []byte("not hl7"), HL7AckOptions{Code: AckApplicationReject, Text: "not an HL7 v2 message", Now: now},
+			"MSH|^~\\&|||||20260927010203||ACK|||\rMSA|AR||not an HL7 v2 message\r"},
+	} {
+		got, err := HL7ACK(tt.in, tt.opts)
+		if err != nil || string(got) != tt.want {
+			t.Errorf("%s: %q, %v\nwant %q", tt.name, got, err, tt.want)
+		}
+	}
+}
+
+// TestHL7Delimiters: components and repetitions follow MSH-2, standard or
+// not.
+func TestHL7Delimiters(t *testing.T) {
+	for _, tt := range []struct {
+		name, in string
+	}{
+		{"standard", "MSH|^~\\&|A|B|C|D|20240101||ADT^A01|1|P|2.5\rPID|1||42^^^H~43^^^I\r"},
+		{"custom", "MSH|#!\\*|A|B|C|D|20240101||ADT#A01|1|P|2.5\rPID|1||42###H!43###I\r"},
+	} {
+		v, err := HL7v2().Parse([]byte(tt.in))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := v.(*HL7Message)
+		if typ := m.Segments[0].Field(9); len(typ) != 2 || typ[1] != "A01" {
+			t.Errorf("%s: MSH-9 = %q", tt.name, typ)
+		}
+		if ids := m.Segments[1].Fields[2]; len(ids) != 2 || ids[1][0] != "43" || ids[1][3] != "I" {
+			t.Errorf("%s: PID-3 = %q", tt.name, ids)
+		}
 	}
 }
 
@@ -147,5 +199,34 @@ func TestCoverageMatrix(t *testing.T) {
 			t.Errorf("duplicate coverage entry %q", e.Name)
 		}
 		seen[e.Name] = true
+	}
+}
+
+func TestParseHL7ACKAndControlID(t *testing.T) {
+	for _, tt := range []struct {
+		in       string
+		code, id string
+		ok       bool
+	}{
+		{"MSH|^~\\&|A|B|C|D|1||ACK^A01|X|P|2.5\rMSA|AA|MSG1\r", "AA", "MSG1", true},
+		{"MSH|^~\\&|A\rMSA|CE|MSG2|busy\r", "CE", "MSG2", true},
+		{"MSH|^~\\&|A\rMSA|AR\r", "AR", "", true},
+		{"MSH|^~\\&|A\r", "", "", false},
+		{"MSH|^~\\&|A\rMSA||MSG1\r", "", "", false},
+		{"MSA|AA|MSG1\r", "", "", false},
+		{"PID|1\rMSA|AA|MSG1\r", "", "", false},
+		{"MSH|^~\\&|A|B|C|D|1||ORR^O02|X|P|2.5\rMSA|AA|MSG1\r", "AA", "MSG1", true},
+		{"hello", "", "", false},
+	} {
+		code, id, ok := ParseHL7ACK([]byte(tt.in))
+		if code != tt.code || id != tt.id || ok != tt.ok {
+			t.Errorf("%q: %q %q %v", tt.in, code, id, ok)
+		}
+	}
+	if got := HL7ControlID([]byte("MSH|^~\\&|A|B|C|D|1||ADT^A01|C9|P|2.5\r")); got != "C9" {
+		t.Errorf("control id = %q", got)
+	}
+	if got := HL7ControlID([]byte("PID|1\r")); got != "" {
+		t.Errorf("control id without MSH = %q", got)
 	}
 }

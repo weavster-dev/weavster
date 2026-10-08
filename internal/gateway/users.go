@@ -87,19 +87,25 @@ func writeUserError(w http.ResponseWriter, err error) {
 
 // decodeStrict decodes a JSON body into v, rejecting unknown fields.
 func decodeStrict(w http.ResponseWriter, r *http.Request, v any) bool {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-	dec.DisallowUnknownFields()
-	err := dec.Decode(v)
-	if err == nil {
-		if _, tokErr := dec.Token(); tokErr != io.EOF {
-			err = errors.New("trailing data after the JSON document")
-		}
-	}
-	if err != nil {
+	if err := decodeJSON(w, r, v); err != nil {
 		writeStatusError(w, http.StatusBadRequest, "invalid JSON body: "+err.Error())
 		return false
 	}
 	return true
+}
+
+// decodeJSON decodes one JSON document (at most 1 MiB, no unknown fields)
+// into v; an empty body is io.EOF.
+func decodeJSON(w http.ResponseWriter, r *http.Request, v any) error {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return err
+	}
+	if _, err := dec.Token(); err != io.EOF {
+		return errors.New("trailing data after the JSON document")
+	}
+	return nil
 }
 
 // permAdmin is the permission that allows everything.

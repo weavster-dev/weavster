@@ -4,10 +4,15 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"strings"
 
 	"github.com/weavster-dev/weavster/internal/gateway"
@@ -33,7 +38,44 @@ func newHTTPClient(addr, user, pass string) *httpClient {
 	if addr == "" {
 		addr = "http://127.0.0.1:8080"
 	}
-	return &httpClient{base: addr, user: user, pass: pass, http: http.DefaultClient}
+	return &httpClient{base: strings.TrimSuffix(addr, "/"), user: user, pass: pass, http: http.DefaultClient}
+}
+
+// withCA makes the client trust the certificates in the PEM file caFile
+// for https, besides the system's, and speak TLS 1.2 at least.
+func (c *httpClient) withCA(caFile string) error {
+	pool, err := x509.SystemCertPool()
+	if err != nil {
+		pool = x509.NewCertPool()
+	}
+	if caFile != "" {
+		pem, err := os.ReadFile(caFile)
+		if err != nil {
+			return fmt.Errorf("CA file: %w", err)
+		}
+		if !pool.AppendCertsFromPEM(pem) {
+			return fmt.Errorf("CA file %s holds no PEM certificate", caFile)
+		}
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}
+	c.http = &http.Client{Transport: transport}
+	return nil
+}
+
+// plainCredentials reports whether credentials would go unencrypted to
+// another host: an http address whose host is not a loopback one.
+func plainCredentials(addr string) bool {
+	u, err := url.Parse(addr)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
+		return false
+	}
+	ip := net.ParseIP(host)
+	return ip == nil || !ip.IsLoopback()
 }
 
 func (c *httpClient) request(ctx context.Context, method, path string, body []byte) (*http.Response, error) {

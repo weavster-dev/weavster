@@ -42,6 +42,362 @@
         "null"
       ]
     },
+    "source": {
+      "description": "Where the flow receives messages on its own; without it only the API sends it messages.",
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "title": "File source",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "dir"
+          ],
+          "properties": {
+            "type": {
+              "const": "file"
+            },
+            "dir": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Absolute directory to poll"
+            },
+            "pattern": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "File-name glob (default *); no path separators"
+            },
+            "pollIntervalMs": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 100,
+              "maximum": 3600000,
+              "description": "Default 1000"
+            },
+            "moveTo": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Absolute directory processed files are moved to (default: deleted)"
+            },
+            "recursive": {
+              "type": [
+                "boolean",
+                "null"
+              ],
+              "description": "Also read subdirectories of dir (default false); symbolic links are not followed"
+            },
+            "schedule": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Cron schedule instead of pollIntervalMs: minute hour day-of-month month day-of-week (*/15 7-19 * * MON-FRI), or @hourly, @daily, @every 30s; optionally CRON_TZ=Area/City first (default: the server's time zone)"
+            }
+          },
+          "not": {
+            "required": [
+              "pollIntervalMs",
+              "schedule"
+            ],
+            "properties": {
+              "pollIntervalMs": {
+                "type": "integer"
+              },
+              "schedule": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "title": "HTTP source",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "address"
+          ],
+          "properties": {
+            "type": {
+              "const": "http"
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1,
+              "description": "host:port the flow listens on while it is started, e.g. 127.0.0.1:9001 or :9001"
+            },
+            "path": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^/",
+              "description": "Request path accepted (default /)"
+            },
+            "method": {
+              "enum": [
+                "POST",
+                "PUT",
+                null
+              ],
+              "description": "Request method accepted (default POST)"
+            },
+            "username": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "pattern": "^[^:]+$",
+              "description": "HTTP Basic user name senders must present (with passwordEnv)"
+            },
+            "passwordEnv": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^WEAVSTER_SOURCE_[A-Z0-9_]+$",
+              "description": "Name of the server environment variable holding the Basic password, WEAVSTER_SOURCE_... (with username)"
+            },
+            "certFile": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Absolute path of the PEM certificate chain; the port serves HTTPS (with keyFile)"
+            },
+            "keyFile": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Absolute path of the PEM private key (with certFile)"
+            },
+            "readTimeoutMs": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1000,
+              "maximum": 600000,
+              "description": "Time allowed to read one request (default 60000)"
+            }
+          },
+          "dependentRequired": {
+            "username": [
+              "passwordEnv"
+            ],
+            "passwordEnv": [
+              "username"
+            ],
+            "certFile": [
+              "keyFile"
+            ],
+            "keyFile": [
+              "certFile"
+            ]
+          }
+        },
+        {
+          "title": "MLLP source",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "address"
+          ],
+          "properties": {
+            "type": {
+              "const": "mllp"
+            },
+            "address": {
+              "type": "string",
+              "minLength": 1,
+              "description": "host:port the flow accepts HL7 v2 over MLLP on while it is started, e.g. 127.0.0.1:2575 or :2575"
+            },
+            "certFile": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Absolute path of the PEM certificate chain; the port accepts MLLP over TLS only (with keyFile)"
+            },
+            "keyFile": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Absolute path of the PEM private key (with certFile)"
+            },
+            "frameStart": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[0-9A-Fa-f]{2}$",
+              "description": "Byte before each message, in hex (default 0B, MLLP's VT)"
+            },
+            "frameEnd": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^([0-9A-Fa-f]{2}){1,2}$",
+              "description": "One or two bytes after each message, in hex (default 1C0D, MLLP's FS CR)"
+            },
+            "ackMode": {
+              "enum": [
+                "original",
+                "none",
+                null
+              ],
+              "description": "original (default): answer each message with an HL7 ACK; none: send no reply"
+            }
+          },
+          "dependentRequired": {
+            "certFile": [
+              "keyFile"
+            ],
+            "keyFile": [
+              "certFile"
+            ]
+          }
+        },
+        {
+          "title": "Database source",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "driver",
+            "dsnEnv",
+            "query",
+            "idColumn",
+            "update"
+          ],
+          "properties": {
+            "type": {
+              "const": "database"
+            },
+            "driver": {
+              "enum": [
+                "postgres",
+                "sqlite"
+              ],
+              "description": "postgres, or sqlite (a database file; for local use and tests)"
+            },
+            "dsnEnv": {
+              "type": "string",
+              "pattern": "^WEAVSTER_DB_[A-Z0-9_]+$",
+              "description": "Name of the server environment variable holding the connection string, WEAVSTER_DB_..."
+            },
+            "query": {
+              "type": "string",
+              "minLength": 1,
+              "description": "One SELECT (or WITH) statement, run read-only every pollIntervalMs; each row becomes a message"
+            },
+            "idColumn": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Column of the query's result that identifies a row (the update's key value; metadata source.database.id)"
+            },
+            "update": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "table",
+                "key",
+                "set"
+              ],
+              "description": "Marks each row once its message is stored: UPDATE table SET … WHERE key = the row's id; the query must leave marked rows out",
+              "properties": {
+                "table": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}(\\.[A-Za-z_][A-Za-z0-9_]{0,62})?$"
+                },
+                "key": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$"
+                },
+                "set": {
+                  "type": "object",
+                  "minProperties": 1,
+                  "propertyNames": {
+                    "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$"
+                  },
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "pollIntervalMs": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1000,
+              "maximum": 3600000,
+              "description": "Default 5000"
+            },
+            "maxRows": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "maximum": 10000,
+              "description": "Rows read per poll (default 100)"
+            },
+            "timeoutMs": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1000,
+              "maximum": 120000,
+              "description": "Time allowed for the query or one update (default 30000)"
+            },
+            "schedule": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "minLength": 1,
+              "description": "Cron schedule instead of pollIntervalMs: minute hour day-of-month month day-of-week (*/15 7-19 * * MON-FRI), or @hourly, @daily, @every 30s; optionally CRON_TZ=Area/City first (default: the server's time zone)"
+            }
+          },
+          "not": {
+            "required": [
+              "pollIntervalMs",
+              "schedule"
+            ],
+            "properties": {
+              "pollIntervalMs": {
+                "type": "integer"
+              },
+              "schedule": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
     "enabled": {
       "type": [
         "boolean",
@@ -85,6 +441,43 @@
         "null"
       ],
       "pattern": "^[A-Za-z0-9._-]{1,128}$"
+    },
+    "inputFormat": {
+      "enum": [
+        "json",
+        "hl7v2",
+        "xml",
+        "delimited",
+        null
+      ],
+      "description": "How transforms read a message: json (default), hl7v2 (segment.field.component paths such as PID.5.1), xml (element paths such as order.@id), or delimited (rows.0.<column>)"
+    },
+    "delimited": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "description": "Options of inputFormat delimited",
+      "properties": {
+        "delimiter": {
+          "enum": [
+            ",",
+            ";",
+            "|",
+            "\t",
+            null
+          ],
+          "description": "Field delimiter (default ,)"
+        },
+        "header": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "Whether the first row names the columns (default true)"
+        }
+      }
     }
   },
   "$defs": {
@@ -103,7 +496,10 @@
         "type": {
           "enum": [
             "http",
-            "file"
+            "file",
+            "mllp",
+            "flow",
+            "database"
           ]
         },
         "url": {
@@ -123,162 +519,432 @@
         },
         "responseTransform": {
           "$ref": "#/$defs/Transform"
+        },
+        "method": {
+          "enum": [
+            "POST",
+            "PUT",
+            "PATCH",
+            null
+          ],
+          "description": "http: request method (default POST)"
+        },
+        "timeoutMs": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1000,
+          "maximum": 120000,
+          "description": "http, mllp, database: time allowed for one delivery, including the response or ACK (default 30000)"
+        },
+        "maxRedirects": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 10,
+          "description": "http: 307/308 redirects followed, never https to http (default 0: a redirect fails the delivery)"
+        },
+        "address": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "mllp: host:port to deliver HL7 v2 to"
+        },
+        "tls": {
+          "type": [
+            "boolean",
+            "null"
+          ],
+          "description": "mllp: connect over TLS, verifying the receiver's certificate and host name (default false)"
+        },
+        "caFile": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "description": "mllp with tls: absolute path of the PEM CA certificates trusted instead of the system's"
+        },
+        "frameStart": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9A-Fa-f]{2}$",
+          "description": "mllp: byte before each message, in hex (default 0B, MLLP's VT)"
+        },
+        "frameEnd": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([0-9A-Fa-f]{2}){1,2}$",
+          "description": "mllp: one or two bytes after each message, in hex (default 1C0D, MLLP's FS CR)"
+        },
+        "ackMode": {
+          "enum": [
+            "original",
+            "none",
+            null
+          ],
+          "description": "mllp: original (default): wait for the receiver's HL7 ACK; none: delivered once written"
+        },
+        "driver": {
+          "enum": [
+            "postgres",
+            "sqlite",
+            null
+          ],
+          "description": "database: postgres, or sqlite (a database file; for local use and tests)"
+        },
+        "dsnEnv": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^WEAVSTER_DB_[A-Z0-9_]+$",
+          "description": "database: name of the server environment variable holding the connection string, WEAVSTER_DB_..."
+        },
+        "table": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}(\\.[A-Za-z_][A-Za-z0-9_]{0,62})?$",
+          "description": "database: table (or schema.table) each message is inserted into"
+        },
+        "columns": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "minProperties": 1,
+          "propertyNames": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "database: column name -> path of its value in the message (e.g. patient.mrn); a missing path is NULL"
+        },
+        "keyColumn": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,62}$",
+          "description": "database: column (with a unique constraint) that gets the delivery's idempotency key, so a retry inserts nothing"
+        },
+        "flow": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[A-Za-z0-9._-]{1,128}$",
+          "description": "flow: id of the flow to hand messages to"
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "file"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "type": "null"
+              },
+              "timeoutMs": {
+                "type": "null"
+              },
+              "maxRedirects": {
+                "type": "null"
+              },
+              "address": {
+                "type": "null"
+              },
+              "flow": {
+                "type": "null"
+              },
+              "tls": {
+                "type": "null"
+              },
+              "caFile": {
+                "type": "null"
+              },
+              "frameStart": {
+                "type": "null"
+              },
+              "frameEnd": {
+                "type": "null"
+              },
+              "ackMode": {
+                "type": "null"
+              },
+              "driver": {
+                "type": "null"
+              },
+              "dsnEnv": {
+                "type": "null"
+              },
+              "table": {
+                "type": "null"
+              },
+              "columns": {
+                "type": "null"
+              },
+              "keyColumn": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "mllp"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "method": {
+                "type": "null"
+              },
+              "maxRedirects": {
+                "type": "null"
+              },
+              "url": {
+                "type": "null"
+              },
+              "dir": {
+                "type": "null"
+              },
+              "flow": {
+                "type": "null"
+              },
+              "driver": {
+                "type": "null"
+              },
+              "dsnEnv": {
+                "type": "null"
+              },
+              "table": {
+                "type": "null"
+              },
+              "columns": {
+                "type": "null"
+              },
+              "keyColumn": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "http"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "address": {
+                "type": "null"
+              },
+              "dir": {
+                "type": "null"
+              },
+              "flow": {
+                "type": "null"
+              },
+              "tls": {
+                "type": "null"
+              },
+              "caFile": {
+                "type": "null"
+              },
+              "frameStart": {
+                "type": "null"
+              },
+              "frameEnd": {
+                "type": "null"
+              },
+              "ackMode": {
+                "type": "null"
+              },
+              "driver": {
+                "type": "null"
+              },
+              "dsnEnv": {
+                "type": "null"
+              },
+              "table": {
+                "type": "null"
+              },
+              "columns": {
+                "type": "null"
+              },
+              "keyColumn": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "flow"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "flow"
+            ],
+            "properties": {
+              "url": {
+                "type": "null"
+              },
+              "dir": {
+                "type": "null"
+              },
+              "address": {
+                "type": "null"
+              },
+              "method": {
+                "type": "null"
+              },
+              "timeoutMs": {
+                "type": "null"
+              },
+              "maxRedirects": {
+                "type": "null"
+              },
+              "tls": {
+                "type": "null"
+              },
+              "caFile": {
+                "type": "null"
+              },
+              "frameStart": {
+                "type": "null"
+              },
+              "frameEnd": {
+                "type": "null"
+              },
+              "ackMode": {
+                "type": "null"
+              },
+              "driver": {
+                "type": "null"
+              },
+              "dsnEnv": {
+                "type": "null"
+              },
+              "table": {
+                "type": "null"
+              },
+              "columns": {
+                "type": "null"
+              },
+              "keyColumn": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "caFile"
+            ],
+            "properties": {
+              "caFile": {
+                "type": "string"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "tls"
+            ],
+            "properties": {
+              "tls": {
+                "const": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "database"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "driver",
+              "dsnEnv",
+              "table",
+              "columns"
+            ],
+            "properties": {
+              "url": {
+                "type": "null"
+              },
+              "dir": {
+                "type": "null"
+              },
+              "address": {
+                "type": "null"
+              },
+              "flow": {
+                "type": "null"
+              },
+              "method": {
+                "type": "null"
+              },
+              "maxRedirects": {
+                "type": "null"
+              },
+              "tls": {
+                "type": "null"
+              },
+              "caFile": {
+                "type": "null"
+              },
+              "frameStart": {
+                "type": "null"
+              },
+              "frameEnd": {
+                "type": "null"
+              },
+              "ackMode": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ]
     },
     "Transform": {
-      "type": [
-        "object",
-        "null"
-      ],
-      "additionalProperties": false,
-      "properties": {
-        "kind": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "name": {
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "inputs": {
-          "type": [
-            "array",
-            "null"
-          ],
-          "items": {
-            "type": "string"
-          }
-        },
-        "steps": {
-          "type": [
-            "array",
-            "null"
-          ],
-          "items": {
-            "$ref": "#/$defs/Step"
-          }
-        }
-      }
-    },
-    "Step": {
-      "type": "object",
-      "additionalProperties": false,
-      "minProperties": 1,
-      "maxProperties": 1,
-      "properties": {
-        "map": {
-          "$ref": "#/$defs/MapStep"
-        },
-        "set": {
-          "$ref": "#/$defs/SetStep"
-        },
-        "filter": {
-          "$ref": "#/$defs/FilterStep"
-        },
-        "build": {
-          "$ref": "#/$defs/BuildStep"
-        },
-        "destinationSet": {
-          "$ref": "#/$defs/DestinationSetStep"
-        }
-      }
-    },
-    "MapStep": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "from",
-        "to"
-      ],
-      "properties": {
-        "from": {
-          "type": "string"
-        },
-        "to": {
-          "type": "string"
-        },
-        "type": {
-          "enum": [
-            "",
-            "string",
-            "number",
-            "boolean"
-          ]
-        }
-      }
-    },
-    "SetStep": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "field",
-        "expr"
-      ],
-      "properties": {
-        "field": {
-          "type": "string"
-        },
-        "expr": {
-          "type": "string"
-        }
-      }
-    },
-    "FilterStep": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "when",
-        "action"
-      ],
-      "properties": {
-        "when": {
-          "type": "string"
-        },
-        "action": {
-          "enum": [
-            "reject",
-            "accept"
-          ]
-        }
-      }
-    },
-    "BuildStep": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "template"
-      ],
-      "properties": {
-        "template": {
-          "type": "string"
-        },
-        "format": {
-          "type": "string"
-        }
-      }
-    },
-    "DestinationSetStep": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "include": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        },
-        "exclude": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
+      "$ref": "https://raw.githubusercontent.com/weavster-dev/weavster/main/agent-docs/schemas/transform.schema.json"
     }
   }
 }

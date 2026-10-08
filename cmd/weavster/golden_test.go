@@ -65,6 +65,7 @@ var goldenCases = []goldenCase{
 	{name: "config-validate", lines: "config validate \"$DIR/config.yaml\"\nconfig validate \"$DIR/map.json\"\nconfig validate\n"},
 	{name: "config-plan", lines: "config diff \"$DIR/config.yaml\"\nconfig diff \"$DIR/map.json\"\nconfig plan \"$DIR/map.json\"\nconfig apply \"$DIR/config.yaml\" --dry-run\n"},
 	{name: "config-transfer", lines: "exportcfg \"$DIR/cfg.json\"\nexportcfg \"$DIR/cfg-map.json\" overwriteconfigmap\nimportcfg \"$DIR/cfg.json\"\nimportcfg \"$DIR/cfg.json\" force nodeploy\nimportcfg \"$DIR/cfg-map.json\" overwriteconfigmap force\nimportcfg \"$DIR/none.json\"\nexportcfg\n"},
+	{name: "deadletter", lines: "deadletter list\ndeadletter show nope\ndeadletter requeue nope\ndeadletter requeue all\ndeadletter remove nope\ndeadletter frob\n"},
 	{name: "dump-clear", lines: "dump stats \"$DIR/stats.json\"\ndump events \"$DIR/events.json\"\ndump logs \"$DIR/x\"\nclearallmessages\nclearallmessages now\n"},
 	{name: "deprecated", lines: "channel list\ncodetemplate list\n"},
 	{name: "flow-remove", lines: "flow remove adt\nflow remove adt\nflow create $DIR/adt.json\n"},

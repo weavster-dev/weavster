@@ -1,0 +1,41 @@
+{
+  "version": "1",
+  "flows": {
+    "hl7v2-to-json": {
+      "inputFormat": "hl7v2",
+      "transform": {
+        "steps": [
+          {
+            "map": {
+              "from": "MSH.9.2",
+              "to": "event"
+            }
+          },
+          {
+            "map": {
+              "from": "PID.5.1",
+              "to": "patient.last"
+            }
+          },
+          {
+            "map": {
+              "from": "PID.5.2",
+              "to": "patient.first"
+            }
+          },
+          {
+            "map": {
+              "from": "PID.3.repetitions.1.1",
+              "to": "patient.ssn"
+            }
+          },
+          {
+            "build": {
+              "template": "{\"event\": \"{{event}}\", \"patient\": {\"last\": \"{{patient.last}}\", \"first\": \"{{patient.first}}\", \"ssn\": \"{{patient.ssn}}\"}}"
+            }
+          }
+        ]
+      }
+    }
+  }
+}

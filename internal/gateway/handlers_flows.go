@@ -24,7 +24,7 @@ func writeFlowError(w http.ResponseWriter, err error) {
 		writeStatusError(w, http.StatusBadRequest, err.Error())
 	case errors.Is(err, ErrNoContent):
 		writeStatusError(w, http.StatusNotFound, err.Error())
-	case errors.Is(err, ErrMessageBusy):
+	case errors.Is(err, ErrMessageBusy), errors.Is(err, ErrNotDeadLettered):
 		writeStatusError(w, http.StatusConflict, err.Error())
 	case errors.Is(err, ErrUnknownAction), errors.Is(err, ErrDestinationNotFound):
 		writeStatusError(w, http.StatusNotFound, err.Error())
@@ -182,30 +182,55 @@ func (s *Server) handleFlowsDelete(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// maxMessageBytes caps a received message body.
-const maxMessageBytes = 10 << 20
+// MaxMessageBytes caps a received message body, and a file a file source
+// reads.
+const MaxMessageBytes = 10 << 20
+
+// readMessage reads a message body up to MaxMessageBytes; on failure it
+// has written the error reply.
+func readMessage(w http.ResponseWriter, r *http.Request) ([]byte, bool) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, MaxMessageBytes))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			writeStatusError(w, http.StatusRequestEntityTooLarge, "message body larger than 10 MiB")
+		} else {
+			writeStatusError(w, http.StatusBadRequest, "could not read message body")
+		}
+		return nil, false
+	}
+	return body, true
+}
 
 func (s *Server) handleIngest(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.Ingest == nil {
 		writeStatusError(w, http.StatusServiceUnavailable, "message processing unavailable")
 		return
 	}
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxMessageBytes))
-	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			writeStatusError(w, http.StatusRequestEntityTooLarge, "message body larger than 10 MiB")
-			return
-		}
-		writeStatusError(w, http.StatusBadRequest, "could not read message body")
+	body, ok := readMessage(w, r)
+	if !ok {
 		return
 	}
 	res, err := s.cfg.Ingest.Ingest(r.Context(), r.PathValue("id"), body)
-	if err != nil {
+	writeIngestResult(w, res, err)
+}
+
+// writeIngestResult answers a message sent or reprocessed. A message stored
+// before a later failure is accepted (202), as every source does: the
+// server finishes it after a restart, and a resend would store it twice
+// under a new id and idempotency key (#107 D-80).
+func writeIngestResult(w http.ResponseWriter, res IngestResult, err error) {
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusAccepted, res)
+	case res.ID != "":
+		if res.Status == "" {
+			res.Status = "received" // stored; processing resumes
+		}
+		writeJSON(w, http.StatusAccepted, res)
+	default:
 		writeFlowError(w, err)
-		return
 	}
-	writeJSON(w, http.StatusAccepted, res)
 }
 
 func (s *Server) handleFlowAction(w http.ResponseWriter, r *http.Request) {
@@ -471,7 +496,7 @@ func (s *Server) handleConnectorNames(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]ConnectorNames, 0, len(flows))
 	for _, f := range flows {
-		c := ConnectorNames{ID: f.ID, Name: f.Name, SourceType: f.SourceType, Destinations: make([]string, 0, len(f.Destinations))}
+		c := ConnectorNames{ID: f.ID, Name: f.Name, SourceType: f.SourceKind(), Destinations: make([]string, 0, len(f.Destinations))}
 		for _, d := range f.Destinations {
 			c.Destinations = append(c.Destinations, d.Name)
 		}
@@ -481,9 +506,9 @@ func (s *Server) handleConnectorNames(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePortsInUse(w http.ResponseWriter, _ *http.Request) {
-	ports := s.cfg.Listeners
-	if ports == nil {
-		ports = []PortInUse{}
+	ports := append([]PortInUse{}, s.cfg.Listeners...)
+	if s.cfg.Sources != nil {
+		ports = append(ports, s.cfg.Sources.Ports()...)
 	}
 	writeJSON(w, http.StatusOK, ports)
 }
