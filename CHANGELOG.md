@@ -177,6 +177,7 @@ All notable changes to this project are documented here, following
 ### Fixed
 
 - Dependencies: `github.com/cloudflare/circl` v1.3.7 → v1.6.3, with `golang.org/x/crypto`, `x/sync`, `x/sys`, and `x/text` raised to the versions it needs. This clears advisories GO-2025-3754 and GO-2026-4550 (#187).
+- XML parsing no longer copies every namespace binding for each declaration (#313). A small document with many namespace declarations took memory and CPU quadratic in its size; scopes are now restored at each end tag.
 - Preserve test failure diagnostics in `scripts/check-coverage.sh` alongside the per-package coverage summary.
 
 - Changing your own permissions now ends your own sessions too (#234). A user who removed a permission from their own account used to keep it through the token they made the change with. Editing your own account without changing permissions still keeps your session.

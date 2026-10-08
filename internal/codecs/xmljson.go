@@ -28,7 +28,8 @@ const xmlNamespace = "http://www.w3.org/XML/1998/namespace"
 // scanXML reads in as one well-formed, namespace-well-formed XML document
 // and calls visit with each token in order, prefixes as written; for a
 // StartElement, ns is the namespace scope inside it (prefix, "" for the
-// default, -> URI). It refuses, with fixed words that never quote the
+// default, -> URI), valid only during that call: the scan updates it in
+// place. It refuses, with fixed words that never quote the
 // document: an XML declaration that is not first; a directive other than
 // one DOCTYPE before the root; more than one root; text outside it;
 // unmatched end tags; undeclared prefixes; duplicate attributes; and more
@@ -46,11 +47,20 @@ func scanXML(in []byte, visit func(tok xml.Token, ns map[string]string) error) e
 		}
 		return enc.NewDecoder().Reader(r), nil
 	}
+	// One scope map is updated in place: each element records only the
+	// bindings it changed and restores them at its end tag. Copying the
+	// inherited scope for every declaration made namespace-heavy documents
+	// quadratic to read (#313).
+	type binding struct {
+		uri     string
+		present bool
+	}
 	type open struct {
-		name xml.Name // as written: Space is the prefix
-		ns   map[string]string
+		name     xml.Name           // as written: Space is the prefix
+		previous map[string]binding // what this element's declarations replaced
 	}
 	var stack []open
+	scope := map[string]string{"xml": xmlNamespace}
 	root := false
 	elements, tokens := 0, 0
 	doctype := false
@@ -65,7 +75,7 @@ func scanXML(in []byte, visit func(tok xml.Token, ns map[string]string) error) e
 			return notXML("") // not the decoder's text: it can quote the document
 		}
 		tokens++
-		var scope map[string]string
+		ns := map[string]string(nil) // the scope visit sees: only for a start tag
 		switch t := tok.(type) {
 		case xml.ProcInst:
 			// The XML declaration comes first or not at all.
@@ -89,20 +99,32 @@ func scanXML(in []byte, visit func(tok xml.Token, ns map[string]string) error) e
 			}
 			elements++
 			root = true
-			scope = map[string]string{"xml": xmlNamespace}
-			if len(stack) > 0 {
-				scope = stack[len(stack)-1].ns
-			}
+			var previous map[string]binding
 			for _, a := range t.Attr {
+				var prefix string
 				switch {
 				case a.Name.Space == "xmlns" && a.Value == "":
 					return notXML("a namespace prefix bound to an empty URI")
 				case a.Name.Space == "xmlns":
-					scope = copyWith(scope, a.Name.Local, a.Value)
+					prefix = a.Name.Local
 				case a.Name.Space == "" && a.Name.Local == "xmlns":
-					scope = copyWith(scope, "", a.Value)
+					prefix = ""
+				default:
+					continue
 				}
+				if _, again := previous[prefix]; again {
+					return notXML("duplicate attribute")
+				}
+				if previous == nil {
+					previous = map[string]binding{}
+				}
+				uri, present := scope[prefix]
+				previous[prefix] = binding{uri: uri, present: present}
+				scope[prefix] = a.Value
 			}
+			// Pushed before the checks below, so a refusal leaves the
+			// stack consistent (the scan stops at the error anyway).
+			stack = append(stack, open{name: t.Name, previous: previous})
 			if _, ok := scope[t.Name.Space]; t.Name.Space != "" && !ok {
 				return notXML("undeclared namespace prefix")
 			}
@@ -121,10 +143,17 @@ func scanXML(in []byte, visit func(tok xml.Token, ns map[string]string) error) e
 				}
 				seen[expanded] = true
 			}
-			stack = append(stack, open{name: t.Name, ns: scope})
+			ns = scope
 		case xml.EndElement:
 			if len(stack) == 0 || stack[len(stack)-1].name != t.Name {
 				return notXML("")
+			}
+			for prefix, b := range stack[len(stack)-1].previous {
+				if b.present {
+					scope[prefix] = b.uri
+				} else {
+					delete(scope, prefix)
+				}
 			}
 			stack = stack[:len(stack)-1]
 		case xml.CharData:
@@ -132,7 +161,7 @@ func scanXML(in []byte, visit func(tok xml.Token, ns map[string]string) error) e
 				return notXML("text outside the root element")
 			}
 		}
-		if err := visit(tok, scope); err != nil {
+		if err := visit(tok, ns); err != nil {
 			return err
 		}
 	}
@@ -222,14 +251,4 @@ func addChild(parent map[string]any, name string, el map[string]any) {
 	default:
 		parent[name] = []any{prev, el}
 	}
-}
-
-// copyWith returns a copy of ns with prefix bound to uri.
-func copyWith(ns map[string]string, prefix, uri string) map[string]string {
-	out := make(map[string]string, len(ns)+1)
-	for k, v := range ns {
-		out[k] = v
-	}
-	out[prefix] = uri
-	return out
 }
