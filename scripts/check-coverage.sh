@@ -4,7 +4,8 @@
 # Usage: scripts/check-coverage.sh [threshold]
 set -euo pipefail
 threshold="${1:-90}"
-go test -cover ./... | awk -v min="$threshold" '
+# Keep the raw test output visible when the coverage summary filters it out.
+go test -cover ./... | tee /dev/stderr | awk -v min="$threshold" '
   {
     pkg = ""
     for (i = 1; i <= NF; i++) if ($i ~ /\//) { pkg = $i; break }
