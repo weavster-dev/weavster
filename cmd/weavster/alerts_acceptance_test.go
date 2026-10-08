@@ -11,10 +11,10 @@ import (
 
 // TestAlerts: alert definitions are created, validated, enabled/disabled,
 // imported (with and without force), exported by id, name, or all, are
-// permission-checked, and survive a restart with the SQLite store.
+// permission-checked, and survive a restart (on PostgreSQL).
 func TestAlerts(t *testing.T) {
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	args := []string{"server", "--config", cfg}
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
@@ -33,6 +33,11 @@ func TestAlerts(t *testing.T) {
 		{"disable", http.MethodPost, "/api/v1/alerts/errors/disable", ``, http.StatusOK, `"enabled":false`},
 		{"options", http.MethodGet, "/api/v1/alerts/options", ``, http.StatusOK, `"message.dead-lettered"`},
 		{"unversioned", http.MethodGet, "/api/alerts/errors", ``, http.StatusOK, `"name":"ADT errors"`},
+		{"statuses", http.MethodGet, "/api/v1/alerts/statuses", ``, http.StatusOK, `[{"id":"errors","name":"ADT errors","enabled":false}]`},
+		{"info", http.MethodGet, "/api/v1/alerts/errors/info", ``, http.StatusOK, `"events":["message.errored","message.queued","message.dead-lettered"]`},
+		{"test (dry run)", http.MethodPost, "/api/v1/alerts/errors/test", ``, http.StatusOK, `{"matches":true,"enabled":false,"event":"message.errored","flowId":"adt","actions":[{"type":"email","to":["ops@example.com"]}],"delivered":false}`},
+		{"test another flow", http.MethodPost, "/api/v1/alerts/errors/test", `{"event":"message.errored","flowId":"lab"}`, http.StatusOK, `"matches":false`},
+		{"statuses is reserved", http.MethodPut, "/api/v1/alerts/statuses", strings.Replace(errorsAlert, `"id":"errors"`, `"id":"statuses"`, 1), http.StatusBadRequest, "reserved"},
 	}
 	for _, s := range steps {
 		code, body, _ := c.do(s.method, s.path, s.body, admin)
@@ -45,6 +50,9 @@ func TestAlerts(t *testing.T) {
 		t.Errorf("viewer: %d %q", code, body)
 	}
 	stop()
+	if !restartable(t) {
+		return
+	}
 
 	stop = startCLI(t, args, c.base+"/api/openapi.yaml")
 	defer stop()

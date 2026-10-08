@@ -8,14 +8,17 @@ import (
 )
 
 // OpenPostgres opens a Postgres-backed Store (the production durable backend).
-// The pgx stdlib driver rewrites "?" placeholders to $n, so the shared SQL
-// core is identical across backends. Not required for local DX or tests.
-// maxConns caps the write pool's open connections (0 = unlimited).
+// The shared SQL core is written with "?" placeholders; the store rewrites
+// them as $n for PostgreSQL (dialectDB; pgx does not). maxConns caps the
+// pool's open connections (0 = unlimited).
 func OpenPostgres(ctx context.Context, connString string, maxConns int) (Store, error) {
 	db, err := sql.Open("pgx", connString)
 	if err != nil {
 		return nil, err
 	}
 	db.SetMaxOpenConns(maxConns)
-	return openSQLStore(ctx, db)
+	if maxConns > 0 {
+		db.SetMaxIdleConns(maxConns) // keep the pool: each new connection is a TLS handshake
+	}
+	return openSQLStore(ctx, db, true)
 }

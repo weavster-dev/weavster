@@ -1,0 +1,6 @@
+# The golden case delimited-to-json: what the flow in weavster.json makes of input.csv.
+flow: delimited-to-json
+cases:
+  - name: golden
+    inputFile: input.csv
+    expect: {outputFile: expected.json}

@@ -1,0 +1,6 @@
+# The golden case json-to-json: what the flow in weavster.json makes of input.json.
+flow: json-to-json
+cases:
+  - name: golden
+    inputFile: input.json
+    expect: {outputFile: expected.json}

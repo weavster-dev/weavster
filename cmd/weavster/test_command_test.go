@@ -16,6 +16,7 @@ func TestRunTransformErrors(t *testing.T) {
 	}{
 		{name: "unknown codec", codec: "no-such-codec", content: []byte("x")},
 		{name: "malformed json", codec: "json", content: []byte("{not json")},
+		{name: "not canonical", codec: "json", content: []byte(`{ "b": 1, "a": 2 }`)},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

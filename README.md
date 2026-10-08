@@ -3,11 +3,12 @@
 ![Coverage](https://raw.githubusercontent.com/weavster-dev/weavster/main/docs/coverage.svg)
 
 Message-oriented integration platform. The current server stores flow definitions, accepts
-messages for a flow through its REST API, transforms them with a declarative YAML DSL
-(`map`/`set`/`filter`), and delivers them to HTTP and file destinations, recording every message
-and its status; failed deliveries are retried with backoff and dead-lettered after a limit.
-Listening sources, scheduling, and WASM modules exist as libraries in the source tree that the
-server does not use. See [What exists now](#what-exists-now) and the
+messages for a flow through its REST API, from files in a directory, on the flow's own HTTP
+port, from rows a database query returns, or as HL7 v2 over MLLP (optionally over TLS; acknowledged with HL7 ACKs), transforms them with a declarative YAML DSL (`map`/`set`/`filter`), and delivers them to
+HTTP, file, MLLP (HL7 v2 over TCP or TLS), and database (PostgreSQL, or SQLite for local use) destinations or to other flows, recording every message and its status;
+failed deliveries are retried with backoff and dead-lettered after a limit; file and database
+sources poll on an interval or a cron schedule. WASM modules exist as libraries in the source tree that the server does not use.
+See [What exists now](#what-exists-now) and the
 [support matrix](docs/support-matrix.md).
 
 Single static Go binary (no CGo, no external runtime).
@@ -59,42 +60,53 @@ The [support matrix](docs/support-matrix.md) is the authoritative, per-capabilit
 - **Running server** (`weavster server [--config FILE]`): REST API over HTTP and optional HTTPS,
   with the OpenAPI document,
   `/api/v1/system`, CSRF marker enforcement, security headers, and TRACE/TRACK blocking;
-  flow create/list/get/update/delete stored in the configured store (durable with `sqlite`),
+  flow create/list/get/update/delete stored in the configured store (durable with `postgres`),
   enable/disable with auto-deploy of enabled flows at startup, and a
   deploy/start/stop/pause/halt/resume/undeploy lifecycle;
   `POST /api/v1/flows/{id}/messages` runs a message through the flow's DSL transform and
-  delivers it to each `http`/`file` destination, retrying failures with backoff (see
-  [Processing messages](docs/processing-messages.md)); message search (flow, status, time,
+  delivers it to each destination (`http`, `file`, `mllp`, another flow, or a `database` table
+  in PostgreSQL, or SQLite for local use), retrying failures with backoff (see
+  [Processing messages](docs/processing-messages.md)); a flow can also read files from a
+  directory, listen on its own HTTP port, accept HL7 v2 over MLLP, or poll a database query, and transforms can read
+  HL7 v2 messages, XML documents, and CSV (`inputFormat: hl7v2`, `xml`, or `delimited`); message
+  search (flow, status, time,
   paging), reading one message and its content (audited), reprocessing, and removing messages;
-  read-only topology JSON built from the flows.
+  read-only topology JSON built from the flows, drawn by a read-only web UI at `/ui/`
+  (see docs/web-ui.md).
   Basic or Bearer-token authentication with per-route permissions, and a first-run `admin`
-  account; security-relevant API calls are written to an audit log on stderr. Users persist
-  across restarts only with `store.dialect: sqlite`; otherwise they are kept in memory.
+  account; security-relevant API calls are written to an audit log on stderr and in the store,
+  searchable with `GET /api/v1/audit` (see docs/audit-log.md). Users persist
+  across restarts with `store.dialect: postgres`; otherwise they are kept in memory.
+  Connection strings and passwords that flows use are read from environment variables or from
+  secret files in `secrets.dir` (default `/run/secrets`), never from the flows; the store's
+  connection string is `store.dsn` in the configuration file or, with `store.dsnEnv`, such a
+  secret.
 - **Configuration management** (API and CLI): user administration; the config map, global
   scripts, and settings; code snippets and libraries; alert definitions (stored and validated;
   they do not send notifications yet); whole-configuration export and import; and checking a
   config-as-code document and planning and applying it (`config validate`, `diff`, `plan`,
   `apply`). These are stored and managed only: flows do not
   use snippets, scripts, or the config map yet.
-- **CLI**: `weavster server`, `weavster test` (four built-in codec round-trip fixtures,
-  JUnit/JSON output), and the command-line client: a bare `weavster` opens the interactive
+- **CLI**: `weavster server`, `weavster test` (runs your fixture files through your flows'
+  transforms offline, plus built-in codec round trips; JUnit/JSON output), and the command-line client: a bare `weavster` opens the interactive
   shell, and `-s` runs batch scripts, with `help`, `status`, `version`, `flow` commands for every
   flow API operation, user administration, and `quit` (see `docs/cli.md`). `-u`/`-p` log in, `-c` reads
   a connection file, and `-v` prints the server's version.
-- **Library-only** (source and unit tests exist, not used by the server): durable audit storage,
-  scheduler, adapters, outbox, codecs, WASM compiler/executor/registry, PostgreSQL
-  store, config-as-code drift, Git store, alert evaluation, notifiers, secrets,
-  metrics/tracing.
+- **Library-only** (source and unit tests exist, not used by the server): the scheduler, the other adapters (SMTP, web service, and the earlier `DBSink`/`DBSource` library types), outbox, codecs other than
+  HL7 v2, XML, and delimited, WASM compiler/executor/registry, config-as-code drift, Git store, alert evaluation, notifiers,
+  tracing. Prometheus metrics are served at `GET /metrics` (see docs/metrics.md).
 - **Enterprise-deferred stubs**: broker and DICOM adapters, DICOM codec, KMS/Vault rotation.
 - **Build**: CI verifies static `CGO_ENABLED=0` builds for linux/amd64, linux/arm64,
-  darwin/arm64 and a distroless non-root image. No release artifacts are published.
+  darwin/arm64 and a distroless non-root image. A version tag publishes release archives for
+  those three targets with SHA-256 checksums (`scripts/release.sh`, docs/install.md); no release
+  has been tagged yet.
 
 ## Build
 
 ```bash
 go build -o bin/weavster ./cmd/weavster
 go test -race ./...
-weavster test --format junit --output artifacts/
+weavster test --format junit --output artifacts/ examples/
 ```
 
 ## Run
@@ -102,6 +114,12 @@ weavster test --format junit --output artifacts/
 ```bash
 weavster server 127.0.0.1:8080
 weavster server --config weavster.yaml   # see docs/server-config.md
+```
+
+With PostgreSQL 16 for local development (see docs/docker-compose.md):
+
+```bash
+docker compose up -d --build --wait      # API at http://127.0.0.1:8080 a moment later, admin / Weavster-dev-1
 ```
 
 ## Layout
@@ -116,5 +134,5 @@ specs/           Phase 1/2 requirements and architecture
 
 ## Stack
 
-Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory or SQLite store. Library-only packages
+Go (>=1.22) · `net/http` + chi · REST + OpenAPI 3.1 · in-memory or PostgreSQL store. Library-only packages
 also depend on wazero, SQLite/PostgreSQL drivers, Prometheus, and OpenTelemetry.

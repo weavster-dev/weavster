@@ -1,0 +1,52 @@
+name: release
+
+# A version tag (v1.2.0, or v1.2.0-rc.1 for a pre-release) publishes a
+# GitHub release: a static binary archive for linux/amd64, linux/arm64, and
+# darwin/arm64, and a SHA-256 checksums file (D-55: no signing yet).
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+*']
+
+permissions:
+  contents: write
+
+jobs:
+  checks:
+    # Nothing is published unless the tagged commit is on main and passes
+    # the same gates as a pull request.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The tag is on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Format check
+        run: test -z "$(gofmt -l .)"
+      - name: Vet
+        run: go vet ./...
+      - name: Test
+        run: go test -race ./...
+
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+      - name: Build the archives and checksums
+        run: scripts/release.sh "${GITHUB_REF_NAME#v}" dist
+      - name: Verify the archives
+        run: scripts/verify-release.sh "${GITHUB_REF_NAME#v}" dist
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=()
+          if [[ $GITHUB_REF_NAME == *-* ]]; then prerelease=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --generate-notes --title "Weavster $GITHUB_REF_NAME" "${prerelease[@]}"

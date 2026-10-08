@@ -1,0 +1,6 @@
+# The golden case hl7v2-to-json: what the flow in weavster.json makes of input.hl7.
+flow: hl7v2-to-json
+cases:
+  - name: golden
+    inputFile: input.hl7
+    expect: {outputFile: expected.json}

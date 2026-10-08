@@ -10,6 +10,9 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -17,7 +20,6 @@ import (
 // Store dialects accepted by store.dialect (spec §4.2, §11).
 const (
 	DialectMemory   = "memory"
-	DialectSQLite   = "sqlite"
 	DialectPostgres = "postgres"
 	DialectDisabled = "disabled"
 )
@@ -27,11 +29,39 @@ type Config struct {
 	Listen   Listen   `yaml:"listen"`
 	TLS      TLS      `yaml:"tls"`
 	Store    Store    `yaml:"store"`
-	Paths    Paths    `yaml:"paths"`
 	Auth     Auth     `yaml:"auth"`
 	Delivery Delivery `yaml:"delivery"`
-	Flows    Flows    `yaml:"flows"`
-	Stats    Stats    `yaml:"stats"`
+	// Processing bounds how many messages are processed at once (#107
+	// D-79).
+	Processing Processing `yaml:"processing"`
+	Flows      Flows      `yaml:"flows"`
+	Stats      Stats      `yaml:"stats"`
+	Prune      Prune      `yaml:"prune"`
+	Secrets    Secrets    `yaml:"secrets"`
+}
+
+// Secrets says where secrets are read from: a secret named NAME is the
+// environment variable NAME or, when that is not set, the file Dir/NAME.
+type Secrets struct {
+	Dir string `yaml:"dir"`
+}
+
+// Prune removes old messages (spec §2.6.23): those received more than
+// MaxAgeHours ago, and the oldest past MaxMessages, every IntervalMinutes.
+// Zero turns a limit off.
+type Prune struct {
+	MaxAgeHours     int `yaml:"maxAgeHours"`
+	MaxMessages     int `yaml:"maxMessages"`
+	IntervalMinutes int `yaml:"intervalMinutes"`
+	// AuditMaxAgeDays removes stored audit entries older than this.
+	AuditMaxAgeDays int `yaml:"auditMaxAgeDays"`
+	// EventMaxAgeDays removes stored events older than this.
+	EventMaxAgeDays int `yaml:"eventMaxAgeDays"`
+}
+
+// Enabled reports whether any prune limit is set.
+func (p Prune) Enabled() bool {
+	return p.MaxAgeHours > 0 || p.MaxMessages > 0 || p.AuditMaxAgeDays > 0 || p.EventMaxAgeDays > 0
 }
 
 // Stats configures time-series statistics (spec §2.11.37): every flow's
@@ -59,6 +89,14 @@ type Delivery struct {
 	RetryIntervalMs int `yaml:"retryIntervalMs"`
 }
 
+// Processing bounds the messages received and processed at once, across
+// the API and every source; a message arriving while all are busy waits
+// up to WaitMs, then is refused as busy (#107 D-79).
+type Processing struct {
+	MaxConcurrent int `yaml:"maxConcurrent"`
+	WaitMs        int `yaml:"waitMs"`
+}
+
 // Listen configures the cleartext and TLS listeners.
 type Listen struct {
 	Address             string `yaml:"address"`
@@ -67,6 +105,9 @@ type Listen struct {
 	// ShutdownTimeoutMs bounds how long a stop signal waits for in-flight
 	// requests.
 	ShutdownTimeoutMs int `yaml:"shutdownTimeoutMs"`
+	// ContextPath serves everything under this prefix (spec §4.1), for
+	// example "/weavster"; "" serves at the root.
+	ContextPath string `yaml:"contextPath"`
 }
 
 // TLS configures the HTTPS listener's certificate and protocol floor.
@@ -78,16 +119,13 @@ type TLS struct {
 
 // Store selects and connects the message store.
 type Store struct {
-	Dialect        string `yaml:"dialect"`
-	DSN            string `yaml:"dsn"`
+	Dialect string `yaml:"dialect"`
+	DSN     string `yaml:"dsn"`
+	// DSNEnv names the secret holding the connection string instead.
+	DSNEnv         string `yaml:"dsnEnv"`
 	MaxConnections int    `yaml:"maxConnections"`
 	MaxRetry       int    `yaml:"maxRetry"`
 	RetryWaitMs    int    `yaml:"retryWaitMs"`
-}
-
-// Paths configures on-disk locations.
-type Paths struct {
-	DataDir string `yaml:"dataDir"`
 }
 
 // Auth configures the local password and lockout policy (spec §4.4).
@@ -111,20 +149,25 @@ type Lockout struct {
 	LockoutPeriodSeconds int `yaml:"lockoutPeriodSeconds"`
 }
 
+// secretName is a secret an environment variable or a file can hold.
+var secretName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
 // Default returns the configuration used when no file is given.
 func Default() Config {
 	return Config{
 		Listen: Listen{Address: "127.0.0.1:8080", RequireMarkerHeader: true, ShutdownTimeoutMs: 10000},
 		TLS:    TLS{MinVersion: "1.2"},
 		Store:  Store{Dialect: DialectMemory, MaxConnections: 10, MaxRetry: 3, RetryWaitMs: 1000},
-		Paths:  Paths{},
 		Auth: Auth{
 			PasswordPolicy: PasswordPolicy{MinLength: 8, MinUpper: 1, MinLower: 1, MinNumeric: 1},
 			Lockout:        Lockout{RetryLimit: 5, LockoutPeriodSeconds: 300},
 		},
-		Delivery: Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000},
-		Flows:    Flows{DeployOnStartup: true},
-		Stats:    Stats{SampleIntervalMs: 60000, RetentionHours: 24},
+		Delivery:   Delivery{MaxAttempts: 5, BackoffBaseMs: 1000, RetryIntervalMs: 1000},
+		Processing: Processing{MaxConcurrent: 32, WaitMs: 5000},
+		Flows:      Flows{DeployOnStartup: true},
+		Stats:      Stats{SampleIntervalMs: 60000, RetentionHours: 24},
+		Prune:      Prune{IntervalMinutes: 60},
+		Secrets:    Secrets{Dir: "/run/secrets"},
 	}
 }
 
@@ -146,15 +189,6 @@ func Load(path string) (Config, error) {
 		return cfg, fmt.Errorf("config: %s: must contain exactly one YAML document", path)
 	}
 	return cfg, nil
-}
-
-// StoreDSN returns store.dsn, or for the sqlite dialect without one,
-// <paths.dataDir>/weavster.db.
-func (c Config) StoreDSN() string {
-	if c.Store.Dialect == DialectSQLite && c.Store.DSN == "" && c.Paths.DataDir != "" {
-		return filepath.Join(c.Paths.DataDir, "weavster.db")
-	}
-	return c.Store.DSN
 }
 
 // Validate reports the first invalid value or combination.
@@ -183,22 +217,32 @@ func (c Config) Validate() error {
 	}
 	switch c.Store.Dialect {
 	case DialectMemory, DialectDisabled:
-	case DialectSQLite:
-		if c.StoreDSN() == "" {
-			return errors.New("config: store.dsn or paths.dataDir is required for the sqlite dialect")
-		}
+	case "sqlite":
+		return errors.New("config: store.dialect sqlite is no longer supported: use postgres for a durable store, or memory")
 	case DialectPostgres:
-		if c.Store.DSN == "" {
-			return errors.New("config: store.dsn is required for the postgres dialect")
+		if (c.Store.DSN == "") == (c.Store.DSNEnv == "") {
+			return errors.New("config: the postgres dialect needs store.dsn or store.dsnEnv (one of them)")
+		}
+		if c.Store.DSNEnv != "" && !secretName.MatchString(c.Store.DSNEnv) {
+			return fmt.Errorf("config: store.dsnEnv must be a secret name (letters, digits, _), got %q", c.Store.DSNEnv)
+		}
+		if strings.HasPrefix(c.Store.DSNEnv, "WEAVSTER_DB_") || strings.HasPrefix(c.Store.DSNEnv, "WEAVSTER_SOURCE_") {
+			return fmt.Errorf("config: store.dsnEnv %s uses a prefix flows may read (WEAVSTER_DB_, WEAVSTER_SOURCE_): give the store's secret another name, such as WEAVSTER_STORE_DSN", c.Store.DSNEnv)
 		}
 	default:
-		return fmt.Errorf("config: store.dialect must be memory, sqlite, postgres, or disabled, got %q", c.Store.Dialect)
+		return fmt.Errorf("config: store.dialect must be memory, postgres, or disabled, got %q", c.Store.Dialect)
+	}
+	if !filepath.IsAbs(c.Secrets.Dir) {
+		return fmt.Errorf("config: secrets.dir must be an absolute path, got %q", c.Secrets.Dir)
 	}
 	if c.Store.MaxConnections < 1 {
 		return errors.New("config: store.maxConnections must be >= 1")
 	}
 	if c.Store.MaxRetry < 0 || c.Store.RetryWaitMs < 0 {
 		return errors.New("config: store.maxRetry and store.retryWaitMs must be >= 0")
+	}
+	if p := c.Listen.ContextPath; p != "" && !validContextPath(p) {
+		return fmt.Errorf("config: listen.contextPath must look like /weavster: start with /, not end with /, no empty, . or .. segments, no ?, #, %%, quotes, spaces, or control characters; got %q", p)
 	}
 	if c.Listen.ShutdownTimeoutMs < 1 || c.Listen.ShutdownTimeoutMs > 600000 {
 		return errors.New("config: listen.shutdownTimeoutMs must be between 1 and 600000 (ten minutes)")
@@ -211,6 +255,14 @@ func (c Config) Validate() error {
 			return fmt.Errorf("config: %s must be between 1 and 3600000 (one hour)", key)
 		}
 	}
+	if p := c.Processing; p.MaxConcurrent < 1 || p.MaxConcurrent > 10000 {
+		return errors.New("config: processing.maxConcurrent must be between 1 and 10000")
+	}
+	if p := c.Processing; p.WaitMs < 0 || p.WaitMs > 60000 {
+		// Bounded low: a waiting http or mllp request cannot be cancelled by
+		// its sender, and stopping its flow's port waits for it.
+		return errors.New("config: processing.waitMs must be between 0 and 60000 (one minute)")
+	}
 	if st := c.Stats; st.SampleIntervalMs < 100 || st.SampleIntervalMs > 3600000 {
 		return errors.New("config: stats.sampleIntervalMs must be between 100 and 3600000 (one hour)")
 	}
@@ -218,6 +270,18 @@ func (c Config) Validate() error {
 		return errors.New("config: stats.retentionHours must be between 1 and 8760 (one year)")
 	} else if int64(st.RetentionHours)*3600000/int64(st.SampleIntervalMs)+1 > MaxStatsSamples { // +1: the sample at the start of the window
 		return fmt.Errorf("config: stats.retentionHours / stats.sampleIntervalMs keeps more than %d samples per flow", MaxStatsSamples)
+	}
+	if pr := c.Prune; pr.MaxAgeHours < 0 || pr.MaxAgeHours > 876000 || pr.MaxMessages < 0 || pr.IntervalMinutes < 1 || pr.IntervalMinutes > 10080 {
+		return errors.New("config: prune.maxAgeHours must be 0-876000 (0 = off), prune.maxMessages >= 0 (0 = off), and prune.intervalMinutes 1-10080 (one week)")
+	}
+	if d := c.Prune.AuditMaxAgeDays; d < 0 || d > 36500 {
+		return errors.New("config: prune.auditMaxAgeDays must be 0-36500 (0 = keep the audit log)")
+	}
+	if d := c.Prune.EventMaxAgeDays; d < 0 || d > 36500 {
+		return errors.New("config: prune.eventMaxAgeDays must be 0-36500 (0 = keep stored events)")
+	}
+	if c.Prune.Enabled() && c.Store.Dialect == DialectDisabled {
+		return errors.New("config: prune needs a message store: with store.dialect disabled there is nothing to prune")
 	}
 	p := c.Auth.PasswordPolicy
 	for _, v := range []int{p.MinLength, c.Auth.Lockout.RetryLimit, c.Auth.Lockout.LockoutPeriodSeconds} {
@@ -238,4 +302,20 @@ func (c Config) Validate() error {
 		return errors.New("config: auth.passwordPolicy forbids every character class, so no password can satisfy it")
 	}
 	return nil
+}
+
+// validContextPath: /segment[/segment…], each segment non-empty and not
+// "." or "..", with no ?, #, %, quotes, backslashes, spaces, or control
+// characters.
+func validContextPath(p string) bool {
+	if !strings.HasPrefix(p, "/") || strings.ContainsAny(p, "?#% \"'\\") ||
+		strings.IndexFunc(p, func(r rune) bool { return !unicode.IsPrint(r) }) >= 0 {
+		return false
+	}
+	for _, seg := range strings.Split(p[1:], "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
 }

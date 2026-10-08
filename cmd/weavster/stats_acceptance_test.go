@@ -40,7 +40,7 @@ func TestStatsEventsTopology(t *testing.T) {
 
 	// Zeros before any traffic.
 	status, body, _ := c.do(http.MethodGet, "/api/v1/flows/lab/stats", "", admin)
-	if status != http.StatusOK || !strings.Contains(body, `"received":0`) || !strings.Contains(body, `"lastMessageAt":null`) {
+	if status != http.StatusOK || !strings.Contains(body, `"received":0`) || strings.Contains(body, "lastMessageAt") { // absent until the first message
 		t.Errorf("empty stats: %d %s", status, body)
 	}
 

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/weavster-dev/weavster/main/agent-docs/schemas/topology.schema.json",
+  "title": "Weavster topology graph",
+  "description": "Response of GET /api/v1/topology (every flow, with route and dependency edges) and GET /api/v1/topology/flows/{flowId} (one flow's source, transform, and destinations, with message-path and route edges). Read-only; no layout coordinates.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "generatedAt", "nodes", "edges"],
+  "properties": {
+    "schemaVersion": {"const": "1"},
+    "generatedAt": {"type": "string", "format": "date-time"},
+    "flowId": {"type": "string", "pattern": "^flow:", "description": "Drill-down only: flow:<id>"},
+    "flowName": {"type": "string", "description": "Drill-down only"},
+    "flowStatus": {"$ref": "#/$defs/status", "description": "Drill-down only"},
+    "nodes": {"type": "array", "items": {"$ref": "#/$defs/node"}},
+    "edges": {"type": "array", "items": {"$ref": "#/$defs/edge"}}
+  },
+  "$defs": {
+    "status": {
+      "enum": ["undeployed", "deployed", "started", "paused", "halted", "stopped", "errored"],
+      "description": "Lifecycle status; errored when at least half of a started flow's (or destination's) deliveries in the last 5 minutes failed"
+    },
+    "activity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["received", "sent", "errored", "queued"],
+      "description": "Counters since the flow's statistics were last reset; zero counts are always present",
+      "properties": {
+        "received": {"type": "integer", "minimum": 0},
+        "sent": {"type": "integer", "minimum": 0},
+        "errored": {"type": "integer", "minimum": 0},
+        "queued": {"type": "integer", "minimum": 0},
+        "lastMessageAt": {"type": "string", "format": "date-time", "description": "Left out until the first message"}
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "label"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^(flow|source|transform|destination):", "description": "flow:<id> in the overview; source:<type>, transform:dsl:<name>, destination:<name> in a drill-down"},
+        "kind": {"enum": ["flow", "source", "transform", "destination"]},
+        "label": {"type": "string"},
+        "status": {"$ref": "#/$defs/status"},
+        "activity": {"$ref": "#/$defs/activity"},
+        "meta": {"type": "object", "additionalProperties": {"type": "string"}, "description": "connectorType and dataType for a source, steps for a transform, connectorType (and flow) for a destination"}
+      }
+    },
+    "edge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "from", "to", "kind"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^edge:"},
+        "from": {"type": "string"},
+        "to": {"type": "string"},
+        "kind": {"enum": ["route", "message-path", "dependency"]},
+        "label": {"type": "string"},
+        "status": {"enum": ["active", "idle", "errored"]},
+        "activity": {"$ref": "#/$defs/activity"}
+      }
+    }
+  }
+}

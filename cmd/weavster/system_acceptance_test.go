@@ -30,9 +30,11 @@ func TestSystemInfo(t *testing.T) {
 		return body
 	}
 	var status struct {
-		Time          string
-		UptimeSeconds *int64
-		TLS           struct {
+		ID, Version, BuildDate, Timezone, Runtime, License string
+		Charsets                                           []string
+		Time                                               string
+		UptimeSeconds                                      *int64
+		TLS                                                struct {
 			Enabled    bool
 			MinVersion string
 			Protocols  []string
@@ -45,6 +47,10 @@ func TestSystemInfo(t *testing.T) {
 	}
 	if at, err := time.Parse(time.RFC3339, status.Time); err != nil || at.Before(before.Truncate(time.Second)) || status.UptimeSeconds == nil {
 		t.Errorf("time %q (%v) is not the request time; uptime %v", status.Time, err, status.UptimeSeconds)
+	}
+	if status.ID == "" || status.Version == "" || status.BuildDate == "" || status.Timezone == "" || !strings.HasPrefix(status.Runtime, "go") ||
+		strings.Join(status.Charsets, ",") != "UTF-8,ISO-8859-1" || status.License != "MVP (no entitlement gating)" {
+		t.Errorf("status fields: %+v", status)
 	}
 	first := status
 	if !first.TLS.Enabled || first.TLS.MinVersion != "1.3" || strings.Join(first.TLS.Protocols, ",") != "TLS 1.3" || len(first.TLS.Ciphers) != 3 {

@@ -1,0 +1,36 @@
+# Local development only: the server and PostgreSQL 16, with fixed
+# development credentials. See docs/docker-compose.md.
+name: weavster
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: weavster
+      POSTGRES_PASSWORD: weavster
+      POSTGRES_DB: weavster
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      # Over TCP, as the server connects: the socket answers during initdb.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U weavster -d weavster"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  weavster:
+    build: .
+    restart: unless-stopped
+    command: ["server", "--config", "/etc/weavster/weavster.yaml"]
+    environment:
+      WEAVSTER_BOOTSTRAP_ADMIN_PASSWORD: Weavster-dev-1
+    volumes:
+      - ./docker/weavster.yaml:/etc/weavster/weavster.yaml:ro
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:

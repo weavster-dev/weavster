@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -23,7 +24,7 @@ type FlowStats struct {
 	Errored       int64                     `json:"errored"`
 	Queued        int64                     `json:"queued"`
 	Destinations  map[string]ConnectorStats `json:"destinations"`
-	LastMessageAt *time.Time                `json:"lastMessageAt"`
+	LastMessageAt *time.Time                `json:"lastMessageAt,omitempty"` // absent until the first message
 }
 
 // StatsProvider reports flow statistics.
@@ -219,23 +220,42 @@ func eventQuery(w http.ResponseWriter, r *http.Request, withLimit bool) (EventQu
 		return bad(msg)
 	}
 	if raw := v.Get("afterId"); raw != "" {
-		n, err := strconv.ParseInt(raw, 10, 64)
-		if err != nil || n < 0 {
-			return bad("afterId must be a whole number from 0 to 9223372036854775807")
+		n, msg := parseAfterID(raw)
+		if msg != "" {
+			return bad(msg)
 		}
 		q.AfterID, q.Cursor = n, true
 	}
 	if withLimit {
-		q.Limit = DefaultEventLimit
-		if raw := v.Get("limit"); raw != "" {
-			n, err := strconv.Atoi(raw)
-			if err != nil || n < 1 || n > MaxEventLimit {
-				return bad("limit must be between 1 and 10000")
-			}
-			q.Limit = n
+		n, msg := parseLimit(v.Get("limit"), DefaultEventLimit, MaxEventLimit)
+		if msg != "" {
+			return bad(msg)
 		}
+		q.Limit = n
 	}
 	return q, true
+}
+
+// parseAfterID reads an afterId cursor; it returns what is wrong, or "".
+func parseAfterID(raw string) (int64, string) {
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || n < 0 {
+		return 0, "afterId must be a whole number from 0 to 9223372036854775807"
+	}
+	return n, ""
+}
+
+// parseLimit reads a page size (def when raw is ""); it returns what is
+// wrong, or "".
+func parseLimit(raw string, def, maxLimit int) (int, string) {
+	if raw == "" {
+		return def, ""
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 || n > maxLimit {
+		return 0, fmt.Sprintf("limit must be between 1 and %d", maxLimit)
+	}
+	return n, ""
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {

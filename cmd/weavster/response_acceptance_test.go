@@ -23,16 +23,16 @@ func TestResponseSelector(t *testing.T) {
 	}
 	ack, other := reply(`{"code":"AA","control":"123"}`), reply(`{"code":"other"}`)
 	addr := freeAddr(t)
-	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\nstore: {dialect: sqlite}\npaths: {dataDir: \""+t.TempDir()+"\"}\n")
+	cfg := writeConfig(t, "listen: {address: \""+addr+"\"}\n"+storeConfig(t))
 	c := apiClient{t: t, base: "http://" + addr}
 	admin := basic(bootstrapAdmin, testAdminPassword)
 	stop := startCLI(t, []string{"server", "--config", cfg}, c.base+"/api/openapi.yaml")
 	defer stop()
 
 	for body, want := range map[string]string{
-		`{"id":"x","responseSelector":"nope","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `"}]}`:                                                         `no destination named \"nope\"`, // JSON-escaped in the error envelope
-		`{"id":"x","responseSelector":"a","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `","responseTransform":{"steps":[{"build":{"template":"x"}}]}}]}`: "not supported yet",
-		`{"id":"x","responseSelector":"a","destinations":[{"name":"a","type":"file","dir":"` + t.TempDir() + `"}]}`:                                                        "sends no reply",
+		`{"id":"x","responseSelector":"nope","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `"}]}`:                                                                                  `no destination named \"nope\"`, // JSON-escaped in the error envelope
+		`{"id":"x","responseSelector":"a","destinations":[{"name":"a","type":"http","url":"` + ack.URL + `","responseTransform":{"steps":[{"filter":{"when":"a == b == c","action":"reject"}}]}}]}`: `invalid operand \"b == c\"`,
+		`{"id":"x","responseSelector":"a","destinations":[{"name":"a","type":"file","dir":"` + t.TempDir() + `"}]}`:                                                                                 "sends no reply",
 	} {
 		if code, resp, _ := c.do(http.MethodPost, "/api/v1/flows", body, admin); code != http.StatusBadRequest || !strings.Contains(resp, want) {
 			t.Errorf("create %s: %d %q, want 400 with %q", body, code, resp, want)

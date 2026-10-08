@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -58,6 +59,9 @@ type connection struct {
 	Address  string `yaml:"address"`
 	User     string `yaml:"user"`
 	Password string `yaml:"password"`
+	// CA is a PEM file of certificates trusted for an https address, in
+	// addition to the system's (a private or self-signed server).
+	CA string `yaml:"ca"`
 }
 
 // loadConnection reads a connection file; unknown keys are rejected.
@@ -76,6 +80,9 @@ func loadConnection(path string) (connection, error) {
 	if err := dec.Decode(&extra); err != io.EOF {
 		return c, fmt.Errorf("connection file %s: must hold a single YAML document", path)
 	}
+	if c.CA != "" && !filepath.IsAbs(c.CA) {
+		c.CA = filepath.Join(filepath.Dir(path), c.CA) // next to the connection file
+	}
 	return c, nil
 }
 
@@ -90,6 +97,9 @@ func (c connection) override(flags connection) connection {
 	}
 	if flags.Password != "" {
 		c.Password = flags.Password
+	}
+	if flags.CA != "" {
+		c.CA = flags.CA
 	}
 	return c
 }

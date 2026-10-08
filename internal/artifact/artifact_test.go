@@ -17,6 +17,7 @@ func TestCheckAlert(t *testing.T) {
 	}{
 		{"valid", func(*Alert) {}, ""},
 		{"reserved id", func(a *Alert) { a.ID = "import" }, "reserved"},
+		{"statuses is reserved", func(a *Alert) { a.ID = "statuses" }, "reserved"},
 		{"no name", func(a *Alert) { a.Name = "" }, "name must be"},
 		{"no events", func(a *Alert) { a.Trigger.Events = nil }, "at least one of"},
 		{"unknown event", func(a *Alert) { a.Trigger.Events = []string{"message.sent"} }, "unknown trigger event"},
