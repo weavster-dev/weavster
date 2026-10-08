@@ -80,7 +80,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   golangci-lint run   # MUST pass (fix, don't //nolint)
   go test -race ./... # MUST pass
   ```
-- **Tests.** Go `testing` package, table-driven. Never require Postgres in tests — use SQLite in-memory (`:memory:`).
+- **Tests.** Go `testing` package, table-driven. Unit and composed tests never require PostgreSQL: use the in-memory store (or SQLite `:memory:` in `internal/state`). Tests that restart the server need a durable store, which is PostgreSQL only (D-55). They run when `WEAVSTER_TEST_POSTGRES_DSN` is set (the CI `postgres` job) and are skipped without it.
 
 ## Changelog & README
 
