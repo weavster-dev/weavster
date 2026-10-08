@@ -190,6 +190,9 @@
                     <div class="col-md-9" role="main">
 
 <h1 id="flow-dependencies-export-and-import">Flow dependencies, export, and import</h1>
+<p>Flow definition requests (<code>POST /api/v1/flows</code> and <code>PUT /api/v1/flows/{id}</code>)
+accept bodies up to 50 MiB, including whitespace. A larger body returns <code>413</code>
+without creating or updating the flow. Reduce the document before retrying.</p>
 <h2 id="dependencies">Dependencies</h2>
 <p>A flow can declare the flows it needs with <code>dependsOn</code> (a list of flow ids):</p>
 <pre><code class="language-json">{&quot;id&quot;: &quot;adt-archive&quot;, &quot;name&quot;: &quot;ADT archive&quot;, &quot;dependsOn&quot;: [&quot;adt&quot;]}
