@@ -85,6 +85,9 @@ func (m *memLookups) LookupDelete(_ context.Context, g, k string) error {
 }
 
 func (m *memLookups) LookupDeleteGroup(_ context.Context, g string) error {
+	if m.fail {
+		return errDisk
+	}
 	if _, ok := m.groups[g]; !ok {
 		return ErrLookupNotFound
 	}
@@ -141,6 +144,8 @@ func TestLookupHandlers(t *testing.T) {
 		{"batch fail", http.MethodPost, "/api/v1/lookups/g/batch", `{"keys":["k"]}`, failing, http.StatusInternalServerError, "internal error"},
 		{"put fail", http.MethodPut, "/api/v1/lookups/g/k", `{"value":"v"}`, failing, http.StatusInternalServerError, "internal error"},
 		{"import fail", http.MethodPost, "/api/v1/lookups/g/import", `{"k":"v"}`, failing, http.StatusInternalServerError, "internal error"},
+		{"delete fail", http.MethodDelete, "/api/v1/lookups/g/k", ``, failing, http.StatusInternalServerError, "internal error"},
+		{"delete group fail", http.MethodDelete, "/api/v1/lookups/g", ``, failing, http.StatusInternalServerError, "internal error"},
 		{"unavailable", http.MethodGet, "/api/v1/lookups", ``, Config{}, http.StatusServiceUnavailable, "lookups unavailable"},
 	}
 	for _, tt := range tests {
@@ -152,11 +157,20 @@ func TestLookupHandlers(t *testing.T) {
 			}
 		})
 	}
-	for _, path := range []string{"/api/v1/lookups/g", "/api/v1/lookups/g/k", "/api/v1/lookups/g/k/exists"} {
+	for _, req := range []struct{ method, path string }{
+		{http.MethodGet, "/api/v1/lookups/g"},
+		{http.MethodGet, "/api/v1/lookups/g/k"},
+		{http.MethodGet, "/api/v1/lookups/g/k/exists"},
+		{http.MethodPost, "/api/v1/lookups/g/batch"},
+		{http.MethodPost, "/api/v1/lookups/g/import"},
+		{http.MethodPut, "/api/v1/lookups/g/k"},
+		{http.MethodDelete, "/api/v1/lookups/g/k"},
+		{http.MethodDelete, "/api/v1/lookups/g"},
+	} {
 		rec := httptest.NewRecorder()
-		New(Config{}).Router().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		New(Config{}).Router().ServeHTTP(rec, httptest.NewRequest(req.method, req.path, nil))
 		if rec.Code != http.StatusServiceUnavailable {
-			t.Errorf("%s unavailable = %d", path, rec.Code)
+			t.Errorf("%s %s unavailable = %d", req.method, req.path, rec.Code)
 		}
 	}
 }
