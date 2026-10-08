@@ -24,7 +24,7 @@ Every error reply of the REST API has the same JSON shape, with `Content-Type: a
 | `404` | `NOT_FOUND` | Unknown flow, destination, action, or endpoint. |
 | `405` | `METHOD_NOT_ALLOWED` | The endpoint exists but not with this method (`TRACE` is always refused). |
 | `409` | `CONFLICT` | The request conflicts with the current state: the flow already exists, a lifecycle transition is not allowed from the flow's status, other flows depend on it, or an import would replace existing flows. |
-| `413` | `PAYLOAD_TOO_LARGE` | The body is larger than the endpoint allows (10 MiB for messages, 50 MiB for creating or updating a flow, import, and bulk update). |
+| `413` | `PAYLOAD_TOO_LARGE` | The body is larger than the endpoint allows (1 MiB for login and password change, 10 MiB for messages, 50 MiB for creating or updating a flow, import, and bulk update). |
 | `500` | `INTERNAL` | Unexpected server-side failure. |
 | `500` | `IMPORT_INCOMPLETE`, `UPDATE_INCOMPLETE`, `REDEPLOY_INCOMPLETE` | A multi-flow operation stopped part-way; the reply also lists what was already written. |
 | `501` | `NOT_IMPLEMENTED` | Reserved for a feature that exists only in the Enterprise edition; `message` would name it. No endpoint of this edition answers `501` today: Enterprise-only settings are refused with `400` instead (see [Enterprise-deferred stubs](support-matrix.md#enterprise-deferred-stubs)). |
